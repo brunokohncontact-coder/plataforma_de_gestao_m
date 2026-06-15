@@ -1,0 +1,34 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# next.js
+/.next/
+/out/
+next-env.d.ts
+
+# production
+/build
+
+# database (SQLite dev)
+*.db
+*.db-journal
+prisma/*.db
+prisma/migrations/dev.db
+
+# env
+.env
+.env*.local
+
+# misc
+.DS_Store
+*.pem
+*.log
+npm-debug.log*
+
+# typescript
+*.tsbuildinfo
+
+# testing
+/coverage

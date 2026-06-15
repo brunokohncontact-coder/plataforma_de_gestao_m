@@ -34,3 +34,24 @@ contexto, decisão, justificativa e alternativas consideradas.
   local em dev (exige serviço rodando — atrito nas execuções remotas); Drizzle (Prisma é
   mais maduro para migrations rápidas).
 - **A revisar:** se produção exigir Postgres desde já, migrar o `provider` do Prisma.
+
+## 2026-06-15 — D4: Autenticação própria (bcrypt + JWT em cookie) em vez de NextAuth
+- **Decisão:** implementar auth própria no MVP — senha com hash `bcryptjs` e sessão como
+  JWT HS256 (lib `jose`) em cookie `httpOnly`/`SameSite=Lax`/`Secure` em prod
+  (`src/lib/auth.ts`). Segredo via `AUTH_SECRET`. Todo dado é escopado por `userId`.
+- **Justificativa:** o MVP tem só e-mail/senha; NextAuth/Auth.js agregaria configuração,
+  dependências e abstrações desnecessárias agora. A solução escolhida é pequena, explícita
+  e fácil de testar. O modelo de dados (`User`) já está pronto para trocar por Auth.js depois
+  sem migração.
+- **Riscos/limitações (a endereçar antes de produção):** sem verificação de e-mail, sem
+  reset de senha, sem rate limiting/proteção contra brute force, sem rotação de sessão.
+  Tratar como dívida técnica explícita para a fase de hardening.
+- **Alternativas consideradas:** Auth.js (mais robusto, porém mais peso para o MVP);
+  Lucia (descontinuado como lib); sessões em banco (mais simples de revogar, porém exige
+  consulta a cada request — adiado).
+
+## 2026-06-15 — D5: Valores monetários em centavos (inteiros)
+- **Decisão:** armazenar todo valor monetário como inteiro de centavos (`feeCents`,
+  `amountCents`); converter/formatar só na borda (UI), com locale pt-BR/BRL.
+- **Justificativa:** evita erros de ponto flutuante em cálculos financeiros — crítico para
+  o diferencial de rentabilidade. Coberto por testes (`src/lib/money.test.ts`).

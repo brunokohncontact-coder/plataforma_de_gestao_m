@@ -1,0 +1,136 @@
+// Palco — schema de dados do MVP.
+// Dev: SQLite (zero dependência externa). Prod: trocar provider para "postgresql".
+// Ver DECISIONS.md (D3) para a justificativa da escolha de banco.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// F1 — usuário/workspace. Multiusuário (manager/banda) fica para fase futura,
+// mas todo dado já é escopado por userId para não retrabalhar depois.
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  shows        Show[]
+  transactions Transaction[]
+  contacts     Contact[]
+}
+
+// F2 — agenda de shows.
+model Show {
+  id        String     @id @default(cuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title     String
+  date      DateTime
+  venue     String?
+  city      String?
+  status    ShowStatus @default(PROPOSED)
+  // Cachê acordado, em centavos (evita imprecisão de ponto flutuante).
+  feeCents  Int        @default(0)
+  notes     String?
+
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  // F4 — despesas/receitas vinculadas a este show.
+  transactions Transaction[]
+  // F5 — contatos associados ao show.
+  contacts     ShowContact[]
+
+  @@index([userId, date])
+}
+
+enum ShowStatus {
+  PROPOSED  // proposto
+  CONFIRMED // confirmado
+  COMPLETED // realizado
+  CANCELED  // cancelado
+}
+
+// F3 — finanças: receitas e despesas.
+model Transaction {
+  id          String          @id @default(cuid())
+  userId      String
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type        TransactionType
+  // Valor sempre positivo, em centavos. O sinal vem de `type`.
+  amountCents Int
+  category    String
+  description String?
+  date        DateTime
+  // Recebido/pago vs. pendente (cobre "contas a receber").
+  status      PaymentStatus   @default(PENDING)
+
+  // F4 — vínculo opcional a um show.
+  showId      String?
+  show        Show?           @relation(fields: [showId], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([userId, date])
+  @@index([showId])
+}
+
+enum TransactionType {
+  INCOME  // receita
+  EXPENSE // despesa
+}
+
+enum PaymentStatus {
+  PENDING  // pendente
+  SETTLED  // recebido (receita) / pago (despesa)
+}
+
+// F5 — CRM básico de contatos da indústria.
+model Contact {
+  id        String        @id @default(cuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name      String
+  role      ContactRole   @default(OTHER)
+  email     String?
+  phone     String?
+  notes     String?
+
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  shows     ShowContact[]
+
+  @@index([userId])
+}
+
+enum ContactRole {
+  VENUE      // casa de show
+  PROMOTER   // produtor/promoter
+  BOOKER     // contratante
+  PRODUCER   // produtor musical
+  PRESS      // imprensa
+  OTHER
+}
+
+// Tabela de junção show <-> contato (N:N).
+model ShowContact {
+  showId    String
+  contactId String
+  show      Show    @relation(fields: [showId], references: [id], onDelete: Cascade)
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@id([showId, contactId])
+  @@index([contactId])
+}
