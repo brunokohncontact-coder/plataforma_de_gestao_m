@@ -3,8 +3,19 @@
 Plataforma web para músicos gerirem a carreira: **agenda de shows, finanças,
 rentabilidade por show e contatos da indústria** — substituindo planilhas e apps avulsos.
 
-> 🚧 **Status:** Fase 0 (Descoberta) concluída. Desenvolvimento da v1 (MVP) inicia na
-> próxima sessão. Veja `PROGRESS.md` para o estado atual e os próximos passos.
+> 🚧 **Status:** Fase 1 em andamento. Fundação pronta — scaffold Next.js, modelo de dados
+> (Prisma) e lógica de rentabilidade testada. Auth e telas vêm a seguir. Veja
+> `PROGRESS.md` para o estado atual e os próximos passos.
+
+## Desenvolvimento
+```bash
+npm install
+cp .env.example .env
+npx prisma migrate dev   # cria o SQLite local (dev.db)
+npm run dev              # http://localhost:3000
+npm test                 # testes da lógica de negócio (Vitest)
+npm run build            # build de produção
+```
 
 ## Documentação de estratégia (`docs/`)
 - [`market-analysis.md`](docs/market-analysis.md) — concorrentes, lacunas e posicionamento.

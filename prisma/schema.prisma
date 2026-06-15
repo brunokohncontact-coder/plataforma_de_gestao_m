@@ -1,0 +1,108 @@
+// Plataforma de gestão de carreira para músicos — schema do MVP (F1–F5).
+// Banco: SQLite em dev (portável para PostgreSQL em prod — ver DECISIONS.md D3).
+// Notas de portabilidade:
+//  - Valores monetários em centavos (Int) para evitar imprecisão de ponto flutuante.
+//  - Enums modelados como String + constantes em src/lib (SQLite não tem enum nativo).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  shows        Show[]
+  transactions Transaction[]
+  contacts     Contact[]
+}
+
+// Agenda de shows (F2). status: proposed | confirmed | done | canceled
+model Show {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title        String
+  date         DateTime
+  venue        String?
+  city         String?
+  status       String   @default("proposed")
+  // Cachê acordado, em centavos da moeda do workspace.
+  feeCents     Int      @default(0)
+  notes        String?
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  transactions Transaction[]
+  contacts     ContactOnShow[]
+
+  @@index([userId, date])
+}
+
+// Finanças (F3). type: income | expense
+model Transaction {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type        String
+  category    String
+  description String?
+  // Valor sempre positivo, em centavos. O sinal vem de `type`.
+  amountCents Int
+  date        DateTime
+  // Receitas: paga (recebida) ou pendente. Despesas: paga ou a pagar.
+  paid        Boolean  @default(true)
+
+  // Vínculo opcional a um show (F4 — rentabilidade).
+  showId      String?
+  show        Show?    @relation(fields: [showId], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, date])
+  @@index([showId])
+}
+
+// CRM de contatos (F5). role: venue | promoter | booker | producer | press | other
+model Contact {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name      String
+  role      String   @default("other")
+  email     String?
+  phone     String?
+  notes     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shows     ContactOnShow[]
+
+  @@index([userId])
+}
+
+// Tabela de junção contato <-> show (muitos-para-muitos).
+model ContactOnShow {
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  showId    String
+  show      Show    @relation(fields: [showId], references: [id], onDelete: Cascade)
+
+  @@id([contactId, showId])
+  @@index([showId])
+}

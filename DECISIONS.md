@@ -34,3 +34,19 @@ contexto, decisão, justificativa e alternativas consideradas.
   local em dev (exige serviço rodando — atrito nas execuções remotas); Drizzle (Prisma é
   mais maduro para migrations rápidas).
 - **A revisar:** se produção exigir Postgres desde já, migrar o `provider` do Prisma.
+
+## 2026-06-15 — D4: Valores monetários em centavos (Int) e parsing pt-BR-first
+- **Decisão:** toda quantia é armazenada/calculada como inteiro em **centavos**; formatação
+  só na borda (UI). O parser de entrada (`src/lib/money.ts`) trata, no caso ambíguo de um
+  único ponto seguido de 3 dígitos (ex.: `"1.500"`), como **separador de milhar** (= 1500),
+  o padrão pt-BR; com 1–2 dígitos após o ponto, trata como decimal (tolerância a entrada en).
+- **Justificativa:** evita erros de ponto flutuante em finanças; o produto é pt-BR-first
+  (ver `mvp-scope.md`). O caso `"1.500"` é genuinamente ambíguo entre locales.
+- **A revisar:** quando houver i18n/seleção de moeda, o parser deve respeitar o locale do
+  workspace em vez da heurística fixa. Validar com usuários reais como digitam valores.
+
+## 2026-06-15 — D5: Fase 1 fatiada — fundação (dados + lógica + testes) antes da UI/Auth
+- **Decisão:** a 1ª sessão de código entrega scaffold + schema Prisma + lógica de negócio
+  testada (P&L, agregações), **sem** auth/telas ainda. Landing estática como placeholder.
+- **Justificativa:** segue a ordem de `mvp-scope.md` (lógica antes da UI) e mantém cada
+  sessão com build/test verdes. Auth (Auth.js vs. própria) fica decidida na próxima sessão.
