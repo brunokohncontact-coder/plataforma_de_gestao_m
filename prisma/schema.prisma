@@ -1,0 +1,130 @@
+// Schema do banco — Plataforma de gestão de carreira para músicos.
+// Dev: SQLite (zero dependência externa). Produção: trocar provider para "postgresql".
+// Mantido portável: evita tipos específicos de um único banco.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Usuário = artista/conta. Workspace 1:1 com User na v1 (multiusuário fica para fase 2).
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  artistName   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  shows        Show[]
+  transactions Transaction[]
+  contacts     Contact[]
+}
+
+// Status do show no funil operacional.
+enum ShowStatus {
+  PROPOSED
+  CONFIRMED
+  PLAYED
+  CANCELLED
+}
+
+// Status de liquidação financeira (recebido/pago vs. pendente).
+enum SettlementStatus {
+  PENDING
+  SETTLED
+}
+
+// Show / apresentação. `fee` é o cachê acordado (número-âncora da rentabilidade).
+model Show {
+  id        String     @id @default(cuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title     String
+  date      DateTime
+  venue     String?
+  city      String?
+  status    ShowStatus @default(PROPOSED)
+
+  fee       Float            @default(0)
+  feeStatus SettlementStatus @default(PENDING)
+
+  notes     String?
+
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  transactions Transaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([date])
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+// Transação financeira (receita/despesa). Pode estar vinculada a um show.
+model Transaction {
+  id          String           @id @default(cuid())
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type        TransactionType
+  amount      Float
+  category    String
+  description String?
+  date        DateTime
+  status      SettlementStatus @default(PENDING)
+
+  showId      String?
+  show        Show?            @relation(fields: [showId], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([showId])
+  @@index([date])
+}
+
+// Papel do contato na indústria.
+enum ContactRole {
+  VENUE
+  PROMOTER
+  BOOKER
+  PRODUCER
+  PRESS
+  OTHER
+}
+
+// CRM básico de contatos da indústria.
+model Contact {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name      String
+  role      ContactRole @default(OTHER)
+  email     String?
+  phone     String?
+  company   String?
+  notes     String?
+
+  shows     Show[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
