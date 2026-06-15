@@ -19,6 +19,21 @@ contexto, decisão, justificativa e alternativas consideradas.
 - **Justificativa:** são as necessidades mais consistentemente **validadas** e o
   diferencial (rentabilidade por show) não existe bem no mercado.
 
+## 2026-06-15 — D4: Autenticação = sessão própria com cookie assinado (HMAC), não Auth.js
+- **Decisão:** implementar autenticação por e-mail/senha com `bcryptjs` para o hash e
+  uma **sessão stateless em cookie HTTP-only assinado com HMAC-SHA256** (segredo
+  `AUTH_SECRET`), em vez de adotar Auth.js/NextAuth na v1.
+- **Justificativa:**
+  - A v1 só precisa de credenciais próprias (sem OAuth/social login ainda); Auth.js v5
+    ainda é beta e adiciona complexidade/risco em execuções automáticas não supervisionadas.
+  - Cookie HTTP-only + HMAC é simples, sem dependências extras, sem tabela de sessão, e
+    a lógica de assinar/verificar token é facilmente testável (cobertura em `auth.test.ts`).
+  - Mantém a porta aberta para migrar a Auth.js quando entrar OAuth (fase 2).
+- **Alternativas consideradas:** Auth.js (mais robusto p/ OAuth, porém beta e mais pesado);
+  sessão em banco (lookup por request — desnecessário no MVP); JWT lib de terceiros
+  (HMAC nativo do Node basta).
+- **A revisar:** ao adicionar login social ou "lembrar dispositivos", reavaliar Auth.js.
+
 ## 2026-06-15 — D3: Stack = Next.js + TypeScript + Prisma + Tailwind
 - **Decisão:** Next.js (App Router) + TypeScript + Prisma ORM + Tailwind CSS. Banco:
   **SQLite em dev** (zero dependência externa, alinhado a execuções remotas efêmeras),
