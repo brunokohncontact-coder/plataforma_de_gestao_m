@@ -34,3 +34,24 @@ contexto, decisão, justificativa e alternativas consideradas.
   local em dev (exige serviço rodando — atrito nas execuções remotas); Drizzle (Prisma é
   mais maduro para migrations rápidas).
 - **A revisar:** se produção exigir Postgres desde já, migrar o `provider` do Prisma.
+
+## 2026-06-15 — D4: Valores monetários em centavos (Int)
+- **Decisão:** todo valor monetário é armazenado e calculado em **centavos como inteiro**
+  (`Int`), nunca como float/decimal. Conversão para reais só nas bordas (entrada/exibição),
+  via `src/lib/money.ts` (`toCents`/`formatMoney`).
+- **Justificativa:** evita erros de ponto flutuante (ex.: 0,1 + 0,2) — crítico para uma
+  ferramenta financeira. Inteiro é exato, simples e portável SQLite↔Postgres.
+- **A revisar:** se houver multi-moeda no futuro, adicionar campo `currency` por transação.
+
+## 2026-06-15 — D5: Autenticação própria (cookie JWT + bcrypt), não Auth.js (por ora)
+- **Decisão:** v1 usa autenticação própria e mínima — senha com **bcrypt** e sessão em
+  **cookie httpOnly** assinado com **JWT (jose, HS256)**. Ver `src/lib/auth.ts`.
+- **Justificativa:** o MVP só precisa de e-mail+senha de usuário único por workspace.
+  Auth.js adiciona dependências, configuração de adapter e abstrações desnecessárias agora;
+  a implementação atual é pequena, auditável e sem serviço externo (alinha a execuções
+  efêmeras). bcrypt+jose são padrões maduros — não estamos reinventando criptografia.
+- **Alternativas consideradas:** Auth.js/NextAuth (recomendado no PROGRESS, mas peso extra),
+  Lucia, Clerk/Supabase Auth (serviço externo).
+- **A revisar:** ao introduzir OAuth (Google/Spotify), multiusuário ou reset de senha por
+  e-mail, **migrar para Auth.js** — o ponto de troca é antes da Fase 2 (multiusuário).
+  Falta hoje: verificação de e-mail e fluxo de "esqueci a senha".

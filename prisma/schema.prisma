@@ -1,0 +1,110 @@
+// Schema do Palco — gestão de carreira para músicos.
+// Dev: SQLite (zero dependência externa). Produção: trocar provider para "postgresql".
+// Ver DECISIONS.md D3. Valores monetários armazenados em CENTAVOS (Int) para evitar
+// erros de ponto flutuante — ver DECISIONS.md D4.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Usuário == workspace do artista na v1 (multiusuário fica para a Fase 2).
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  passwordHash String
+  artistName   String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  shows        Show[]
+  transactions Transaction[]
+  contacts     Contact[]
+}
+
+enum ShowStatus {
+  PROPOSED // proposto
+  CONFIRMED // confirmado
+  DONE // realizado
+  CANCELLED // cancelado
+}
+
+model Show {
+  id        String     @id @default(cuid())
+  userId    String
+  title     String
+  venue     String?
+  city      String?
+  date      DateTime
+  status    ShowStatus @default(PROPOSED)
+  // Cachê acordado, em centavos. Receita "esperada" do show.
+  feeCents  Int        @default(0)
+  notes     String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  contactId    String?
+  contact      Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@index([userId, date])
+}
+
+enum TransactionType {
+  INCOME // receita
+  EXPENSE // despesa
+}
+
+model Transaction {
+  id          String          @id @default(cuid())
+  userId      String
+  type        TransactionType
+  // Valor sempre positivo, em centavos. O sinal vem do `type`.
+  amountCents Int
+  category    String
+  description String?
+  date        DateTime
+  // Receita: paga (recebida) ou pendente. Despesa: paga ou a pagar.
+  paid        Boolean         @default(false)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Vínculo opcional a um show (base da rentabilidade por show — F4).
+  showId String?
+  show   Show?   @relation(fields: [showId], references: [id], onDelete: SetNull)
+
+  @@index([userId, date])
+  @@index([showId])
+}
+
+enum ContactRole {
+  VENUE
+  PROMOTER // promoter/produtor de eventos
+  BOOKER // contratante
+  PRODUCER // produtor musical
+  PRESS // imprensa
+  OTHER
+}
+
+model Contact {
+  id        String      @id @default(cuid())
+  userId    String
+  name      String
+  role      ContactRole @default(OTHER)
+  email     String?
+  phone     String?
+  notes     String?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shows Show[]
+
+  @@index([userId])
+}
