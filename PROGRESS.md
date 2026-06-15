@@ -4,37 +4,67 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Fase 0 (Descoberta e estratégia) — CONCLUÍDA.** Documentos de estratégia produzidos.
-Ainda **não há código de aplicação** — a próxima sessão inicia a Fase 1 (scaffold).
+**Fase 1 (MVP F1–F5) — funcional de ponta a ponta.** App Next.js builda, roda e tem
+testes verdes. Todas as 5 funcionalidades essenciais de `docs/mvp-scope.md` estão
+implementadas (auth, shows, finanças, rentabilidade por show, contatos). Falta polimento,
+mais testes (server actions/integração) e refinos de UX.
+
+### Como rodar (dev)
+```bash
+npm install
+cp .env.example .env        # DATABASE_URL=file:./dev.db, AUTH_SECRET=...
+npx prisma migrate dev      # cria o banco SQLite
+npm run db:seed             # opcional: dados demo (login demo@palco.app / demo1234)
+npm run dev                 # http://localhost:3000
+npm test                    # 18 testes (lógica financeira + sessão)
+npm run build               # produção
+```
 
 ## O que foi concluído
 
 ### Sessão 1 — 2026-06-15 (Fase 0)
-- `docs/market-analysis.md` — análise de Bandzoogle, Beatchain, Sonicbids, Bandsintown/
-  Songkick, Vampr e soluções DIY (Notion/Sheets/Gigditty); lacunas e posicionamento.
-- `docs/personas-and-needs.md` — 4 personas (iniciante, banda, sessão/freelancer, artista
-  com manager); necessidades marcadas como validada/hipótese; tabela-síntese priorizada.
-- `docs/business-plan.md` — proposta de valor, monetização freemium/SaaS, diferenciais, riscos.
-- `docs/mvp-scope.md` — escopo v1: F1 Auth/Workspace, F2 Agenda de shows, F3 Finanças,
-  F4 Rentabilidade por show, F5 CRM de contatos. Fora de escopo e ordem de implementação.
-- `DECISIONS.md` — D1 (foco back-office), D2 (núcleo MVP), D3 (stack Next.js+TS+Prisma+Tailwind, SQLite em dev).
+- `docs/` — market-analysis, personas-and-needs, business-plan, mvp-scope.
+- `DECISIONS.md` — D1 (foco back-office), D2 (núcleo MVP), D3 (stack).
 
-## Próximos passos (priorizados para a próxima sessão — Fase 1)
-1. **Scaffold do projeto**: Next.js (App Router) + TypeScript + Tailwind + Prisma.
-   - `package.json`, `tsconfig`, config Tailwind, Prisma init com SQLite.
-   - Script de teste (Vitest) e garantir `npm run build` + `npm test` verdes.
-   - Adicionar `.gitignore` (node_modules, .next, *.db, .env).
-2. **Modelo de dados (Prisma schema)**: `User`, `Show`, `Transaction`, `Contact`
-   (ver `docs/mvp-scope.md` para campos). Migration inicial.
-3. **Lógica de negócio + testes ANTES da UI**: cálculo de P&L por show
-   (cachê − despesas vinculadas), agregações financeiras mensais/por categoria, status
-   recebido/pendente. Testes unitários cobrindo esses cálculos.
-4. Só então começar a UI: F1 → F2 → F3 → F4 → F5.
+### Sessão 2 — 2026-06-15 (Fase 1 — MVP completo)
+- **Scaffold**: Next.js 16 (App Router) + React 19 + TypeScript + Tailwind 3 + Prisma 5
+  (SQLite em dev). `package.json`, `tsconfig`, `next.config.mjs`, `tailwind.config.ts`,
+  `vitest.config.ts`, `.gitignore`, `.env.example`. (D6: subimos para Next 16 por segurança.)
+- **Dados** (`prisma/schema.prisma` + migration `init`): `Workspace`, `User`, `Show`,
+  `Transaction`, `Contact`. Enums como String validados em `src/lib/domain.ts`.
+  Seed demo em `prisma/seed.ts`.
+- **Lógica de negócio pura e testada** (`src/lib/finance.ts`, `finance.test.ts`):
+  `showProfitAndLoss` (P&L por show), `monthlyFinancialSummary`, `categoryBreakdown`,
+  `receivablesSummary`, `overallTotals`. 13 testes.
+- **Sessão/auth** (`src/lib/session.ts` + `session.test.ts` — 5 testes; `auth.ts`,
+  `validation.ts`): cookie assinado HMAC, bcrypt, Zod. (D4, D5 em DECISIONS.)
+- **F1** Auth: `/login`, `/register`, logout, `requireUser` guard, workspace no cadastro.
+- **F2** Shows: `dashboard/shows` (lista, `novo`, `[id]` detalhe, `[id]/editar`, excluir).
+- **F3** Finanças: `dashboard/financas` (lista+totais+categorias, `nova`, `[id]/editar`, excluir).
+- **F4** Rentabilidade: P&L no detalhe do show e ranking no dashboard.
+- **F5** Contatos: `dashboard/contatos` (lista, `novo`, `[id]/editar`, excluir; vínculo a shows).
+- **Dashboard** (`dashboard/page.tsx`): totais, a receber, próximos shows, resumo mensal.
+- UI: primitivos em `src/components/ui.tsx`, `DeleteButton`, `clsx`, `money` (BRL/datas PT-BR).
+  Layout responsivo com nav (`dashboard/layout.tsx`).
+
+## Próximos passos (priorizados para a próxima sessão)
+1. **Testes de integração/ações**: cobrir os server actions (create/update/delete + ownership
+   por workspace) e o fluxo auth. Hoje só a lógica pura e a sessão têm testes. Avaliar
+   Playwright ou testes de ação com um SQLite em memória/temporário.
+2. **Validação de erros nos formulários por campo** (hoje mostramos só a 1ª mensagem) e
+   estados de sucesso/toast.
+3. **Visão de calendário** dos shows (mvp-scope pede lista + calendário; hoje só lista).
+4. **Filtros/ordenação em Finanças** (por mês, tipo, status, show) e export CSV.
+5. **Polimento UX/responsivo**: empty states, loading states, acessibilidade
+   (labels/aria), 404 amigável, favicon/metadados.
+6. **CI**: workflow GitHub Actions rodando `npm ci && npm test && npm run build`.
+7. **Deploy/Postgres**: quando houver tração, trocar provider Prisma p/ Postgres (D3).
 
 ## Bloqueios / dúvidas (para validação humana)
-- Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, EPK,
-  multiusuário) precisam de 5–10 entrevistas com músicos reais antes de investimento pesado.
-- Foco em **português/LATAM** como cunha inicial é hipótese de go-to-market — validar.
-- Disposição a pagar e faixas de preço (`business-plan.md`) são estimativas — validar.
-- Autenticação: definir na Fase 1 entre solução simples própria vs. lib (ex.: NextAuth/Auth.js).
-  Recomendação: Auth.js para não reinventar segurança. Decidir e registrar em DECISIONS.md.
+- Necessidades **hipótese** em `personas-and-needs.md` (CRM, multiusuário) — validar com
+  5–10 entrevistas antes de investir em features de Fase 2 (split de receita, contratos).
+- Foco **PT-BR/LATAM** e faixas de preço (`business-plan.md`) seguem como hipótese.
+- **Modelagem do cachê x transações**: hoje o cachê (`feeAgreed`) é o valor combinado e
+  receitas lançadas como transação vinculada ao show são tratadas como ADICIONAIS (ex.: merch),
+  para não duplicar no P&L. Ver comentário em `src/lib/finance.ts` e registrar feedback de uso.
+- Segurança da sessão própria (HMAC) é adequada ao MVP; se crescer, migrar p/ Auth.js (D4).
