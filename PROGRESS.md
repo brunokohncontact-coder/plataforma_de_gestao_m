@@ -1,40 +1,65 @@
-# PROGRESS — Plataforma de Gestão de Carreira para Músicos
+# PROGRESS — Palco (Plataforma de Gestão de Carreira para Músicos)
 
 > Memória entre sessões. Toda execução: `git pull`, ler isto por inteiro, seguir os
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Fase 0 (Descoberta e estratégia) — CONCLUÍDA.** Documentos de estratégia produzidos.
-Ainda **não há código de aplicação** — a próxima sessão inicia a Fase 1 (scaffold).
+**Fase 1 — MVP v1 FUNCIONAL.** As 5 funcionalidades do `docs/mvp-scope.md` (F1–F5) estão
+implementadas. `npm run build` ✅, `npm test` (19 testes) ✅, `npm run db:seed` ✅.
+Stack: Next.js 14 (App Router) + TypeScript + Prisma (SQLite dev) + Tailwind.
 
 ## O que foi concluído
 
 ### Sessão 1 — 2026-06-15 (Fase 0)
-- `docs/market-analysis.md` — análise de Bandzoogle, Beatchain, Sonicbids, Bandsintown/
-  Songkick, Vampr e soluções DIY (Notion/Sheets/Gigditty); lacunas e posicionamento.
-- `docs/personas-and-needs.md` — 4 personas (iniciante, banda, sessão/freelancer, artista
-  com manager); necessidades marcadas como validada/hipótese; tabela-síntese priorizada.
-- `docs/business-plan.md` — proposta de valor, monetização freemium/SaaS, diferenciais, riscos.
-- `docs/mvp-scope.md` — escopo v1: F1 Auth/Workspace, F2 Agenda de shows, F3 Finanças,
-  F4 Rentabilidade por show, F5 CRM de contatos. Fora de escopo e ordem de implementação.
-- `DECISIONS.md` — D1 (foco back-office), D2 (núcleo MVP), D3 (stack Next.js+TS+Prisma+Tailwind, SQLite em dev).
+- Documentos de estratégia em `docs/` (market-analysis, personas-and-needs, business-plan, mvp-scope).
+- `DECISIONS.md` D1–D3 (foco, núcleo MVP, stack).
 
-## Próximos passos (priorizados para a próxima sessão — Fase 1)
-1. **Scaffold do projeto**: Next.js (App Router) + TypeScript + Tailwind + Prisma.
-   - `package.json`, `tsconfig`, config Tailwind, Prisma init com SQLite.
-   - Script de teste (Vitest) e garantir `npm run build` + `npm test` verdes.
-   - Adicionar `.gitignore` (node_modules, .next, *.db, .env).
-2. **Modelo de dados (Prisma schema)**: `User`, `Show`, `Transaction`, `Contact`
-   (ver `docs/mvp-scope.md` para campos). Migration inicial.
-3. **Lógica de negócio + testes ANTES da UI**: cálculo de P&L por show
-   (cachê − despesas vinculadas), agregações financeiras mensais/por categoria, status
-   recebido/pendente. Testes unitários cobrindo esses cálculos.
-4. Só então começar a UI: F1 → F2 → F3 → F4 → F5.
+### Sessão 2 — 2026-06-15 (Fase 1 — scaffold + MVP completo)
+- **Scaffold**: `package.json`, `tsconfig.json`, `next.config.mjs`, Tailwind/PostCSS,
+  `.gitignore`, `.env.example`, ESLint. Vitest configurado (`vitest.config.ts`).
+- **Modelo de dados** (`prisma/schema.prisma`): `User`, `Show`, `Transaction`, `Contact`,
+  `ShowContact` (join N:N). Migration inicial em `prisma/migrations/`. Seed em `prisma/seed.ts`
+  (login demo: `demo@palco.app` / `demo1234`).
+- **Lógica de negócio + testes (antes da UI)**:
+  - `src/lib/finance.ts` — `calcShowPnL` (rentabilidade por show), `summarize`,
+    `aggregateByMonth`, `aggregateByCategory`, `roundMoney`. 14 testes em `finance.test.ts`.
+  - `src/lib/session.ts` — assinatura/verificação HMAC de sessão (puro). 5 testes em `session.test.ts`.
+  - `src/lib/validation.ts` — schemas Zod; `src/lib/enums.ts` — domínios; `src/lib/format.ts` — pt-BR.
+- **Auth (F1)**: `src/lib/auth.ts` (bcrypt + cookie httpOnly), `src/app/actions/auth.ts`,
+  páginas `/login`, `/register`, landing `/`, guard em `src/app/app/layout.tsx`.
+- **Shows (F2)**: lista `/app/shows`, novo/editar, detalhe `/app/shows/[id]`. Actions em
+  `src/app/actions/shows.ts`. Form em `src/components/ShowForm.tsx`.
+- **Finanças (F3)**: `/app/financas` (lista + resumo + despesas por categoria), novo/editar,
+  toggle de status (recebida/paga). Actions em `src/app/actions/transactions.ts`.
+- **Rentabilidade (F4)**: P&L exibido na tela do show e no painel ("Shows mais rentáveis").
+- **CRM (F5)**: `/app/contatos` (CRUD), vínculo contato↔show na tela do show
+  (`ShowContactsForm` + `setShowContactsAction`).
+- **Painel** `/app`: KPIs (receitas/despesas/resultado/a receber), próximos shows,
+  resultado mensal, shows mais rentáveis.
+- `DECISIONS.md` D4 (nome "Palco"), D5 (auth própria HMAC), D6 (modelo de P&L). README atualizado.
+
+## Próximos passos (priorizados para a próxima sessão)
+1. **Visão de calendário** dos shows (hoje só lista) — F2 pede lista + calendário.
+2. **Filtros/busca** em finanças (por mês, tipo, status) e em shows (por status/período).
+3. **Testes de integração** das server actions (criar show/transação, isolamento por usuário) —
+   hoje os testes cobrem só a lógica pura. Avaliar vitest + DB SQLite temporário.
+4. **Detalhe/edição de contato** com lista de shows vinculados na própria página do contato.
+5. **Polimento UX**: erros de formulário por campo (hoje mostra 1 erro geral), loading states,
+   vazios mais ricos, acessibilidade (labels/aria).
+6. **Reset de senha / verificação de e-mail** (ver D5) ao sair do MVP cru.
+7. **Deploy**: definir hospedagem e migrar Prisma para Postgres (provider) — ver D3.
+8. **SessionStart hook** (`.claude/`) para garantir `npm install`/migrate em sessões web.
 
 ## Bloqueios / dúvidas (para validação humana)
-- Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, EPK,
-  multiusuário) precisam de 5–10 entrevistas com músicos reais antes de investimento pesado.
-- Foco em **português/LATAM** como cunha inicial é hipótese de go-to-market — validar.
-- Disposição a pagar e faixas de preço (`business-plan.md`) são estimativas — validar.
-- Autenticação: definir na Fase 1 entre solução simples própria vs. lib (ex.: NextAuth/Auth.js).
-  Recomendação: Auth.js para não reinventar segurança. Decidir e registrar em DECISIONS.md.
+- Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)
+  precisam de 5–10 entrevistas com músicos reais.
+- Nome "Palco" (D4) sem verificação de marca/domínio.
+- Modelo de P&L (D6): validar se o headline deve priorizar receita realizada em shows já realizados.
+- Disposição a pagar e faixas de preço (`business-plan.md`) são estimativas.
+
+## Notas técnicas para a próxima sessão
+- DB de dev é SQLite (`prisma/dev.db`, ignorado pelo git). Rodar `npm run db:migrate` e
+  opcionalmente `npm run db:seed` após `npm install`.
+- Rotas protegidas vivem em `src/app/app/**`; o guard está no layout que chama `getCurrentUser()`.
+- Enums são `String` no schema (SQLite) validados por Zod — ao migrar p/ Postgres, dá para
+  promover a enums nativos se desejado.

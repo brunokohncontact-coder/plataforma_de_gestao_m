@@ -1,0 +1,109 @@
+// Palco — schema de dados (MVP v1).
+// Provider SQLite em dev (ver DECISIONS.md D3). Para produção em Postgres,
+// troque `provider = "postgresql"` e ajuste a DATABASE_URL.
+//
+// Observação: SQLite não suporta enums do Prisma; usamos `String` validado por
+// Zod na camada de aplicação (ver src/lib/enums.ts). Mantém o schema portável.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  shows        Show[]
+  transactions Transaction[]
+  contacts     Contact[]
+}
+
+// F2 — Agenda de shows
+model Show {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title     String?  // ex.: "Show de lançamento", opcional
+  date      DateTime
+  venue     String   // nome do local
+  city      String
+  status    String   @default("proposto") // proposto | confirmado | realizado | cancelado
+  fee       Float    @default(0) // cachê acordado
+  notes     String?
+
+  transactions Transaction[]
+  contacts     ShowContact[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, date])
+}
+
+// F3 — Finanças: receitas e despesas
+model Transaction {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type        String   // income | expense
+  category    String
+  description String?
+  amount      Float    // sempre positivo; o sinal vem de `type`
+  date        DateTime
+  // Para receitas: received | pending. Para despesas: paid | pending.
+  status      String   @default("pending")
+
+  // F4 — vínculo opcional a um show (para rentabilidade)
+  showId      String?
+  show        Show?    @relation(fields: [showId], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, date])
+  @@index([showId])
+}
+
+// F5 — CRM básico de contatos
+model Contact {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name      String
+  role      String   // venue | promoter | contratante | produtor | imprensa | outro
+  email     String?
+  phone     String?
+  notes     String?
+
+  shows     ShowContact[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// Join many-to-many entre Show e Contact
+model ShowContact {
+  showId    String
+  show      Show    @relation(fields: [showId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@id([showId, contactId])
+  @@index([contactId])
+}
