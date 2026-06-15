@@ -34,3 +34,22 @@ contexto, decisão, justificativa e alternativas consideradas.
   local em dev (exige serviço rodando — atrito nas execuções remotas); Drizzle (Prisma é
   mais maduro para migrations rápidas).
 - **A revisar:** se produção exigir Postgres desde já, migrar o `provider` do Prisma.
+
+## 2026-06-15 — D4: Autenticação por sessão própria (cookie HMAC) no MVP, em vez de Auth.js
+- **Decisão:** sessão própria minimalista — cookie `httpOnly` assinado com HMAC-SHA256
+  (`SESSION_SECRET`), senha com `bcryptjs`. Implementação em `src/lib/auth.ts`.
+- **Justificativa:** Auth.js agrega dependências e configuração (provider, adapter, rotas
+  de callback) que não pagam o custo enquanto só há login por e-mail/senha. A solução
+  própria é pequena, testável e suficiente para o MVP; cobre o essencial de segurança
+  (hash forte, cookie httpOnly/secure/sameSite, expiração, comparação em tempo constante).
+- **Alternativas consideradas:** Auth.js/NextAuth (recomendado no PROGRESS da sessão 1 —
+  melhor para OAuth/social login e padrões prontos, mas excessivo agora); Lucia (descontinuado).
+- **A revisar / dívida:** ao adicionar login social, recuperação de senha ou multiusuário,
+  reavaliar migração para Auth.js. **Importante:** definir `SESSION_SECRET` forte em produção
+  (o fallback de dev é inseguro e propositalmente óbvio).
+
+## 2026-06-15 — D5: Valores monetários em centavos (inteiros)
+- **Decisão:** toda monetização é armazenada e calculada em **centavos (Int)**; conversão
+  de/para texto em `src/lib/money.ts` (aceita vírgula e ponto, milhar pt-BR e en-US).
+- **Justificativa:** evita erros de ponto flutuante em somas financeiras (núcleo do produto).
+  Coberto por testes (`money.test.ts`, `finance.test.ts`).

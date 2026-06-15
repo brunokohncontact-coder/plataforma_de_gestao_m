@@ -1,0 +1,97 @@
+// Prisma schema — Palco (gestão de carreira para músicos)
+// Dev: SQLite (sem dependência externa). Produção: trocar provider para "postgresql".
+// Mantemos os tipos portáveis (sem enums nativos de Postgres; usamos String com validação na app).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// Usuário == workspace do artista (multiusuário fica para fase futura).
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  artistName   String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  shows        Show[]
+  transactions Transaction[]
+  contacts     Contact[]
+}
+
+/// Show / apresentação. status: proposed | confirmed | done | cancelled
+model Show {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title     String
+  date      DateTime
+  venue     String?
+  city      String?
+  status    String   @default("proposed")
+  /// Cachê acordado em centavos (evita problemas de ponto flutuante).
+  feeCents  Int      @default(0)
+  notes     String?
+
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  transactions Transaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, date])
+}
+
+/// Transação financeira. type: income | expense
+model Transaction {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type        String
+  /// Valor em centavos, sempre positivo. O sinal vem de `type`.
+  amountCents Int
+  category    String
+  date        DateTime
+  description String?
+  /// Para receitas: já recebida? (despesas: considera-se paga; usamos para "contas a receber").
+  received    Boolean  @default(true)
+
+  showId      String?
+  show        Show?    @relation(fields: [showId], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, date])
+  @@index([showId])
+}
+
+/// Contato da indústria. role: venue | promoter | booker | producer | press | other
+model Contact {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name      String
+  role      String   @default("other")
+  email     String?
+  phone     String?
+  notes     String?
+
+  shows     Show[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
