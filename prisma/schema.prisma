@@ -1,0 +1,105 @@
+// Prisma schema — Plataforma de Gestão de Carreira para Músicos (MVP v1)
+// Dev: SQLite (zero dependência externa). Prod: trocar provider para "postgresql".
+// Enums são modelados como String (SQLite não suporta enums nativos); a validação
+// dos valores permitidos vive em src/lib/domain.ts + Zod.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Workspace é a unidade de isolamento de dados. Hoje 1 usuário ↔ 1 workspace,
+// mas o modelo já prevê multiusuário (Fase 2) sem retrabalho.
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users        User[]
+  shows        Show[]
+  transactions Transaction[]
+  contacts     Contact[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+// Agenda de shows (F2). status: proposed | confirmed | done | cancelled
+model Show {
+  id        String   @id @default(cuid())
+  title     String
+  date      DateTime
+  venue     String?
+  city      String?
+  status    String   @default("proposed")
+  feeAgreed Float    @default(0) // cachê acordado, em centavos? não: usamos Float (moeda) — ver DECISIONS
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  transactions Transaction[]
+
+  @@index([workspaceId, date])
+}
+
+// Finanças (F3). type: income | expense ; status: received | pending
+model Transaction {
+  id          String   @id @default(cuid())
+  type        String // "income" | "expense"
+  category    String
+  description String?
+  amount      Float // valor positivo; o sinal é dado por `type`
+  date        DateTime
+  status      String   @default("received") // "received" | "pending"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // Vínculo opcional a um show → habilita rentabilidade por show (F4)
+  showId String?
+  show   Show?   @relation(fields: [showId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, date])
+  @@index([showId])
+}
+
+// CRM de contatos (F5). role: venue | promoter | booker | producer | press | other
+model Contact {
+  id        String   @id @default(cuid())
+  name      String
+  role      String   @default("other")
+  email     String?
+  phone     String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  shows Show[]
+
+  @@index([workspaceId])
+}
