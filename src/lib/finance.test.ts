@@ -5,10 +5,12 @@ import {
   totalsByCategory,
   totalsByMonth,
   monthKey,
+  dayKey,
   filterTransactions,
   availableMonths,
   availableCategories,
   isValidMonthKey,
+  isValidDateKey,
   hasActiveFilter,
   type TxLike,
   type ShowLike,
@@ -241,6 +243,39 @@ describe("filterTransactions", () => {
     expect(filterTransactions(txs, { month: "2026-13" })).toHaveLength(4);
     expect(filterTransactions(txs, { month: "" })).toHaveLength(4);
   });
+
+  it("filtra por período com limite inferior (from, inclusive)", () => {
+    const r = filterTransactions(txs, { from: "2026-02-05" });
+    expect(r).toHaveLength(2);
+    expect(r.every((t) => dayKey(t.date) >= "2026-02-05")).toBe(true);
+  });
+
+  it("filtra por período com limite superior (to, inclusive)", () => {
+    const r = filterTransactions(txs, { to: "2026-01-20" });
+    expect(r).toHaveLength(2);
+    expect(r.every((t) => dayKey(t.date) <= "2026-01-20")).toBe(true);
+  });
+
+  it("filtra por intervalo fechado (from + to, ambos inclusivos)", () => {
+    const r = filterTransactions(txs, { from: "2026-01-20", to: "2026-02-05" });
+    expect(r).toHaveLength(2);
+    expect(r.map((t) => dayKey(t.date)).sort()).toEqual(["2026-01-20", "2026-02-05"]);
+  });
+
+  it("intervalo invertido (from > to) não casa com nada", () => {
+    expect(filterTransactions(txs, { from: "2026-02-10", to: "2026-01-01" })).toHaveLength(0);
+  });
+
+  it("ignora datas de período inválidas (não filtra por período)", () => {
+    expect(filterTransactions(txs, { from: "2026-13-40" })).toHaveLength(4);
+    expect(filterTransactions(txs, { to: "" })).toHaveLength(4);
+  });
+
+  it("combina período com outro critério (intervalo + tipo)", () => {
+    const r = filterTransactions(txs, { from: "2026-01-01", to: "2026-01-31", type: "EXPENSE" });
+    expect(r).toHaveLength(1);
+    expect(r[0].amount).toBe(30_00);
+  });
 });
 
 describe("availableMonths", () => {
@@ -290,5 +325,29 @@ describe("hasActiveFilter", () => {
     expect(hasActiveFilter({ showId: "s1" })).toBe(true);
     expect(hasActiveFilter({ received: false })).toBe(true);
     expect(hasActiveFilter({ category: "transporte" })).toBe(true);
+    expect(hasActiveFilter({ from: "2026-01-01" })).toBe(true);
+    expect(hasActiveFilter({ to: "2026-01-31" })).toBe(true);
+  });
+});
+
+describe("isValidDateKey", () => {
+  it("aceita datas bem formadas", () => {
+    expect(isValidDateKey("2026-01-01")).toBe(true);
+    expect(isValidDateKey("2026-12-31")).toBe(true);
+  });
+  it("rejeita formato/valores inválidos e vazios", () => {
+    expect(isValidDateKey("2026-13-01")).toBe(false);
+    expect(isValidDateKey("2026-01-32")).toBe(false);
+    expect(isValidDateKey("2026-01")).toBe(false);
+    expect(isValidDateKey("")).toBe(false);
+    expect(isValidDateKey(null)).toBe(false);
+    expect(isValidDateKey(undefined)).toBe(false);
+  });
+});
+
+describe("dayKey", () => {
+  it("extrai a chave YYYY-MM-DD em UTC", () => {
+    expect(dayKey("2026-03-09T23:30:00.000Z")).toBe("2026-03-09");
+    expect(dayKey(new Date("2026-12-31T00:00:00.000Z"))).toBe("2026-12-31");
   });
 });

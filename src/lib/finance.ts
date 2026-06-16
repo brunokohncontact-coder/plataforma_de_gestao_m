@@ -176,6 +176,10 @@ export interface TransactionFilter {
   received?: boolean | null;
   /** Categoria exata; quando ausente, todas. */
   category?: string | null;
+  /** Início do período "YYYY-MM-DD" (inclusive); quando ausente, sem limite inferior. */
+  from?: string | null;
+  /** Fim do período "YYYY-MM-DD" (inclusive); quando ausente, sem limite superior. */
+  to?: string | null;
 }
 
 /** Valida uma chave de mês "YYYY-MM" (mês entre 01 e 12). */
@@ -187,6 +191,16 @@ export function isValidMonthKey(key: string | undefined | null): key is string {
   return month >= 1 && month <= 12;
 }
 
+/** Valida uma chave de dia "YYYY-MM-DD" (mês 01–12, dia 01–31). */
+export function isValidDateKey(key: string | undefined | null): key is string {
+  if (!key) return false;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key.trim());
+  if (!m) return false;
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  return month >= 1 && month <= 12 && day >= 1 && day <= 31;
+}
+
 /** True se ao menos um critério do filtro está ativo. */
 export function hasActiveFilter(filter: TransactionFilter): boolean {
   return Boolean(
@@ -194,25 +208,36 @@ export function hasActiveFilter(filter: TransactionFilter): boolean {
       filter.type ||
       filter.showId ||
       filter.received != null ||
-      filter.category,
+      filter.category ||
+      filter.from ||
+      filter.to,
   );
 }
 
 /**
  * Filtra transações pelos critérios informados. Critérios ausentes (null/undefined)
- * são ignorados; um mês inválido também é ignorado (não filtra por mês). Pura.
+ * são ignorados; um mês inválido também é ignorado (não filtra por mês). Datas de
+ * período inválidas também são ignoradas. O intervalo `from`/`to` é inclusivo nas
+ * duas pontas; um intervalo invertido (`from` > `to`) não casa com nada. Pura.
  */
 export function filterTransactions<T extends TxLike>(
   txs: T[],
   filter: TransactionFilter,
 ): T[] {
   const month = isValidMonthKey(filter.month) ? filter.month : null;
+  const from = isValidDateKey(filter.from) ? filter.from : null;
+  const to = isValidDateKey(filter.to) ? filter.to : null;
   return txs.filter((t) => {
     if (filter.type && t.type !== filter.type) return false;
     if (month && monthKey(t.date) !== month) return false;
     if (filter.showId && (t.showId ?? null) !== filter.showId) return false;
     if (filter.received != null && t.received !== filter.received) return false;
     if (filter.category && t.category !== filter.category) return false;
+    if (from || to) {
+      const day = dayKey(t.date);
+      if (from && day < from) return false;
+      if (to && day > to) return false;
+    }
     return true;
   });
 }
@@ -246,4 +271,13 @@ export function monthKey(date: Date | string): string {
   const year = d.getUTCFullYear();
   const month = String(d.getUTCMonth() + 1).padStart(2, "0");
   return `${year}-${month}`;
+}
+
+/** Extrai a chave "YYYY-MM-DD" de uma data, em UTC para estabilidade nos testes. */
+export function dayKey(date: Date | string): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  const year = d.getUTCFullYear();
+  const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
