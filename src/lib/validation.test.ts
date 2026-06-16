@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { parseMoneyToCents, transactionSchema, showSchema } from "./validation";
+import {
+  parseMoneyToCents,
+  transactionSchema,
+  showSchema,
+  changePasswordSchema,
+} from "./validation";
 
 describe("parseMoneyToCents", () => {
   it("interpreta formato pt-BR (vírgula decimal, ponto milhar)", () => {
@@ -74,6 +79,55 @@ describe("showSchema", () => {
       status: "INVALID",
       fee: "0",
     });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("changePasswordSchema", () => {
+  const base = {
+    currentPassword: "senha-atual",
+    newPassword: "nova-senha-123",
+    confirmPassword: "nova-senha-123",
+  };
+
+  it("aceita uma troca de senha válida", () => {
+    expect(changePasswordSchema.safeParse(base).success).toBe(true);
+  });
+
+  it("rejeita nova senha com menos de 8 caracteres", () => {
+    const result = changePasswordSchema.safeParse({
+      ...base,
+      newPassword: "curta",
+      confirmPassword: "curta",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejeita quando a confirmação não corresponde", () => {
+    const result = changePasswordSchema.safeParse({
+      ...base,
+      confirmPassword: "outra-coisa-123",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.errors[0]?.message).toMatch(/confirmação/i);
+    }
+  });
+
+  it("rejeita quando a nova senha é igual à atual", () => {
+    const result = changePasswordSchema.safeParse({
+      currentPassword: "mesma-senha-1",
+      newPassword: "mesma-senha-1",
+      confirmPassword: "mesma-senha-1",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.errors[0]?.message).toMatch(/diferente/i);
+    }
+  });
+
+  it("rejeita senha atual vazia", () => {
+    const result = changePasswordSchema.safeParse({ ...base, currentPassword: "" });
     expect(result.success).toBe(false);
   });
 });

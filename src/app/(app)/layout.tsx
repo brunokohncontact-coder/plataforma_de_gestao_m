@@ -26,9 +26,12 @@ export default async function AppLayout({
             </nav>
           </div>
           <div className="flex items-center gap-3">
-            <span className="hidden text-sm text-gray-500 sm:inline">
+            <Link
+              href="/conta"
+              className="hidden text-sm text-gray-500 hover:text-brand-700 hover:underline sm:inline"
+            >
               {user.artistName || user.name}
-            </span>
+            </Link>
             <form action={logoutAction}>
               <button type="submit" className="btn-secondary py-1.5 text-xs">
                 Sair
@@ -42,6 +45,7 @@ export default async function AppLayout({
           <NavLink href="/shows">Shows</NavLink>
           <NavLink href="/financas">Finanças</NavLink>
           <NavLink href="/contatos">Contatos</NavLink>
+          <NavLink href="/conta">Conta</NavLink>
         </nav>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
