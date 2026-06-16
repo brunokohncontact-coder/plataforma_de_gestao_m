@@ -163,6 +163,72 @@ export function totalsByMonth(txs: TxLike[]): MonthlyTotal[] {
     .sort((a, b) => a.month.localeCompare(b.month));
 }
 
+// ── Vencimento de pendências (F3 — gestão de fluxo de caixa) ────────────────
+
+/** Situação de uma pendência em relação à data de referência (comparada por dia, UTC). */
+export type DueStatus = "overdue" | "today" | "upcoming";
+
+/**
+ * Classifica a data de uma transação relativa a `now`, comparando por dia (UTC).
+ * - "overdue": a data já passou (anterior a hoje).
+ * - "today": vence hoje.
+ * - "upcoming": vence no futuro.
+ * Não considera o campo `received` — quem chama decide se a transação está pendente.
+ */
+export function pendingDueStatus(date: Date | string, now: Date | string = new Date()): DueStatus {
+  const d = dayKey(date);
+  const today = dayKey(now);
+  if (d < today) return "overdue";
+  if (d === today) return "today";
+  return "upcoming";
+}
+
+/**
+ * True se a transação é uma pendência vencida: não realizada (`received === false`)
+ * e com data anterior a hoje (UTC). "Hoje" ainda não conta como vencido.
+ */
+export function isOverdue(t: TxLike, now: Date | string = new Date()): boolean {
+  return !t.received && pendingDueStatus(t.date, now) === "overdue";
+}
+
+export interface OverdueSummary {
+  /** Total a receber vencido (centavos). */
+  income: number;
+  /** Total a pagar vencido (centavos). */
+  expense: number;
+  /** Quantidade de receitas vencidas. */
+  incomeCount: number;
+  /** Quantidade de despesas vencidas. */
+  expenseCount: number;
+}
+
+/**
+ * Soma as pendências (received = false) cuja data já passou (anterior a hoje, UTC),
+ * separando a receber de a pagar. Pura; "hoje" não conta como vencido.
+ */
+export function summarizeOverdue(
+  txs: TxLike[],
+  now: Date | string = new Date(),
+): OverdueSummary {
+  let income = 0;
+  let expense = 0;
+  let incomeCount = 0;
+  let expenseCount = 0;
+
+  for (const t of txs) {
+    if (!isOverdue(t, now)) continue;
+    if (t.type === "INCOME") {
+      income += t.amount;
+      incomeCount += 1;
+    } else {
+      expense += t.amount;
+      expenseCount += 1;
+    }
+  }
+
+  return { income, expense, incomeCount, expenseCount };
+}
+
 // ── Filtros (F3 — exploração das finanças) ──────────────────────────────────
 
 export interface TransactionFilter {

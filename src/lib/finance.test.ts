@@ -12,6 +12,9 @@ import {
   isValidMonthKey,
   isValidDateKey,
   hasActiveFilter,
+  pendingDueStatus,
+  isOverdue,
+  summarizeOverdue,
   type TxLike,
   type ShowLike,
 } from "./finance";
@@ -349,5 +352,66 @@ describe("dayKey", () => {
   it("extrai a chave YYYY-MM-DD em UTC", () => {
     expect(dayKey("2026-03-09T23:30:00.000Z")).toBe("2026-03-09");
     expect(dayKey(new Date("2026-12-31T00:00:00.000Z"))).toBe("2026-12-31");
+  });
+});
+
+describe("pendingDueStatus", () => {
+  const now = "2026-03-10T12:00:00.000Z";
+
+  it("classifica datas anteriores a hoje como vencidas", () => {
+    expect(pendingDueStatus("2026-03-09T00:00:00.000Z", now)).toBe("overdue");
+    expect(pendingDueStatus("2026-01-01T00:00:00.000Z", now)).toBe("overdue");
+  });
+  it("classifica o próprio dia como 'today' (não vencido)", () => {
+    expect(pendingDueStatus("2026-03-10T00:00:00.000Z", now)).toBe("today");
+    expect(pendingDueStatus("2026-03-10T23:59:59.000Z", now)).toBe("today");
+  });
+  it("classifica datas futuras como 'upcoming'", () => {
+    expect(pendingDueStatus("2026-03-11T00:00:00.000Z", now)).toBe("upcoming");
+    expect(pendingDueStatus("2026-12-31T00:00:00.000Z", now)).toBe("upcoming");
+  });
+});
+
+describe("isOverdue", () => {
+  const now = "2026-03-10T12:00:00.000Z";
+
+  it("é vencida quando pendente e a data já passou", () => {
+    expect(isOverdue(tx({ received: false, date: "2026-03-09T00:00:00.000Z" }), now)).toBe(true);
+  });
+  it("não é vencida quando já realizada, mesmo com data passada", () => {
+    expect(isOverdue(tx({ received: true, date: "2026-03-09T00:00:00.000Z" }), now)).toBe(false);
+  });
+  it("não é vencida quando vence hoje ou no futuro", () => {
+    expect(isOverdue(tx({ received: false, date: "2026-03-10T00:00:00.000Z" }), now)).toBe(false);
+    expect(isOverdue(tx({ received: false, date: "2026-03-11T00:00:00.000Z" }), now)).toBe(false);
+  });
+});
+
+describe("summarizeOverdue", () => {
+  const now = "2026-03-10T12:00:00.000Z";
+
+  it("soma e conta pendências vencidas por tipo", () => {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 100_00, received: false, date: "2026-03-08T00:00:00.000Z" }), // vencida
+      tx({ type: "INCOME", amount: 40_00, received: false, date: "2026-03-09T00:00:00.000Z" }), // vencida
+      tx({ type: "INCOME", amount: 999_00, received: true, date: "2026-03-01T00:00:00.000Z" }), // já recebida
+      tx({ type: "INCOME", amount: 7_00, received: false, date: "2026-03-20T00:00:00.000Z" }), // a vencer
+      tx({ type: "EXPENSE", amount: 30_00, received: false, date: "2026-03-05T00:00:00.000Z" }), // vencida
+      tx({ type: "EXPENSE", amount: 5_00, received: false, date: "2026-03-10T00:00:00.000Z" }), // hoje
+    ];
+    expect(summarizeOverdue(txs, now)).toEqual({
+      income: 140_00,
+      expense: 30_00,
+      incomeCount: 2,
+      expenseCount: 1,
+    });
+  });
+  it("retorna zeros quando não há vencidas", () => {
+    expect(summarizeOverdue([], now)).toEqual({
+      income: 0,
+      expense: 0,
+      incomeCount: 0,
+      expenseCount: 0,
+    });
   });
 });

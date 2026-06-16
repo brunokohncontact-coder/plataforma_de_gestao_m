@@ -3,6 +3,8 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   summarizeFinances,
+  summarizeOverdue,
+  isOverdue,
   filterTransactions,
   availableMonths,
   availableCategories,
@@ -84,6 +86,8 @@ export default async function FinancesPage({
 
   const visible = filterTransactions(allTxs, filter);
   const summary = summarizeFinances(visible);
+  const now = new Date();
+  const overdue = summarizeOverdue(visible, now);
 
   // Query string atual (só os filtros válidos) para reaproveitar na exportação.
   const exportQuery = buildExportQuery(filter);
@@ -237,6 +241,24 @@ export default async function FinancesPage({
         </div>
       )}
 
+      {(overdue.income > 0 || overdue.expense > 0) && (
+        <div className="flex flex-wrap items-center gap-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <span className="font-semibold">⚠ Vencidas</span>
+          {overdue.income > 0 && (
+            <span>
+              A receber: <strong>{formatMoney(overdue.income)}</strong>
+              <span className="text-red-500"> ({overdue.incomeCount})</span>
+            </span>
+          )}
+          {overdue.expense > 0 && (
+            <span>
+              A pagar: <strong>{formatMoney(overdue.expense)}</strong>
+              <span className="text-red-500"> ({overdue.expenseCount})</span>
+            </span>
+          )}
+        </div>
+      )}
+
       {transactions.length === 0 ? (
         <div className="card text-center text-gray-500">
           <p>Nenhuma transação registrada.</p>
@@ -262,6 +284,7 @@ export default async function FinancesPage({
             <ul className="divide-y divide-gray-100">
               {visible.map((t) => {
                 const isIncome = (t.type as TransactionType) === "INCOME";
+                const overdueRow = isOverdue(t, now);
                 return (
                   <li key={t.id} className="flex items-center justify-between gap-3 px-5 py-3">
                     <div className="min-w-0">
@@ -279,11 +302,19 @@ export default async function FinancesPage({
                       </p>
                     </div>
                     <div className="flex items-center gap-2 whitespace-nowrap">
-                      {!t.received && (
-                        <span className="badge bg-amber-100 text-amber-800">
-                          {isIncome ? "A receber" : "A pagar"}
-                        </span>
-                      )}
+                      {!t.received &&
+                        (overdueRow ? (
+                          <span
+                            className="badge bg-red-100 text-red-800"
+                            title={`${isIncome ? "Recebimento" : "Pagamento"} vencido`}
+                          >
+                            Vencida
+                          </span>
+                        ) : (
+                          <span className="badge bg-amber-100 text-amber-800">
+                            {isIncome ? "A receber" : "A pagar"}
+                          </span>
+                        ))}
                       <span className={isIncome ? "font-medium text-emerald-600" : "font-medium text-red-600"}>
                         {isIncome ? "+" : "−"}
                         {formatMoney(t.amount)}

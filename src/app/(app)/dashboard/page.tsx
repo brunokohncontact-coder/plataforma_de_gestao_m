@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   summarizeFinances,
+  summarizeOverdue,
   totalsByMonth,
   totalsByCategory,
   computeShowPnL,
@@ -37,6 +38,7 @@ export default async function DashboardPage() {
   }));
 
   const summary = summarizeFinances(txs);
+  const overdue = summarizeOverdue(txs);
   const monthly = totalsByMonth(txs).slice(-6);
   const categories = totalsByCategory(txs).slice(0, 5);
 
@@ -53,6 +55,28 @@ export default async function DashboardPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Painel</h1>
       </div>
+
+      {/* Aviso de pendências vencidas */}
+      {(overdue.income > 0 || overdue.expense > 0) && (
+        <Link
+          href="/financas?status=pending"
+          className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 transition hover:bg-red-100"
+        >
+          <span className="font-semibold">⚠ Pendências vencidas</span>
+          {overdue.income > 0 && (
+            <span>
+              A receber: <strong>{formatMoney(overdue.income)}</strong>
+              <span className="text-red-500"> ({overdue.incomeCount})</span>
+            </span>
+          )}
+          {overdue.expense > 0 && (
+            <span>
+              A pagar: <strong>{formatMoney(overdue.expense)}</strong>
+              <span className="text-red-500"> ({overdue.expenseCount})</span>
+            </span>
+          )}
+        </Link>
+      )}
 
       {/* Cards de resumo */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
