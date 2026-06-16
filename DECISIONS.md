@@ -34,3 +34,29 @@ contexto, decisão, justificativa e alternativas consideradas.
   local em dev (exige serviço rodando — atrito nas execuções remotas); Drizzle (Prisma é
   mais maduro para migrations rápidas).
 - **A revisar:** se produção exigir Postgres desde já, migrar o `provider` do Prisma.
+
+## 2026-06-16 — D4: Valores monetários armazenados em centavos (inteiros)
+- **Decisão:** todo valor monetário (`feeCents`, `amountCents`) é um `Int` em centavos no
+  banco e na lógica de negócio. Conversão para/de reais via `toCents`/`fromCents`
+  (`src/lib/domain.ts`); exibição via `formatMoney` (Intl, pt-BR/BRL por padrão).
+- **Justificativa:** evita erros de ponto flutuante em somas financeiras (ex.: `0.1 + 0.2`),
+  críticos para a confiança no produto. Padrão consagrado em sistemas financeiros.
+- **A revisar:** moeda fixa em BRL por ora; internacionalização de moeda fica para depois.
+
+## 2026-06-16 — D5: Rentabilidade por show usa o cachê como receita "headline"
+- **Decisão:** `resultCents` de um show = `feeCents` (cachê acordado) − despesas vinculadas.
+  Também expomos `realizedResultCents` = receitas vinculadas − despesas vinculadas, para
+  quem prefere a visão de caixa. Ver `showProfitAndLoss` em `src/lib/finance.ts`.
+- **Justificativa:** o cachê acordado é o número que o artista tem em mente ao avaliar um
+  show; mantém o headline previsível mesmo antes de o pagamento entrar como transação.
+- **Risco/validação:** confirmar com usuários se preferem visão "planejada" (cachê) ou
+  "realizada" (transações) como número principal. Ambas estão disponíveis.
+
+## 2026-06-16 — D6: Fragmentação de branches entre execuções remotas
+- **Contexto:** o repositório tem ~14 branches `claude/*` de execuções anteriores; os
+  objetos remotos não vêm no clone raso, dificultando inspecionar/mesclar trabalho paralelo.
+- **Decisão (desta sessão):** seguir a instrução e desenvolver em `claude/sleepy-bell-548tjb`,
+  cujo `PROGRESS.md` indicava Fase 0 concluída e nenhum código. Não houve como aproveitar
+  trabalho de outras branches (inacessíveis).
+- **A revisar (humano):** consolidar o trabalho numa única branch/`main` para que a "memória
+  entre sessões" não se fragmente. Idealmente as execuções futuras partem sempre da mesma base.
