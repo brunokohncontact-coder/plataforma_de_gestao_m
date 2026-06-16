@@ -11,6 +11,7 @@ jobs:
     env:
       DATABASE_URL: "file:./dev.db"
       AUTH_SECRET: "ci-secret-not-used-in-production"
+      NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -27,6 +28,9 @@ jobs:
 
       - name: Typecheck
         run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
 
       - name: Test
         run: npm test

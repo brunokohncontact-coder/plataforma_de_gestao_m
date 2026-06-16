@@ -5,14 +5,15 @@
 
 ## Estado atual
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
-+ testes de integração de posse por usuário.**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **55 testes**). As
-cinco funcionalidades do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e
-navegáveis. Sessão 4 entregou a visão de calendário dos shows. Sessão 5 entregou
-**testes de integração das server actions** com um banco SQLite isolado, cobrindo o
-isolamento por usuário (um usuário não acessa/altera dados de outro) — a fronteira de
-segurança crítica do produto. Próxima sessão: polimento de UX (confirmação ao excluir,
-estados vazios/erro) e filtros nas Finanças.
++ testes de integração de posse por usuário + ESLint no CI.**
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **55 testes**),
+no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. Sessão 4 entregou
+a visão de calendário dos shows. Sessão 5 entregou **testes de integração das server
+actions** com um banco SQLite isolado, cobrindo o isolamento por usuário. Sessão 6
+configurou **ESLint** (`next/core-web-vitals`) e adicionou o passo de lint ao CI — fechando
+o último item pendente da Definition of Done. Próxima sessão: polimento de UX (confirmação
+ao excluir, estados vazios/erro) e filtros nas Finanças.
 
 ## Modelo de branches (a partir de 2026-06-16)
 O repositório tem um tronco **`main`** (ver DECISIONS.md D7), já definido como **default
@@ -104,15 +105,26 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
 - **Gap conhecido**: `next lint` ainda não tem ESLint configurado (prompt interativo); o
   CI não roda lint. Configurar ESLint é uma unidade de trabalho à parte (ver próximos passos).
 
+### Sessão 6 — 2026-06-16 (Fase 1 — ESLint + lint no CI)
+- **ESLint configurado** (ver DECISIONS.md D8): `eslint@8.57.1` + `eslint-config-next@14.2.35`,
+  config clássica em `.eslintrc.json` estendendo `next/core-web-vitals` (ignora `node_modules/`,
+  `.next/`, `next-env.d.ts`, `prisma/seed.ts`). `npm run lint` (`next lint`) roda **limpo**
+  (0 warnings/erros) sobre os 46 arquivos de `src/`.
+- **CI**: passo **Lint** adicionado em `.github/workflows/ci.yml` (entre Typecheck e Test) e
+  `NEXT_TELEMETRY_DISABLED=1` no `env` do job para logs limpos. Fecha o item "lint" da
+  Definition of Done (antes o `next lint` exigia setup interativo e o CI não rodava lint).
+- **Definition of Done — toda verde**: build (17 rotas), typecheck, lint, 55 testes, smoke
+  test autenticado (/ 200, /login 200, /dashboard sem sessão 307).
+- **`npm audit`**: 7 → 10 advisories; as 3 novas (high) são **só dev-tooling de lint**
+  (`eslint-config-next`→`@next/eslint-plugin-next`→`glob` CLI), não exploitáveis no runtime —
+  detalhado em D8.
+
 ## Próximos passos (priorizados para a próxima sessão)
-1. **Configurar ESLint** (`next lint`): hoje não há config (prompt interativo) e o CI não
-   roda lint. Adicionar `.eslintrc` (preset `next/core-web-vitals`) + passo de lint no CI,
-   corrigindo o que aparecer. Fecha o item "lint" da Definition of Done.
-2. **Polimento UX**: estados de loading/erro, mensagens vazias, acessibilidade,
+1. **Polimento UX**: estados de loading/erro, mensagens vazias, acessibilidade,
    confirmação antes de excluir (hoje exclui direto). Formatar input monetário ao digitar.
-3. **Filtros/períodos nas Finanças** (por mês, por tipo, por show).
-4. **Conta**: editar perfil (nome/nome artístico), trocar senha.
-5. **Calendário — evoluções**: link do dashboard direto para o mês atual; clicar num dia
+2. **Filtros/períodos nas Finanças** (por mês, por tipo, por show).
+3. **Conta**: editar perfil (nome/nome artístico), trocar senha.
+4. **Calendário — evoluções**: link do dashboard direto para o mês atual; clicar num dia
    vazio para criar show já com a data; visão semanal. (base pronta em `src/lib/calendar.ts`.)
 
 ## Bloqueios / dúvidas (para validação humana)
