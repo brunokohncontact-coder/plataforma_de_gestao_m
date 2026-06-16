@@ -7,6 +7,7 @@ import {
   monthKey,
   filterTransactions,
   availableMonths,
+  availableCategories,
   isValidMonthKey,
   hasActiveFilter,
   type TxLike,
@@ -186,14 +187,26 @@ describe("isValidMonthKey", () => {
 
 describe("filterTransactions", () => {
   const txs: TxLike[] = [
-    tx({ type: "INCOME", amount: 100_00, date: "2026-01-10T00:00:00.000Z", showId: "s1", received: true }),
-    tx({ type: "EXPENSE", amount: 30_00, date: "2026-01-20T00:00:00.000Z", showId: "s1", received: false }),
-    tx({ type: "INCOME", amount: 50_00, date: "2026-02-05T00:00:00.000Z", showId: null, received: false }),
-    tx({ type: "EXPENSE", amount: 20_00, date: "2026-02-15T00:00:00.000Z", showId: "s2", received: true }),
+    tx({ type: "INCOME", amount: 100_00, date: "2026-01-10T00:00:00.000Z", showId: "s1", received: true, category: "cachê" }),
+    tx({ type: "EXPENSE", amount: 30_00, date: "2026-01-20T00:00:00.000Z", showId: "s1", received: false, category: "transporte" }),
+    tx({ type: "INCOME", amount: 50_00, date: "2026-02-05T00:00:00.000Z", showId: null, received: false, category: "merch" }),
+    tx({ type: "EXPENSE", amount: 20_00, date: "2026-02-15T00:00:00.000Z", showId: "s2", received: true, category: "transporte" }),
   ];
 
   it("retorna tudo quando o filtro está vazio", () => {
     expect(filterTransactions(txs, {})).toHaveLength(4);
+  });
+
+  it("filtra por categoria", () => {
+    const r = filterTransactions(txs, { category: "transporte" });
+    expect(r).toHaveLength(2);
+    expect(r.every((t) => t.category === "transporte")).toBe(true);
+  });
+
+  it("combina categoria com outro critério (categoria + tipo)", () => {
+    const r = filterTransactions(txs, { category: "transporte", type: "EXPENSE" });
+    expect(r).toHaveLength(2);
+    expect(filterTransactions(txs, { category: "transporte", type: "INCOME" })).toHaveLength(0);
   });
 
   it("filtra por mês", () => {
@@ -245,6 +258,29 @@ describe("availableMonths", () => {
   });
 });
 
+describe("availableCategories", () => {
+  it("lista categorias únicas em ordem alfabética", () => {
+    const txs: TxLike[] = [
+      tx({ category: "transporte" }),
+      tx({ category: "cachê" }),
+      tx({ category: "transporte" }),
+      tx({ category: "merch" }),
+    ];
+    expect(availableCategories(txs)).toEqual(["cachê", "merch", "transporte"]);
+  });
+  it("ignora categorias vazias/em branco", () => {
+    const txs: TxLike[] = [
+      tx({ category: "" }),
+      tx({ category: "   " }),
+      tx({ category: "geral" }),
+    ];
+    expect(availableCategories(txs)).toEqual(["geral"]);
+  });
+  it("retorna lista vazia para nenhuma transação", () => {
+    expect(availableCategories([])).toEqual([]);
+  });
+});
+
 describe("hasActiveFilter", () => {
   it("detecta filtros ativos", () => {
     expect(hasActiveFilter({})).toBe(false);
@@ -253,5 +289,6 @@ describe("hasActiveFilter", () => {
     expect(hasActiveFilter({ type: "INCOME" })).toBe(true);
     expect(hasActiveFilter({ showId: "s1" })).toBe(true);
     expect(hasActiveFilter({ received: false })).toBe(true);
+    expect(hasActiveFilter({ category: "transporte" })).toBe(true);
   });
 });

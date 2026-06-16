@@ -5,6 +5,7 @@ import {
   summarizeFinances,
   filterTransactions,
   availableMonths,
+  availableCategories,
   hasActiveFilter,
   isValidMonthKey,
   type TxLike,
@@ -48,6 +49,7 @@ export default async function FinancesPage({
   const typeParam = readParam(params, "tipo");
   const showParam = readParam(params, "show");
   const statusParam = readParam(params, "status");
+  const categoryParam = readParam(params, "categoria");
 
   const filter: TransactionFilter = {
     month: isValidMonthKey(monthParam) ? monthParam : null,
@@ -58,6 +60,7 @@ export default async function FinancesPage({
     showId: showParam || null,
     received:
       statusParam === "received" ? true : statusParam === "pending" ? false : null,
+    category: categoryParam || null,
   };
   const active = hasActiveFilter(filter);
 
@@ -79,6 +82,7 @@ export default async function FinancesPage({
 
   // Opções dos seletores (derivadas de todas as transações do usuário).
   const months = availableMonths(allTxs);
+  const categories = availableCategories(allTxs);
   const shows = await prisma.show.findMany({
     where: { userId: user.id },
     orderBy: { date: "desc" },
@@ -121,6 +125,24 @@ export default async function FinancesPage({
               ))}
             </select>
           </Field>
+
+          {categories.length > 0 && (
+            <Field label="Categoria" htmlFor="f-categoria">
+              <select
+                id="f-categoria"
+                name="categoria"
+                defaultValue={filter.category ?? ""}
+                className="input"
+              >
+                <option value="">Todas</option>
+                {categories.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
 
           <Field label="Show" htmlFor="f-show">
             <select id="f-show" name="show" defaultValue={filter.showId ?? ""} className="input">

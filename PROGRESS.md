@@ -6,8 +6,8 @@
 ## Estado atual
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
-+ confirmação antes de excluir + página de Conta (perfil/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **78 testes**),
+(incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
 do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. Sessão 4 entregou
 a visão de calendário dos shows. Sessão 5 entregou **testes de integração das server
@@ -18,8 +18,10 @@ Finanças** (mês, tipo, show, situação) via query string, com resumo recomput
 recorte. Sessão 8 entregou **confirmação antes de excluir** (componente `DeleteButton`)
 nos três pontos de exclusão (show, contato, transação). Sessão 9 entregou a **página de
 Conta** (`/conta`): editar perfil (nome/nome artístico) e trocar senha (com verificação
-da senha atual). Próxima sessão: continuar o polimento de UX (estados de loading/erro
-inline nos formulários, formatação de input monetário) ou evoluções do calendário/filtros.
+da senha atual). Sessão 10 adicionou o **filtro por categoria** nas Finanças. Próxima
+sessão: continuar o polimento de UX (estados de loading/erro inline nos formulários,
+formatação de input monetário) ou evoluções do calendário/filtros (intervalo de datas,
+persistir o último filtro).
 
 ## Modelo de branches (a partir de 2026-06-16)
 O repositório tem um tronco **`main`** (ver DECISIONS.md D7), já definido como **default
@@ -181,13 +183,26 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   78 testes, smoke test (/login 200, / 200, /conta sem sessão → 307→/login). `npm audit`
   inalterado (10 advisories; nenhuma dependência nova — ver D6/D8).
 
+### Sessão 10 — 2026-06-16 (Fase 1 — filtro por categoria nas Finanças)
+- **Lógica pura** (`src/lib/finance.ts`): novo campo `category` em `TransactionFilter`,
+  aplicado em `filterTransactions` (categoria ausente → ignora; combina com os demais
+  critérios); `hasActiveFilter` passa a considerar a categoria; nova
+  `availableCategories(txs)` (categorias únicas, ignora vazias/em branco, ordem alfabética
+  pt-BR). Testes em `src/lib/finance.test.ts` (+5 → **83 no projeto**, eram 78).
+- **UI** (`src/app/(app)/financas/page.tsx`): seletor **Categoria** no formulário de
+  filtros (`?categoria=`), exibido só quando há categorias; integrado ao recorte que
+  recomputa o resumo e ao link **Limpar**. Sem novas dependências.
+- Definition of Done verde: build (17 rotas), typecheck limpo, lint (0), 83 testes, smoke
+  test (/login 200, / 200, /financas e /financas?categoria=... sem sessão → 307). `npm
+  audit` inalterado (10 advisories; nenhuma dependência nova — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. Formatar input monetário ao digitar.
 2. **Calendário — evoluções**: link do dashboard direto para o mês atual; clicar num dia
    vazio para criar show já com a data; visão semanal. (base pronta em `src/lib/calendar.ts`.)
-3. **Filtros — evoluções**: período por intervalo de datas; filtrar por categoria;
-   persistir o último filtro usado. (base pronta em `src/lib/finance.ts`.)
+3. **Filtros — evoluções**: período por intervalo de datas; persistir o último filtro
+   usado. (filtro por categoria já entregue na Sessão 10; base em `src/lib/finance.ts`.)
 4. **Sessões/segurança** (ver D10): considerar `tokenVersion`/`passwordChangedAt` no `User`
    para invalidar sessões ao trocar a senha quando houver login em múltiplos dispositivos.
 
