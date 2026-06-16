@@ -79,6 +79,42 @@ export async function updateShowAction(
   redirect(`/shows/${id}`);
 }
 
+export async function linkContactToShowAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const showId = String(formData.get("showId"));
+  const contactId = String(formData.get("contactId"));
+  if (!contactId) return;
+
+  // garante que ambos pertencem ao usuário
+  const [show, contact] = await Promise.all([
+    prisma.show.findFirst({ where: { id: showId, userId: user.id } }),
+    prisma.contact.findFirst({ where: { id: contactId, userId: user.id } }),
+  ]);
+  if (!show || !contact) return;
+
+  // upsert idempotente no join (ignora se já vinculado)
+  await prisma.contactsOnShows.upsert({
+    where: { contactId_showId: { contactId, showId } },
+    create: { contactId, showId },
+    update: {},
+  });
+
+  revalidatePath(`/shows/${showId}`);
+}
+
+export async function unlinkContactFromShowAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const showId = String(formData.get("showId"));
+  const contactId = String(formData.get("contactId"));
+
+  // confirma posse do show antes de remover o vínculo
+  const show = await prisma.show.findFirst({ where: { id: showId, userId: user.id } });
+  if (!show) return;
+
+  await prisma.contactsOnShows.deleteMany({ where: { contactId, showId } });
+  revalidatePath(`/shows/${showId}`);
+}
+
 export async function deleteShowAction(formData: FormData): Promise<void> {
   const user = await requireUser();
   const id = String(formData.get("id"));

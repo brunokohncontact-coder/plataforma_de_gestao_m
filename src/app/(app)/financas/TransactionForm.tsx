@@ -11,7 +11,7 @@ import {
   SUGGESTED_EXPENSE_CATEGORIES,
   type TransactionType,
 } from "@/lib/domain";
-import { createTransactionAction, type FormState } from "./actions";
+import type { FormState } from "./actions";
 
 const initial: FormState = {};
 
@@ -20,20 +20,37 @@ export interface ShowOption {
   title: string;
 }
 
+export interface TransactionFormValues {
+  type?: TransactionType;
+  description?: string;
+  amount?: string;
+  date?: string; // yyyy-mm-dd
+  category?: string;
+  received?: boolean;
+  showId?: string | null;
+}
+
 export function TransactionForm({
+  action,
   shows,
   defaultShowId,
   cancelHref,
+  values,
+  submitLabel = "Adicionar",
 }: {
+  action: (prev: FormState, formData: FormData) => Promise<FormState>;
   shows: ShowOption[];
   defaultShowId?: string;
   cancelHref: string;
+  values?: TransactionFormValues;
+  submitLabel?: string;
 }) {
-  const [state, formAction] = useFormState(createTransactionAction, initial);
-  const [type, setType] = useState<TransactionType>("EXPENSE");
+  const [state, formAction] = useFormState(action, initial);
+  const [type, setType] = useState<TransactionType>(values?.type ?? "EXPENSE");
 
   const categories =
     type === "INCOME" ? SUGGESTED_INCOME_CATEGORIES : SUGGESTED_EXPENSE_CATEGORIES;
+  const selectedShowId = values?.showId ?? defaultShowId ?? "";
 
   return (
     <form action={formAction} className="space-y-4">
@@ -80,6 +97,7 @@ export function TransactionForm({
           name="description"
           type="text"
           required
+          defaultValue={values?.description}
           placeholder={type === "INCOME" ? "Ex.: Cachê show no Bar X" : "Ex.: Gasolina ida e volta"}
         />
       </div>
@@ -96,6 +114,7 @@ export function TransactionForm({
             type="text"
             inputMode="decimal"
             required
+            defaultValue={values?.amount}
             placeholder="0,00"
           />
         </div>
@@ -103,7 +122,7 @@ export function TransactionForm({
           <label className="label" htmlFor="date">
             Data
           </label>
-          <input className="input" id="date" name="date" type="date" required />
+          <input className="input" id="date" name="date" type="date" required defaultValue={values?.date} />
         </div>
       </div>
 
@@ -118,6 +137,7 @@ export function TransactionForm({
             name="category"
             type="text"
             required
+            defaultValue={values?.category}
             list="category-options"
             placeholder="Escolha ou digite"
           />
@@ -131,7 +151,7 @@ export function TransactionForm({
           <label className="label" htmlFor="showId">
             Vincular a um show <span className="text-gray-400">(opcional)</span>
           </label>
-          <select className="input" id="showId" name="showId" defaultValue={defaultShowId ?? ""}>
+          <select className="input" id="showId" name="showId" defaultValue={selectedShowId}>
             <option value="">— Nenhum —</option>
             {shows.map((s) => (
               <option key={s.id} value={s.id}>
@@ -143,12 +163,17 @@ export function TransactionForm({
       </div>
 
       <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" name="received" defaultChecked className="h-4 w-4 rounded border-gray-300" />
+        <input
+          type="checkbox"
+          name="received"
+          defaultChecked={values?.received ?? true}
+          className="h-4 w-4 rounded border-gray-300"
+        />
         {type === "INCOME" ? "Já recebido" : "Já pago"} (desmarque para “pendente”)
       </label>
 
       <div className="flex gap-3 pt-2">
-        <SubmitButton className="btn-primary">Adicionar</SubmitButton>
+        <SubmitButton className="btn-primary">{submitLabel}</SubmitButton>
         <Link href={cancelHref} className="btn-secondary">
           Cancelar
         </Link>
