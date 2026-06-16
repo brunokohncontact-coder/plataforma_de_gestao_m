@@ -4,12 +4,15 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário.**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **33 testes**). As
+**Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
++ testes de integração de posse por usuário.**
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **55 testes**). As
 cinco funcionalidades do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e
-navegáveis. Sessão 4 entregou a **visão de calendário dos shows** (F2 previa lista +
-calendário; agora tem ambos, com navegação mês a mês). Próxima sessão: testes de
-integração (posse por usuário) e polimento de UX.
+navegáveis. Sessão 4 entregou a visão de calendário dos shows. Sessão 5 entregou
+**testes de integração das server actions** com um banco SQLite isolado, cobrindo o
+isolamento por usuário (um usuário não acessa/altera dados de outro) — a fronteira de
+segurança crítica do produto. Próxima sessão: polimento de UX (confirmação ao excluir,
+estados vazios/erro) e filtros nas Finanças.
 
 ## Modelo de branches (a partir de 2026-06-16)
 O repositório tem um tronco **`main`** (ver DECISIONS.md D7), já definido como **default
@@ -78,10 +81,33 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
 - Build verde (17 rotas, nova `/shows/calendario`), typecheck limpo, smoke test autenticado
   OK (render do mês + fallback de `?mes` inválido → 200). `npm audit` inalterado (ver D6).
 
+### Sessão 5 — 2026-06-16 (Fase 1 — testes de integração de posse por usuário)
+- **Infra de teste com banco isolado**: `src/test/global-setup.ts` (aplica o schema com
+  `prisma db push --force-reset` num `prisma/test.db` dedicado), `src/test/db.ts`
+  (helpers `resetDb`, `createUser/createShow/createContact/createTransaction`). Config em
+  `vitest.config.ts`: `test.env` (DATABASE_URL→`file:./test.db`, AUTH_SECRET de teste),
+  `globalSetup` e `fileParallelism: false` (serializa os testes que tocam o banco).
+- **Testes de integração das server actions** (mockando `next/cache`, `next/navigation`
+  e `@/lib/session.requireUser` para simular o usuário logado):
+  - `src/app/(app)/shows/actions.test.ts` (10): create/validação; update/delete bloqueados
+    para não-donos; link/unlink contato↔show com posse cruzada (contato e show precisam
+    ser do mesmo dono); upsert idempotente.
+  - `src/app/(app)/financas/actions.test.ts` (8): create; rejeição de vincular show de
+    outro usuário; update/toggle/delete bloqueados para não-donos.
+  - `src/app/(app)/contatos/actions.test.ts` (4): create/validação de e-mail;
+    update/delete bloqueados para não-donos.
+  - Total do projeto: **55 verdes** (eram 33). Typecheck limpo, build verde (17 rotas),
+    smoke test autenticado OK (/ 200, /login 200, /dashboard sem sessão 307).
+- **`npm audit`**: 7 advisories (3 moderate, 3 high, 1 critical), **todos** na árvore do
+  Next 14.2.x (Next; `esbuild` via tooling de dev; `postcss` em build-time). Nenhum se
+  aplica ao runtime do MVP e a correção exige Next 16 (breaking) — mantida a decisão D6.
+- **Gap conhecido**: `next lint` ainda não tem ESLint configurado (prompt interativo); o
+  CI não roda lint. Configurar ESLint é uma unidade de trabalho à parte (ver próximos passos).
+
 ## Próximos passos (priorizados para a próxima sessão)
-1. **Ampliar testes**: incluir testes de integração das server actions (validação + posse
-   por usuário) — ex.: garantir que um usuário não acessa shows de outro. Considerar
-   `vitest` com um banco SQLite de teste isolado.
+1. **Configurar ESLint** (`next lint`): hoje não há config (prompt interativo) e o CI não
+   roda lint. Adicionar `.eslintrc` (preset `next/core-web-vitals`) + passo de lint no CI,
+   corrigindo o que aparecer. Fecha o item "lint" da Definition of Done.
 2. **Polimento UX**: estados de loading/erro, mensagens vazias, acessibilidade,
    confirmação antes de excluir (hoje exclui direto). Formatar input monetário ao digitar.
 3. **Filtros/períodos nas Finanças** (por mês, por tipo, por show).
