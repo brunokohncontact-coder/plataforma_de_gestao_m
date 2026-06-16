@@ -34,3 +34,29 @@ contexto, decisão, justificativa e alternativas consideradas.
   local em dev (exige serviço rodando — atrito nas execuções remotas); Drizzle (Prisma é
   mais maduro para migrations rápidas).
 - **A revisar:** se produção exigir Postgres desde já, migrar o `provider` do Prisma.
+
+## 2026-06-16 — D4: Cachê do show via campo `fee`, não como transação (anti double-count)
+- **Decisão:** o cachê acordado de um show é representado pelo campo `Show.fee`. Transações
+  de **receita** vinculadas a um show representam receita **adicional** (merch, couvert),
+  somadas por cima do cachê no cálculo de rentabilidade (`showProfitability`).
+- **Justificativa:** evita contar o cachê duas vezes (uma no `fee`, outra como transação).
+  Mantém o P&L por show previsível: `resultado = fee + receitas extras − despesas vinculadas`.
+- **Risco/validação:** usuários podem, ainda assim, lançar o cachê como transação de receita
+  e duplicar. Mitigar na UI (texto de ajuda) e, futuramente, oferecer "gerar receita a partir
+  do cachê" como ação explícita. Revisar após testes de usabilidade.
+
+## 2026-06-16 — D5: Autenticação própria simples (scrypt + cookie HMAC) no MVP
+- **Decisão:** auth própria — senha com `scrypt` (node:crypto) e sessão em cookie httpOnly
+  assinado com HMAC-SHA256 (`src/lib/session.ts`, `src/lib/auth.ts`). Sem dependência externa.
+- **Justificativa:** zero dependências/serviços, fácil de rodar em container efêmero, e o
+  escopo (e-mail+senha) não exige OAuth ainda. Lógica criptográfica isolada e testada.
+- **Alternativas consideradas:** Auth.js/NextAuth (recomendado no PROGRESS da Fase 0) — mais
+  robusto e com OAuth, porém adiciona configuração/dependência sem necessidade imediata.
+- **A revisar:** migrar para Auth.js quando precisarmos de login social, recuperação de senha
+  ou multiusuário/manager (Fase 2). A camada de auth está isolada para facilitar a troca.
+
+## 2026-06-16 — D6: Enums de domínio como `String` no SQLite, validados na aplicação
+- **Decisão:** `ShowStatus`, `TransactionType` e `ContactRole` são colunas `String` no Prisma
+  (SQLite não suporta `enum`), validadas por Zod em `src/lib/enums.ts`/`validation.ts`.
+- **Justificativa:** mantém o schema portável e o dev sem dependências. Em Postgres, podem
+  virar enums nativos sem alterar a camada de aplicação.

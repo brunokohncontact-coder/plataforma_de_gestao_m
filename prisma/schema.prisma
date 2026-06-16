@@ -1,0 +1,94 @@
+// Schema do Prisma — Plataforma de gestão para músicos (MVP F1–F5).
+// Dev: SQLite (sem dependência externa, alinhado a execuções remotas efêmeras).
+// Prod: trocar o provider para "postgresql" (schema mantido portável). Ver DECISIONS.md (D3).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// F1 — Usuário / workspace do artista. Cada usuário tem seu próprio espaço de dados.
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  // Hash de senha (scrypt). Auth própria simples no MVP; ver DECISIONS.md.
+  passwordHash String
+  artistName   String? // nome artístico / da banda exibido no workspace
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  shows        Show[]
+  transactions Transaction[]
+  contacts     Contact[]
+}
+
+// F2 — Agenda de shows.
+model Show {
+  id        String     @id @default(cuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String // ex.: "Show no Bar X" / nome do evento
+  venue     String? // local
+  city      String?
+  date      DateTime
+  // Status: PROPOSED | CONFIRMED | DONE | CANCELED. SQLite não suporta enum;
+  // validado na aplicação (src/lib/enums.ts via Zod).
+  status    String     @default("PROPOSED")
+  fee       Float      @default(0) // cachê acordado (receita esperada do show)
+  notes     String?
+  contactId String?
+  contact   Contact?   @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  transactions Transaction[]
+
+  @@index([userId, date])
+}
+
+// F3 — Finanças: receitas e despesas, com vínculo opcional a um show (F4).
+model Transaction {
+  id          String          @id @default(cuid())
+  userId      String
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Tipo: INCOME | EXPENSE. Validado na aplicação (src/lib/enums.ts).
+  type        String
+  amount      Float // sempre positivo; o sinal vem do `type`
+  category    String // ex.: "Cachê", "Transporte", "Equipamento", "Marketing"
+  description String?
+  date        DateTime
+  // Recebido/pago de fato? cobre "contas a receber/pagar" (Necessidade #6).
+  settled     Boolean         @default(true)
+  showId      String?
+  show        Show?           @relation(fields: [showId], references: [id], onDelete: SetNull)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([userId, date])
+  @@index([showId])
+}
+
+// F5 — CRM básico de contatos da indústria.
+model Contact {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  // Papel: VENUE | PROMOTER | BOOKER | PRODUCER | PRESS | OTHER.
+  role      String      @default("OTHER")
+  email     String?
+  phone     String?
+  company   String?
+  notes     String?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  shows Show[]
+
+  @@index([userId])
+}
