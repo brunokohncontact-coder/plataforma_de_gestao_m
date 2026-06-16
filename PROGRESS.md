@@ -26,9 +26,12 @@ datas (De/Até)** nas Finanças. Sessão 13 entregou **criar show a partir de um
 no dia do calendário** (data pré-preenchida via `?data=YYYY-MM-DD`). Sessão 14
 entregou a **exportação CSV das Finanças** (`/financas/export`) respeitando os filtros
 ativos. Sessão 15 entregou a **exportação iCalendar (.ics) da agenda de shows**
-(`/shows/agenda.ics`), para assinar/importar no Google/Apple Calendar. **161 testes**
-verdes. Próxima sessão: continuar o polimento de UX (estados de loading/erro inline nos
-formulários) ou evoluções do calendário/filtros (persistir o último filtro usado).
+(`/shows/agenda.ics`), para assinar/importar no Google/Apple Calendar. Sessão 16
+entregou o **destaque de pendências vencidas** (a receber/a pagar com data já passada)
+no Painel e nas Finanças. **154 testes** verdes (a contagem anterior de "161" no histórico
+estava superestimada; medição real `vitest run` na Sessão 16). Próxima sessão: continuar o
+polimento de UX (estados de loading/erro inline nos formulários) ou evoluções do
+calendário/filtros (persistir o último filtro usado).
 
 ## Modelo de branches (a partir de 2026-06-16)
 O repositório tem um tronco **`main`** (ver DECISIONS.md D7), já definido como **default
@@ -301,6 +304,27 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   download do .ics com CRLF, acentos preservados, escape de `;`/`,`, default sem cancelados =
   1 VEVENT e `?cancelados=1` = 2 VEVENT — verificado). `npm audit` inalterado (10 advisories:
   3 moderate / 6 high / 1 critical; nenhuma dependência nova — ver D6/D8).
+
+### Sessão 16 — 2026-06-16 (Fase 1 — destaque de pendências vencidas)
+- **Lógica pura** (`src/lib/finance.ts`): `pendingDueStatus(date, now)` classifica uma
+  data como `overdue`/`today`/`upcoming` comparando por **dia em UTC** (mesma convenção de
+  `dayKey`; "hoje" não conta como vencido); `isOverdue(tx, now)` (pendente — `received ===
+  false` — e com data anterior a hoje); `summarizeOverdue(txs, now)` soma e conta as
+  pendências vencidas separando **a receber** de **a pagar** (`{ income, expense,
+  incomeCount, expenseCount }`). Testes em `src/lib/finance.test.ts` (+8 → **47 no arquivo,
+  154 no projeto**): classificação de vencimento, regra de `received`, fronteira "hoje",
+  somatório/contagem por tipo e lista vazia.
+- **UI Finanças** (`src/app/(app)/financas/page.tsx`): banner **⚠ Vencidas** (a receber/a
+  pagar com totais e contagem) calculado sobre o recorte filtrado visível; cada linha
+  pendente e vencida ganha o badge vermelho **"Vencida"** (no lugar do amarelo "A receber/A
+  pagar").
+- **UI Painel** (`src/app/(app)/dashboard/page.tsx`): banner clicável **⚠ Pendências
+  vencidas** (link para `/financas?status=pending`) exibido só quando há algo vencido.
+- Definition of Done verde: build (16 rotas), typecheck limpo, lint (0), 154 testes, smoke
+  test (/login 200, / 200, /dashboard e /financas sem sessão → 307; **teste end-to-end
+  autenticado**: inserida 1 pendência vencida → banner do Painel, banner e badge "Vencida"
+  nas Finanças renderizados — verificado). `npm audit` inalterado (10 advisories: 3
+  moderate / 6 high / 1 critical; nenhuma dependência nova — ver D6/D8).
 
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
