@@ -18,6 +18,14 @@ export const SHOW_STATUS_COLORS: Record<ShowStatus, string> = {
   CANCELLED: "bg-gray-200 text-gray-600",
 };
 
+// Cor sólida (fundo) para o "pílula"/ponto de status no calendário.
+export const SHOW_STATUS_DOT: Record<ShowStatus, string> = {
+  PROPOSED: "bg-amber-500",
+  CONFIRMED: "bg-emerald-500",
+  PLAYED: "bg-blue-500",
+  CANCELLED: "bg-gray-400",
+};
+
 export const TRANSACTION_TYPES = ["INCOME", "EXPENSE"] as const;
 export type TransactionType = (typeof TRANSACTION_TYPES)[number];
 
