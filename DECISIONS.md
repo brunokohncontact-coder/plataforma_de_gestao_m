@@ -34,3 +34,31 @@ contexto, decisão, justificativa e alternativas consideradas.
   local em dev (exige serviço rodando — atrito nas execuções remotas); Drizzle (Prisma é
   mais maduro para migrations rápidas).
 - **A revisar:** se produção exigir Postgres desde já, migrar o `provider` do Prisma.
+
+## 2026-06-16 — D4: Autenticação própria leve (bcrypt + JWT em cookie), não Auth.js
+- **Decisão:** implementar autenticação por e-mail/senha própria: hash com `bcryptjs`
+  e sessão via JWT assinado (`jose`) em cookie httpOnly. Sem provedores externos/OAuth.
+- **Justificativa:** o MVP só precisa de login por credenciais; Auth.js agregaria
+  dependências e configuração (adapters, providers) sem valor imediato. A solução cabe em
+  ~3 arquivos (`src/lib/auth.ts`, `session.ts`, actions) e roda sem serviços externos —
+  alinhada às execuções remotas efêmeras. O modelo já isola dados por `userId`.
+- **Alternativas consideradas:** Auth.js/NextAuth (mais robusto p/ OAuth e múltiplos
+  provedores — adotar quando entrarem login social ou multiusuário); Lucia (descontinuado).
+- **A revisar:** ao introduzir OAuth, recuperação de senha ou multiusuário, reavaliar Auth.js.
+
+## 2026-06-16 — D5: SQLite no Prisma sem enums nativos → campos String validados na app
+- **Decisão:** os "enums" (status do show, tipo de transação, papel do contato) são
+  colunas `String` no Prisma, com valores válidos centralizados em `src/lib/domain.ts` e
+  validados por Zod (`src/lib/validation.ts`).
+- **Justificativa:** o provider SQLite do Prisma não suporta `enum`. String + validação
+  na borda mantém o schema portável; ao migrar para PostgreSQL podem virar enums nativos.
+
+## 2026-06-16 — D6: Permanecer no Next.js 14.2.x (patch) apesar de advisories
+- **Decisão:** fixar `next@14.2.35` (último patch da linha 14.2). Vários advisories do
+  `npm audit` só têm correção no Next 15/16, que exigem React 19 e mudanças maiores.
+- **Justificativa:** os advisories restantes não se aplicam ao uso atual do MVP (sem
+  i18n middleware, sem CSP nonces, sem `beforeInteractive` com input não confiável, sem
+  Image Optimization exposta publicamente). Migrar para 15/16 autonomamente arriscaria
+  quebrar a base, contra a regra de "nunca deixar a base quebrada".
+- **A revisar:** planejar upgrade para Next 15+/React 19 quando houver janela para validar
+  a migração (App Router é majoritariamente compatível).
