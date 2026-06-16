@@ -1,0 +1,96 @@
+// Palco — schema de dados do MVP.
+// Banco em dev: SQLite (zero dependência externa). Schema mantido portável para Postgres.
+// Decisões relevantes em DECISIONS.md:
+//  - Valores monetários em centavos (Int) para evitar erros de ponto flutuante.
+//  - "Enums" representados como String (SQLite não suporta enum nativo no Prisma);
+//    a validação dos valores permitidos fica na camada de aplicação (Zod).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Workspace do artista/banda. v1 = 1 usuário por workspace; o modelo já prevê
+// múltiplos usuários para evitar retrabalho na Fase 2 (manager/equipe).
+model Workspace {
+  id           String        @id @default(cuid())
+  name         String
+  createdAt    DateTime      @default(now())
+  users        User[]
+  shows        Show[]
+  transactions Transaction[]
+  contacts     Contact[]
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  passwordHash String
+  role         String    @default("owner") // owner | member
+  createdAt    DateTime  @default(now())
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId  String
+}
+
+// Agenda de shows (F2).
+model Show {
+  id           String        @id @default(cuid())
+  title        String
+  venue        String?
+  city         String?
+  date         DateTime
+  status       String        @default("proposed") // proposed | confirmed | done | cancelled
+  feeCents     Int           @default(0) // cachê acordado, em centavos
+  notes        String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId  String
+  contact      Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  contactId    String?
+  transactions Transaction[]
+
+  @@index([workspaceId, date])
+}
+
+// Finanças: receitas e despesas (F3). Vínculo opcional a um show (F4).
+model Transaction {
+  id          String    @id @default(cuid())
+  type        String    // income | expense
+  category    String
+  description String?
+  amountCents Int // sempre positivo; o sinal vem de `type`
+  date        DateTime
+  status      String    @default("received") // received | pending (relevante p/ income)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId String
+  show        Show?     @relation(fields: [showId], references: [id], onDelete: SetNull)
+  showId      String?
+
+  @@index([workspaceId, date])
+  @@index([showId])
+}
+
+// CRM básico de contatos da indústria (F5).
+model Contact {
+  id          String    @id @default(cuid())
+  name        String
+  role        String    @default("other") // venue | promoter | booker | producer | press | other
+  email       String?
+  phone       String?
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId String
+  shows       Show[]
+
+  @@index([workspaceId])
+}

@@ -34,3 +34,26 @@ contexto, decisão, justificativa e alternativas consideradas.
   local em dev (exige serviço rodando — atrito nas execuções remotas); Drizzle (Prisma é
   mais maduro para migrations rápidas).
 - **A revisar:** se produção exigir Postgres desde já, migrar o `provider` do Prisma.
+
+## 2026-06-16 — D4: Valores monetários em centavos (inteiros)
+- **Decisão:** todo dinheiro é persistido e calculado em **centavos (Int)**; a conversão
+  para reais (number) ocorre só na borda (UI/IO), em `src/lib/money.ts`.
+- **Justificativa:** evita erros de ponto flutuante em somas/margens (lógica financeira é
+  o diferencial do produto). `parseAmountToCents` aceita formatos BR e US.
+- **A revisar:** se surgirem múltiplas moedas, adicionar campo `currency` por workspace.
+
+## 2026-06-16 — D5: "Enums" como String (limitação do SQLite no Prisma)
+- **Decisão:** `status`, `type`, `role` são `String` no schema; os valores permitidos e a
+  validação ficam na aplicação (`src/lib/domain.ts` + Zod em `src/lib/validation.ts`).
+- **Justificativa:** o provider SQLite do Prisma não suporta `enum` nativo. Manter String
+  preserva a portabilidade para Postgres sem migration disruptiva.
+- **A revisar:** ao migrar para Postgres, avaliar converter para enums nativos do Prisma.
+
+## 2026-06-16 — D6: Modelagem do P&L por show (cachê vs. transações vinculadas)
+- **Decisão:** em `calcShowProfitability`, o `feeCents` do show é a receita principal;
+  transações de receita vinculadas ao show são tratadas como receita **adicional**
+  (ex.: merch), e despesas vinculadas são subtraídas. Resultado = cachê + extra − despesas.
+- **Justificativa:** evita contar o cachê em dobro quando o usuário registra também a
+  transação de recebimento do cachê. Documentado no docstring da função.
+- **Risco/validação:** comportamento pode confundir quem espera somar todas as receitas
+  vinculadas. Validar com usuários; possivelmente tornar configurável.
