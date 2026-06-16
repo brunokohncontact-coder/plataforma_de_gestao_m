@@ -25,7 +25,9 @@ valor da transação e do cachê do show. Sessão 12 entregou **filtro por inter
 datas (De/Até)** nas Finanças. Sessão 13 entregou **criar show a partir de um clique
 no dia do calendário** (data pré-preenchida via `?data=YYYY-MM-DD`). Sessão 14
 entregou a **exportação CSV das Finanças** (`/financas/export`) respeitando os filtros
-ativos. Próxima sessão: continuar o polimento de UX (estados de loading/erro inline nos
+ativos. Sessão 15 entregou a **exportação iCalendar (.ics) da agenda de shows**
+(`/shows/agenda.ics`), para assinar/importar no Google/Apple Calendar. **161 testes**
+verdes. Próxima sessão: continuar o polimento de UX (estados de loading/erro inline nos
 formulários) ou evoluções do calendário/filtros (persistir o último filtro usado).
 
 ## Modelo de branches (a partir de 2026-06-16)
@@ -278,12 +280,35 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   aplicado — verificado). `npm audit` inalterado (10 advisories: 3 moderate / 6 high / 1
   critical; nenhuma dependência nova — ver D6/D8).
 
+### Sessão 15 — 2026-06-16 (Fase 1 — exportação iCalendar da agenda)
+- **Lógica pura** (`src/lib/ics.ts`): serialização iCalendar/RFC 5545 — `escapeIcsText`
+  (escapa `\`, `;`, `,` e quebras de linha → `\n`), `foldIcsLine` (*line folding* a **75
+  octetos UTF-8**, sem partir caractere multibyte, continuação com espaço), `formatIcsUtc`
+  (Date → "AAAAMMDDTHHMMSSZ" em UTC), `icsEventStatus` (PROPOSED→TENTATIVE,
+  CONFIRMED/PLAYED→CONFIRMED, CANCELLED→CANCELLED), `buildVEvent` (UID estável
+  `<id>@palco.app`, DTSTART/DTEND com duração padrão de 120 min, SUMMARY/LOCATION/DESCRIPTION
+  escapados) e `showsToIcs` (VCALENDAR completo, linhas em CRLF). Testes em
+  `src/lib/ics.test.ts` (**15** → total do projeto **161**, eram 146). Decisão de formato
+  registrada em **DECISIONS.md D12**.
+- **Route handler** `src/app/(app)/shows/agenda.ics/route.ts` (GET, `force-dynamic`): exige
+  usuário (`requireUser`), lista os shows do usuário (por padrão **exclui cancelados**;
+  `?cancelados=1` os inclui como `STATUS:CANCELLED`) e responde `text/calendar; charset=utf-8`
+  com `Content-Disposition: attachment; filename="agenda-shows.ics"` e `Cache-Control: no-store`.
+- **UI** (`src/app/(app)/shows/page.tsx` e `shows/calendario/page.tsx`): link **Exportar .ics**
+  no cabeçalho das duas visões (na lista, só quando há shows). Sem novas dependências.
+- Definition of Done verde: build (16 rotas + `/shows/agenda.ics`), typecheck limpo, lint (0),
+  161 testes, smoke test (/shows/agenda.ics sem sessão → 307; **teste end-to-end autenticado**:
+  download do .ics com CRLF, acentos preservados, escape de `;`/`,`, default sem cancelados =
+  1 VEVENT e `?cancelados=1` = 2 VEVENT — verificado). `npm audit` inalterado (10 advisories:
+  3 moderate / 6 high / 1 critical; nenhuma dependência nova — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)
 2. **Calendário — evoluções**: link do dashboard direto para o mês atual; visão semanal.
-   (clicar num dia para criar show já com a data entregue na Sessão 13; base em
-   `src/lib/calendar.ts`.)
+   (clicar num dia para criar show já com a data entregue na Sessão 13; exportação
+   iCalendar `.ics` da agenda entregue na Sessão 15 — base em `src/lib/calendar.ts` e
+   `src/lib/ics.ts`.)
 3. **Filtros — evoluções**: persistir o último filtro usado (ex.: cookie/localStorage).
    (filtro por categoria entregue na Sessão 10; intervalo de datas na Sessão 12;
    exportação CSV do recorte filtrado na Sessão 14; base em `src/lib/finance.ts`.)

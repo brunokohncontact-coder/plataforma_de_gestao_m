@@ -21,6 +21,15 @@ export default async function ShowsPage() {
         <h1 className="text-2xl font-bold">Shows</h1>
         <div className="flex items-center gap-3">
           <ShowsViewToggle active="lista" />
+          {shows.length > 0 && (
+            <a
+              href="/shows/agenda.ics"
+              className="text-sm text-brand-700 hover:underline"
+              title="Baixar a agenda para Google/Apple Calendar"
+            >
+              Exportar .ics
+            </a>
+          )}
           <Link href="/shows/novo" className="btn-primary">
             + Novo show
           </Link>
