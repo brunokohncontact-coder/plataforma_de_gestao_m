@@ -18,6 +18,7 @@ import {
   type TransactionType,
 } from "@/lib/domain";
 import { toggleReceivedAction, deleteTransactionAction } from "./actions";
+import { DeleteButton } from "@/components/DeleteButton";
 
 export const dynamic = "force-dynamic";
 
@@ -246,16 +247,14 @@ export default async function FinancesPage({
                           {t.received ? "↺" : "✓"}
                         </button>
                       </form>
-                      <form action={deleteTransactionAction}>
-                        <input type="hidden" name="id" value={t.id} />
-                        <button
-                          type="submit"
-                          title="Excluir"
-                          className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                        >
-                          ✕
-                        </button>
-                      </form>
+                      <DeleteButton
+                        action={deleteTransactionAction}
+                        id={t.id}
+                        trigger="✕"
+                        triggerTitle="Excluir transação"
+                        triggerClassName="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                        confirmMessage="Excluir?"
+                      />
                     </div>
                   </li>
                 );
