@@ -50,8 +50,11 @@ Ainda **não há UI das features** (F1–F5) nem autenticação — é o próxim
 7. Polimento responsivo. Manter `npm test` e `npm run build` verdes a cada unidade.
 
 ## Bloqueios / dúvidas (para validação humana)
-- **Consolidação de branches** (DECISIONS D6): há ~14 branches `claude/*`; pedir que as
-  execuções futuras partam sempre da mesma base/branch para não fragmentar a memória.
+- ⚠️ **BLOQUEANTE — fragmentação (DECISIONS D6):** há **13 PRs abertas (#1–#13)** + esta (#14),
+  todas implementando a Fase 1 em paralelo sobre a base de Fase 0; o repo **não tem `main`**.
+  Várias já entregam o MVP completo. Um humano precisa escolher uma base canônica, promovê-la a
+  `main`, fechar as demais e fazer as execuções futuras partirem de `main`. **Enquanto isso não
+  acontecer, cada execução agendada produz uma PR redundante — inclusive esta.**
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)
   ainda precisam de entrevistas com músicos reais.
 - Foco **pt-BR/LATAM** e faixas de preço (`business-plan.md`) seguem como hipóteses.

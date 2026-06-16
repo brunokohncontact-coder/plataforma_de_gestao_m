@@ -52,11 +52,20 @@ contexto, decisão, justificativa e alternativas consideradas.
 - **Risco/validação:** confirmar com usuários se preferem visão "planejada" (cachê) ou
   "realizada" (transações) como número principal. Ambas estão disponíveis.
 
-## 2026-06-16 — D6: Fragmentação de branches entre execuções remotas
-- **Contexto:** o repositório tem ~14 branches `claude/*` de execuções anteriores; os
-  objetos remotos não vêm no clone raso, dificultando inspecionar/mesclar trabalho paralelo.
+## 2026-06-16 — D6: Fragmentação de execuções — há 14 PRs paralelas da "Fase 1" ⚠️
+- **Contexto (confirmado via API do GitHub):** existem **13 PRs abertas (#1–#13)** além desta
+  (#14), TODAS de execuções remotas paralelas implementando a Fase 1 de forma independente e
+  divergente, todas com base em `claude/sharp-ptolemy-to4m4d` (que só tem a Fase 0). O repo
+  **não tem branch `main`**. Cada execução agendada cria um branch novo a partir da mesma base
+  e não enxerga as outras → a "memória entre sessões via git" está quebrada na prática.
+- **Várias PRs já entregam o MVP completo F1–F5** (#13, #11, #10, #9, #8, #7, #6, #5, #3, #1),
+  mais completas que esta (esta é só fundação + lógica testada).
 - **Decisão (desta sessão):** seguir a instrução e desenvolver em `claude/sleepy-bell-548tjb`,
-  cujo `PROGRESS.md` indicava Fase 0 concluída e nenhum código. Não houve como aproveitar
-  trabalho de outras branches (inacessíveis).
-- **A revisar (humano):** consolidar o trabalho numa única branch/`main` para que a "memória
-  entre sessões" não se fragmente. Idealmente as execuções futuras partem sempre da mesma base.
+  cujo `PROGRESS.md` indicava Fase 0 e nenhum código. Não houve como aproveitar trabalho de
+  outras branches (objetos não vêm no clone raso). Não economizei: entreguei fundação + testes.
+- **AÇÃO HUMANA NECESSÁRIA (bloqueante para a continuidade):**
+  1. Escolher UMA implementação como base canônica (sugestão: a mais completa/testada, ex.: #13),
+     mesclá-la e promovê-la a **`main`** (definir como branch padrão).
+  2. Fechar as demais PRs para parar o ruído.
+  3. Configurar as execuções futuras para partir SEMPRE de `main`.
+  Sem isso, cada execução de 2h continuará gerando uma PR redundante.
