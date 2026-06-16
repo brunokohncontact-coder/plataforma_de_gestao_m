@@ -9,7 +9,8 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. Sessão 4 entregou
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **125 testes**
+verdes após a Sessão 14 (exportação CSV das Finanças). Sessão 4 entregou
 a visão de calendário dos shows. Sessão 5 entregou **testes de integração das server
 actions** com um banco SQLite isolado, cobrindo o isolamento por usuário. Sessão 6
 configurou **ESLint** (`next/core-web-vitals`) e adicionou o passo de lint ao CI — fechando
@@ -22,9 +23,10 @@ da senha atual). Sessão 10 adicionou o **filtro por categoria** nas Finanças. 
 **máscara de input monetário ao digitar** (componente `MoneyInput`) nos campos de
 valor da transação e do cachê do show. Sessão 12 entregou **filtro por intervalo de
 datas (De/Até)** nas Finanças. Sessão 13 entregou **criar show a partir de um clique
-no dia do calendário** (data pré-preenchida via `?data=YYYY-MM-DD`). Próxima
-sessão: continuar o polimento de UX (estados de loading/erro inline nos formulários)
-ou evoluções do calendário/filtros (persistir o último filtro usado).
+no dia do calendário** (data pré-preenchida via `?data=YYYY-MM-DD`). Sessão 14
+entregou a **exportação CSV das Finanças** (`/financas/export`) respeitando os filtros
+ativos. Próxima sessão: continuar o polimento de UX (estados de loading/erro inline nos
+formulários) ou evoluções do calendário/filtros (persistir o último filtro usado).
 
 ## Modelo de branches (a partir de 2026-06-16)
 O repositório tem um tronco **`main`** (ver DECISIONS.md D7), já definido como **default
@@ -252,6 +254,30 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   sessão → 307; data inválida também → 307, ignorada). `npm audit` inalterado (10
   advisories: 3 moderate / 6 high / 1 critical; nenhuma dependência nova — ver D6/D8).
 
+### Sessão 14 — 2026-06-16 (Fase 1 — exportação CSV das Finanças)
+- **Lógica pura** (`src/lib/csv.ts`): `escapeCsvField` (RFC 4180 — aspas quando há
+  delimitador/aspas/quebra de linha, duplicando aspas internas), `toCsv` (matriz → texto,
+  campos por `;`, linhas por CRLF), `centsToCsvAmount` (centavos → "1234,56", vírgula
+  decimal, sem milhar, preserva sinal e precisão), `csvDate` (Date → "DD/MM/AAAA" em UTC) e
+  `transactionsToCsv` (cabeçalho pt-BR + linhas; coluna **Situação** = Recebido/Pago/Pendente
+  conforme tipo e `received`; coluna **Show** vazia quando não vinculado). Testes em
+  `src/lib/csv.test.ts` (**15** → total do projeto **125**, eram 110). Decisão de formato
+  registrada em **DECISIONS.md D11** (delimitador `;`, decimal vírgula, BOM — abre direto no
+  Excel pt-BR).
+- **Route handler** `src/app/(app)/financas/export/route.ts` (GET, `force-dynamic`): exige
+  usuário (`requireUser`), lê os **mesmos filtros** da página de Finanças da query string
+  (`mes/tipo/categoria/show/status/de/ate`), reaproveita `filterTransactions` (uma fonte de
+  verdade), e responde `text/csv; charset=utf-8` com **BOM UTF-8**, `Content-Disposition:
+  attachment; filename="financas-AAAA-MM-DD.csv"` e `Cache-Control: no-store`.
+- **UI** (`src/app/(app)/financas/page.tsx`): botão **Exportar CSV** (`<a download>`) no
+  cabeçalho, exibido quando há transações visíveis; o link carrega os filtros ativos via
+  `buildExportQuery(filter)` para exportar exatamente o recorte na tela. Sem novas dependências.
+- Definition of Done verde: build (16 rotas + `/financas/export`), typecheck limpo, lint (0),
+  125 testes, smoke test (/login 200, / 200, /financas/export sem sessão → 307; **teste
+  end-to-end autenticado**: download do CSV com BOM, formatação pt-BR e filtro `tipo=EXPENSE`
+  aplicado — verificado). `npm audit` inalterado (10 advisories: 3 moderate / 6 high / 1
+  critical; nenhuma dependência nova — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)
@@ -259,8 +285,8 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    (clicar num dia para criar show já com a data entregue na Sessão 13; base em
    `src/lib/calendar.ts`.)
 3. **Filtros — evoluções**: persistir o último filtro usado (ex.: cookie/localStorage).
-   (filtro por categoria entregue na Sessão 10; intervalo de datas na Sessão 12; base em
-   `src/lib/finance.ts`.)
+   (filtro por categoria entregue na Sessão 10; intervalo de datas na Sessão 12;
+   exportação CSV do recorte filtrado na Sessão 14; base em `src/lib/finance.ts`.)
 4. **Sessões/segurança** (ver D10): considerar `tokenVersion`/`passwordChangedAt` no `User`
    para invalidar sessões ao trocar a senha quando houver login em múltiplos dispositivos.
 

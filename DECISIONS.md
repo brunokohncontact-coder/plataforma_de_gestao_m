@@ -122,3 +122,21 @@ contexto, decisão, justificativa e alternativas consideradas.
   invalidando todas as sessões ao trocar a senha (recomendado para quando houver login em
   múltiplos dispositivos / produção — anotado como evolução); reemitir só o cookie atual
   (descartado: efeito de segurança nulo).
+
+## 2026-06-16 — D11: Exportação CSV das Finanças (delimitador ;, decimal vírgula, BOM)
+- **Decisão:** a exportação de transações (`/financas/export`) gera CSV com **delimitador
+  `;`**, valores em **reais com vírgula decimal e sem separador de milhar** ("1234,56"),
+  datas em **DD/MM/AAAA** e prefixo **BOM UTF-8**. A serialização é uma camada pura em
+  `src/lib/csv.ts` (testada em `csv.test.ts`); o route handler aplica os **mesmos filtros**
+  da página de Finanças (reaproveitando `filterTransactions`) lidos da query string.
+- **Justificativa:** essa combinação abre **direto no Excel/Google Sheets em pt-BR** sem
+  assistente de importação — o Excel em português usa `;` como separador de lista e vírgula
+  como decimal; o BOM garante que acentos (ç, ã, ê) não corrompam. Manter a serialização
+  pura permite testá-la sem HTTP e reusar a lógica de filtro já validada (uma fonte de
+  verdade para lista, resumo e exportação). Atende à persona "odeia planilha" dando uma
+  saída pronta para o contador, sem reescrever os dados.
+- **Alternativas consideradas:** CSV "padrão internacional" (delimitador `,`, decimal `.`)
+  — descartado por exigir wizard de importação no Excel pt-BR e confundir o usuário-alvo;
+  geração client-side via Blob — descartada por duplicar a lógica de filtro no cliente e
+  perder a verificação de posse no servidor; XLSX nativo — over-engineering para o MVP
+  (exigiria dependência pesada; CSV cobre o caso de uso).
