@@ -85,6 +85,10 @@ export default async function FinancesPage({
   const visible = filterTransactions(allTxs, filter);
   const summary = summarizeFinances(visible);
 
+  // Query string atual (só os filtros válidos) para reaproveitar na exportação.
+  const exportQuery = buildExportQuery(filter);
+  const exportHref = `/financas/export${exportQuery ? `?${exportQuery}` : ""}`;
+
   // Opções dos seletores (derivadas de todas as transações do usuário).
   const months = availableMonths(allTxs);
   const categories = availableCategories(allTxs);
@@ -96,11 +100,18 @@ export default async function FinancesPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">Finanças</h1>
-        <Link href="/financas/nova" className="btn-primary">
-          + Nova transação
-        </Link>
+        <div className="flex items-center gap-2">
+          {visible.length > 0 && (
+            <a href={exportHref} className="btn-secondary" download>
+              Exportar CSV
+            </a>
+          )}
+          <Link href="/financas/nova" className="btn-primary">
+            + Nova transação
+          </Link>
+        </div>
       </div>
 
       {transactions.length > 0 && (
@@ -312,6 +323,20 @@ export default async function FinancesPage({
       )}
     </div>
   );
+}
+
+/** Serializa o filtro ativo na mesma query string lida pelo route de exportação. */
+function buildExportQuery(filter: TransactionFilter): string {
+  const params = new URLSearchParams();
+  if (filter.month) params.set("mes", filter.month);
+  if (filter.type) params.set("tipo", filter.type);
+  if (filter.category) params.set("categoria", filter.category);
+  if (filter.showId) params.set("show", filter.showId);
+  if (filter.received === true) params.set("status", "received");
+  else if (filter.received === false) params.set("status", "pending");
+  if (filter.from) params.set("de", filter.from);
+  if (filter.to) params.set("ate", filter.to);
+  return params.toString();
 }
 
 function Field({
