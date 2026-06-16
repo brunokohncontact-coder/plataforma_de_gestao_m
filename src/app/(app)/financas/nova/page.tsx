@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { TransactionForm } from "../TransactionForm";
+import { createTransactionAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,12 @@ export default async function NewTransactionPage({
         <h1 className="mt-1 text-2xl font-bold">Nova transação</h1>
       </div>
       <div className="card">
-        <TransactionForm shows={shows} defaultShowId={defaultShowId} cancelHref={cancelHref} />
+        <TransactionForm
+          action={createTransactionAction}
+          shows={shows}
+          defaultShowId={defaultShowId}
+          cancelHref={cancelHref}
+        />
       </div>
     </div>
   );

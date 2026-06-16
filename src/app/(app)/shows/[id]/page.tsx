@@ -14,22 +14,36 @@ import {
   type ContactRole,
   type TransactionType,
 } from "@/lib/domain";
-import { deleteShowAction } from "../actions";
+import {
+  deleteShowAction,
+  linkContactToShowAction,
+  unlinkContactFromShowAction,
+} from "../actions";
 
 export const dynamic = "force-dynamic";
 
 export default async function ShowDetailPage({ params }: { params: { id: string } }) {
   const user = await requireUser();
 
-  const show = await prisma.show.findFirst({
-    where: { id: params.id, userId: user.id },
-    include: {
-      transactions: { orderBy: { date: "desc" } },
-      contacts: { include: { contact: true } },
-    },
-  });
+  const [show, allContacts] = await Promise.all([
+    prisma.show.findFirst({
+      where: { id: params.id, userId: user.id },
+      include: {
+        transactions: { orderBy: { date: "desc" } },
+        contacts: { include: { contact: true } },
+      },
+    }),
+    prisma.contact.findMany({
+      where: { userId: user.id },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+  ]);
 
   if (!show) notFound();
+
+  const linkedIds = new Set(show.contacts.map((c) => c.contactId));
+  const availableContacts = allContacts.filter((c) => !linkedIds.has(c.id));
 
   const txs: TxLike[] = show.transactions.map((t) => ({
     type: t.type as TxLike["type"],
@@ -129,18 +143,64 @@ export default async function ShowDetailPage({ params }: { params: { id: string 
       </section>
 
       {/* Contatos vinculados */}
-      {show.contacts.length > 0 && (
-        <section className="card">
-          <h2 className="mb-3 font-semibold">Contatos</h2>
+      <section className="card">
+        <h2 className="mb-3 font-semibold">Contatos</h2>
+        {show.contacts.length === 0 ? (
+          <p className="py-2 text-sm text-gray-400">Nenhum contato vinculado a este show.</p>
+        ) : (
           <ul className="flex flex-wrap gap-2">
             {show.contacts.map(({ contact }) => (
-              <li key={contact.id} className="badge bg-gray-100 text-gray-700">
-                {contact.name} · {CONTACT_ROLE_LABELS[contact.role as ContactRole]}
+              <li
+                key={contact.id}
+                className="inline-flex items-center gap-2 rounded-full bg-gray-100 py-1 pl-3 pr-1 text-xs text-gray-700"
+              >
+                <span>
+                  {contact.name} · {CONTACT_ROLE_LABELS[contact.role as ContactRole]}
+                </span>
+                <form action={unlinkContactFromShowAction}>
+                  <input type="hidden" name="showId" value={show.id} />
+                  <input type="hidden" name="contactId" value={contact.id} />
+                  <button
+                    type="submit"
+                    title="Desvincular"
+                    className="rounded-full px-1.5 text-gray-400 hover:bg-gray-200 hover:text-red-600"
+                  >
+                    ✕
+                  </button>
+                </form>
               </li>
             ))}
           </ul>
-        </section>
-      )}
+        )}
+
+        {availableContacts.length > 0 ? (
+          <form action={linkContactToShowAction} className="mt-4 flex gap-2">
+            <input type="hidden" name="showId" value={show.id} />
+            <select name="contactId" className="input max-w-xs" defaultValue="" required>
+              <option value="" disabled>
+                Selecione um contato…
+              </option>
+              {availableContacts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <button type="submit" className="btn-secondary">
+              Vincular
+            </button>
+          </form>
+        ) : (
+          allContacts.length === 0 && (
+            <p className="mt-3 text-xs text-gray-400">
+              Você ainda não tem contatos.{" "}
+              <Link href="/contatos/novo" className="text-brand-700 hover:underline">
+                Criar contato
+              </Link>
+            </p>
+          )
+        )}
+      </section>
 
       <div className="flex gap-3">
         <Link href={`/shows/${show.id}/editar`} className="btn-secondary">

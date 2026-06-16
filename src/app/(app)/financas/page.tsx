@@ -92,6 +92,13 @@ export default async function FinancesPage() {
                       {isIncome ? "+" : "−"}
                       {formatMoney(t.amount)}
                     </span>
+                    <Link
+                      href={`/financas/${t.id}/editar`}
+                      title="Editar"
+                      className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                    >
+                      ✎
+                    </Link>
                     <form action={toggleReceivedAction}>
                       <input type="hidden" name="id" value={t.id} />
                       <button

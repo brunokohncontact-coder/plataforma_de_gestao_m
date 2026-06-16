@@ -4,20 +4,21 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Fase 1 (MVP) — núcleo funcional implementado.** O app builda (`npm run build`),
-roda (`npm start`/`npm run dev`) e passa nos testes (`npm test`, 21 testes). As cinco
+**Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos.** O app builda
+(`npm run build`), roda e passa nos testes (`npm test`, 21 testes). As cinco
 funcionalidades do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis.
-Próxima sessão: polir UX, ampliar testes e adicionar visão de calendário + vínculo
-contato↔show pela UI.
+Sessão 3 fechou os ciclos de edição: **editar transação** e **vincular/desvincular
+contatos a shows pela UI**. Próxima sessão: visão de calendário, testes de integração
+(posse por usuário) e polimento de UX.
 
 ## Modelo de branches (a partir de 2026-06-16)
-O repositório agora tem um tronco **`main`** (ver DECISIONS.md D7). Toda sessão deve:
-partir de `main` (`git checkout main && git pull`), desenvolver no branch designado da
-sessão e abrir PR **com base em `main`**. Branches antigos de rotina (`claude/...`) são
-legado e não devem ser usados como base.
-
-> ⚠️ Passo manual pendente para o humano: definir `main` como **default branch** em
-> GitHub → Settings → Branches (não há ferramenta de automação para isso nesta sessão).
+O repositório tem um tronco **`main`** (ver DECISIONS.md D7), já definido como **default
+branch** e **protegido por ruleset** (requer PR + check `build-and-test`, bloqueia push
+direto e force-push — verificado: push direto na `main` → 403). Toda sessão deve partir
+de `main` (`git checkout main && git pull`), desenvolver no branch designado e abrir PR
+**com base em `main`**. As 15 PRs antigas de execuções paralelas foram fechadas; os
+branches `claude/...` legados podem ser apagados no GitHub (o ambiente bloqueia deleção
+de branch via git/API).
 
 ## Stack escolhida (ver DECISIONS.md D3–D6)
 Next.js 14.2 (App Router) + TypeScript + Prisma (SQLite em dev) + Tailwind. Auth própria
@@ -52,19 +53,26 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
 - **F5 Contatos**: lista, novo, editar, excluir — `src/app/(app)/contatos/*`.
 - Verificação de runtime: servidor sobe; `/` e `/login` → 200; `/dashboard` sem sessão → 307→/login.
 
+### Sessão 3 — 2026-06-16 (Fase 1 — fecho de ciclos de CRUD)
+- **Editar transação**: `TransactionForm` refatorado para modo criar/editar (props `action`,
+  `values`, `submitLabel`); `updateTransactionAction` em `financas/actions.ts` (com posse
+  e revalidação do show antigo+novo); página `financas/[id]/editar`; link ✎ na lista.
+- **Vincular/desvincular contato↔show pela UI**: `linkContactToShowAction` /
+  `unlinkContactFromShowAction` em `shows/actions.ts` (upsert idempotente no join, checagem
+  de posse); seção de contatos interativa no detalhe do show (`shows/[id]`).
+- Build verde (16 rotas), typecheck limpo, 21 testes verdes, smoke test das rotas novas OK.
+- **Organização do repo**: `main` criado/protegido (D7), default branch trocado, 15 PRs
+  antigas fechadas.
+
 ## Próximos passos (priorizados para a próxima sessão)
-1. **Vincular contato ↔ show pela UI** — o schema (`ContactsOnShows`) e a exibição no
-   detalhe do show já existem, mas falta a ação para associar/desassociar. Adicionar
-   seletor de contatos na tela do show + action.
-2. **Visão de calendário dos shows** (F2 prevê lista + calendário; só há lista). Mês a mês.
-3. **Editar/excluir transação** com formulário (hoje só cria, alterna status e exclui).
-4. **Ampliar testes**: incluir testes de integração das server actions (validação + posse
+1. **Visão de calendário dos shows** (F2 prevê lista + calendário; só há lista). Mês a mês.
+2. **Ampliar testes**: incluir testes de integração das server actions (validação + posse
    por usuário) — ex.: garantir que um usuário não acessa shows de outro. Considerar
    `vitest` com um banco SQLite de teste isolado.
-5. **Polimento UX**: estados de loading/erro, mensagens vazias, acessibilidade,
+3. **Polimento UX**: estados de loading/erro, mensagens vazias, acessibilidade,
    confirmação antes de excluir (hoje exclui direto). Formatar input monetário ao digitar.
-6. **Filtros/períodos nas Finanças** (por mês, por tipo, por show).
-7. **Conta**: editar perfil (nome/nome artístico), trocar senha.
+4. **Filtros/períodos nas Finanças** (por mês, por tipo, por show).
+5. **Conta**: editar perfil (nome/nome artístico), trocar senha.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)
