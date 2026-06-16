@@ -75,8 +75,31 @@ export type CalendarCell<T> = {
   items: T[]; // itens cujo `date` cai neste dia, em ordem de horário
 };
 
-const dayBucketKey = (d: Date) =>
-  `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+/** Data local -> chave de dia "YYYY-MM-DD" (mesma convenção da grade exibida). */
+export function toDayParam(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+const dayBucketKey = toDayParam;
+
+/**
+ * Converte um parâmetro de dia "YYYY-MM-DD" (ex.: vindo de um clique numa célula
+ * do calendário) no valor de um `<input type="datetime-local">`, prefixando um
+ * horário padrão de show. Retorna `undefined` para entradas inválidas, deixando
+ * o formulário sem data pré-preenchida.
+ */
+export function dayParamToDateTimeLocal(
+  param: string | undefined | null,
+  defaultTime = "20:00",
+): string | undefined {
+  if (!param) return undefined;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(param.trim());
+  if (!m) return undefined;
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return undefined;
+  return `${m[1]}-${m[2]}-${m[3]}T${defaultTime}`;
+}
 
 /**
  * Monta a grade do mês como semanas (linhas) de 7 células (dias). Cada item é

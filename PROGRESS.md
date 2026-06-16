@@ -21,7 +21,8 @@ Conta** (`/conta`): editar perfil (nome/nome artístico) e trocar senha (com ver
 da senha atual). Sessão 10 adicionou o **filtro por categoria** nas Finanças. Sessão 11 entregou
 **máscara de input monetário ao digitar** (componente `MoneyInput`) nos campos de
 valor da transação e do cachê do show. Sessão 12 entregou **filtro por intervalo de
-datas (De/Até)** nas Finanças. Próxima
+datas (De/Até)** nas Finanças. Sessão 13 entregou **criar show a partir de um clique
+no dia do calendário** (data pré-preenchida via `?data=YYYY-MM-DD`). Próxima
 sessão: continuar o polimento de UX (estados de loading/erro inline nos formulários)
 ou evoluções do calendário/filtros (persistir o último filtro usado).
 
@@ -232,11 +233,31 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   test (/login 200, /financas e /financas?de=&ate= sem sessão → 307). `npm audit` inalterado
   (10 advisories: 3 moderate / 6 high / 1 critical; nenhuma dependência nova — ver D6/D8).
 
+### Sessão 13 — 2026-06-16 (Fase 1 — criar show a partir do calendário)
+- **Lógica pura** (`src/lib/calendar.ts`): novo `toDayParam(date)` (data local →
+  "YYYY-MM-DD", agora reutilizado internamente por `dayBucketKey` — DRY) e
+  `dayParamToDateTimeLocal(param, defaultTime="20:00")`, que valida a chave de dia e a
+  converte no valor de um `<input type="datetime-local">` com horário padrão (entrada
+  inválida → `undefined`, deixando o form sem data). Testes em `src/lib/calendar.test.ts`
+  (+7 → **19 no arquivo, 110 no projeto**, eram 103): formatação local, round-trip com a
+  grade, validação de mês/dia e horário customizado.
+- **UI**: cada célula da grade do calendário (`src/app/(app)/shows/calendario/page.tsx`)
+  agora é um `group` com um botão **+** (link para `/shows/novo?data=YYYY-MM-DD`) que
+  aparece no hover/foco do dia, com `aria-label` por data. A página `shows/novo`
+  (`src/app/(app)/shows/novo/page.tsx`) lê `?data=` e pré-preenche o campo de data do
+  `ShowForm` via `dayParamToDateTimeLocal`. Sem novas dependências; nenhuma mudança nos
+  server actions.
+- Definition of Done verde: build (16 rotas), typecheck (`tsc --noEmit`) limpo, lint (0),
+  110 testes, smoke test (/login 200, / 200, /shows/calendario e /shows/novo?data=... sem
+  sessão → 307; data inválida também → 307, ignorada). `npm audit` inalterado (10
+  advisories: 3 moderate / 6 high / 1 critical; nenhuma dependência nova — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)
-2. **Calendário — evoluções**: link do dashboard direto para o mês atual; clicar num dia
-   vazio para criar show já com a data; visão semanal. (base pronta em `src/lib/calendar.ts`.)
+2. **Calendário — evoluções**: link do dashboard direto para o mês atual; visão semanal.
+   (clicar num dia para criar show já com a data entregue na Sessão 13; base em
+   `src/lib/calendar.ts`.)
 3. **Filtros — evoluções**: persistir o último filtro usado (ex.: cookie/localStorage).
    (filtro por categoria entregue na Sessão 10; intervalo de datas na Sessão 12; base em
    `src/lib/finance.ts`.)

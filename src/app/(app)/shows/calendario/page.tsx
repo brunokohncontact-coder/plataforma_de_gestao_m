@@ -9,6 +9,7 @@ import {
   parseMonthKey,
   shiftMonth,
   formatMonthTitle,
+  toDayParam,
   WEEKDAY_LABELS,
 } from "@/lib/calendar";
 import { SHOW_STATUS_DOT, SHOW_STATUS_LABELS, type ShowStatus } from "@/lib/domain";
@@ -94,11 +95,12 @@ export default async function ShowsCalendarPage({
         <div className="grid grid-cols-7">
           {grid.flat().map((cell) => {
             const key = cell.date.toISOString();
+            const dayParam = toDayParam(cell.date);
             return (
               <div
                 key={key}
                 className={
-                  "min-h-[6rem] border-b border-r border-gray-100 p-1.5 align-top " +
+                  "group min-h-[6rem] border-b border-r border-gray-100 p-1.5 align-top " +
                   (cell.inMonth ? "bg-white" : "bg-gray-50/60")
                 }
               >
@@ -115,6 +117,14 @@ export default async function ShowsCalendarPage({
                   >
                     {cell.date.getDate()}
                   </span>
+                  <Link
+                    href={`/shows/novo?data=${dayParam}`}
+                    title="Novo show neste dia"
+                    aria-label={`Novo show em ${cell.date.toLocaleDateString("pt-BR")}`}
+                    className="inline-flex h-5 w-5 items-center justify-center rounded text-sm leading-none text-gray-400 opacity-0 transition hover:bg-brand-50 hover:text-brand-700 focus:opacity-100 focus-visible:opacity-100 group-hover:opacity-100"
+                  >
+                    +
+                  </Link>
                 </div>
                 <div className="space-y-1">
                   {cell.items.map((s) => {
