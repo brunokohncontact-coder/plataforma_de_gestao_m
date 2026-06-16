@@ -4,12 +4,12 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos.** O app builda
-(`npm run build`), roda e passa nos testes (`npm test`, 21 testes). As cinco
-funcionalidades do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis.
-Sessão 3 fechou os ciclos de edição: **editar transação** e **vincular/desvincular
-contatos a shows pela UI**. Próxima sessão: visão de calendário, testes de integração
-(posse por usuário) e polimento de UX.
+**Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário.**
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **33 testes**). As
+cinco funcionalidades do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e
+navegáveis. Sessão 4 entregou a **visão de calendário dos shows** (F2 previa lista +
+calendário; agora tem ambos, com navegação mês a mês). Próxima sessão: testes de
+integração (posse por usuário) e polimento de UX.
 
 ## Modelo de branches (a partir de 2026-06-16)
 O repositório tem um tronco **`main`** (ver DECISIONS.md D7), já definido como **default
@@ -64,15 +64,30 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
 - **Organização do repo**: `main` criado/protegido (D7), default branch trocado, 15 PRs
   antigas fechadas.
 
+### Sessão 4 — 2026-06-16 (Fase 1 — visão de calendário dos shows)
+- **Lógica pura de calendário** (`src/lib/calendar.ts`): `parseMonthKey`/`monthKey`/
+  `shiftMonth` (navegação por `?mes=YYYY-MM`, com fallback ao mês atual), `monthGridRange`
+  (intervalo da grade p/ consulta única ao banco), `buildMonthGrid` (grade de semanas
+  domingo→sábado, distribuindo shows no dia local e ordenando por horário). Testes:
+  `src/lib/calendar.test.ts` (**12**), total do projeto **33 verdes**.
+- **Página** `src/app/(app)/shows/calendario/page.tsx`: grade mensal com navegação
+  ←/→/Hoje, ponto de status por show, links para o detalhe e legenda. Consulta só os
+  shows da janela exibida (inclui bordas dos meses vizinhos).
+- **Alternador Lista/Calendário** (`src/components/ShowsViewToggle.tsx`) nas duas telas;
+  cores de status sólidas em `src/lib/domain.ts` (`SHOW_STATUS_DOT`).
+- Build verde (17 rotas, nova `/shows/calendario`), typecheck limpo, smoke test autenticado
+  OK (render do mês + fallback de `?mes` inválido → 200). `npm audit` inalterado (ver D6).
+
 ## Próximos passos (priorizados para a próxima sessão)
-1. **Visão de calendário dos shows** (F2 prevê lista + calendário; só há lista). Mês a mês.
-2. **Ampliar testes**: incluir testes de integração das server actions (validação + posse
+1. **Ampliar testes**: incluir testes de integração das server actions (validação + posse
    por usuário) — ex.: garantir que um usuário não acessa shows de outro. Considerar
    `vitest` com um banco SQLite de teste isolado.
-3. **Polimento UX**: estados de loading/erro, mensagens vazias, acessibilidade,
+2. **Polimento UX**: estados de loading/erro, mensagens vazias, acessibilidade,
    confirmação antes de excluir (hoje exclui direto). Formatar input monetário ao digitar.
-4. **Filtros/períodos nas Finanças** (por mês, por tipo, por show).
-5. **Conta**: editar perfil (nome/nome artístico), trocar senha.
+3. **Filtros/períodos nas Finanças** (por mês, por tipo, por show).
+4. **Conta**: editar perfil (nome/nome artístico), trocar senha.
+5. **Calendário — evoluções**: link do dashboard direto para o mês atual; clicar num dia
+   vazio para criar show já com a data; visão semanal. (base pronta em `src/lib/calendar.ts`.)
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { formatDateTime } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
 import { SHOW_STATUS_LABELS, SHOW_STATUS_COLORS, type ShowStatus } from "@/lib/domain";
+import { ShowsViewToggle } from "@/components/ShowsViewToggle";
 
 export const dynamic = "force-dynamic";
 
@@ -16,11 +17,14 @@ export default async function ShowsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">Shows</h1>
-        <Link href="/shows/novo" className="btn-primary">
-          + Novo show
-        </Link>
+        <div className="flex items-center gap-3">
+          <ShowsViewToggle active="lista" />
+          <Link href="/shows/novo" className="btn-primary">
+            + Novo show
+          </Link>
+        </div>
       </div>
 
       {shows.length === 0 ? (
