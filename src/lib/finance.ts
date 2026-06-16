@@ -174,6 +174,8 @@ export interface TransactionFilter {
   showId?: string | null;
   /** Status de caixa (true = recebido/pago, false = pendente); quando ausente, todos. */
   received?: boolean | null;
+  /** Categoria exata; quando ausente, todas. */
+  category?: string | null;
 }
 
 /** Valida uma chave de mês "YYYY-MM" (mês entre 01 e 12). */
@@ -187,7 +189,13 @@ export function isValidMonthKey(key: string | undefined | null): key is string {
 
 /** True se ao menos um critério do filtro está ativo. */
 export function hasActiveFilter(filter: TransactionFilter): boolean {
-  return Boolean(filter.month || filter.type || filter.showId || filter.received != null);
+  return Boolean(
+    filter.month ||
+      filter.type ||
+      filter.showId ||
+      filter.received != null ||
+      filter.category,
+  );
 }
 
 /**
@@ -204,6 +212,7 @@ export function filterTransactions<T extends TxLike>(
     if (month && monthKey(t.date) !== month) return false;
     if (filter.showId && (t.showId ?? null) !== filter.showId) return false;
     if (filter.received != null && t.received !== filter.received) return false;
+    if (filter.category && t.category !== filter.category) return false;
     return true;
   });
 }
@@ -213,6 +222,16 @@ export function availableMonths(txs: TxLike[]): string[] {
   const set = new Set<string>();
   for (const t of txs) set.add(monthKey(t.date));
   return Array.from(set).sort((a, b) => b.localeCompare(a));
+}
+
+/** Categorias presentes nas transações, únicas e em ordem alfabética (pt-BR). */
+export function availableCategories(txs: TxLike[]): string[] {
+  const set = new Set<string>();
+  for (const t of txs) {
+    const c = t.category?.trim();
+    if (c) set.add(c);
+  }
+  return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
