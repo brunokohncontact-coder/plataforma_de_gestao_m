@@ -5,15 +5,16 @@
 
 ## Estado atual
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
-+ testes de integração de posse por usuário + ESLint no CI.**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **55 testes**),
++ testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças.**
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **67 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
 do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. Sessão 4 entregou
 a visão de calendário dos shows. Sessão 5 entregou **testes de integração das server
 actions** com um banco SQLite isolado, cobrindo o isolamento por usuário. Sessão 6
 configurou **ESLint** (`next/core-web-vitals`) e adicionou o passo de lint ao CI — fechando
-o último item pendente da Definition of Done. Próxima sessão: polimento de UX (confirmação
-ao excluir, estados vazios/erro) e filtros nas Finanças.
+o último item pendente da Definition of Done. Sessão 7 entregou **filtros na página de
+Finanças** (mês, tipo, show, situação) via query string, com resumo recomputado sobre o
+recorte. Próxima sessão: polimento de UX (confirmação ao excluir, estados de loading/erro).
 
 ## Modelo de branches (a partir de 2026-06-16)
 O repositório tem um tronco **`main`** (ver DECISIONS.md D7), já definido como **default
@@ -119,13 +120,29 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   (`eslint-config-next`→`@next/eslint-plugin-next`→`glob` CLI), não exploitáveis no runtime —
   detalhado em D8.
 
+### Sessão 7 — 2026-06-16 (Fase 1 — filtros nas Finanças)
+- **Lógica pura de filtro** (`src/lib/finance.ts`): `filterTransactions` (mês/tipo/show/
+  situação, critérios ausentes ignorados, mês inválido tratado como "sem filtro"),
+  `availableMonths` (meses presentes, ordem decrescente), `isValidMonthKey`, `hasActiveFilter`.
+  Testes em `src/lib/finance.test.ts` (+12 → **25 no arquivo, 67 no projeto**).
+- **UI** (`src/app/(app)/financas/page.tsx`): formulário GET com seletores de Mês, Tipo,
+  Show e Situação (`?mes=&tipo=&show=&status=`), botão **Filtrar** e link **Limpar**. O
+  resumo (cards de Receitas/Despesas/Saldo/Caixa e pendências) é **recomputado sobre o
+  recorte filtrado**; contador "N de M transações" e estado vazio dedicado para filtros sem
+  resultado. Decisão de arquitetura registrada em **DECISIONS.md D9** (query string +
+  filtragem em memória).
+- Definition of Done verde: build (16 rotas), typecheck, lint (0), 67 testes, smoke test
+  autenticado OK (/financas e variações com filtro → 200; sem sessão → 307). `npm audit`
+  inalterado em relação à Sessão 6 (ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro, mensagens vazias, acessibilidade,
    confirmação antes de excluir (hoje exclui direto). Formatar input monetário ao digitar.
-2. **Filtros/períodos nas Finanças** (por mês, por tipo, por show).
-3. **Conta**: editar perfil (nome/nome artístico), trocar senha.
-4. **Calendário — evoluções**: link do dashboard direto para o mês atual; clicar num dia
+2. **Conta**: editar perfil (nome/nome artístico), trocar senha.
+3. **Calendário — evoluções**: link do dashboard direto para o mês atual; clicar num dia
    vazio para criar show já com a data; visão semanal. (base pronta em `src/lib/calendar.ts`.)
+4. **Filtros — evoluções**: período por intervalo de datas; filtrar por categoria;
+   persistir o último filtro usado. (base pronta em `src/lib/finance.ts`.)
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

@@ -92,3 +92,18 @@ contexto, decisão, justificativa e alternativas consideradas.
   (as ferramentas disponíveis nesta sessão não permitem alterar o default branch).
 - **Alternativas consideradas:** criar `main` já com a Fase 1 (descartado: deixaria a PR
   #16 sem conteúdo a revisar); manter o modelo sem trunk (descartado: insustentável).
+
+## 2026-06-16 — D9: Filtros das Finanças via query string + filtragem em memória
+- **Decisão:** os filtros da página de Finanças (mês, tipo, show, situação) vivem na **query
+  string** (`?mes=&tipo=&show=&status=`, formulário GET) e a filtragem roda **em memória**
+  no servidor — carrega-se todas as transações do usuário e aplica-se `filterTransactions`
+  (lógica pura, testada em `finance.test.ts`) antes de recomputar o resumo (`summarizeFinances`).
+- **Justificativa:** a query string torna os filtros **compartilháveis/bookmarkáveis** e
+  segue o padrão já adotado no calendário (`?mes=`). Filtrar em memória mantém uma única
+  fonte de verdade (a lógica pura testada) para a lista, o resumo (cards) e os meses
+  disponíveis do seletor, sem duplicar a regra em SQL. Para a escala do MVP (transações de
+  um músico individual) o custo é irrelevante.
+- **Alternativas consideradas:** filtrar no banco com `where` dinâmico (descartado por ora:
+  duplicaria a regra e exigiria múltiplas queries para resumo + meses disponíveis; deve ser
+  reconsiderado se o volume por usuário crescer muito); filtros client-side com estado React
+  (descartado: quebraria o padrão server-component e a navegabilidade por URL).

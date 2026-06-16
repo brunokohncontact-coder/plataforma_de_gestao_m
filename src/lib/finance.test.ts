@@ -5,6 +5,10 @@ import {
   totalsByCategory,
   totalsByMonth,
   monthKey,
+  filterTransactions,
+  availableMonths,
+  isValidMonthKey,
+  hasActiveFilter,
   type TxLike,
   type ShowLike,
 } from "./finance";
@@ -160,5 +164,94 @@ describe("monthKey", () => {
   it("extrai YYYY-MM em UTC", () => {
     expect(monthKey("2026-06-16T12:00:00.000Z")).toBe("2026-06");
     expect(monthKey(new Date("2026-12-01T00:00:00.000Z"))).toBe("2026-12");
+  });
+});
+
+describe("isValidMonthKey", () => {
+  it("aceita YYYY-MM válidos", () => {
+    expect(isValidMonthKey("2026-06")).toBe(true);
+    expect(isValidMonthKey("2026-01")).toBe(true);
+    expect(isValidMonthKey("2026-12")).toBe(true);
+  });
+  it("rejeita formatos/valores inválidos e vazios", () => {
+    expect(isValidMonthKey("2026-13")).toBe(false);
+    expect(isValidMonthKey("2026-00")).toBe(false);
+    expect(isValidMonthKey("2026-6")).toBe(false);
+    expect(isValidMonthKey("junho")).toBe(false);
+    expect(isValidMonthKey("")).toBe(false);
+    expect(isValidMonthKey(null)).toBe(false);
+    expect(isValidMonthKey(undefined)).toBe(false);
+  });
+});
+
+describe("filterTransactions", () => {
+  const txs: TxLike[] = [
+    tx({ type: "INCOME", amount: 100_00, date: "2026-01-10T00:00:00.000Z", showId: "s1", received: true }),
+    tx({ type: "EXPENSE", amount: 30_00, date: "2026-01-20T00:00:00.000Z", showId: "s1", received: false }),
+    tx({ type: "INCOME", amount: 50_00, date: "2026-02-05T00:00:00.000Z", showId: null, received: false }),
+    tx({ type: "EXPENSE", amount: 20_00, date: "2026-02-15T00:00:00.000Z", showId: "s2", received: true }),
+  ];
+
+  it("retorna tudo quando o filtro está vazio", () => {
+    expect(filterTransactions(txs, {})).toHaveLength(4);
+  });
+
+  it("filtra por mês", () => {
+    const r = filterTransactions(txs, { month: "2026-01" });
+    expect(r).toHaveLength(2);
+    expect(r.every((t) => monthKey(t.date) === "2026-01")).toBe(true);
+  });
+
+  it("filtra por tipo", () => {
+    expect(filterTransactions(txs, { type: "INCOME" })).toHaveLength(2);
+    expect(filterTransactions(txs, { type: "EXPENSE" })).toHaveLength(2);
+  });
+
+  it("filtra por show", () => {
+    const r = filterTransactions(txs, { showId: "s1" });
+    expect(r).toHaveLength(2);
+    expect(r.every((t) => t.showId === "s1")).toBe(true);
+  });
+
+  it("filtra por status de caixa (received)", () => {
+    expect(filterTransactions(txs, { received: false })).toHaveLength(2);
+    expect(filterTransactions(txs, { received: true })).toHaveLength(2);
+  });
+
+  it("combina critérios (mês + tipo)", () => {
+    const r = filterTransactions(txs, { month: "2026-01", type: "EXPENSE" });
+    expect(r).toHaveLength(1);
+    expect(r[0].amount).toBe(30_00);
+  });
+
+  it("ignora mês inválido (não filtra por mês)", () => {
+    expect(filterTransactions(txs, { month: "2026-13" })).toHaveLength(4);
+    expect(filterTransactions(txs, { month: "" })).toHaveLength(4);
+  });
+});
+
+describe("availableMonths", () => {
+  it("lista meses únicos em ordem decrescente", () => {
+    const txs: TxLike[] = [
+      tx({ date: "2026-01-10T00:00:00.000Z" }),
+      tx({ date: "2026-02-10T00:00:00.000Z" }),
+      tx({ date: "2026-02-28T00:00:00.000Z" }),
+      tx({ date: "2025-12-31T00:00:00.000Z" }),
+    ];
+    expect(availableMonths(txs)).toEqual(["2026-02", "2026-01", "2025-12"]);
+  });
+  it("retorna lista vazia para nenhuma transação", () => {
+    expect(availableMonths([])).toEqual([]);
+  });
+});
+
+describe("hasActiveFilter", () => {
+  it("detecta filtros ativos", () => {
+    expect(hasActiveFilter({})).toBe(false);
+    expect(hasActiveFilter({ month: null, type: null, showId: null })).toBe(false);
+    expect(hasActiveFilter({ month: "2026-01" })).toBe(true);
+    expect(hasActiveFilter({ type: "INCOME" })).toBe(true);
+    expect(hasActiveFilter({ showId: "s1" })).toBe(true);
+    expect(hasActiveFilter({ received: false })).toBe(true);
   });
 });
