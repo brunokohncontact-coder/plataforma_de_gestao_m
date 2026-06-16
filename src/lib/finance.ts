@@ -163,6 +163,58 @@ export function totalsByMonth(txs: TxLike[]): MonthlyTotal[] {
     .sort((a, b) => a.month.localeCompare(b.month));
 }
 
+// ── Filtros (F3 — exploração das finanças) ──────────────────────────────────
+
+export interface TransactionFilter {
+  /** Mês "YYYY-MM"; quando ausente, não filtra por mês. */
+  month?: string | null;
+  /** Tipo (INCOME/EXPENSE); quando ausente, ambos. */
+  type?: TransactionType | null;
+  /** Vincular a um show específico; quando ausente, todos. */
+  showId?: string | null;
+  /** Status de caixa (true = recebido/pago, false = pendente); quando ausente, todos. */
+  received?: boolean | null;
+}
+
+/** Valida uma chave de mês "YYYY-MM" (mês entre 01 e 12). */
+export function isValidMonthKey(key: string | undefined | null): key is string {
+  if (!key) return false;
+  const m = /^(\d{4})-(\d{2})$/.exec(key.trim());
+  if (!m) return false;
+  const month = Number(m[2]);
+  return month >= 1 && month <= 12;
+}
+
+/** True se ao menos um critério do filtro está ativo. */
+export function hasActiveFilter(filter: TransactionFilter): boolean {
+  return Boolean(filter.month || filter.type || filter.showId || filter.received != null);
+}
+
+/**
+ * Filtra transações pelos critérios informados. Critérios ausentes (null/undefined)
+ * são ignorados; um mês inválido também é ignorado (não filtra por mês). Pura.
+ */
+export function filterTransactions<T extends TxLike>(
+  txs: T[],
+  filter: TransactionFilter,
+): T[] {
+  const month = isValidMonthKey(filter.month) ? filter.month : null;
+  return txs.filter((t) => {
+    if (filter.type && t.type !== filter.type) return false;
+    if (month && monthKey(t.date) !== month) return false;
+    if (filter.showId && (t.showId ?? null) !== filter.showId) return false;
+    if (filter.received != null && t.received !== filter.received) return false;
+    return true;
+  });
+}
+
+/** Meses presentes nas transações ("YYYY-MM"), em ordem cronológica decrescente. */
+export function availableMonths(txs: TxLike[]): string[] {
+  const set = new Set<string>();
+  for (const t of txs) set.add(monthKey(t.date));
+  return Array.from(set).sort((a, b) => b.localeCompare(a));
+}
+
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 function sum(nums: number[]): number {
