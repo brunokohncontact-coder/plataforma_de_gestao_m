@@ -1,0 +1,108 @@
+// Schema Prisma — Palco (MVP)
+// Dev: SQLite (zero dependência externa). Produção: trocar provider para "postgresql".
+// Ver DECISIONS.md (D3) para a justificativa de stack/portabilidade.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// Usuário = dono de um workspace (artista/banda). Multiusuário fica para a Fase 2,
+/// mas o modelo já prende todos os dados a um userId para evitar retrabalho.
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  artistName   String? // nome artístico exibido no workspace
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  shows        Show[]
+  transactions Transaction[]
+  contacts     Contact[]
+}
+
+/// Status do show ao longo do ciclo de vida.
+/// SQLite não tem enums nativos via Prisma; usamos String validada na app (ver src/lib/domain).
+model Show {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title     String // ex.: "Show no Bar do Zé" ou nome do evento
+  venue     String? // nome do local
+  city      String?
+  date      DateTime // data/hora do show
+  status    String   @default("proposto") // proposto | confirmado | realizado | cancelado
+  feeAgreed Float    @default(0) // cachê acordado (em centavos? não: usamos unidade monetária; ver DECISIONS)
+  notes     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions Transaction[]
+  contacts     ShowContact[]
+
+  @@index([userId])
+  @@index([userId, date])
+}
+
+/// Lançamento financeiro: receita ou despesa, opcionalmente vinculado a um show.
+model Transaction {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type        String // "receita" | "despesa"
+  amount      Float // valor positivo na unidade monetária; o sinal é dado por `type`
+  category    String // ex.: cache, transporte, equipamento, hospedagem, alimentacao, outro
+  description String?
+  date        DateTime
+  received    Boolean  @default(true) // false = pendente (contas a receber/pagar)
+
+  showId      String?
+  show        Show?    @relation(fields: [showId], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, date])
+  @@index([showId])
+}
+
+/// Contato da indústria (CRM básico).
+model Contact {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name      String
+  role      String // venue | promoter | contratante | produtor | imprensa | outro
+  email     String?
+  phone     String?
+  notes     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shows     ShowContact[]
+
+  @@index([userId])
+}
+
+/// Relação N:N entre Show e Contact.
+model ShowContact {
+  showId    String
+  contactId String
+  show      Show    @relation(fields: [showId], references: [id], onDelete: Cascade)
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@id([showId, contactId])
+  @@index([contactId])
+}
