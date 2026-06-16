@@ -20,9 +20,10 @@ nos três pontos de exclusão (show, contato, transação). Sessão 9 entregou a
 Conta** (`/conta`): editar perfil (nome/nome artístico) e trocar senha (com verificação
 da senha atual). Sessão 10 adicionou o **filtro por categoria** nas Finanças. Sessão 11 entregou
 **máscara de input monetário ao digitar** (componente `MoneyInput`) nos campos de
-valor da transação e do cachê do show. Próxima
+valor da transação e do cachê do show. Sessão 12 entregou **filtro por intervalo de
+datas (De/Até)** nas Finanças. Próxima
 sessão: continuar o polimento de UX (estados de loading/erro inline nos formulários)
-ou evoluções do calendário/filtros (intervalo de datas, persistir o último filtro).
+ou evoluções do calendário/filtros (persistir o último filtro usado).
 
 ## Modelo de branches (a partir de 2026-06-16)
 O repositório tem um tronco **`main`** (ver DECISIONS.md D7), já definido como **default
@@ -215,13 +216,30 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   test autenticado OK (/ 200, /login 200, /dashboard e /shows/novo sem sessão → 307). `npm
   audit` inalterado (10 advisories; nenhuma dependência nova — ver D6/D8).
 
+### Sessão 12 — 2026-06-16 (Fase 1 — filtro por intervalo de datas nas Finanças)
+- **Lógica pura** (`src/lib/finance.ts`): novos campos `from`/`to` ("YYYY-MM-DD") em
+  `TransactionFilter`, aplicados em `filterTransactions` como intervalo **inclusivo nas
+  duas pontas** (compara a chave de dia da transação; intervalo invertido `from`>`to` não
+  casa nada). Novos helpers `isValidDateKey` (mês 01–12, dia 01–31) e `dayKey` (chave
+  "YYYY-MM-DD" em UTC, mesma convenção de `monthKey`). Datas de período inválidas são
+  ignoradas; `hasActiveFilter` passa a considerar `from`/`to`. Testes em
+  `src/lib/finance.test.ts` (+9 → **103 no projeto**, eram 94): intervalo from/to/ambos,
+  invertido, inválido, combinação com tipo, e blocos `isValidDateKey`/`dayKey`.
+- **UI** (`src/app/(app)/financas/page.tsx`): campos **De** e **Até** (`<input type="date">`,
+  `?de=&ate=`) no formulário de filtros, combinados (AND) com os demais critérios e
+  recomputando o resumo sobre o recorte; integrados ao link **Limpar**. Sem novas dependências.
+- Definition of Done verde: build (17 rotas), typecheck limpo, lint (0), 103 testes, smoke
+  test (/login 200, /financas e /financas?de=&ate= sem sessão → 307). `npm audit` inalterado
+  (10 advisories: 3 moderate / 6 high / 1 critical; nenhuma dependência nova — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)
 2. **Calendário — evoluções**: link do dashboard direto para o mês atual; clicar num dia
    vazio para criar show já com a data; visão semanal. (base pronta em `src/lib/calendar.ts`.)
-3. **Filtros — evoluções**: período por intervalo de datas; persistir o último filtro
-   usado. (filtro por categoria já entregue na Sessão 10; base em `src/lib/finance.ts`.)
+3. **Filtros — evoluções**: persistir o último filtro usado (ex.: cookie/localStorage).
+   (filtro por categoria entregue na Sessão 10; intervalo de datas na Sessão 12; base em
+   `src/lib/finance.ts`.)
 4. **Sessões/segurança** (ver D10): considerar `tokenVersion`/`passwordChangedAt` no `User`
    para invalidar sessões ao trocar a senha quando houver login em múltiplos dispositivos.
 

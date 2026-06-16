@@ -8,6 +8,7 @@ import {
   availableCategories,
   hasActiveFilter,
   isValidMonthKey,
+  isValidDateKey,
   type TxLike,
   type TransactionFilter,
 } from "@/lib/finance";
@@ -50,6 +51,8 @@ export default async function FinancesPage({
   const showParam = readParam(params, "show");
   const statusParam = readParam(params, "status");
   const categoryParam = readParam(params, "categoria");
+  const fromParam = readParam(params, "de");
+  const toParam = readParam(params, "ate");
 
   const filter: TransactionFilter = {
     month: isValidMonthKey(monthParam) ? monthParam : null,
@@ -61,6 +64,8 @@ export default async function FinancesPage({
     received:
       statusParam === "received" ? true : statusParam === "pending" ? false : null,
     category: categoryParam || null,
+    from: isValidDateKey(fromParam) ? fromParam : null,
+    to: isValidDateKey(toParam) ? toParam : null,
   };
   const active = hasActiveFilter(filter);
 
@@ -168,6 +173,26 @@ export default async function FinancesPage({
               <option value="received">Concluídas</option>
               <option value="pending">Pendentes</option>
             </select>
+          </Field>
+
+          <Field label="De" htmlFor="f-de">
+            <input
+              id="f-de"
+              type="date"
+              name="de"
+              defaultValue={filter.from ?? ""}
+              className="input"
+            />
+          </Field>
+
+          <Field label="Até" htmlFor="f-ate">
+            <input
+              id="f-ate"
+              type="date"
+              name="ate"
+              defaultValue={filter.to ?? ""}
+              className="input"
+            />
           </Field>
 
           <div className="flex items-center gap-2">
