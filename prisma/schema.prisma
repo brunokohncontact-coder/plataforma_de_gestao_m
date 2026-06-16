@@ -1,0 +1,116 @@
+// Palco — schema de dados do MVP.
+// Banco: SQLite em desenvolvimento (zero dependência externa). Schema mantido
+// portável para PostgreSQL em produção (trocar `provider` para "postgresql").
+// Ver DECISIONS.md (D3).
+//
+// NOTA: SQLite no Prisma não suporta `enum` nativo. Por isso os campos de
+// "enum" são `String` com valores validados na camada de aplicação (Zod em
+// src/lib/validation.ts e constantes em src/lib/domain.ts). Ao migrar para
+// PostgreSQL, podem ser promovidos a enums nativos.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ── F1: Autenticação e workspace ────────────────────────────────────────────
+// Cada usuário é dono do seu workspace. O modelo já isola dados por usuário
+// (campo `userId` nas entidades) para não retrabalhar ao introduzir multiusuário.
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  name         String
+  passwordHash String
+  artistName   String? // nome artístico / da banda
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  shows        Show[]
+  transactions Transaction[]
+  contacts     Contact[]
+}
+
+// ── F2: Agenda de shows ─────────────────────────────────────────────────────
+// status: PROPOSED | CONFIRMED | PLAYED | CANCELLED  (ver src/lib/domain.ts)
+model Show {
+  id        String     @id @default(cuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title     String // ex.: "Show no Bar X" ou nome do evento
+  date      DateTime
+  venue     String? // local
+  city      String?
+  status    String     @default("PROPOSED")
+  fee       Int        @default(0) // cachê acordado, em centavos
+  notes     String?
+
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  transactions Transaction[] // despesas/receitas vinculadas (F4)
+  contacts     ContactsOnShows[]
+
+  @@index([userId, date])
+}
+
+// ── F3: Finanças ────────────────────────────────────────────────────────────
+// type: INCOME | EXPENSE  (ver src/lib/domain.ts)
+model Transaction {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type        String // INCOME | EXPENSE
+  description String
+  category    String // ex.: cachê, transporte, equipamento, marketing
+  amount      Int // valor em centavos (sempre positivo; o sinal vem de `type`)
+  date        DateTime
+  received    Boolean  @default(true) // recebido/pago vs. pendente (contas a receber)
+
+  // F4: vínculo opcional a um show, para rentabilidade
+  showId      String?
+  show        Show?    @relation(fields: [showId], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, date])
+  @@index([showId])
+}
+
+// ── F5: CRM de contatos ─────────────────────────────────────────────────────
+// role: VENUE | PROMOTER | BOOKER | PRODUCER | PRESS | OTHER  (ver src/lib/domain.ts)
+model Contact {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name      String
+  role      String   @default("OTHER")
+  email     String?
+  phone     String?
+  notes     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shows     ContactsOnShows[]
+
+  @@index([userId])
+}
+
+// tabela de junção many-to-many Contact <-> Show
+model ContactsOnShows {
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  showId    String
+  show      Show    @relation(fields: [showId], references: [id], onDelete: Cascade)
+
+  @@id([contactId, showId])
+  @@index([showId])
+}
