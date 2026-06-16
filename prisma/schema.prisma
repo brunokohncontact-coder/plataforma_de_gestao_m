@@ -1,0 +1,87 @@
+// Prisma schema — Plataforma de gestão de carreira para músicos.
+// Dev: SQLite (zero dependência externa). Produção: migrar provider para postgresql.
+// SQLite não suporta enums nativos do Prisma; usamos String + validação Zod em src/lib/validation.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// Usuário = artista/banda. Cada usuário é o dono de um workspace (multiusuário fica p/ fase 2).
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  shows        Show[]
+  transactions Transaction[]
+  contacts     Contact[]
+}
+
+/// Show / apresentação. Status: proposed | confirmed | done | cancelled.
+model Show {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String // ex.: "Show no Bar X" ou nome do evento
+  venue     String? // nome do local
+  city      String?
+  date      DateTime
+  status    String   @default("proposed")
+  fee       Float    @default(0) // cachê acordado
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contactId    String?
+  contact      Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  transactions Transaction[]
+
+  @@index([userId, date])
+}
+
+/// Transação financeira. type: income | expense. status: received | pending (para income).
+model Transaction {
+  id          String   @id @default(cuid())
+  userId      String
+  type        String // income | expense
+  category    String
+  description String?
+  amount      Float // sempre positivo; o sinal vem de `type`
+  date        DateTime
+  status      String   @default("received") // received | pending
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  showId String?
+  show   Show?   @relation(fields: [showId], references: [id], onDelete: SetNull)
+
+  @@index([userId, date])
+  @@index([showId])
+}
+
+/// Contato da indústria. role: venue | promoter | booker | producer | press | other.
+model Contact {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  role      String   @default("other")
+  email     String?
+  phone     String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shows Show[]
+
+  @@index([userId])
+}

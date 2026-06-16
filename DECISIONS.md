@@ -34,3 +34,22 @@ contexto, decisão, justificativa e alternativas consideradas.
   local em dev (exige serviço rodando — atrito nas execuções remotas); Drizzle (Prisma é
   mais maduro para migrations rápidas).
 - **A revisar:** se produção exigir Postgres desde já, migrar o `provider` do Prisma.
+
+## 2026-06-16 — D4: Definição de rentabilidade por show (P&L)
+- **Decisão:** `resultado = cachê (fee) − Σ despesas vinculadas (showId)`. Transações de
+  **receita** vinculadas a um show **não** são somadas ao cálculo, para não duplicar o cachê
+  (o cachê já é representado por `Show.fee`). Implementado em `src/lib/finance.ts:showProfit`.
+- **Justificativa:** o `fee` é a fonte única de verdade da receita do show; somar também a
+  receita-cachê registrada como `Transaction` causaria contagem dupla. Mantém o número simples
+  e previsível, alinhado ao escopo (`docs/mvp-scope.md` F4).
+- **A revisar:** se no futuro um show tiver múltiplas fontes de receita (ex.: bilheteria +
+  merch no show), considerar somar receitas vinculadas e tratar o `fee` como estimativa.
+
+## 2026-06-16 — D5: Hash de senha com scrypt (stdlib do Node), sem lib externa
+- **Decisão:** hashing próprio com `node:crypto` scrypt (`src/lib/password.ts`), formato
+  `scrypt$salt$hash`, comparação em tempo constante. Auth de sessão ainda **não** implementada.
+- **Justificativa:** zero dependência extra para o MVP; scrypt é adequado para senhas. Evita
+  trazer NextAuth/bcrypt antes de validar o fluxo. A escolha de NextAuth/Auth.js para a camada
+  de **sessão** (cookies/JWT) continua em aberto para a próxima sessão (ver PROGRESS).
+- **A revisar:** se adotarmos Auth.js, ele pode encapsular o credential provider; manter
+  `verifyPassword` como base é compatível.
