@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useFormState } from "react-dom";
 import Link from "next/link";
 import { SubmitButton } from "@/components/SubmitButton";
+import { MoneyInput } from "@/components/MoneyInput";
 import {
   TRANSACTION_TYPES,
   TRANSACTION_TYPE_LABELS,
@@ -107,16 +108,7 @@ export function TransactionForm({
           <label className="label" htmlFor="amount">
             Valor (R$)
           </label>
-          <input
-            className="input"
-            id="amount"
-            name="amount"
-            type="text"
-            inputMode="decimal"
-            required
-            defaultValue={values?.amount}
-            placeholder="0,00"
-          />
+          <MoneyInput id="amount" name="amount" required defaultValue={values?.amount} />
         </div>
         <div>
           <label className="label" htmlFor="date">

@@ -3,6 +3,7 @@
 import { useFormState } from "react-dom";
 import Link from "next/link";
 import { SubmitButton } from "@/components/SubmitButton";
+import { MoneyInput } from "@/components/MoneyInput";
 import { SHOW_STATUSES, SHOW_STATUS_LABELS } from "@/lib/domain";
 import type { FormState } from "./actions";
 
@@ -99,15 +100,7 @@ export function ShowForm({
         <label className="label" htmlFor="fee">
           Cachê acordado (R$) <span className="text-gray-400">(opcional)</span>
         </label>
-        <input
-          className="input"
-          id="fee"
-          name="fee"
-          type="text"
-          inputMode="decimal"
-          placeholder="0,00"
-          defaultValue={values.fee}
-        />
+        <MoneyInput id="fee" name="fee" defaultValue={values.fee} />
       </div>
 
       <div>
