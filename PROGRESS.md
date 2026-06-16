@@ -18,10 +18,11 @@ Finanças** (mês, tipo, show, situação) via query string, com resumo recomput
 recorte. Sessão 8 entregou **confirmação antes de excluir** (componente `DeleteButton`)
 nos três pontos de exclusão (show, contato, transação). Sessão 9 entregou a **página de
 Conta** (`/conta`): editar perfil (nome/nome artístico) e trocar senha (com verificação
-da senha atual). Sessão 10 adicionou o **filtro por categoria** nas Finanças. Próxima
-sessão: continuar o polimento de UX (estados de loading/erro inline nos formulários,
-formatação de input monetário) ou evoluções do calendário/filtros (intervalo de datas,
-persistir o último filtro).
+da senha atual). Sessão 10 adicionou o **filtro por categoria** nas Finanças. Sessão 11 entregou
+**máscara de input monetário ao digitar** (componente `MoneyInput`) nos campos de
+valor da transação e do cachê do show. Próxima
+sessão: continuar o polimento de UX (estados de loading/erro inline nos formulários)
+ou evoluções do calendário/filtros (intervalo de datas, persistir o último filtro).
 
 ## Modelo de branches (a partir de 2026-06-16)
 O repositório tem um tronco **`main`** (ver DECISIONS.md D7), já definido como **default
@@ -196,9 +197,27 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   test (/login 200, / 200, /financas e /financas?categoria=... sem sessão → 307). `npm
   audit` inalterado (10 advisories; nenhuma dependência nova — ver D6/D8).
 
+### Sessão 11 — 2026-06-16 (Fase 1 — máscara de input monetário)
+- **Lógica pura** (`src/lib/money.ts`): nova `maskMoneyInput(input)` — trata todos os
+  dígitos como centavos e formata em pt-BR ("12345" → "123,45"; "1234567" → "12.345,67";
+  "1" → "0,01"). Trabalha **sobre strings** (sem aritmética de ponto flutuante), então
+  preserva precisão em valores grandes; ignora caracteres não numéricos (digitação livre)
+  e remove zeros à esquerda. A saída é compatível com `parseMoneyToCents` (verificado em
+  teste). Testes em `src/lib/money.test.ts` (**11**, inclui idempotência e round-trip com
+  `parseMoneyToCents`); total do projeto **94** (eram 83).
+- **Componente reutilizável** `src/components/MoneyInput.tsx` (client): input controlado
+  que aplica `maskMoneyInput` no `onChange`; envia a string mascarada no form (já parseável
+  pelo schema Zod existente). Aceita `defaultValue` (formato de `centsToInputValue`, ex.:
+  "1234.56") e o normaliza na montagem para edição.
+- **Aplicado** nos dois campos de valor: `TransactionForm` (valor da transação) e
+  `ShowForm` (cachê acordado). Sem novas dependências; nenhuma mudança nos server actions.
+- Definition of Done verde: build (17 rotas), typecheck limpo, lint (0), 94 testes, smoke
+  test autenticado OK (/ 200, /login 200, /dashboard e /shows/novo sem sessão → 307). `npm
+  audit` inalterado (10 advisories; nenhuma dependência nova — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
-   mensagens vazias, acessibilidade. Formatar input monetário ao digitar.
+   mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)
 2. **Calendário — evoluções**: link do dashboard direto para o mês atual; clicar num dia
    vazio para criar show já com a data; visão semanal. (base pronta em `src/lib/calendar.ts`.)
 3. **Filtros — evoluções**: período por intervalo de datas; persistir o último filtro
