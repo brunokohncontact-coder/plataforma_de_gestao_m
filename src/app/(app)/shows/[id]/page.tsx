@@ -19,6 +19,7 @@ import {
   linkContactToShowAction,
   unlinkContactFromShowAction,
 } from "../actions";
+import { DeleteButton } from "@/components/DeleteButton";
 
 export const dynamic = "force-dynamic";
 
@@ -206,12 +207,13 @@ export default async function ShowDetailPage({ params }: { params: { id: string 
         <Link href={`/shows/${show.id}/editar`} className="btn-secondary">
           Editar
         </Link>
-        <form action={deleteShowAction}>
-          <input type="hidden" name="id" value={show.id} />
-          <button type="submit" className="btn-danger">
-            Excluir
-          </button>
-        </form>
+        <DeleteButton
+          action={deleteShowAction}
+          id={show.id}
+          confirmMessage="Excluir este show?"
+          confirmClassName="btn-danger"
+          cancelClassName="btn-secondary"
+        />
       </div>
     </div>
   );

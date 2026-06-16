@@ -5,7 +5,8 @@
 
 ## Estado atual
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
-+ testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças.**
++ testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
++ confirmação antes de excluir.**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **67 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
 do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. Sessão 4 entregou
@@ -14,7 +15,9 @@ actions** com um banco SQLite isolado, cobrindo o isolamento por usuário. Sess�
 configurou **ESLint** (`next/core-web-vitals`) e adicionou o passo de lint ao CI — fechando
 o último item pendente da Definition of Done. Sessão 7 entregou **filtros na página de
 Finanças** (mês, tipo, show, situação) via query string, com resumo recomputado sobre o
-recorte. Próxima sessão: polimento de UX (confirmação ao excluir, estados de loading/erro).
+recorte. Sessão 8 entregou **confirmação antes de excluir** (componente `DeleteButton`)
+nos três pontos de exclusão (show, contato, transação). Próxima sessão: continuar o
+polimento de UX (estados de loading/erro, formatação de input monetário) ou Conta (perfil/senha).
 
 ## Modelo de branches (a partir de 2026-06-16)
 O repositório tem um tronco **`main`** (ver DECISIONS.md D7), já definido como **default
@@ -135,9 +138,27 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   autenticado OK (/financas e variações com filtro → 200; sem sessão → 307). `npm audit`
   inalterado em relação à Sessão 6 (ver D6/D8).
 
+### Sessão 8 — 2026-06-16 (Fase 1 — confirmação antes de excluir)
+- **Componente reutilizável** `src/components/DeleteButton.tsx` (client): confirmação
+  embutida em **duas etapas** (sem `confirm()` bloqueante). O primeiro clique troca o
+  gatilho por "Confirmar / Cancelar"; só o "Confirmar" submete o server action (form com
+  `id` oculto). Props flexíveis (`trigger`, `triggerClassName`, `confirmMessage`, labels e
+  classes de confirm/cancel) para servir tanto botões de texto quanto o gatilho ícone (✕).
+  Usa `useFormStatus` para desabilitar e mostrar "Excluindo..." durante o envio; inclui
+  `aria-label`/`role="group"` para acessibilidade.
+- **Aplicado nos 3 pontos de exclusão**: detalhe do show (`shows/[id]/page.tsx`), lista de
+  contatos (`contatos/page.tsx`) e lista de transações (`financas/page.tsx`). Antes a
+  exclusão era imediata (item de polimento pendente desde a Sessão 7 — "exclui direto").
+- Definition of Done verde: build (16 rotas), typecheck limpo, lint (0), 67 testes, smoke
+  test autenticado OK (/ 200, /login 200, /dashboard e /contatos sem sessão → 307). `npm
+  audit` inalterado (10 advisories; nenhuma dependência nova adicionada — ver D6/D8).
+- **Nota de teste**: o `DeleteButton` é puramente de UI (sem regra de negócio); não há
+  lib de teste de DOM no projeto, então a verificação foi por build + smoke, alinhado às
+  sessões anteriores (UI não coberta por testes unitários).
+
 ## Próximos passos (priorizados para a próxima sessão)
-1. **Polimento UX**: estados de loading/erro, mensagens vazias, acessibilidade,
-   confirmação antes de excluir (hoje exclui direto). Formatar input monetário ao digitar.
+1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
+   mensagens vazias, acessibilidade. Formatar input monetário ao digitar.
 2. **Conta**: editar perfil (nome/nome artístico), trocar senha.
 3. **Calendário — evoluções**: link do dashboard direto para o mês atual; clicar num dia
    vazio para criar show já com a data; visão semanal. (base pronta em `src/lib/calendar.ts`.)

@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { CONTACT_ROLE_LABELS, type ContactRole } from "@/lib/domain";
 import { deleteContactAction } from "./actions";
+import { DeleteButton } from "@/components/DeleteButton";
 
 export const dynamic = "force-dynamic";
 
@@ -50,12 +51,12 @@ export default async function ContactsPage() {
                 <Link href={`/contatos/${c.id}/editar`} className="btn-secondary py-1.5 text-xs">
                   Editar
                 </Link>
-                <form action={deleteContactAction}>
-                  <input type="hidden" name="id" value={c.id} />
-                  <button type="submit" className="btn-danger py-1.5 text-xs">
-                    Excluir
-                  </button>
-                </form>
+                <DeleteButton
+                  action={deleteContactAction}
+                  id={c.id}
+                  triggerClassName="btn-danger py-1.5 text-xs"
+                  confirmMessage="Excluir contato?"
+                />
               </div>
             </div>
           ))}
