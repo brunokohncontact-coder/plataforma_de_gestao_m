@@ -10,6 +10,15 @@ funcionalidades do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e n
 Próxima sessão: polir UX, ampliar testes e adicionar visão de calendário + vínculo
 contato↔show pela UI.
 
+## Modelo de branches (a partir de 2026-06-16)
+O repositório agora tem um tronco **`main`** (ver DECISIONS.md D7). Toda sessão deve:
+partir de `main` (`git checkout main && git pull`), desenvolver no branch designado da
+sessão e abrir PR **com base em `main`**. Branches antigos de rotina (`claude/...`) são
+legado e não devem ser usados como base.
+
+> ⚠️ Passo manual pendente para o humano: definir `main` como **default branch** em
+> GitHub → Settings → Branches (não há ferramenta de automação para isso nesta sessão).
+
 ## Stack escolhida (ver DECISIONS.md D3–D6)
 Next.js 14.2 (App Router) + TypeScript + Prisma (SQLite em dev) + Tailwind. Auth própria
 leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.github/workflows/ci.yml`.

@@ -62,3 +62,14 @@ contexto, decisão, justificativa e alternativas consideradas.
   quebrar a base, contra a regra de "nunca deixar a base quebrada".
 - **A revisar:** planejar upgrade para Next 15+/React 19 quando houver janela para validar
   a migração (App Router é majoritariamente compatível).
+
+## 2026-06-16 — D7: Criar branch `main` como tronco canônico
+- **Decisão:** criar `main` (a partir do commit da Fase 0, `38d8343`) como tronco do
+  projeto. PRs passam a ter base em `main`; sessões futuras partem de `main`.
+- **Justificativa:** o repositório não tinha trunk — o default era um branch de rotina
+  arbitrário e cada execução criava branches paralelos sem convergência, dificultando
+  histórico e revisão. Um `main` estável dá um ponto único de integração.
+- **Pendência manual:** definir `main` como *default branch* nas configurações do GitHub
+  (as ferramentas disponíveis nesta sessão não permitem alterar o default branch).
+- **Alternativas consideradas:** criar `main` já com a Fase 1 (descartado: deixaria a PR
+  #16 sem conteúdo a revisar); manter o modelo sem trunk (descartado: insustentável).
