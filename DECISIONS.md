@@ -63,6 +63,25 @@ contexto, decisão, justificativa e alternativas consideradas.
 - **A revisar:** planejar upgrade para Next 15+/React 19 quando houver janela para validar
   a migração (App Router é majoritariamente compatível).
 
+## 2026-06-16 — D8: Configurar ESLint com `next/core-web-vitals` (ESLint 8 + `.eslintrc.json`)
+- **Decisão:** adotar `eslint@8.57.1` + `eslint-config-next@14.2.35` com config clássica
+  (`.eslintrc.json` estendendo `next/core-web-vitals`), e adicionar passo de **Lint** ao CI
+  (entre Typecheck e Test). `next lint` roda limpo (0 warnings/erros) sobre os 46 arquivos
+  de `src/`.
+- **Justificativa:** fecha o item "lint" da Definition of Done, que estava pendente desde a
+  Sessão 5 (o prompt interativo do `next lint` impedia rodar no CI). ESLint 8 + `.eslintrc`
+  (em vez de ESLint 9 flat config) porque o Next 14.2 ainda não suporta flat config de forma
+  estável; alinhado à versão do `eslint-config-next` casada com o Next instalado.
+- **Alternativas consideradas:** ESLint 9 + `eslint.config.mjs` (flat) — descartado por
+  imaturidade no Next 14.2; Biome — descartado para não trocar de ferramenta sem motivo forte.
+- **`npm audit` (novas vulnerabilidades):** o `npm audit` subiu de 7 para 10 advisories.
+  As 3 novas (high) vêm **apenas da cadeia de dev-tooling do ESLint**:
+  `eslint-config-next` → `@next/eslint-plugin-next` → `glob@>=10.2.0 <10.5.0`
+  (GHSA-5j98-mcp5-4vw2: command injection no **CLI** do `glob` via flag `-c/--cmd`).
+  **Não exploitável no nosso uso:** `glob` aqui é dependência transitiva de lint (build-time,
+  não vai para o bundle de produção) e nunca invocamos o CLI `glob -c`. Mantida a postura da
+  D6 (não fazer upgrades breaking só por advisories que não se aplicam ao runtime do MVP).
+
 ## 2026-06-16 — D7: Criar branch `main` como tronco canônico
 - **Decisão:** criar `main` (a partir do commit da Fase 0, `38d8343`) como tronco do
   projeto. PRs passam a ter base em `main`; sessões futuras partem de `main`.
