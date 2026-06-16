@@ -140,3 +140,24 @@ contexto, decisão, justificativa e alternativas consideradas.
   geração client-side via Blob — descartada por duplicar a lógica de filtro no cliente e
   perder a verificação de posse no servidor; XLSX nativo — over-engineering para o MVP
   (exigiria dependência pesada; CSV cobre o caso de uso).
+
+## 2026-06-16 — D12: Exportação iCalendar (.ics) da agenda de shows
+- **Decisão:** a agenda de shows é exportável em **iCalendar/RFC 5545** via
+  `/shows/agenda.ics` (um `VEVENT` por show). Datas emitidas em **UTC** (sufixo `Z`);
+  `DTEND` = `DTSTART` + **duração padrão de 120 min** (o modelo não guarda hora de término);
+  `STATUS` mapeado de PROPOSED→TENTATIVE, CONFIRMED/PLAYED→CONFIRMED, CANCELLED→CANCELLED;
+  `UID` estável = `<showId>@palco.app`. Por padrão **exclui** shows cancelados; `?cancelados=1`
+  os inclui (como `STATUS:CANCELLED`). A serialização é uma camada pura em `src/lib/ics.ts`
+  (testada em `ics.test.ts`), com escape de TEXT e *line folding* a 75 octetos UTF-8.
+- **Justificativa:** `.ics` é o formato universal de calendário — o músico importa/assina a
+  agenda no Google/Apple Calendar e a vê no celular junto do resto da rotina, sem digitar
+  nada de novo (atende à persona "odeia planilha" e à Necessidade #1, agenda). Emitir em UTC
+  é o mais portável entre clientes (cada um exibe no fuso local). Manter a serialização pura
+  espelha a decisão do CSV (D11): testável sem HTTP e com a posse garantida no servidor
+  (`requireUser`). UID estável permite reimportar sem duplicar eventos.
+- **Alternativas consideradas:** guardar hora de término por show — adiado (mudança de
+  schema/UX para ganho marginal; 2h cobre a maioria dos shows); incluir cancelados por
+  padrão — descartado (poluiriam o calendário; ficam atrás de `?cancelados=1`); emitir em
+  horário local com `TZID`/`VTIMEZONE` — over-engineering (exigiria embutir a base de fusos;
+  UTC é inequívoco); biblioteca de iCal de terceiros — desnecessária (o subconjunto usado é
+  pequeno e a dependência somaria superfície de `npm audit`).
