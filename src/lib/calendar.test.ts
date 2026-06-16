@@ -6,6 +6,8 @@ import {
   monthGridRange,
   buildMonthGrid,
   formatMonthTitle,
+  toDayParam,
+  dayParamToDateTimeLocal,
 } from "./calendar";
 
 describe("monthKey / parseMonthKey", () => {
@@ -117,5 +119,49 @@ describe("buildMonthGrid", () => {
       .filter((c) => c.inMonth)
       .reduce((n, c) => n + c.items.length, 0);
     expect(inMonthItems).toBe(0);
+  });
+});
+
+describe("toDayParam", () => {
+  it("formata a data local com zero à esquerda", () => {
+    expect(toDayParam(new Date(2026, 5, 9, 23, 30))).toBe("2026-06-09");
+    expect(toDayParam(new Date(2026, 11, 31, 0, 0))).toBe("2026-12-31");
+  });
+
+  it("usa o dia LOCAL, não UTC (ignora a hora do dia)", () => {
+    // 1º de junho à meia-noite local continua sendo "2026-06-01".
+    expect(toDayParam(new Date(2026, 5, 1, 0, 0))).toBe("2026-06-01");
+  });
+
+  it("faz round-trip com as células da grade", () => {
+    const grid = buildMonthGrid(2026, 6, [], new Date(2026, 5, 16));
+    const dia10 = grid.flat().find((c) => c.inMonth && c.date.getDate() === 10)!;
+    expect(toDayParam(dia10.date)).toBe("2026-06-10");
+  });
+});
+
+describe("dayParamToDateTimeLocal", () => {
+  it("converte uma chave de dia no valor de datetime-local com horário padrão", () => {
+    expect(dayParamToDateTimeLocal("2026-06-09")).toBe("2026-06-09T20:00");
+  });
+
+  it("aceita um horário padrão customizado", () => {
+    expect(dayParamToDateTimeLocal("2026-06-09", "09:30")).toBe("2026-06-09T09:30");
+  });
+
+  it("retorna undefined para entradas ausentes ou inválidas", () => {
+    expect(dayParamToDateTimeLocal(undefined)).toBeUndefined();
+    expect(dayParamToDateTimeLocal(null)).toBeUndefined();
+    expect(dayParamToDateTimeLocal("")).toBeUndefined();
+    expect(dayParamToDateTimeLocal("2026-06")).toBeUndefined();
+    expect(dayParamToDateTimeLocal("09/06/2026")).toBeUndefined();
+    expect(dayParamToDateTimeLocal("2026-13-09")).toBeUndefined(); // mês inválido
+    expect(dayParamToDateTimeLocal("2026-06-32")).toBeUndefined(); // dia inválido
+  });
+
+  it("o resultado é consumível por toDayParam de volta à mesma chave", () => {
+    const param = toDayParam(new Date(2026, 5, 9, 12, 0));
+    const dt = dayParamToDateTimeLocal(param)!;
+    expect(dt.startsWith(param)).toBe(true);
   });
 });
