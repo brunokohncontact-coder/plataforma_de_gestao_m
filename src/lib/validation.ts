@@ -47,6 +47,27 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Informe a senha"),
 });
 
+// ── Conta (perfil + senha) ───────────────────────────────────────────────────
+export const updateProfileSchema = z.object({
+  name: z.string().trim().min(1, "Informe seu nome"),
+  artistName: z.string().trim().optional(),
+});
+
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Informe a senha atual"),
+    newPassword: z.string().min(8, "A nova senha deve ter ao menos 8 caracteres"),
+    confirmPassword: z.string().min(1, "Confirme a nova senha"),
+  })
+  .refine((d) => d.newPassword === d.confirmPassword, {
+    message: "A confirmação não corresponde à nova senha",
+    path: ["confirmPassword"],
+  })
+  .refine((d) => d.newPassword !== d.currentPassword, {
+    message: "A nova senha deve ser diferente da atual",
+    path: ["newPassword"],
+  });
+
 // ── Show ──────────────────────────────────────────────────────────────────
 export const showSchema = z.object({
   title: z.string().trim().min(1, "Informe um título"),

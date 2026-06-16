@@ -6,8 +6,8 @@
 ## Estado atual
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
-+ confirmação antes de excluir.**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **67 testes**),
++ confirmação antes de excluir + página de Conta (perfil/senha).**
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **78 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
 do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. Sessão 4 entregou
 a visão de calendário dos shows. Sessão 5 entregou **testes de integração das server
@@ -16,8 +16,10 @@ configurou **ESLint** (`next/core-web-vitals`) e adicionou o passo de lint ao CI
 o último item pendente da Definition of Done. Sessão 7 entregou **filtros na página de
 Finanças** (mês, tipo, show, situação) via query string, com resumo recomputado sobre o
 recorte. Sessão 8 entregou **confirmação antes de excluir** (componente `DeleteButton`)
-nos três pontos de exclusão (show, contato, transação). Próxima sessão: continuar o
-polimento de UX (estados de loading/erro, formatação de input monetário) ou Conta (perfil/senha).
+nos três pontos de exclusão (show, contato, transação). Sessão 9 entregou a **página de
+Conta** (`/conta`): editar perfil (nome/nome artístico) e trocar senha (com verificação
+da senha atual). Próxima sessão: continuar o polimento de UX (estados de loading/erro
+inline nos formulários, formatação de input monetário) ou evoluções do calendário/filtros.
 
 ## Modelo de branches (a partir de 2026-06-16)
 O repositório tem um tronco **`main`** (ver DECISIONS.md D7), já definido como **default
@@ -156,14 +158,38 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   lib de teste de DOM no projeto, então a verificação foi por build + smoke, alinhado às
   sessões anteriores (UI não coberta por testes unitários).
 
+### Sessão 9 — 2026-06-16 (Fase 1 — página de Conta: perfil + senha)
+- **Schemas puros** (`src/lib/validation.ts`): `updateProfileSchema` (nome obrigatório,
+  nome artístico opcional) e `changePasswordSchema` (senha atual, nova ≥ 8 chars,
+  confirmação) com `.refine` cruzado (confirmação corresponde + nova ≠ atual). Testes em
+  `src/lib/validation.test.ts` (+5 → 13 no arquivo).
+- **Server actions** (`src/app/(app)/conta/actions.ts`): `updateProfileAction` (grava
+  nome/nome artístico do usuário logado, revalida `/conta` e o layout do app p/ o cabeçalho)
+  e `changePasswordAction` (verifica a **senha atual** via `verifyPassword` antes de gravar
+  o novo hash). Ambas retornam `{ error? , success? }`. Decisão sobre sessão registrada em
+  **DECISIONS.md D10** (troca de senha não reemite/invalida o cookie de sessão no MVP).
+- **UI**: `src/app/(app)/conta/page.tsx` com dois cards (Perfil, Trocar senha) +
+  `ProfileForm.tsx` / `PasswordForm.tsx` (client, `useFormState`, feedback de erro/sucesso;
+  os campos de senha são remontados após sucesso para limpar o que foi digitado).
+  No `(app)/layout.tsx`, o nome no cabeçalho virou link para `/conta` e há item **Conta**
+  na nav mobile.
+- **Testes de integração** (`src/app/(app)/conta/actions.test.ts`, 6): atualização de
+  perfil (incl. limpar nome artístico e rejeitar nome vazio); troca de senha com senha
+  atual correta (hash muda no banco), bloqueio com senha atual incorreta e com confirmação
+  divergente. Total do projeto: **78 verdes** (eram 67).
+- Definition of Done verde: build (17 rotas, nova `/conta`), typecheck limpo, lint (0),
+  78 testes, smoke test (/login 200, / 200, /conta sem sessão → 307→/login). `npm audit`
+  inalterado (10 advisories; nenhuma dependência nova — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. Formatar input monetário ao digitar.
-2. **Conta**: editar perfil (nome/nome artístico), trocar senha.
-3. **Calendário — evoluções**: link do dashboard direto para o mês atual; clicar num dia
+2. **Calendário — evoluções**: link do dashboard direto para o mês atual; clicar num dia
    vazio para criar show já com a data; visão semanal. (base pronta em `src/lib/calendar.ts`.)
-4. **Filtros — evoluções**: período por intervalo de datas; filtrar por categoria;
+3. **Filtros — evoluções**: período por intervalo de datas; filtrar por categoria;
    persistir o último filtro usado. (base pronta em `src/lib/finance.ts`.)
+4. **Sessões/segurança** (ver D10): considerar `tokenVersion`/`passwordChangedAt` no `User`
+   para invalidar sessões ao trocar a senha quando houver login em múltiplos dispositivos.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)
@@ -171,4 +197,3 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
 - Foco **português/LATAM** e faixas de preço (`business-plan.md`) são hipóteses — validar.
 - **Segurança em produção**: definir `AUTH_SECRET` forte e migrar para PostgreSQL antes
   de qualquer deploy real. Revisar advisories do Next (D6) e planejar upgrade p/ Next 15+.
-- Exclusões na UI são imediatas (sem confirmação) — decidir padrão de confirmação.

@@ -107,3 +107,18 @@ contexto, decisão, justificativa e alternativas consideradas.
   duplicaria a regra e exigiria múltiplas queries para resumo + meses disponíveis; deve ser
   reconsiderado se o volume por usuário crescer muito); filtros client-side com estado React
   (descartado: quebraria o padrão server-component e a navegabilidade por URL).
+
+## 2026-06-16 — D10: Troca de senha não invalida sessões ativas
+- **Decisão:** ao trocar a senha em `/conta`, atualiza-se apenas o `passwordHash`; o
+  cookie de sessão (JWT) **não** é reemitido nem invalidado. A `changePasswordAction`
+  exige a senha atual correta antes de gravar a nova.
+- **Justificativa:** o JWT de sessão (`src/lib/auth.ts`) é assinado sobre o `userId`, não
+  sobre a senha — não há, hoje, lista de sessões/versão de credencial no banco para
+  revogar. Reemitir o cookie do próprio usuário que trocou a senha não agrega segurança
+  real (a sessão dele já era válida) e invalidar sessões de **outros** dispositivos exigiria
+  infraestrutura de revogação (ex.: campo `passwordChangedAt`/`tokenVersion` checado em
+  `verifySessionToken`). Para o MVP single-user isso é over-engineering.
+- **Alternativas consideradas:** adicionar `tokenVersion` ao `User` e embutir no JWT,
+  invalidando todas as sessões ao trocar a senha (recomendado para quando houver login em
+  múltiplos dispositivos / produção — anotado como evolução); reemitir só o cookie atual
+  (descartado: efeito de segurança nulo).
