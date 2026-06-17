@@ -3,6 +3,7 @@ import {
   computeShowPnL,
   summarizeFinances,
   totalsByCategory,
+  categoryReport,
   totalsByMonth,
   monthKey,
   dayKey,
@@ -545,5 +546,54 @@ describe("projectCashflow", () => {
     expect(p.months.map((m) => m.month)).toEqual(["2026-11", "2026-12", "2027-01"]);
     const single = projectCashflow([], { now, months: 0 });
     expect(single.months).toHaveLength(1);
+  });
+});
+
+describe("categoryReport", () => {
+  it("lista vazia → tudo zerado", () => {
+    const r = categoryReport([]);
+    expect(r).toEqual({ income: [], expense: [], totalIncome: 0, totalExpense: 0 });
+  });
+
+  it("separa receitas de despesas e agrega por categoria", () => {
+    const r = categoryReport([
+      tx({ type: "INCOME", amount: 300_00, category: "Cachê" }),
+      tx({ type: "INCOME", amount: 100_00, category: "Merch" }),
+      tx({ type: "EXPENSE", amount: 80_00, category: "Transporte" }),
+      tx({ type: "EXPENSE", amount: 20_00, category: "Transporte" }),
+    ]);
+    expect(r.totalIncome).toBe(400_00);
+    expect(r.totalExpense).toBe(100_00);
+    expect(r.income.map((s) => s.category)).toEqual(["Cachê", "Merch"]);
+    expect(r.expense).toHaveLength(1);
+    expect(r.expense[0]).toMatchObject({ category: "Transporte", amount: 100_00 });
+  });
+
+  it("ordena por valor decrescente e calcula a participação (share)", () => {
+    const r = categoryReport([
+      tx({ type: "EXPENSE", amount: 25_00, category: "Equipamento" }),
+      tx({ type: "EXPENSE", amount: 75_00, category: "Transporte" }),
+    ]);
+    expect(r.expense.map((s) => s.category)).toEqual(["Transporte", "Equipamento"]);
+    expect(r.expense[0].share).toBeCloseTo(0.75, 5);
+    expect(r.expense[1].share).toBeCloseTo(0.25, 5);
+  });
+
+  it("desempata categorias de mesmo valor pelo nome (pt-BR)", () => {
+    const r = categoryReport([
+      tx({ type: "EXPENSE", amount: 50_00, category: "Ônibus" }),
+      tx({ type: "EXPENSE", amount: 50_00, category: "Aluguel" }),
+    ]);
+    expect(r.expense.map((s) => s.category)).toEqual(["Aluguel", "Ônibus"]);
+  });
+
+  it("categoria em branco vira 'Sem categoria'", () => {
+    const r = categoryReport([
+      tx({ type: "INCOME", amount: 10_00, category: "   " }),
+      tx({ type: "INCOME", amount: 10_00, category: "" }),
+    ]);
+    expect(r.income).toHaveLength(1);
+    expect(r.income[0].category).toBe("Sem categoria");
+    expect(r.income[0].share).toBeCloseTo(1, 5);
   });
 });

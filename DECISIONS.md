@@ -162,6 +162,30 @@ contexto, decisão, justificativa e alternativas consideradas.
   UTC é inequívoco); biblioteca de iCal de terceiros — desnecessária (o subconjunto usado é
   pequeno e a dependência somaria superfície de `npm audit`).
 
+## 2026-06-17 — D14: Relatório financeiro com granularidade mensal e quebra por categoria
+- **Decisão:** o relatório das Finanças (`/financas/relatorio`) é um **fechamento mensal** —
+  seleciona-se UM mês (`?mes=YYYY-MM`, padrão o atual) e vê-se o resumo do mês mais a quebra
+  por categoria (receitas e despesas separadas, com participação % de cada categoria no total
+  do seu tipo). A agregação é uma camada pura nova (`categoryReport` em `src/lib/finance.ts`,
+  testada); a página reaproveita `filterTransactions` (apenas o critério de mês),
+  `summarizeFinances` e os helpers de navegação de mês do `calendar.ts`. Categorias em
+  branco caem no bucket **"Sem categoria"**.
+- **Justificativa:** o fechamento mensal é o ciclo natural de quem presta contas (ao contador,
+  a si mesmo) e responde "quanto entrou/saiu neste mês e para onde foi". A granularidade mensal
+  reaproveita toda a infra de mês já existente (`parseMonthKey`/`shiftMonth`/`formatMonthTitle`,
+  `monthKey`) e o mesmo formato de query string do calendário/filtros, mantendo a navegabilidade
+  por URL. Reusar `filterTransactions`/`summarizeFinances` evita duplicar regra (uma fonte de
+  verdade já testada); só a quebra por categoria com % é nova e ganhou testes próprios. O Painel
+  já mostra as 5 maiores categorias e o fluxo dos últimos 6 meses — o relatório complementa com
+  o **detalhe completo de um mês** e exportação CSV daquele recorte.
+- **Alternativas consideradas:** relatório que reaproveita TODOS os filtros das Finanças
+  (mês/tipo/categoria/show/data/busca) em vez de só o mês — descartado por ora (o caso de uso é
+  "fechamento do mês"; filtrar por categoria num relatório de categorias é redundante, e a página
+  de Finanças já cobre o recorte livre + exportação); granularidade anual/trimestral —
+  adiável (mensal cobre a decisão de prestação de contas; dá para navegar mês a mês); gráfico de
+  pizza/biblioteca de charts — over-engineering para o MVP (barras de participação com CSS bastam
+  e não somam dependência/superfície de `npm audit`).
+
 ## 2026-06-17 — D13: Projeção de caixa parte do realizado e dobra vencidas no mês atual
 - **Decisão:** a projeção de caixa (`projectCashflow`, exibida no Painel) parte do
   **caixa realizado** (`cashBalance` = recebido − pago) e projeta os próximos meses somando
