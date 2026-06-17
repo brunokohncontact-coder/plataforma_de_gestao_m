@@ -32,10 +32,13 @@ no Painel e nas Finanças. Sessão 17 entregou a **busca textual nas Finanças**
 livre que casa descrição + categoria, ignorando acentos e caixa), integrada ao recorte
 filtrado e à exportação CSV. Sessão 18 entregou a **projeção de caixa** no Painel
 (`projectCashflow`): saldo de caixa projetado mês a mês a partir do caixa realizado,
-somando pendências pelo mês de vencimento, com alerta de saldo negativo. **167 testes**
-verdes (medição real `vitest run` na Sessão 18; eram 161). Próxima sessão: continuar o
-polimento de UX (estados de loading/erro inline nos formulários) ou evoluções de filtros
-(persistir o último filtro usado).
+somando pendências pelo mês de vencimento, com alerta de saldo negativo. Sessão 19
+entregou a **visão semanal da agenda de shows** (`/shows/semana`): lista vertical de
+domingo a sábado da semana, com navegação ←/→/Esta semana, criar show por dia e link de
+detalhe; o alternador de visões virou Lista/Semana/Mês. **180 testes** verdes (medição real
+`vitest run` na Sessão 19; eram 167). Próxima sessão: continuar o polimento de UX (estados
+de loading/erro inline nos formulários) ou evoluções de filtros (persistir o último filtro
+usado).
 
 ## Modelo de branches (a partir de 2026-06-16)
 O repositório tem um tronco **`main`** (ver DECISIONS.md D7), já definido como **default
@@ -374,13 +377,38 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   projetado negativo e o aviso — verificado). `npm audit` inalterado (10 advisories: 3
   moderate / 6 high / 1 critical; nenhuma dependência nova — ver D6/D8).
 
+### Sessão 19 — 2026-06-17 (Fase 1 — visão semanal da agenda)
+- **Lógica pura** (`src/lib/calendar.ts`): `parseDayParam(param, ref)` ("YYYY-MM-DD" →
+  Date local à meia-noite; entrada inválida/inexistente como 31/02 cai no dia de referência),
+  `startOfWeek` (domingo da semana, meia-noite local), `weekRange` (intervalo [domingo,
+  domingo seguinte) para uma consulta única ao banco), `shiftWeek(date, delta)` (navegação
+  por semanas), `formatWeekTitle(start)` (rótulo "14 – 20 de junho de 2026", tratando virada
+  de mês e de ano) e `buildWeekGrid<T>(ref, items, today)` (7 células domingo→sábado,
+  distribuindo itens no dia local e ordenando por horário — espelha `buildMonthGrid`). Testes
+  em `src/lib/calendar.test.ts` (+13 → **32 no arquivo, 180 no projeto**, eram 167): round-trip
+  e fallback de `parseDayParam`, domingo/range/shift, rótulo nas 3 faixas, distribuição/ordem/
+  hoje/fora-da-semana no grid.
+- **UI** `src/app/(app)/shows/semana/page.tsx`: lista vertical de domingo a sábado (um bloco
+  por dia, dia de hoje destacado), com navegação ←/→ e link **Esta semana**; cada show mostra
+  horário, título, local (venue · cidade), ponto de status e rótulo, com link para o detalhe;
+  botão **+** por dia (`/shows/novo?data=…`, reaproveitando o pré-preenchimento da Sessão 13);
+  estado vazio "Nenhum show nesta semana". Consulta só os shows da semana (`weekRange`).
+- **Alternador de visões** (`src/components/ShowsViewToggle.tsx`): passou a ter 3 opções —
+  **Lista / Semana / Mês** (antes Lista/Calendário). O Painel ganhou link **Ver agenda**
+  (`/shows/calendario`) no card de Próximos shows. Sem novas dependências.
+- Definition of Done verde: build (17 rotas, nova `/shows/semana`), typecheck limpo, lint (0),
+  180 testes, smoke test (/shows/semana sem sessão → 307; `?semana=lixo` → 307, ignorado;
+  **teste e2e autenticado** com cookie de sessão real: semana de 7–13/jun renderiza o show
+  semeado com link de detalhe, semana vazia mostra o estado vazio — verificado). `npm audit`
+  inalterado (10 advisories: 3 moderate / 6 high / 1 critical; nenhuma dependência nova — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)
-2. **Calendário — evoluções**: link do dashboard direto para o mês atual; visão semanal.
-   (clicar num dia para criar show já com a data entregue na Sessão 13; exportação
-   iCalendar `.ics` da agenda entregue na Sessão 15 — base em `src/lib/calendar.ts` e
-   `src/lib/ics.ts`.)
+2. **Calendário — evoluções**: arrastar/soltar para remarcar; mini-calendário de salto rápido.
+   (visão semanal entregue na Sessão 19 — `/shows/semana`; link do dashboard para a agenda na
+   Sessão 19; clicar num dia para criar show com a data na Sessão 13; exportação iCalendar
+   `.ics` na Sessão 15 — base em `src/lib/calendar.ts` e `src/lib/ics.ts`.)
 3. **Filtros — evoluções**: persistir o último filtro usado (ex.: cookie/localStorage).
    (filtro por categoria entregue na Sessão 10; intervalo de datas na Sessão 12;
    exportação CSV do recorte filtrado na Sessão 14; busca textual na Sessão 17;
