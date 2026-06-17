@@ -224,3 +224,27 @@ contexto, decisão, justificativa e alternativas consideradas.
   lista de Shows já tem filtro por data; o ranking olha o histórico completo, que é o caso de uso
   de "quais gigs valem a pena"); colocar a página sob `/financas` — descartado (a análise é por
   show; o ponto de entrada natural é a área de Shows, ao lado da agenda/exportação).
+
+## 2026-06-17 — D16: Resumo anual das Finanças com granularidade de 12 meses
+- **Decisão:** o resumo anual (`/financas/anual`) é uma **visão de 12 meses de um ano** —
+  seleciona-se UM ano (`?ano=YYYY`, padrão o atual) e vê-se janeiro→dezembro com receitas,
+  despesas e resultado por mês, mais os totais do ano e o destaque do **melhor/pior mês** (por
+  resultado líquido, entre os meses que tiveram movimento). A agregação é uma camada pura nova
+  (`annualSummary` em `src/lib/finance.ts`, testada), com `availableYears` para os anos
+  presentes. Cada mês linka para o relatório mensal (`/financas/relatorio?mes=`). O ponto de
+  entrada é um botão **Resumo anual** no cabeçalho das Finanças.
+- **Justificativa:** complementa o relatório mensal (D14, "como foi este mês?") e a projeção/
+  fluxo dos últimos 6 meses do Painel com a pergunta **"como foi o ano?"** — o recorte natural
+  para imposto/prestação de contas e para ver sazonalidade (quais meses rendem mais). A
+  granularidade anual sobre 12 meses fixos dá uma tabela estável e comparável; reaproveita a
+  mesma convenção de chave de mês (`monthKey`, UTC) e o padrão de query string dos demais
+  recortes, mantendo a navegabilidade por URL. Manter a agregação pura segue o padrão das
+  demais features (testável sem HTTP, posse garantida no servidor por `requireUser`). Sem novas
+  dependências (barras de proporção em CSS, sem biblioteca de charts).
+- **Alternativas consideradas:** reaproveitar `totalsByMonth` (existente) na página — descartado
+  porque `totalsByMonth` só devolve os meses com movimento, e a visão anual precisa dos 12 meses
+  fixos (zeros inclusive) para a tabela e o cálculo de melhor/pior; granularidade trimestral —
+  adiável (mensal cobre a leitura de sazonalidade e a navegação ano a ano já existe); exportação
+  CSV do ano inteiro — adiável (o relatório mensal e a lista de Finanças já exportam; dá para
+  somar depois reaproveitando `filterTransactions`); gráfico de linha/biblioteca de charts —
+  over-engineering para o MVP (barras CSS bastam e não somam superfície de `npm audit`).

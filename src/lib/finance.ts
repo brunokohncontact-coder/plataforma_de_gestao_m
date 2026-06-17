@@ -287,6 +287,95 @@ export function totalsByMonth(txs: TxLike[]): MonthlyTotal[] {
     .sort((a, b) => a.month.localeCompare(b.month));
 }
 
+// ── Resumo anual (F3 — visão do ano para prestação de contas) ───────────────
+
+export interface AnnualMonth {
+  /** Chave "YYYY-MM". */
+  month: string;
+  /** Mês 1-12 (janeiro = 1). */
+  monthIndex: number;
+  income: number;
+  expense: number;
+  /** income − expense (regime de competência). */
+  net: number;
+}
+
+export interface AnnualSummary {
+  /** Ano de referência. */
+  year: number;
+  /** Exatamente 12 meses (janeiro→dezembro), zeros inclusive. */
+  months: AnnualMonth[];
+  /** Soma das receitas do ano. */
+  totalIncome: number;
+  /** Soma das despesas do ano. */
+  totalExpense: number;
+  /** totalIncome − totalExpense. */
+  net: number;
+  /** Mês com maior resultado entre os que tiveram movimento; null se nenhum teve. */
+  best: AnnualMonth | null;
+  /** Mês com menor resultado entre os que tiveram movimento; null se nenhum teve. */
+  worst: AnnualMonth | null;
+}
+
+/**
+ * Consolida as transações de um ano em 12 meses (janeiro→dezembro), com totais do
+ * ano e o melhor/pior mês (por resultado líquido) entre os que tiveram movimento.
+ * Responde "como foi o ano?" — útil para fechamento/prestação de contas. Pura;
+ * considera apenas as transações cujo mês (UTC) cai no `year` informado.
+ */
+export function annualSummary(txs: TxLike[], year: number): AnnualSummary {
+  const prefix = `${year}-`;
+  const income = new Array(12).fill(0);
+  const expense = new Array(12).fill(0);
+
+  for (const t of txs) {
+    const key = monthKey(t.date);
+    if (!key.startsWith(prefix)) continue;
+    const idx = Number(key.slice(5, 7)) - 1; // 0-based
+    if (idx < 0 || idx > 11) continue;
+    if (t.type === "INCOME") income[idx] += t.amount;
+    else expense[idx] += t.amount;
+  }
+
+  const months: AnnualMonth[] = income.map((inc, i) => ({
+    month: `${year}-${String(i + 1).padStart(2, "0")}`,
+    monthIndex: i + 1,
+    income: inc,
+    expense: expense[i],
+    net: inc - expense[i],
+  }));
+
+  const totalIncome = sum(income);
+  const totalExpense = sum(expense);
+
+  // Melhor/pior entre meses com movimento (receita ou despesa > 0). Empate pelo
+  // mês mais cedo (ordem estável, já que percorremos jan→dez).
+  const active = months.filter((m) => m.income > 0 || m.expense > 0);
+  let best: AnnualMonth | null = null;
+  let worst: AnnualMonth | null = null;
+  for (const m of active) {
+    if (best === null || m.net > best.net) best = m;
+    if (worst === null || m.net < worst.net) worst = m;
+  }
+
+  return {
+    year,
+    months,
+    totalIncome,
+    totalExpense,
+    net: totalIncome - totalExpense,
+    best,
+    worst,
+  };
+}
+
+/** Anos presentes nas transações, em ordem decrescente. */
+export function availableYears(txs: TxLike[]): number[] {
+  const set = new Set<number>();
+  for (const t of txs) set.add(Number(monthKey(t.date).slice(0, 4)));
+  return Array.from(set).sort((a, b) => b - a);
+}
+
 // ── Vencimento de pendências (F3 — gestão de fluxo de caixa) ────────────────
 
 /** Situação de uma pendência em relação à data de referência (comparada por dia, UTC). */

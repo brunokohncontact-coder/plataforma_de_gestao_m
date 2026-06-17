@@ -48,7 +48,10 @@ contatos** (`/contatos`): busca textual (nome/e-mail/telefone/notas, sem acento)
 recorte recomputado com contador "N de M" e estado vazio dedicado. Sessão 24 entregou o
 **ranking de rentabilidade por show** (`/shows/rentabilidade`): lista os shows ordenados pelo
 resultado líquido (P&L), com totais agregados e destaque do mais/menos rentável, excluindo
-cancelados. **224 testes** verdes (medição real `vitest run` na Sessão 24; eram 217).
+cancelados. Sessão 25 entregou o **resumo anual das Finanças** (`/financas/anual`): visão de
+12 meses (receitas/despesas/resultado), totais do ano e destaque do melhor/pior mês, com
+navegação por ano e link de cada mês para o relatório mensal. **231 testes** verdes (medição
+real `vitest run` na Sessão 25; eram 224).
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias) ou evoluções
 de filtros (persistir o último filtro usado).
 
@@ -524,6 +527,32 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   307; **e2e autenticado com cookie de sessão real**: página → 200 renderiza 2 shows ativos
   ordenados, exclui o cancelado, destaca mais/menos rentável — verificado). `npm audit`
   inalterado (10 advisories: 3 moderate / 6 high / 1 critical; nenhuma dependência nova — ver D6/D8).
+
+### Sessão 25 — 2026-06-17 (Fase 1 — resumo anual das Finanças)
+- **Lógica pura** (`src/lib/finance.ts`): `annualSummary(txs, year)` →
+  `{ year, months[12], totalIncome, totalExpense, net, best, worst }`. Consolida as transações
+  de UM ano em 12 meses (janeiro→dezembro, zeros inclusive), soma os totais do ano e aponta o
+  **melhor/pior mês por resultado líquido** entre os que tiveram movimento (empate pelo mês mais
+  cedo). Considera só transações cujo mês (UTC) cai no ano. Nova `availableYears(txs)` (anos
+  presentes, ordem decrescente). Tipos `AnnualMonth`/`AnnualSummary`. Testes em
+  `src/lib/finance.test.ts` (+7 → **79 no arquivo, 231 no projeto**, eram 224): 12 meses sem
+  dados, agregação + totais, ignora outros anos, melhor/pior mês + desempate, `availableYears`.
+- **Página** `src/app/(app)/financas/anual/page.tsx` (`force-dynamic`): lê `?ano=YYYY`
+  (fallback ao ano atual via `parseYear`, faixa 1970–2999), consulta as transações do usuário
+  numa só leitura, chama `annualSummary`. Mostra cards de totais (Receitas/Despesas/Saldo do
+  ano), destaque Melhor/Pior mês (link p/ o relatório do mês) e uma tabela **mês a mês** com
+  mini-barras de proporção (receita/despesa na escala do pico do ano), linha de Total e link de
+  cada mês para `/financas/relatorio?mes=`; estado vazio dedicado ("Nenhuma transação em AAAA").
+  Decisão registrada em **DECISIONS.md D16**.
+- **UI Finanças** (`src/app/(app)/financas/page.tsx`): botão **Resumo anual** no cabeçalho
+  (exibido quando há transações). Sem novas dependências.
+- Definition of Done verde: build (18 rotas + `/financas/anual`), typecheck (`tsc --noEmit`)
+  limpo, lint (0), 231 testes, smoke test (/financas/anual e `?ano=2025` sem sessão → 307;
+  **e2e autenticado com cookie de sessão real**: ano com dados → 200 com totais, melhor/pior
+  mês e link do mês para o relatório; ano sem dados → estado vazio — verificado). `npm audit`:
+  10 advisories (agora 4 moderate / 5 high / 1 critical — **reclassificação** de uma advisory
+  high→moderate na árvore existente do Next/postcss; total inalterado, **nenhuma dependência
+  nova** — ver D6/D8).
 
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),

@@ -110,6 +110,11 @@ export default async function FinancesPage({
         <h1 className="text-2xl font-bold">Finanças</h1>
         <div className="flex items-center gap-2">
           {transactions.length > 0 && (
+            <Link href="/financas/anual" className="btn-secondary">
+              Resumo anual
+            </Link>
+          )}
+          {transactions.length > 0 && (
             <Link href="/financas/relatorio" className="btn-secondary">
               Relatório
             </Link>

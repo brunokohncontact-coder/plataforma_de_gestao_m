@@ -19,6 +19,8 @@ import {
   isOverdue,
   summarizeOverdue,
   projectCashflow,
+  annualSummary,
+  availableYears,
   type TxLike,
   type ShowLike,
 } from "./finance";
@@ -677,5 +679,91 @@ describe("categoryReport", () => {
     expect(r.income).toHaveLength(1);
     expect(r.income[0].category).toBe("Sem categoria");
     expect(r.income[0].share).toBeCloseTo(1, 5);
+  });
+});
+
+describe("annualSummary", () => {
+  it("retorna 12 meses (jan→dez) mesmo sem transações", () => {
+    const a = annualSummary([], 2026);
+    expect(a.year).toBe(2026);
+    expect(a.months).toHaveLength(12);
+    expect(a.months[0]).toMatchObject({ month: "2026-01", monthIndex: 1 });
+    expect(a.months[11]).toMatchObject({ month: "2026-12", monthIndex: 12 });
+    expect(a.totalIncome).toBe(0);
+    expect(a.totalExpense).toBe(0);
+    expect(a.net).toBe(0);
+    expect(a.best).toBeNull();
+    expect(a.worst).toBeNull();
+  });
+
+  it("agrega receitas/despesas por mês e soma os totais do ano", () => {
+    const a = annualSummary(
+      [
+        tx({ type: "INCOME", amount: 100_00, date: "2026-01-10T00:00:00.000Z" }),
+        tx({ type: "EXPENSE", amount: 30_00, date: "2026-01-20T00:00:00.000Z" }),
+        tx({ type: "INCOME", amount: 50_00, date: "2026-03-05T00:00:00.000Z" }),
+      ],
+      2026,
+    );
+    expect(a.months[0]).toMatchObject({ income: 100_00, expense: 30_00, net: 70_00 });
+    expect(a.months[2]).toMatchObject({ income: 50_00, expense: 0, net: 50_00 });
+    expect(a.months[1]).toMatchObject({ income: 0, expense: 0, net: 0 });
+    expect(a.totalIncome).toBe(150_00);
+    expect(a.totalExpense).toBe(30_00);
+    expect(a.net).toBe(120_00);
+  });
+
+  it("ignora transações de outros anos", () => {
+    const a = annualSummary(
+      [
+        tx({ type: "INCOME", amount: 100_00, date: "2025-12-31T00:00:00.000Z" }),
+        tx({ type: "INCOME", amount: 200_00, date: "2027-01-01T00:00:00.000Z" }),
+        tx({ type: "INCOME", amount: 40_00, date: "2026-06-15T00:00:00.000Z" }),
+      ],
+      2026,
+    );
+    expect(a.totalIncome).toBe(40_00);
+    expect(a.months[5].income).toBe(40_00);
+  });
+
+  it("aponta o melhor e o pior mês por resultado, só entre meses com movimento", () => {
+    const a = annualSummary(
+      [
+        tx({ type: "INCOME", amount: 100_00, date: "2026-02-10T00:00:00.000Z" }),
+        tx({ type: "EXPENSE", amount: 80_00, date: "2026-05-10T00:00:00.000Z" }),
+        tx({ type: "INCOME", amount: 20_00, date: "2026-09-10T00:00:00.000Z" }),
+      ],
+      2026,
+    );
+    expect(a.best?.month).toBe("2026-02"); // net +100
+    expect(a.worst?.month).toBe("2026-05"); // net -80
+  });
+
+  it("desempata o melhor/pior mês pelo mês mais cedo", () => {
+    const a = annualSummary(
+      [
+        tx({ type: "INCOME", amount: 50_00, date: "2026-04-10T00:00:00.000Z" }),
+        tx({ type: "INCOME", amount: 50_00, date: "2026-08-10T00:00:00.000Z" }),
+      ],
+      2026,
+    );
+    expect(a.best?.month).toBe("2026-04");
+    expect(a.worst?.month).toBe("2026-04");
+  });
+});
+
+describe("availableYears", () => {
+  it("retorna anos únicos em ordem decrescente", () => {
+    expect(
+      availableYears([
+        tx({ date: "2024-05-01T00:00:00.000Z" }),
+        tx({ date: "2026-01-01T00:00:00.000Z" }),
+        tx({ date: "2024-12-01T00:00:00.000Z" }),
+      ]),
+    ).toEqual([2026, 2024]);
+  });
+
+  it("lista vazia → []", () => {
+    expect(availableYears([])).toEqual([]);
   });
 });
