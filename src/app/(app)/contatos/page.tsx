@@ -36,7 +36,9 @@ export default async function ContactsPage() {
             <div key={c.id} className="card">
               <div className="flex items-start justify-between">
                 <div className="min-w-0">
-                  <p className="truncate font-semibold">{c.name}</p>
+                  <Link href={`/contatos/${c.id}`} className="block truncate font-semibold hover:underline">
+                    {c.name}
+                  </Link>
                   <span className="badge mt-1 bg-brand-50 text-brand-700">
                     {CONTACT_ROLE_LABELS[c.role as ContactRole]}
                   </span>
@@ -48,6 +50,9 @@ export default async function ContactsPage() {
                 {c.notes && <p className="text-gray-500">{c.notes}</p>}
               </div>
               <div className="mt-4 flex gap-2">
+                <Link href={`/contatos/${c.id}`} className="btn-secondary py-1.5 text-xs">
+                  Ver
+                </Link>
                 <Link href={`/contatos/${c.id}/editar`} className="btn-secondary py-1.5 text-xs">
                   Editar
                 </Link>

@@ -35,10 +35,12 @@ filtrado e à exportação CSV. Sessão 18 entregou a **projeção de caixa** no
 somando pendências pelo mês de vencimento, com alerta de saldo negativo. Sessão 19
 entregou a **visão semanal da agenda de shows** (`/shows/semana`): lista vertical de
 domingo a sábado da semana, com navegação ←/→/Esta semana, criar show por dia e link de
-detalhe; o alternador de visões virou Lista/Semana/Mês. **180 testes** verdes (medição real
-`vitest run` na Sessão 19; eram 167). Próxima sessão: continuar o polimento de UX (estados
-de loading/erro inline nos formulários) ou evoluções de filtros (persistir o último filtro
-usado).
+detalhe; o alternador de visões virou Lista/Semana/Mês. Sessão 20 entregou a **página de detalhe do
+contato** (`/contatos/[id]`): histórico de shows do contato (futuros/anteriores), resumo de
+relacionamento (nº de shows, futuros, cachê total, próximo show) e navegação cruzada
+shows↔contatos. **187 testes** verdes (medição real `vitest run` na Sessão 20; eram 180).
+Próxima sessão: continuar o polimento de UX (estados de loading/erro inline nos formulários)
+ou evoluções de filtros (persistir o último filtro usado).
 
 ## Modelo de branches (a partir de 2026-06-16)
 O repositório tem um tronco **`main`** (ver DECISIONS.md D7), já definido como **default
@@ -401,6 +403,30 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   **teste e2e autenticado** com cookie de sessão real: semana de 7–13/jun renderiza o show
   semeado com link de detalhe, semana vazia mostra o estado vazio — verificado). `npm audit`
   inalterado (10 advisories: 3 moderate / 6 high / 1 critical; nenhuma dependência nova — ver D6/D8).
+
+### Sessão 20 — 2026-06-17 (Fase 1 — página de detalhe do contato / CRM)
+- **Lógica pura** (`src/lib/contacts.ts`): `summarizeContactShows(shows, now?)` →
+  `{ total, upcoming, past, byStatus, totalFee, nextShow }`. Separa futuros (`date >= now`,
+  ordem crescente) de passados (`date < now`, decrescente), conta por status (inclui zeros),
+  soma o cachê **excluindo CANCELLED** e aponta o próximo show futuro não cancelado. `now`
+  injetável. Tipos `ContactShowLike`/`ContactShowsSummary`. Testes em `src/lib/contacts.test.ts`
+  (**7** → total do projeto **187**, eram 180): lista vazia, separação futuros/passados,
+  fronteira "agora" (>=), contagem por status com zeros, soma de cachê sem cancelados,
+  `nextShow` (menor data não cancelada) e `nextShow` nulo.
+- **UI** (`src/app/(app)/contatos/[id]/page.tsx`): detalhe do contato com dados de contato
+  (e-mail clicável/telefone/notas), cartão **Histórico de shows** (nº de shows, futuros,
+  cachê total, próximo show) e lista de **Shows vinculados** agrupada em Próximos/Anteriores,
+  com ponto+badge de status, cachê e link para o detalhe do show; estado vazio dedicado.
+- **Navegação cruzada**: nome do contato na lista (`contatos/page.tsx`) e nos pills do
+  detalhe do show (`shows/[id]/page.tsx`) agora linkam para `/contatos/[id]`; botão **Ver**
+  na lista de contatos. `deleteContactAction` passou a **redirecionar** para `/contatos`
+  (como `deleteShowAction`), para excluir a partir do detalhe sem ficar numa página órfã;
+  teste de posse ajustado para `catchRedirect`. Sem novas dependências.
+- Definition of Done verde: build (17 rotas, nova `/contatos/[id]`), typecheck limpo,
+  lint (0), 187 testes, smoke test (/contatos/abc sem sessão → 307; **e2e autenticado com
+  cookie de sessão real**: /contatos e /contatos/[id] → 200, detalhe renderiza resumo e a
+  lista de shows agrupada após vincular shows ao contato — verificado). `npm audit` inalterado
+  (10 advisories: 3 moderate / 6 high / 1 critical; nenhuma dependência nova — ver D6/D8).
 
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),

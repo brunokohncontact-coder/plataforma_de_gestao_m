@@ -155,9 +155,9 @@ export default async function ShowDetailPage({ params }: { params: { id: string 
                 key={contact.id}
                 className="inline-flex items-center gap-2 rounded-full bg-gray-100 py-1 pl-3 pr-1 text-xs text-gray-700"
               >
-                <span>
+                <Link href={`/contatos/${contact.id}`} className="hover:underline">
                   {contact.name} · {CONTACT_ROLE_LABELS[contact.role as ContactRole]}
-                </span>
+                </Link>
                 <form action={unlinkContactFromShowAction}>
                   <input type="hidden" name="showId" value={show.id} />
                   <input type="hidden" name="contactId" value={contact.id} />
