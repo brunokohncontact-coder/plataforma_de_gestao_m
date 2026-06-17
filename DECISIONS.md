@@ -350,3 +350,33 @@ contexto, decisão, justificativa e alternativas consideradas.
   do MVP); só reusar o filtro `status=pending` da página de Finanças (descartado: não separa
   urgência nem ordena por vencimento crescente); incluir realizadas como histórico (descartado: a
   tela é uma agenda de ação, não um extrato — o extrato já é a lista de Finanças).
+
+## 2026-06-17 — D21: Contatos para reativar (follow-up de relações dormentes)
+- **Contexto:** o CRM já respondia "quem mais movimenta minha agenda?" (`rankContactsByActivity`,
+  D18) e "qual o histórico deste contato?" (`summarizeContactShows`, Sessão 20). Faltava a leitura
+  **prospectiva**: "de quem eu já recebi shows, mas está parado — quem eu deveria contatar de novo
+  pra fechar o próximo gig?". Para um músico autônomo, reaquecer uma relação que já rendeu cachê
+  costuma ser mais barato que conquistar um contratante novo, mas é exatamente o que se esquece sem
+  um lembrete.
+- **Decisão:** `findContactsToReengage` (`src/lib/contacts.ts`, pura/testada) lista os contatos
+  **dormentes**: tem ao menos um show **não cancelado no passado** (`date < now`), **nenhum** show
+  não cancelado futuro (`date >= now`) e o último show foi há **`>= staleDays` dias** (padrão 60,
+  injetável). Ordena pelos mais esquecidos primeiro (maior `daysSinceLastShow`), desempatando pelo
+  maior cachê histórico acumulado (relações mais valiosas), depois nome (pt-BR) e id — estável e
+  determinística. A página `/contatos/reativar` (`force-dynamic`) consulta os contatos do usuário
+  com seus shows numa leitura, renderiza a tabela e oferece um atalho de
+  contato (mailto/tel) por linha. Ponto de entrada: botão "Reativar" no cabeçalho de Contatos.
+- **Justificativa:** os critérios codificam a intuição de prospecção — só interessa quem **já
+  trabalhou** comigo (histórico real, não um lead frio), **não tem nada marcado** (se já há show
+  futuro, a relação está ativa) e **esfriou** (passou o limite de dias). Reaproveita os tipos
+  genéricos `ContactWithShows`/`ContactRankLike` do ranking e a convenção de dia UTC
+  (`daysSinceLastShow` por diferença de meia-noite UTC, como `dayKey`), mantendo a lógica testável
+  sem banco/HTTP. `staleDays=60` é uma **hipótese** de ciclo de recontato — fixa no MVP, injetável
+  para virar preferência depois.
+- **Alternativas consideradas:** filtro de "inativos" embutido na lista de Contatos (descartado:
+  mistura prospecção com a busca/edição do dia a dia; a tabela dedicada prioriza por urgência);
+  incluir contatos **sem nenhum show** como "nunca contatados" (descartado: vira lista de leads,
+  outro fluxo — aqui o valor é o histórico de cachê comprovado); ordenar primeiro por cachê
+  (descartado: o eixo da tela é "há quanto tempo sumiu"; o cachê entra como desempate). Marcar
+  "contato feito" para sair da lista exigiria um campo `lastContactedAt` no modelo — adiado por
+  ser mudança de schema + CRUD; hoje a saída natural é agendar um novo show.

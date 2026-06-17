@@ -99,6 +99,7 @@ describe("summarizeContactShows", () => {
 
 import {
   filterContacts,
+  findContactsToReengage,
   hasActiveContactFilter,
   isValidContactRole,
   rankContactsByActivity,
@@ -280,5 +281,97 @@ describe("rankContactsByActivity", () => {
     );
     // b tem 2 ativos (desempate ganha); depois Bia < Zé por nome
     expect(r.rows.map((x) => x.contact.id)).toEqual(["b", "c", "a"]);
+  });
+});
+
+describe("findContactsToReengage", () => {
+  // NOW = 2026-06-17. "Antigo" = mais de 60 dias atrás.
+  function s(over: Partial<ContactRankShowLike> = {}): ContactRankShowLike {
+    return { status: "CONFIRMED", date: "2026-01-01T20:00:00Z", fee: 100_00, ...over };
+  }
+  function item(
+    id: string,
+    name: string,
+    shows: ContactRankShowLike[],
+  ): ContactWithShows<ContactRankLike> {
+    return { contact: { id, name }, shows };
+  }
+
+  it("trata lista vazia", () => {
+    const r = findContactsToReengage([], { now: NOW });
+    expect(r.rows).toEqual([]);
+    expect(r.count).toBe(0);
+    expect(r.staleDays).toBe(60);
+  });
+
+  it("inclui só dormentes: com passado, sem futuro e há >= staleDays dias", () => {
+    const r = findContactsToReengage(
+      [
+        // dormente: último show há ~5 meses, nada agendado
+        item("frio", "Bar Frio", [s({ date: "2026-01-10T20:00:00Z" })]),
+        // tem show futuro → excluído
+        item("ativo", "Bar Ativo", [
+          s({ date: "2026-01-10T20:00:00Z" }),
+          s({ date: "2026-08-01T20:00:00Z" }),
+        ]),
+        // último show há poucos dias (< 60) → ainda quente
+        item("recente", "Bar Recente", [s({ date: "2026-06-10T20:00:00Z" })]),
+        // nunca tocou (sem shows) → excluído
+        item("novo", "Bar Novo", []),
+      ],
+      { now: NOW },
+    );
+    expect(r.rows.map((x) => x.contact.id)).toEqual(["frio"]);
+    expect(r.rows[0].pastShows).toBe(1);
+  });
+
+  it("ignora shows cancelados (não contam como passado nem como futuro)", () => {
+    const r = findContactsToReengage(
+      [
+        // só tem cancelado → sem passado real → excluído
+        item("a", "A", [s({ date: "2026-01-10T20:00:00Z", status: "CANCELLED" })]),
+        // futuro cancelado não bloqueia; passado real o torna dormente
+        item("b", "B", [
+          s({ date: "2026-01-10T20:00:00Z" }),
+          s({ date: "2026-09-01T20:00:00Z", status: "CANCELLED" }),
+        ]),
+      ],
+      { now: NOW },
+    );
+    expect(r.rows.map((x) => x.contact.id)).toEqual(["b"]);
+    expect(r.rows[0].totalFee).toBe(100_00); // o cancelado não soma
+  });
+
+  it("calcula daysSinceLastShow pelo show não cancelado mais recente (em dias UTC)", () => {
+    const r = findContactsToReengage(
+      [
+        item("a", "A", [
+          s({ date: "2026-02-01T20:00:00Z" }),
+          s({ date: "2026-04-10T23:00:00Z" }), // este é o mais recente
+        ]),
+      ],
+      { now: NOW },
+    );
+    expect(r.rows[0].lastShowDate.toISOString()).toBe("2026-04-10T23:00:00.000Z");
+    // de 10/abr a 17/jun = 20(abr)+31(mai)+17(jun) = 68 dias
+    expect(r.rows[0].daysSinceLastShow).toBe(68);
+  });
+
+  it("ordena pelos mais esquecidos, desempatando por cachê", () => {
+    const r = findContactsToReengage(
+      [
+        item("a", "A", [s({ date: "2026-03-01T20:00:00Z", fee: 100_00 })]), // ~108 dias
+        item("b", "B", [s({ date: "2026-01-01T20:00:00Z", fee: 50_00 })]), // ~167 dias (mais antigo)
+        item("c", "C", [s({ date: "2026-01-01T20:00:00Z", fee: 999_00 })]), // empata em dias → cachê maior
+      ],
+      { now: NOW },
+    );
+    expect(r.rows.map((x) => x.contact.id)).toEqual(["c", "b", "a"]);
+  });
+
+  it("respeita staleDays customizado", () => {
+    const items = [item("a", "A", [s({ date: "2026-05-20T20:00:00Z" })])]; // ~28 dias
+    expect(findContactsToReengage(items, { now: NOW }).count).toBe(0); // < 60
+    expect(findContactsToReengage(items, { now: NOW, staleDays: 14 }).count).toBe(1);
   });
 });

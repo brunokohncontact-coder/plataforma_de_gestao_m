@@ -62,6 +62,9 @@ fallback à cidade e grupo "Sem local"), respondendo "quais casas valem a pena?"
 **252 testes** verdes. Sessão 29 entregou a **agenda de contas a pagar/receber**
 (`/financas/agenda`): distribui as pendências em janelas de vencimento (Vencidas/Hoje/
 Próximos 7 dias/Mais tarde) com totais por janela e ações inline (ver D20). **257 testes** verdes.
+Sessão 30 entregou os **contatos para reativar** (`/contatos/reativar`): lista os contratantes
+dormentes (já tocaram, sem nada agendado e há >60 dias sem show), ordenados pelos mais esquecidos,
+com atalho de contato (mailto/tel) — follow-up de prospecção (ver D21). **263 testes** verdes.
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias) ou evoluções
 de filtros (persistir o último filtro usado).
 
@@ -674,6 +677,34 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   Mais tarde), realizada excluída, totais A receber R$ 1.500,00 / A pagar R$ 580,00 / Saldo
   pendente R$ 920,00 — verificado). `npm audit` inalterado (10 advisories: 4 moderate / 5 high /
   1 critical; nenhuma dependência nova — ver D6/D8).
+
+### Sessão 30 — 2026-06-17 (Fase 1 — contatos para reativar / CRM prospecção)
+- **Lógica pura** (`src/lib/contacts.ts`): `findContactsToReengage(items, opts?)` →
+  `{ rows, count, staleDays }`. Inclui um contato quando tem ao menos um show **não cancelado
+  no passado** (`date < now`), **nenhum** show não cancelado futuro (`date >= now`) e o último
+  show foi há **`>= staleDays` dias** (padrão 60, injetável; `now` injetável). Cada linha
+  (`ReengageRow`) traz `lastShowDate`, `daysSinceLastShow` (diferença de meia-noite UTC, mesma
+  convenção de `dayKey`), `pastShows` (passados não cancelados) e `totalFee` (cachê histórico,
+  centavos). Ordena pelos mais esquecidos primeiro (`daysSinceLastShow` desc), desempatando por
+  cachê desc, nome (pt-BR) e id. Reaproveita os tipos genéricos `ContactWithShows`/`ContactRankLike`
+  do ranking. Testes em `src/lib/contacts.test.ts` (+6 → total do projeto **263**, eram 257):
+  lista vazia, inclusão só de dormentes (exclui com futuro/recente/sem shows), shows cancelados
+  ignorados (passado e futuro), cálculo de `daysSinceLastShow` em dias UTC, ordenação + desempate
+  por cachê, `staleDays` customizado.
+- **Página** `src/app/(app)/contatos/reativar/page.tsx` (`force-dynamic`): consulta os contatos
+  do usuário com seus shows numa só leitura, chama `findContactsToReengage`, mostra cards de
+  resumo (nº para reativar + contato de prioridade), uma tabela por contato (Último show, Sem
+  contato com rótulo relativo "há N meses/dias", Shows passados, Cachê histórico) com link para o
+  detalhe e atalho **✉ E-mail / ☎ Ligar** (mailto/tel) por linha; estado vazio "Nenhum contato
+  dormente 🎶" e nota de rodapé sobre o critério. Decisão registrada em **DECISIONS.md D21**.
+- **UI Contatos** (`src/app/(app)/contatos/page.tsx`): botão **Reativar** no cabeçalho (ao lado de
+  Ranking, exibido quando há contatos). Sem novas dependências.
+- Definition of Done verde: build (22 rotas, nova `/contatos/reativar`), typecheck (`tsc --noEmit`)
+  limpo, lint (0), 263 testes, smoke test (/contatos/reativar sem sessão → 307; **e2e autenticado
+  com cookie de sessão real**: página → 200, "Bar Frio" (show passado de R$ 300,00, sem futuro)
+  listado com atalho mailto e rótulo "há … meses", "Bar Ativo" (tem show futuro) corretamente
+  excluído — verificado). `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical;
+  nenhuma dependência nova — ver D6/D8).
 
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),

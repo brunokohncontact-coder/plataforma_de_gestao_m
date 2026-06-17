@@ -243,3 +243,103 @@ export function rankContactsByActivity<C extends ContactRankLike>(
 
   return { rows, count: rows.length, top: rows[0] ?? null };
 }
+
+// ── Contatos para reativar (follow-up de relações dormentes) ────────────────
+// Responde "quem eu deveria contatar de novo pra conseguir mais shows?": parte
+// dos contatos que já trabalharam comigo (tiveram shows não cancelados no
+// passado), mas estão "frios" — sem nada agendado e há tempo sem tocar.
+
+/** Meia-noite UTC do dia de `date` (mesma convenção de dia de finance.ts). */
+function utcMidnight(date: Date): number {
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+}
+
+const DAY_MS = 86_400_000;
+
+export interface ReengageRow<C extends ContactRankLike> {
+  contact: C;
+  /** Show não cancelado mais recente (sempre no passado para um row incluído). */
+  lastShowDate: Date;
+  /** Dias inteiros (UTC) desde o último show até `now`. */
+  daysSinceLastShow: number;
+  /** Nº de shows não cancelados já realizados (passados). */
+  pastShows: number;
+  /** Soma do cachê dos shows não cancelados (centavos) — valor da relação. */
+  totalFee: number;
+}
+
+export interface ReengageList<C extends ContactRankLike> {
+  rows: ReengageRow<C>[];
+  count: number;
+  /** Limite de dias sem contato usado para considerar a relação dormente. */
+  staleDays: number;
+}
+
+export interface ReengageOptions {
+  now?: Date;
+  /** Dias sem show para a relação ser considerada dormente (padrão 60). */
+  staleDays?: number;
+}
+
+/**
+ * Lista os contatos dormentes que valem um follow-up. Inclui um contato quando:
+ * - tem ao menos um show não cancelado no passado (`date < now`);
+ * - não tem nenhum show não cancelado futuro (`date >= now`) — nada agendado;
+ * - o último show não cancelado é há `>= staleDays` dias (padrão 60).
+ *
+ * Ordena pelos mais esquecidos primeiro (maior `daysSinceLastShow`), desempatando
+ * pelo maior cachê acumulado (relações mais valiosas), depois nome (pt-BR) e id —
+ * estável e determinística. Shows CANCELLED são ignorados em tudo. Pura;
+ * `now`/`staleDays` injetáveis para testes.
+ */
+export function findContactsToReengage<C extends ContactRankLike>(
+  items: ContactWithShows<C>[],
+  opts: ReengageOptions = {},
+): ReengageList<C> {
+  const now = opts.now ?? new Date();
+  const staleDays = Math.max(0, opts.staleDays ?? 60);
+  const nowTime = now.getTime();
+  const nowMidnight = utcMidnight(now);
+
+  const rows: ReengageRow<C>[] = [];
+
+  for (const { contact, shows } of items) {
+    let pastShows = 0;
+    let totalFee = 0;
+    let lastTime = -Infinity;
+    let hasUpcoming = false;
+
+    for (const s of shows) {
+      if (s.status === "CANCELLED") continue;
+      const t = toTime(s.date);
+      totalFee += s.fee;
+      if (t >= nowTime) {
+        hasUpcoming = true;
+      } else {
+        pastShows += 1;
+        if (t > lastTime) lastTime = t;
+      }
+    }
+
+    // Precisa de histórico passado e nada agendado adiante.
+    if (hasUpcoming || pastShows === 0) continue;
+
+    const lastShowDate = new Date(lastTime);
+    const daysSinceLastShow = Math.floor((nowMidnight - utcMidnight(lastShowDate)) / DAY_MS);
+    if (daysSinceLastShow < staleDays) continue;
+
+    rows.push({ contact, lastShowDate, daysSinceLastShow, pastShows, totalFee });
+  }
+
+  rows.sort((a, b) => {
+    if (b.daysSinceLastShow !== a.daysSinceLastShow) {
+      return b.daysSinceLastShow - a.daysSinceLastShow;
+    }
+    if (b.totalFee !== a.totalFee) return b.totalFee - a.totalFee;
+    const byName = a.contact.name.localeCompare(b.contact.name, "pt-BR");
+    if (byName !== 0) return byName;
+    return a.contact.id.localeCompare(b.contact.id);
+  });
+
+  return { rows, count: rows.length, staleDays };
+}

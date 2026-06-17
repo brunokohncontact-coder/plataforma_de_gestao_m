@@ -51,9 +51,14 @@ export default async function ContactsPage({
         <h1 className="text-2xl font-bold">Contatos</h1>
         <div className="flex items-center gap-2">
           {contacts.length > 0 && (
-            <Link href="/contatos/ranking" className="btn-secondary">
-              Ranking
-            </Link>
+            <>
+              <Link href="/contatos/reativar" className="btn-secondary">
+                Reativar
+              </Link>
+              <Link href="/contatos/ranking" className="btn-secondary">
+                Ranking
+              </Link>
+            </>
           )}
           <Link href="/contatos/novo" className="btn-primary">
             + Novo contato
