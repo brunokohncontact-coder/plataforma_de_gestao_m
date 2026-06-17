@@ -53,7 +53,10 @@ cancelados. Sessão 25 entregou o **resumo anual das Finanças** (`/financas/anu
 navegação por ano e link de cada mês para o relatório mensal. **231 testes** verdes (medição
 real `vitest run` na Sessão 25; eram 224). Sessão 26 entregou a **invalidação de sessões
 ao trocar a senha** (`passwordChangedAt` no `User`; `getCurrentUser` recusa tokens emitidos
-antes da troca — fecha o gap de segurança da D10/D17). **240 testes** verdes.
+antes da troca — fecha o gap de segurança da D10/D17). **240 testes** verdes. Sessão 27
+entregou o **ranking de contatos por atividade** (`/contatos/ranking`): ordena os contatos
+pelo cachê total (shows não cancelados) e nº de shows que trazem, com destaque do mais ativo
+(ver D18). **246 testes** verdes.
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias) ou evoluções
 de filtros (persistir o último filtro usado).
 
@@ -582,6 +585,32 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   token válido em `/conta` → 200; após avançar `passwordChangedAt` para depois do `iat`,
   o mesmo token em `/conta` → 307 → /login — invalidação confirmada ao vivo). `npm audit`
   inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova — ver D6/D8).
+
+### Sessão 27 — 2026-06-17 (Fase 1 — ranking de contatos por atividade / CRM)
+- **Lógica pura** (`src/lib/contacts.ts`): `rankContactsByActivity(items, now?)` →
+  `{ rows, count, top }`. Para cada contato com ao menos um show vinculado, agrega
+  `totalShows` (todos os status), `activeShows`/`upcomingShows` (não cancelados; futuro =
+  `date >= now`), `totalFee` (soma do cachê dos não cancelados, centavos) e `lastShowDate`
+  (show não cancelado mais recente, ou null). Ordena por cachê total desc, desempatando por
+  nº de shows ativos, nome (pt-BR) e id — estável e determinística. O cachê é atribuído
+  integralmente a cada contato vinculado (ver **DECISIONS.md D18**). Tipos genéricos
+  `ContactRankShowLike`/`ContactRankLike`/`ContactWithShows`/`ContactRankRow`/`ContactsRanking`.
+  Testes em `src/lib/contacts.test.ts` (+6 → total do projeto **246**, eram 240): lista vazia,
+  ignora contatos sem shows, ordem por cachê, exclusão de cancelados (cachê/ativos/futuros,
+  mas conta no total), `lastShowDate`/null com só cancelados, desempate por ativos + nome.
+- **Página** `src/app/(app)/contatos/ranking/page.tsx` (`force-dynamic`): consulta os contatos
+  do usuário com seus shows (`shows.show`) numa só leitura, chama `rankContactsByActivity`, e
+  mostra o card "Mais ativo" + contagem e uma tabela por contato (Shows ativos/total, Próximos,
+  Cachê total, Último show) com link para o detalhe; estado vazio dedicado quando nenhum contato
+  tem shows vinculados, com nota de rodapé sobre o critério de cachê.
+- **UI Contatos** (`src/app/(app)/contatos/page.tsx`): botão **Ranking** no cabeçalho (exibido
+  quando há contatos). Sem novas dependências.
+- Definition of Done verde: build (19 rotas, nova `/contatos/ranking`), typecheck (`tsc --noEmit`)
+  limpo, lint (0), 246 testes, smoke test (/contatos/ranking sem sessão → 307; **e2e autenticado
+  com cookie de sessão real**: página → 200, "Bar Top" (R$ 3.000,00, ignora show cancelado de
+  R$ 9.990,00) no topo, "Casa Pequena" (R$ 1.500,00) abaixo, contato "Sem Shows" excluído —
+  verificado). `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma
+  dependência nova — ver D6/D8).
 
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),

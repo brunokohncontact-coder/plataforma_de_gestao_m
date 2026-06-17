@@ -101,7 +101,11 @@ import {
   filterContacts,
   hasActiveContactFilter,
   isValidContactRole,
+  rankContactsByActivity,
   type ContactLike,
+  type ContactWithShows,
+  type ContactRankLike,
+  type ContactRankShowLike,
 } from "./contacts";
 
 function contact(over: Partial<ContactLike> & { name: string }): ContactLike {
@@ -183,5 +187,98 @@ describe("filterContacts", () => {
     const original = [...CONTACTS];
     filterContacts(CONTACTS, { q: "joao", role: "VENUE" });
     expect(CONTACTS).toEqual(original);
+  });
+});
+
+describe("rankContactsByActivity", () => {
+  function s(over: Partial<ContactRankShowLike> = {}): ContactRankShowLike {
+    return { status: "CONFIRMED", date: "2026-05-01T20:00:00Z", fee: 100_00, ...over };
+  }
+  function item(
+    id: string,
+    name: string,
+    shows: ContactRankShowLike[],
+  ): ContactWithShows<ContactRankLike> {
+    return { contact: { id, name }, shows };
+  }
+
+  it("trata lista vazia", () => {
+    const r = rankContactsByActivity([], NOW);
+    expect(r.rows).toEqual([]);
+    expect(r.count).toBe(0);
+    expect(r.top).toBeNull();
+  });
+
+  it("ignora contatos sem shows vinculados", () => {
+    const r = rankContactsByActivity(
+      [item("a", "Com show", [s()]), item("b", "Sem show", [])],
+      NOW,
+    );
+    expect(r.count).toBe(1);
+    expect(r.rows.map((x) => x.contact.id)).toEqual(["a"]);
+  });
+
+  it("ordena por cachê total decrescente", () => {
+    const r = rankContactsByActivity(
+      [
+        item("a", "Menor", [s({ fee: 100_00 })]),
+        item("b", "Maior", [s({ fee: 500_00 })]),
+        item("c", "Médio", [s({ fee: 300_00 })]),
+      ],
+      NOW,
+    );
+    expect(r.rows.map((x) => x.contact.id)).toEqual(["b", "c", "a"]);
+    expect(r.top?.contact.id).toBe("b");
+  });
+
+  it("exclui CANCELLED do cachê, ativos e futuros (mas conta no total)", () => {
+    const r = rankContactsByActivity(
+      [
+        item("a", "A", [
+          s({ fee: 200_00, status: "PLAYED", date: "2026-01-01T20:00:00Z" }),
+          s({ fee: 999_00, status: "CANCELLED", date: "2026-07-01T20:00:00Z" }),
+          s({ fee: 300_00, status: "CONFIRMED", date: "2026-08-01T20:00:00Z" }),
+        ]),
+      ],
+      NOW,
+    );
+    const row = r.rows[0];
+    expect(row.totalShows).toBe(3);
+    expect(row.activeShows).toBe(2);
+    expect(row.upcomingShows).toBe(1); // só o confirmado de agosto (o cancelado não conta)
+    expect(row.totalFee).toBe(500_00);
+  });
+
+  it("lastShowDate é o show não cancelado mais recente; null se só cancelados", () => {
+    const r = rankContactsByActivity(
+      [
+        item("a", "A", [
+          s({ date: "2026-01-01T20:00:00Z" }),
+          s({ date: "2026-09-01T20:00:00Z" }),
+          s({ date: "2026-12-01T20:00:00Z", status: "CANCELLED" }),
+        ]),
+        item("b", "B", [s({ date: "2026-12-01T20:00:00Z", status: "CANCELLED" })]),
+      ],
+      NOW,
+    );
+    const a = r.rows.find((x) => x.contact.id === "a")!;
+    const b = r.rows.find((x) => x.contact.id === "b")!;
+    expect(a.lastShowDate?.toISOString()).toBe("2026-09-01T20:00:00.000Z");
+    expect(b.lastShowDate).toBeNull();
+    expect(b.totalFee).toBe(0);
+    expect(b.activeShows).toBe(0);
+  });
+
+  it("desempata por nº de shows ativos e depois pelo nome (pt-BR)", () => {
+    const r = rankContactsByActivity(
+      [
+        item("a", "Zé", [s({ fee: 100_00 })]),
+        item("b", "Ana", [s({ fee: 50_00 }), s({ fee: 50_00 })]), // mesmo cachê total, mais ativos
+        item("c", "Bia", [s({ fee: 100_00 })]), // empata com Zé em tudo → nome
+      ],
+      NOW,
+    );
+    // b tem 2 ativos (desempate ganha); depois Bia < Zé por nome
+    expect(r.rows.map((x) => x.contact.id)).toEqual(["b", "c", "a"]);
   });
 });
