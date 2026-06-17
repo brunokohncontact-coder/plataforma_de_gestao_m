@@ -59,6 +59,66 @@ export function computeShowPnL(show: ShowLike, txs: TxLike[]): ShowPnL {
   return { fee: show.fee, extraIncome, expenses, net, margin };
 }
 
+// ── Ranking de rentabilidade por show (F4) ──────────────────────────────────
+
+export interface ShowProfitRow<S extends ShowLike = ShowLike> {
+  show: S;
+  pnl: ShowPnL;
+}
+
+export interface ShowsProfitability<S extends ShowLike = ShowLike> {
+  /** Linhas ordenadas por resultado (`net`) decrescente. */
+  rows: ShowProfitRow<S>[];
+  /** Nº de shows considerados (após exclusões). */
+  count: number;
+  /** Receita bruta somada (cachê + receitas extras). */
+  totalIncome: number;
+  /** Despesas somadas. */
+  totalExpenses: number;
+  /** Resultado líquido somado. */
+  totalNet: number;
+  /** Show mais rentável (maior `net`) ou null se não houver shows. */
+  best: ShowProfitRow<S> | null;
+  /** Show menos rentável (menor `net`) ou null se não houver shows. */
+  worst: ShowProfitRow<S> | null;
+}
+
+/**
+ * Classifica os shows por rentabilidade (P&L), do mais ao menos lucrativo —
+ * respondendo "quais shows realmente deram dinheiro" (principal decisão de F4).
+ *
+ * - Reaproveita `computeShowPnL` (uma única fonte de verdade do cálculo por show).
+ * - Por padrão exclui shows com status `CANCELLED` (não representam rentabilidade
+ *   real); `opts.excludeStatuses` permite customizar a lista de exclusão.
+ * - Ordena por `net` decrescente; empate desfeito pelo `id` (ordem estável).
+ */
+export function rankShowsByProfit<S extends ShowLike>(
+  shows: S[],
+  txs: TxLike[],
+  opts: { excludeStatuses?: string[] } = {},
+): ShowsProfitability<S> {
+  const excluded = new Set(opts.excludeStatuses ?? ["CANCELLED"]);
+
+  const rows: ShowProfitRow<S>[] = shows
+    .filter((s) => !(s.status != null && excluded.has(s.status)))
+    .map((show) => ({ show, pnl: computeShowPnL(show, txs) }))
+    .sort((a, b) => b.pnl.net - a.pnl.net || a.show.id.localeCompare(b.show.id));
+
+  const totalIncome = sum(rows.map((r) => r.pnl.fee + r.pnl.extraIncome));
+  const totalExpenses = sum(rows.map((r) => r.pnl.expenses));
+  const totalNet = sum(rows.map((r) => r.pnl.net));
+
+  return {
+    rows,
+    count: rows.length,
+    totalIncome,
+    totalExpenses,
+    totalNet,
+    best: rows.length > 0 ? rows[0] : null,
+    worst: rows.length > 0 ? rows[rows.length - 1] : null,
+  };
+}
+
 // ── Agregações financeiras (F3 — dashboard) ─────────────────────────────────
 
 export interface FinanceSummary {

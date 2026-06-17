@@ -203,3 +203,24 @@ contexto, decisão, justificativa e alternativas consideradas.
   meses passados que não aparecem na projeção e some o impacto); incluir transações
   realizadas futuras (não existem no modelo — realizado é sempre passado/presente);
   projeção diária/semanal (over-engineering para o MVP; mensal cobre a decisão de fluxo).
+
+## 2026-06-17 — D15: Ranking de rentabilidade por show exclui cancelados por padrão
+- **Decisão:** a página **Rentabilidade por show** (`/shows/rentabilidade`) lista todos os
+  shows do usuário ordenados pelo resultado líquido (P&L) decrescente, com totais agregados
+  e destaque do mais/menos rentável. A agregação é uma camada pura nova (`rankShowsByProfit`
+  em `src/lib/finance.ts`, testada) que **reaproveita `computeShowPnL`** (uma fonte de verdade
+  do cálculo por show) e **exclui shows com status `CANCELLED` por padrão** (parâmetro
+  `excludeStatuses` configurável). O ponto de entrada é um botão **Rentabilidade** no cabeçalho
+  da lista de Shows.
+- **Justificativa:** "quais shows realmente deram dinheiro" é a decisão central de F4 (o
+  diferencial do produto). O detalhe do show já mostra o P&L individual; faltava a visão
+  comparativa para priorizar/repetir os gigs que pagam e renegociar/cortar os que dão prejuízo.
+  Shows cancelados não geram receita real (o cachê acordado nunca se concretiza), então poluiriam
+  o ranking e os totais — daí a exclusão padrão, alinhada ao mesmo critério já usado no resumo de
+  relacionamento do contato (Sessão 20, soma de cachê sem cancelados). Reusar `computeShowPnL`
+  evita duplicar a regra de P&L. Sem novas dependências.
+- **Alternativas consideradas:** incluir cancelados com o cachê zerado — descartado (ainda
+  poluiria a lista sem agregar decisão); permitir um filtro de período no ranking — adiável (a
+  lista de Shows já tem filtro por data; o ranking olha o histórico completo, que é o caso de uso
+  de "quais gigs valem a pena"); colocar a página sob `/financas` — descartado (a análise é por
+  show; o ponto de entrada natural é a área de Shows, ao lado da agenda/exportação).

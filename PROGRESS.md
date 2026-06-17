@@ -45,10 +45,12 @@ CSV do mês. Sessão 22 entregou **filtros e busca na lista de shows** (`/shows`
 textual (título/local/cidade, sem acento) + status + intervalo de datas, recorte recomputado
 com contador "N de M" e estado vazio dedicado. Sessão 23 entregou **busca e filtro na lista de
 contatos** (`/contatos`): busca textual (nome/e-mail/telefone/notas, sem acento) + tipo (papel),
-recorte recomputado com contador "N de M" e estado vazio dedicado. **217 testes** verdes (medição
-real `vitest run` na Sessão 23; eram 207).
-Próxima sessão: continuar o polimento de UX (estados de loading/erro inline nos formulários)
-ou evoluções de filtros (persistir o último filtro usado).
+recorte recomputado com contador "N de M" e estado vazio dedicado. Sessão 24 entregou o
+**ranking de rentabilidade por show** (`/shows/rentabilidade`): lista os shows ordenados pelo
+resultado líquido (P&L), com totais agregados e destaque do mais/menos rentável, excluindo
+cancelados. **224 testes** verdes (medição real `vitest run` na Sessão 24; eram 217).
+Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias) ou evoluções
+de filtros (persistir o último filtro usado).
 
 ## Modelo de branches (a partir de 2026-06-16)
 O repositório tem um tronco **`main`** (ver DECISIONS.md D7), já definido como **default
@@ -498,6 +500,30 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   217 testes, smoke test (/contatos e variações com filtro sem sessão → 307, inclusive
   `?papel=LIXO`). `npm audit` inalterado (10 advisories: 3 moderate / 6 high / 1 critical;
   nenhuma dependência nova — ver D6/D8).
+
+### Sessão 24 — 2026-06-17 (Fase 1 — ranking de rentabilidade por show)
+- **Lógica pura** (`src/lib/finance.ts`): `rankShowsByProfit(shows, txs, opts?)` →
+  `{ rows, count, totalIncome, totalExpenses, totalNet, best, worst }`. Reaproveita
+  `computeShowPnL` (uma fonte de verdade do P&L por show); ordena por `net` decrescente
+  (empate pelo `id`, estável); por padrão **exclui shows `CANCELLED`** (`opts.excludeStatuses`
+  configurável); agrega receita bruta (cachê + extras), despesas e resultado líquido, e aponta
+  o show mais/menos rentável. Tipos `ShowProfitRow<S>`/`ShowsProfitability<S>` (genéricos sobre
+  `ShowLike` para carregar metadados de exibição). Testes em `src/lib/finance.test.ts` (+7 →
+  **72 no arquivo, 224 no projeto**, eram 217): vazio, ordenação + desempate, agregação,
+  receitas extras, exclusão de cancelados (padrão e custom), show sem status.
+- **Página** `src/app/(app)/shows/rentabilidade/page.tsx` (`force-dynamic`): consulta os shows
+  do usuário e as transações vinculadas (`showId != null`) numa só leitura cada, chama
+  `rankShowsByProfit`, e mostra cards de resumo (Shows analisados/Receita bruta/Despesas/
+  Resultado líquido), destaque Mais/Menos rentável e uma tabela por show (cachê, extras,
+  despesas, resultado, margem) com link para o detalhe e estado vazio dedicado. Decisão
+  registrada em **DECISIONS.md D15**.
+- **UI Shows** (`src/app/(app)/shows/page.tsx`): botão **Rentabilidade** no cabeçalho (exibido
+  quando há shows). Sem novas dependências.
+- Definition of Done verde: build (18 rotas, nova `/shows/rentabilidade`), typecheck
+  (`tsc --noEmit`) limpo, lint (0), 224 testes, smoke test (/shows/rentabilidade sem sessão →
+  307; **e2e autenticado com cookie de sessão real**: página → 200 renderiza 2 shows ativos
+  ordenados, exclui o cancelado, destaca mais/menos rentável — verificado). `npm audit`
+  inalterado (10 advisories: 3 moderate / 6 high / 1 critical; nenhuma dependência nova — ver D6/D8).
 
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),

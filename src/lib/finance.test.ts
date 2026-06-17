@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   computeShowPnL,
+  rankShowsByProfit,
   summarizeFinances,
   totalsByCategory,
   categoryReport,
@@ -93,6 +94,87 @@ describe("computeShowPnL", () => {
     const pnl = computeShowPnL(free, []);
     expect(pnl.margin).toBe(0);
     expect(pnl.net).toBe(0);
+  });
+});
+
+describe("rankShowsByProfit", () => {
+  const shows: ShowLike[] = [
+    { id: "a", fee: 100_00, status: "PLAYED" },
+    { id: "b", fee: 50_00, status: "CONFIRMED" },
+    { id: "c", fee: 200_00, status: "CONFIRMED" },
+  ];
+  const txs: TxLike[] = [
+    // a: +0 extra, -90 despesa -> net 10
+    tx({ type: "EXPENSE", amount: 90_00, showId: "a" }),
+    // b: +0 extra, -0 despesa -> net 50
+    // c: +0 extra, -150 despesa -> net 50
+    tx({ type: "EXPENSE", amount: 150_00, showId: "c" }),
+  ];
+
+  it("retorna estrutura vazia quando não há shows", () => {
+    const r = rankShowsByProfit([], txs);
+    expect(r.count).toBe(0);
+    expect(r.rows).toEqual([]);
+    expect(r.totalIncome).toBe(0);
+    expect(r.totalExpenses).toBe(0);
+    expect(r.totalNet).toBe(0);
+    expect(r.best).toBeNull();
+    expect(r.worst).toBeNull();
+  });
+
+  it("ordena por resultado (net) decrescente e desempata pelo id", () => {
+    const r = rankShowsByProfit(shows, txs);
+    // nets: a=10, b=50, c=50 -> ordem desc com empate b<c pelo id: b, c, a
+    expect(r.rows.map((row) => row.show.id)).toEqual(["b", "c", "a"]);
+    expect(r.best?.show.id).toBe("b");
+    expect(r.worst?.show.id).toBe("a");
+  });
+
+  it("agrega receita bruta, despesas e resultado líquido", () => {
+    const r = rankShowsByProfit(shows, txs);
+    // receita bruta = 100 + 50 + 200 = 350 ; despesas = 90 + 150 = 240 ; net = 110
+    expect(r.totalIncome).toBe(350_00);
+    expect(r.totalExpenses).toBe(240_00);
+    expect(r.totalNet).toBe(110_00);
+    expect(r.count).toBe(3);
+  });
+
+  it("soma receitas extras vinculadas na receita bruta", () => {
+    const withMerch = [...txs, tx({ type: "INCOME", amount: 30_00, showId: "b" })];
+    const r = rankShowsByProfit(shows, withMerch);
+    const b = r.rows.find((row) => row.show.id === "b");
+    expect(b?.pnl.extraIncome).toBe(30_00);
+    expect(b?.pnl.net).toBe(80_00); // 50 cachê + 30 merch
+    expect(r.totalIncome).toBe(380_00); // 350 + 30
+  });
+
+  it("exclui shows CANCELLED por padrão", () => {
+    const withCancelled: ShowLike[] = [
+      ...shows,
+      { id: "d", fee: 999_00, status: "CANCELLED" },
+    ];
+    const r = rankShowsByProfit(withCancelled, txs);
+    expect(r.count).toBe(3);
+    expect(r.rows.map((row) => row.show.id)).not.toContain("d");
+  });
+
+  it("permite customizar os status excluídos", () => {
+    const r = rankShowsByProfit(shows, txs, { excludeStatuses: ["CONFIRMED"] });
+    // exclui b e c (CONFIRMED), mantém só a (PLAYED)
+    expect(r.rows.map((row) => row.show.id)).toEqual(["a"]);
+    // lista vazia de exclusão inclui tudo (CANCELLED também)
+    const all = rankShowsByProfit(
+      [...shows, { id: "d", fee: 10_00, status: "CANCELLED" }],
+      txs,
+      { excludeStatuses: [] },
+    );
+    expect(all.count).toBe(4);
+  });
+
+  it("considera shows sem status (não são excluídos)", () => {
+    const r = rankShowsByProfit([{ id: "x", fee: 70_00 }], []);
+    expect(r.count).toBe(1);
+    expect(r.rows[0].pnl.net).toBe(70_00);
   });
 });
 
