@@ -8,6 +8,12 @@ import {
   formatMonthTitle,
   toDayParam,
   dayParamToDateTimeLocal,
+  parseDayParam,
+  startOfWeek,
+  weekRange,
+  shiftWeek,
+  formatWeekTitle,
+  buildWeekGrid,
 } from "./calendar";
 
 describe("monthKey / parseMonthKey", () => {
@@ -163,5 +169,118 @@ describe("dayParamToDateTimeLocal", () => {
     const param = toDayParam(new Date(2026, 5, 9, 12, 0));
     const dt = dayParamToDateTimeLocal(param)!;
     expect(dt.startsWith(param)).toBe(true);
+  });
+});
+
+describe("parseDayParam", () => {
+  const ref = new Date(2026, 5, 17); // 17/jun/2026
+
+  it("faz round-trip de uma chave de dia válida (data local à meia-noite)", () => {
+    const d = parseDayParam("2026-06-09", ref);
+    expect(d.getFullYear()).toBe(2026);
+    expect(d.getMonth()).toBe(5);
+    expect(d.getDate()).toBe(9);
+    expect(d.getHours()).toBe(0);
+  });
+
+  it("usa o dia de referência para entradas ausentes/inválidas", () => {
+    const expectRef = (d: Date) => {
+      expect(d.getFullYear()).toBe(2026);
+      expect(d.getMonth()).toBe(5);
+      expect(d.getDate()).toBe(17);
+    };
+    expectRef(parseDayParam(undefined, ref));
+    expectRef(parseDayParam("", ref));
+    expectRef(parseDayParam("lixo", ref));
+    expectRef(parseDayParam("2026-06", ref));
+    expectRef(parseDayParam("2026-13-09", ref)); // mês inválido
+    expectRef(parseDayParam("2026-06-32", ref)); // dia inválido
+    expectRef(parseDayParam("2026-02-31", ref)); // data inexistente (transborda)
+  });
+});
+
+describe("startOfWeek / weekRange / shiftWeek", () => {
+  it("retorna o domingo da semana à meia-noite", () => {
+    // 17/jun/2026 é uma quarta-feira; o domingo da semana é 14/jun
+    const start = startOfWeek(new Date(2026, 5, 17, 21, 30));
+    expect(toDayParam(start)).toBe("2026-06-14");
+    expect(start.getHours()).toBe(0);
+    expect(start.getDay()).toBe(0);
+  });
+
+  it("já é o domingo quando a data é domingo", () => {
+    const start = startOfWeek(new Date(2026, 5, 14, 10, 0));
+    expect(toDayParam(start)).toBe("2026-06-14");
+  });
+
+  it("weekRange cobre 7 dias (domingo -> domingo seguinte exclusivo)", () => {
+    const { start, endExclusive } = weekRange(new Date(2026, 5, 17));
+    expect(toDayParam(start)).toBe("2026-06-14");
+    expect(toDayParam(endExclusive)).toBe("2026-06-21");
+    const days = (endExclusive.getTime() - start.getTime()) / 86_400_000;
+    expect(days).toBe(7);
+  });
+
+  it("shiftWeek desloca 7 dias por semana, virando o mês", () => {
+    const next = shiftWeek(new Date(2026, 5, 28), 1); // 28/jun -> 05/jul
+    expect(toDayParam(next)).toBe("2026-07-05");
+    const prev = shiftWeek(new Date(2026, 5, 3), -1); // 03/jun -> 27/mai
+    expect(toDayParam(prev)).toBe("2026-05-27");
+  });
+});
+
+describe("formatWeekTitle", () => {
+  it("mesma faixa de mês", () => {
+    expect(formatWeekTitle(new Date(2026, 5, 14))).toBe("14 – 20 de junho de 2026");
+  });
+
+  it("virada de mês dentro do mesmo ano", () => {
+    expect(formatWeekTitle(new Date(2026, 5, 28))).toBe(
+      "28 de junho – 4 de julho de 2026",
+    );
+  });
+
+  it("virada de ano", () => {
+    expect(formatWeekTitle(new Date(2026, 11, 27))).toBe(
+      "27 de dezembro de 2026 – 2 de janeiro de 2027",
+    );
+  });
+});
+
+describe("buildWeekGrid", () => {
+  const today = new Date(2026, 5, 17); // quarta
+
+  it("monta 7 células de domingo a sábado", () => {
+    const cells = buildWeekGrid(new Date(2026, 5, 17), [], today);
+    expect(cells).toHaveLength(7);
+    expect(toDayParam(cells[0].date)).toBe("2026-06-14"); // domingo
+    expect(toDayParam(cells[6].date)).toBe("2026-06-20"); // sábado
+    expect(cells.every((c) => c.inMonth)).toBe(true);
+  });
+
+  it("distribui itens no dia certo e ordena por horário", () => {
+    const items = [
+      { date: new Date(2026, 5, 16, 21, 0), id: "tarde" },
+      { date: new Date(2026, 5, 16, 9, 0), id: "manha" },
+      { date: new Date(2026, 5, 18, 20, 0), id: "outro" },
+    ];
+    const cells = buildWeekGrid(new Date(2026, 5, 17), items, today);
+    const ter = cells.find((c) => c.date.getDate() === 16)!;
+    expect(ter.items.map((i) => i.id)).toEqual(["manha", "tarde"]);
+    const qui = cells.find((c) => c.date.getDate() === 18)!;
+    expect(qui.items.map((i) => i.id)).toEqual(["outro"]);
+  });
+
+  it("marca o dia de hoje", () => {
+    const cells = buildWeekGrid(new Date(2026, 5, 17), [], today);
+    const hoje = cells.filter((c) => c.isToday);
+    expect(hoje).toHaveLength(1);
+    expect(hoje[0].date.getDate()).toBe(17);
+  });
+
+  it("ignora itens fora da semana exibida", () => {
+    const items = [{ date: new Date(2026, 5, 25, 20, 0), id: "fora" }];
+    const cells = buildWeekGrid(new Date(2026, 5, 17), items, today);
+    expect(cells.flatMap((c) => c.items)).toHaveLength(0);
   });
 });

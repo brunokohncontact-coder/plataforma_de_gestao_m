@@ -144,8 +144,11 @@ export default async function DashboardPage() {
         <section className="card">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="font-semibold">Próximos shows</h2>
-            <Link href="/shows" className="text-sm text-brand-700 hover:underline">
-              Ver todos
+            <Link
+              href="/shows/calendario"
+              className="text-sm text-brand-700 hover:underline"
+            >
+              Ver agenda
             </Link>
           </div>
           {upcoming.length === 0 ? (

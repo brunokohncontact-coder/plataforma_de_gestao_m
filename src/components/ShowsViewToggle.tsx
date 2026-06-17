@@ -1,9 +1,12 @@
 import Link from "next/link";
 
-/** Alternador entre a visão de lista e a de calendário dos shows. */
-export function ShowsViewToggle({ active }: { active: "lista" | "calendario" }) {
-  const base =
-    "rounded-lg px-3 py-1.5 text-sm font-medium transition";
+/** Alternador entre as visões de lista, semana e mês (calendário) dos shows. */
+export function ShowsViewToggle({
+  active,
+}: {
+  active: "lista" | "semana" | "calendario";
+}) {
+  const base = "rounded-lg px-3 py-1.5 text-sm font-medium transition";
   const on = "bg-brand-100 text-brand-700";
   const off = "text-gray-600 hover:bg-gray-100";
   return (
@@ -12,10 +15,16 @@ export function ShowsViewToggle({ active }: { active: "lista" | "calendario" }) 
         Lista
       </Link>
       <Link
+        href="/shows/semana"
+        className={`${base} ${active === "semana" ? on : off}`}
+      >
+        Semana
+      </Link>
+      <Link
         href="/shows/calendario"
         className={`${base} ${active === "calendario" ? on : off}`}
       >
-        Calendário
+        Mês
       </Link>
     </div>
   );
