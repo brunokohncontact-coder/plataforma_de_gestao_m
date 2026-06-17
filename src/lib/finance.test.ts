@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   computeShowPnL,
   rankShowsByProfit,
+  rankVenuesByProfit,
   summarizeFinances,
   totalsByCategory,
   categoryReport,
@@ -23,6 +24,7 @@ import {
   availableYears,
   type TxLike,
   type ShowLike,
+  type VenueShowLike,
 } from "./finance";
 
 const show: ShowLike = { id: "show1", fee: 100_00, status: "CONFIRMED" };
@@ -177,6 +179,88 @@ describe("rankShowsByProfit", () => {
     const r = rankShowsByProfit([{ id: "x", fee: 70_00 }], []);
     expect(r.count).toBe(1);
     expect(r.rows[0].pnl.net).toBe(70_00);
+  });
+});
+
+describe("rankVenuesByProfit", () => {
+  const shows: VenueShowLike[] = [
+    { id: "a", fee: 100_00, status: "PLAYED", venue: "Bar do Zé", city: "Recife" },
+    { id: "b", fee: 200_00, status: "CONFIRMED", venue: "bar do zé", city: "Recife" }, // mesmo local, grafia diferente
+    { id: "c", fee: 50_00, status: "CONFIRMED", venue: "Café Acústico", city: "Olinda" },
+    { id: "d", fee: 30_00, status: "CONFIRMED", venue: null, city: "Recife" }, // cai para a cidade
+    { id: "e", fee: 10_00, status: "CONFIRMED", venue: "", city: "" }, // sem local
+  ];
+  const txs: TxLike[] = [
+    tx({ type: "EXPENSE", amount: 40_00, showId: "a" }), // Bar do Zé: -40
+    tx({ type: "INCOME", amount: 25_00, showId: "c" }), // Café: +25 extra
+  ];
+
+  it("retorna estrutura vazia quando não há shows", () => {
+    const r = rankVenuesByProfit([], txs);
+    expect(r.count).toBe(0);
+    expect(r.rows).toEqual([]);
+    expect(r.totalNet).toBe(0);
+    expect(r.best).toBeNull();
+    expect(r.worst).toBeNull();
+  });
+
+  it("agrupa shows do mesmo local ignorando acento/caixa e soma o P&L", () => {
+    const r = rankVenuesByProfit(shows, txs);
+    const bar = r.rows.find((row) => row.key === "bar do ze");
+    expect(bar).toBeDefined();
+    expect(bar!.showCount).toBe(2);
+    // cachês 100 + 200 = 300 ; despesa 40 -> net 260
+    expect(bar!.totalFee).toBe(300_00);
+    expect(bar!.totalExpenses).toBe(40_00);
+    expect(bar!.totalNet).toBe(260_00);
+    expect(bar!.avgNet).toBe(130_00);
+    // grafia exibida: a mais frequente; empate 1x1 -> primeira aparição ("Bar do Zé")
+    expect(bar!.name).toBe("Bar do Zé");
+  });
+
+  it("usa a cidade quando não há venue e agrupa 'sem local' à parte", () => {
+    const r = rankVenuesByProfit(shows, txs);
+    // show d (venue null, city Recife) NÃO se junta ao Bar do Zé (chave = "recife")
+    const recife = r.rows.find((row) => row.key === "recife");
+    expect(recife).toBeDefined();
+    expect(recife!.showCount).toBe(1);
+    expect(recife!.name).toBe("Recife");
+
+    const semLocal = r.rows.find((row) => row.key === "");
+    expect(semLocal).toBeDefined();
+    expect(semLocal!.name).toBe("Sem local");
+    expect(semLocal!.totalNet).toBe(10_00);
+  });
+
+  it("conta receitas extras vinculadas e calcula a margem agregada", () => {
+    const r = rankVenuesByProfit(shows, txs);
+    const cafe = r.rows.find((row) => row.key === "cafe acustico");
+    expect(cafe!.totalExtra).toBe(25_00);
+    // bruto = 50 + 25 = 75 ; net = 75 ; margem = 1
+    expect(cafe!.totalNet).toBe(75_00);
+    expect(cafe!.margin).toBeCloseTo(1);
+  });
+
+  it("ordena por resultado total desc e aponta o melhor/pior", () => {
+    const r = rankVenuesByProfit(shows, txs);
+    // nets: Bar=260, Café=75, Recife=30, Sem local=10
+    expect(r.rows.map((row) => row.key)).toEqual(["bar do ze", "cafe acustico", "recife", ""]);
+    expect(r.best?.key).toBe("bar do ze");
+    expect(r.worst?.key).toBe("");
+    expect(r.totalNet).toBe(375_00);
+    expect(r.count).toBe(4);
+  });
+
+  it("exclui shows cancelados por padrão", () => {
+    const withCancelled: VenueShowLike[] = [
+      ...shows,
+      { id: "x", fee: 999_00, status: "CANCELLED", venue: "Bar do Zé", city: "Recife" },
+    ];
+    const r = rankVenuesByProfit(withCancelled, txs);
+    const bar = r.rows.find((row) => row.key === "bar do ze");
+    // cancelado não soma cachê nem conta como show
+    expect(bar!.showCount).toBe(2);
+    expect(bar!.totalNet).toBe(260_00);
   });
 });
 

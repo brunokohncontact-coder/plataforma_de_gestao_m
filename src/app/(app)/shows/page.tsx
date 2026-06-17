@@ -68,6 +68,11 @@ export default async function ShowsPage({
             </Link>
           )}
           {shows.length > 0 && (
+            <Link href="/shows/locais" className="btn-secondary">
+              Por local
+            </Link>
+          )}
+          {shows.length > 0 && (
             <a
               href="/shows/agenda.ics"
               className="text-sm text-brand-700 hover:underline"

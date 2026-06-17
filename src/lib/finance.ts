@@ -119,6 +119,166 @@ export function rankShowsByProfit<S extends ShowLike>(
   };
 }
 
+// ── Rentabilidade por local (agrega P&L por casa/venue) ─────────────────────
+
+/** Forma mínima de show para agrupar por local. */
+export interface VenueShowLike extends ShowLike {
+  venue?: string | null;
+  city?: string | null;
+}
+
+export interface VenueProfitRow {
+  /** Chave normalizada de agrupamento (sem acento/caixa). "" = sem local. */
+  key: string;
+  /** Nome de exibição (grafia original mais frequente) ou "Sem local". */
+  name: string;
+  /** Nº de shows no grupo (após exclusões). */
+  showCount: number;
+  /** Cachê somado (centavos). */
+  totalFee: number;
+  /** Receitas extras somadas (centavos). */
+  totalExtra: number;
+  /** Despesas somadas (centavos). */
+  totalExpenses: number;
+  /** Resultado líquido somado = cachê + extras − despesas (centavos). */
+  totalNet: number;
+  /** Resultado líquido médio por show no grupo (centavos, arredondado). */
+  avgNet: number;
+  /** Margem agregada (net / receita bruta), 0 se receita bruta 0. */
+  margin: number;
+}
+
+export interface VenuesProfitability {
+  /** Linhas ordenadas por resultado (`totalNet`) decrescente. */
+  rows: VenueProfitRow[];
+  /** Nº de locais distintos considerados. */
+  count: number;
+  /** Resultado líquido somado de todos os locais. */
+  totalNet: number;
+  /** Local mais rentável (maior `totalNet`) ou null. */
+  best: VenueProfitRow | null;
+  /** Local menos rentável (menor `totalNet`) ou null. */
+  worst: VenueProfitRow | null;
+}
+
+/**
+ * Agrega a rentabilidade (P&L) dos shows por **local** — respondendo
+ * "quais casas valem a pena tocar?". Distingue-se de `rankShowsByProfit`
+ * (que olha cada gig isolado): aqui shows na mesma casa somam.
+ *
+ * - Agrupa por `venue` (normalizado: sem acento, minúsculo, trim); se vazio,
+ *   cai para `city`; se ambos vazios, agrupa em "Sem local" (chave "").
+ * - O nome exibido é a **grafia original mais frequente** do grupo (desempate
+ *   pela primeira ocorrência), preservando acentos/caixa do usuário.
+ * - Reaproveita `computeShowPnL` (fonte única do cálculo por show).
+ * - Por padrão exclui shows `CANCELLED`; `opts.excludeStatuses` customiza.
+ * - Ordena por `totalNet` desc; empate por nº de shows desc, depois nome (pt-BR)
+ *   e chave — estável e determinístico.
+ */
+export function rankVenuesByProfit(
+  shows: VenueShowLike[],
+  txs: TxLike[],
+  opts: { excludeStatuses?: string[] } = {},
+): VenuesProfitability {
+  const excluded = new Set(opts.excludeStatuses ?? ["CANCELLED"]);
+
+  interface Acc {
+    key: string;
+    showCount: number;
+    totalFee: number;
+    totalExtra: number;
+    totalExpenses: number;
+    totalNet: number;
+    /** Contagem das grafias originais para escolher o nome de exibição. */
+    labels: Map<string, { count: number; order: number }>;
+    /** Ordem de primeira aparição do grupo (estabilidade). */
+    order: number;
+  }
+
+  const groups = new Map<string, Acc>();
+  let order = 0;
+
+  for (const show of shows) {
+    if (show.status != null && excluded.has(show.status)) continue;
+
+    const rawVenue = (show.venue ?? "").trim();
+    const rawCity = (show.city ?? "").trim();
+    const rawLabel = rawVenue || rawCity; // grafia original preferida
+    const key = normalizeText(rawVenue) || normalizeText(rawCity); // "" = sem local
+
+    let acc = groups.get(key);
+    if (!acc) {
+      acc = {
+        key,
+        showCount: 0,
+        totalFee: 0,
+        totalExtra: 0,
+        totalExpenses: 0,
+        totalNet: 0,
+        labels: new Map(),
+        order: order++,
+      };
+      groups.set(key, acc);
+    }
+
+    const pnl = computeShowPnL(show, txs);
+    acc.showCount += 1;
+    acc.totalFee += pnl.fee;
+    acc.totalExtra += pnl.extraIncome;
+    acc.totalExpenses += pnl.expenses;
+    acc.totalNet += pnl.net;
+
+    if (rawLabel) {
+      const seen = acc.labels.get(rawLabel);
+      if (seen) seen.count += 1;
+      else acc.labels.set(rawLabel, { count: 1, order: acc.labels.size });
+    }
+  }
+
+  const rows: VenueProfitRow[] = [...groups.values()].map((acc) => {
+    const name = acc.key === "" ? "Sem local" : pickLabel(acc.labels);
+    const gross = acc.totalFee + acc.totalExtra;
+    return {
+      key: acc.key,
+      name,
+      showCount: acc.showCount,
+      totalFee: acc.totalFee,
+      totalExtra: acc.totalExtra,
+      totalExpenses: acc.totalExpenses,
+      totalNet: acc.totalNet,
+      avgNet: acc.showCount > 0 ? Math.round(acc.totalNet / acc.showCount) : 0,
+      margin: gross === 0 ? 0 : acc.totalNet / gross,
+    };
+  });
+
+  rows.sort(
+    (a, b) =>
+      b.totalNet - a.totalNet ||
+      b.showCount - a.showCount ||
+      a.name.localeCompare(b.name, "pt-BR") ||
+      a.key.localeCompare(b.key),
+  );
+
+  return {
+    rows,
+    count: rows.length,
+    totalNet: sum(rows.map((r) => r.totalNet)),
+    best: rows.length > 0 ? rows[0] : null,
+    worst: rows.length > 0 ? rows[rows.length - 1] : null,
+  };
+}
+
+/** Escolhe a grafia mais usada (desempate pela primeira aparição). */
+function pickLabel(labels: Map<string, { count: number; order: number }>): string {
+  let best: { label: string; count: number; order: number } | null = null;
+  for (const [label, { count, order }] of labels) {
+    if (!best || count > best.count || (count === best.count && order < best.order)) {
+      best = { label, count, order };
+    }
+  }
+  return best?.label ?? "Sem local";
+}
+
 // ── Agregações financeiras (F3 — dashboard) ─────────────────────────────────
 
 export interface FinanceSummary {
