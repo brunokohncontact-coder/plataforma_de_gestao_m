@@ -41,7 +41,10 @@ relacionamento (nº de shows, futuros, cachê total, próximo show) e navegaçã
 shows↔contatos. Sessão 21 entregou o **relatório mensal das Finanças** (`/financas/relatorio`):
 fechamento de um mês com resumo (receitas/despesas/saldo/caixa), pendências do mês e a quebra
 por categoria (receitas e despesas) com participação (%), navegação ←/→/Mês atual e exportação
-CSV do mês. **192 testes** verdes (medição real `vitest run` na Sessão 21; eram 187).
+CSV do mês. Sessão 22 entregou **filtros e busca na lista de shows** (`/shows`): busca
+textual (título/local/cidade, sem acento) + status + intervalo de datas, recorte recomputado
+com contador "N de M" e estado vazio dedicado. **207 testes** verdes (medição real
+`vitest run` na Sessão 22; eram 192).
 Próxima sessão: continuar o polimento de UX (estados de loading/erro inline nos formulários)
 ou evoluções de filtros (persistir o último filtro usado).
 
@@ -455,6 +458,26 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   resumo, categorias e shares 75%/25%, "A pagar no mês"; mês sem dados → estado vazio — verificado).
   `npm audit` inalterado (10 advisories: 3 moderate / 6 high / 1 critical; nenhuma dependência
   nova — ver D6/D8).
+
+### Sessão 22 — 2026-06-17 (Fase 1 — filtros e busca na lista de shows)
+- **Lógica pura** (`src/lib/shows.ts`): `filterShows(shows, filter)` filtra por `q`
+  (busca em **título + local + cidade** normalizados, sem acento/caixa — reaproveita
+  `normalizeText`), `status` (exato; inválido ignorado, via `isValidShowStatus`) e intervalo
+  `from`/`to` ("YYYY-MM-DD", inclusivo nas duas pontas, compara `dayKey`; invertido não casa
+  nada — reaproveita `isValidDateKey`/`dayKey` de `finance.ts`). Combinação em AND; critérios
+  ausentes/inválidos ignorados. `hasActiveShowFilter` indica se há recorte ativo. Espelha o
+  padrão das Finanças (filtragem em memória sobre o recorte do usuário — ver D9). Testes em
+  `src/lib/shows.test.ts` (**15** → total do projeto **207**, eram 192): status, busca
+  título/local/cidade, acento/caixa, intervalo from/to/invertido, combinação AND, imutabilidade.
+- **UI** (`src/app/(app)/shows/page.tsx`): formulário GET (`?q=&status=&de=&ate=`) com campos
+  Buscar/Status/De/Até, botão **Filtrar** e link **Limpar**; contador "N de M shows" quando há
+  filtro; estado vazio dedicado "Nenhum show corresponde aos filtros". Consulta o mesmo conjunto
+  de shows do usuário e filtra em memória (uma consulta). Sem novas dependências.
+- Definition of Done verde: build (17 rotas), typecheck (`tsc --noEmit`) limpo, lint (0),
+  207 testes, smoke test (/shows e variações com filtro sem sessão → 307; **e2e autenticado com
+  cookie de sessão real**: sem filtro = 2 shows, `?q=festival` = "1 de 2" só Festival,
+  `?status=PLAYED` = só o show realizado, `?q=zzz` = estado vazio — verificado). `npm audit`
+  inalterado (10 advisories: 3 moderate / 6 high / 1 critical; nenhuma dependência nova — ver D6/D8).
 
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
