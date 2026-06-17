@@ -47,11 +47,18 @@ export default async function ContactsPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">Contatos</h1>
-        <Link href="/contatos/novo" className="btn-primary">
-          + Novo contato
-        </Link>
+        <div className="flex items-center gap-2">
+          {contacts.length > 0 && (
+            <Link href="/contatos/ranking" className="btn-secondary">
+              Ranking
+            </Link>
+          )}
+          <Link href="/contatos/novo" className="btn-primary">
+            + Novo contato
+          </Link>
+        </div>
       </div>
 
       {contacts.length > 0 && (

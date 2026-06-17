@@ -272,3 +272,27 @@ contexto, decisão, justificativa e alternativas consideradas.
   manter D10 / não invalidar (descartado: deixa sessões roubadas válidas por até 30 dias);
   lista de sessões revogáveis no banco (over-engineering para o MVP single-user — adiável se
   surgir necessidade de "encerrar uma sessão específica" em vez de "todas").
+
+## 2026-06-17 — D18: Ranking de contatos atribui o cachê por relação (não rateado)
+- **Contexto:** o ranking de contatos (`/contatos/ranking`, `rankContactsByActivity` em
+  `src/lib/contacts.ts`) ordena os contatos pela atividade que geram — shows vinculados e
+  cachê acordado. Como a relação Contato↔Show é many-to-many (`ContactsOnShows`), um mesmo
+  show pode estar vinculado a vários contatos, e era preciso decidir como o cachê do show
+  conta para cada contato.
+- **Decisão:** o cachê de um show é atribuído **integralmente a cada contato vinculado**
+  (não é rateado/dividido entre eles). O ranking ordena por cachê total (shows não
+  cancelados) desc, desempatando por nº de shows ativos, depois nome (pt-BR) e id. Shows
+  `CANCELLED` não somam cachê nem contam como ativos/futuros, mas aparecem no total bruto de
+  shows (coluna "ativos / total"). Só entram no ranking contatos com ao menos um show
+  vinculado. Não há agregado de cachê somando todos os contatos (seria enganoso por causa da
+  contagem múltipla); a página expõe `count` e `top`, e uma nota de rodapé explica o critério.
+- **Justificativa:** a pergunta de negócio é "qual parceiro mais movimenta minha agenda?".
+  Atribuir o cachê inteiro a cada contato responde isso por contato sem inventar um rateio
+  arbitrário (dividir por nº de contatos distorceria casas que sempre trabalham com um
+  produtor, por ex.). Mantém a métrica simples e a lógica pura/testável, reaproveitando o
+  padrão de `rankShowsByProfit` (D15) e `summarizeContactShows` (exclusão de cancelados).
+- **Alternativas consideradas:** ratear o cachê igualmente entre os contatos do show
+  (descartado: rateio arbitrário, confunde mais do que ajuda no MVP); ranquear só por nº de
+  shows (descartado: ignora o valor, que é o sinal mais útil); incluir contatos sem shows com
+  zero (descartado: ruído — a tela é um ranking, não a lista completa, que já existe em
+  `/contatos`).
