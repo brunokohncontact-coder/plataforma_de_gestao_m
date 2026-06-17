@@ -55,6 +55,7 @@ export default async function FinancesPage({
   const categoryParam = readParam(params, "categoria");
   const fromParam = readParam(params, "de");
   const toParam = readParam(params, "ate");
+  const qParam = readParam(params, "q");
 
   const filter: TransactionFilter = {
     month: isValidMonthKey(monthParam) ? monthParam : null,
@@ -68,6 +69,7 @@ export default async function FinancesPage({
     category: categoryParam || null,
     from: isValidDateKey(fromParam) ? fromParam : null,
     to: isValidDateKey(toParam) ? toParam : null,
+    q: qParam || null,
   };
   const active = hasActiveFilter(filter);
 
@@ -124,6 +126,17 @@ export default async function FinancesPage({
           className="card flex flex-wrap items-end gap-3"
           aria-label="Filtros de finanças"
         >
+          <Field label="Buscar" htmlFor="f-q">
+            <input
+              id="f-q"
+              type="search"
+              name="q"
+              defaultValue={filter.q ?? ""}
+              placeholder="Descrição ou categoria"
+              className="input"
+            />
+          </Field>
+
           <Field label="Mês" htmlFor="f-mes">
             <select id="f-mes" name="mes" defaultValue={filter.month ?? ""} className="input">
               <option value="">Todos os meses</option>
@@ -367,6 +380,7 @@ function buildExportQuery(filter: TransactionFilter): string {
   else if (filter.received === false) params.set("status", "pending");
   if (filter.from) params.set("de", filter.from);
   if (filter.to) params.set("ate", filter.to);
+  if (filter.q && filter.q.trim()) params.set("q", filter.q.trim());
   return params.toString();
 }
 

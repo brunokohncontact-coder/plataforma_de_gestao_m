@@ -27,6 +27,7 @@ export async function GET(req: NextRequest) {
   const categoryParam = sp.get("categoria");
   const fromParam = sp.get("de") ?? undefined;
   const toParam = sp.get("ate") ?? undefined;
+  const qParam = sp.get("q");
 
   const filter: TransactionFilter = {
     month: isValidMonthKey(monthParam) ? monthParam : null,
@@ -39,6 +40,7 @@ export async function GET(req: NextRequest) {
     category: categoryParam || null,
     from: isValidDateKey(fromParam) ? fromParam : null,
     to: isValidDateKey(toParam) ? toParam : null,
+    q: qParam || null,
   };
 
   const transactions = await prisma.transaction.findMany({
