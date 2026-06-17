@@ -43,8 +43,10 @@ fechamento de um mês com resumo (receitas/despesas/saldo/caixa), pendências do
 por categoria (receitas e despesas) com participação (%), navegação ←/→/Mês atual e exportação
 CSV do mês. Sessão 22 entregou **filtros e busca na lista de shows** (`/shows`): busca
 textual (título/local/cidade, sem acento) + status + intervalo de datas, recorte recomputado
-com contador "N de M" e estado vazio dedicado. **207 testes** verdes (medição real
-`vitest run` na Sessão 22; eram 192).
+com contador "N de M" e estado vazio dedicado. Sessão 23 entregou **busca e filtro na lista de
+contatos** (`/contatos`): busca textual (nome/e-mail/telefone/notas, sem acento) + tipo (papel),
+recorte recomputado com contador "N de M" e estado vazio dedicado. **217 testes** verdes (medição
+real `vitest run` na Sessão 23; eram 207).
 Próxima sessão: continuar o polimento de UX (estados de loading/erro inline nos formulários)
 ou evoluções de filtros (persistir o último filtro usado).
 
@@ -478,6 +480,24 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   cookie de sessão real**: sem filtro = 2 shows, `?q=festival` = "1 de 2" só Festival,
   `?status=PLAYED` = só o show realizado, `?q=zzz` = estado vazio — verificado). `npm audit`
   inalterado (10 advisories: 3 moderate / 6 high / 1 critical; nenhuma dependência nova — ver D6/D8).
+
+### Sessão 23 — 2026-06-17 (Fase 1 — busca e filtro na lista de contatos)
+- **Lógica pura** (`src/lib/contacts.ts`): `filterContacts(contacts, filter)` filtra por `q`
+  (busca em **nome + e-mail + telefone + notas** normalizados, sem acento/caixa — reaproveita
+  `normalizeText` de `finance.ts`) e `role` (papel exato; inválido ignorado, via
+  `isValidContactRole`). Combinação em AND; critérios ausentes/inválidos ignorados.
+  `hasActiveContactFilter` indica se há recorte ativo. Espelha o padrão das Finanças e dos
+  Shows (filtragem em memória sobre o recorte do usuário — ver D9). Testes em
+  `src/lib/contacts.test.ts` (+10 → total do projeto **217**, eram 207): papel exato/inválido,
+  busca nome/e-mail/telefone/notas, acento/caixa, combinação AND, termo sem match, imutabilidade.
+- **UI** (`src/app/(app)/contatos/page.tsx`): formulário GET (`?q=&papel=`) com campos
+  Buscar/Tipo, botão **Filtrar** e link **Limpar**; contador "N de M contatos" quando há filtro;
+  estado vazio dedicado "Nenhum contato corresponde aos filtros". Consulta o mesmo conjunto de
+  contatos do usuário e filtra em memória (uma consulta). Sem novas dependências.
+- Definition of Done verde: build (17 rotas), typecheck (`tsc --noEmit`) limpo, lint (0),
+  217 testes, smoke test (/contatos e variações com filtro sem sessão → 307, inclusive
+  `?papel=LIXO`). `npm audit` inalterado (10 advisories: 3 moderate / 6 high / 1 critical;
+  nenhuma dependência nova — ver D6/D8).
 
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),

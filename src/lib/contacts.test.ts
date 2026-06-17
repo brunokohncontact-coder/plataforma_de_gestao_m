@@ -96,3 +96,92 @@ describe("summarizeContactShows", () => {
     expect(s.nextShow).toBeNull();
   });
 });
+
+import {
+  filterContacts,
+  hasActiveContactFilter,
+  isValidContactRole,
+  type ContactLike,
+} from "./contacts";
+
+function contact(over: Partial<ContactLike> & { name: string }): ContactLike {
+  return {
+    email: null,
+    phone: null,
+    notes: null,
+    role: "OTHER",
+    ...over,
+  };
+}
+
+const CONTACTS: ContactLike[] = [
+  contact({ name: "Bar do João", email: "contato@bardojoao.com", role: "VENUE" }),
+  contact({ name: "Maria Promoções", phone: "11 99999-0000", role: "PROMOTER" }),
+  contact({ name: "Estúdio Sonora", notes: "mixagem e masterização", role: "PRODUCER" }),
+];
+
+describe("isValidContactRole", () => {
+  it("aceita papéis conhecidos e rejeita o resto", () => {
+    expect(isValidContactRole("VENUE")).toBe(true);
+    expect(isValidContactRole("PROMOTER")).toBe(true);
+    expect(isValidContactRole("LIXO")).toBe(false);
+    expect(isValidContactRole(undefined)).toBe(false);
+    expect(isValidContactRole(null)).toBe(false);
+    expect(isValidContactRole("")).toBe(false);
+  });
+});
+
+describe("hasActiveContactFilter", () => {
+  it("detecta critérios ativos e ignora vazios/inválidos", () => {
+    expect(hasActiveContactFilter({})).toBe(false);
+    expect(hasActiveContactFilter({ q: "   " })).toBe(false);
+    expect(hasActiveContactFilter({ role: "LIXO" })).toBe(false);
+    expect(hasActiveContactFilter({ q: "joão" })).toBe(true);
+    expect(hasActiveContactFilter({ role: "VENUE" })).toBe(true);
+  });
+});
+
+describe("filterContacts", () => {
+  it("sem filtro retorna todos", () => {
+    expect(filterContacts(CONTACTS, {})).toHaveLength(3);
+  });
+
+  it("filtra por papel exato", () => {
+    const r = filterContacts(CONTACTS, { role: "VENUE" });
+    expect(r.map((c) => c.name)).toEqual(["Bar do João"]);
+  });
+
+  it("ignora papel inválido", () => {
+    expect(filterContacts(CONTACTS, { role: "LIXO" })).toHaveLength(3);
+  });
+
+  it("busca por nome sem acento e sem caixa", () => {
+    expect(filterContacts(CONTACTS, { q: "joao" }).map((c) => c.name)).toEqual([
+      "Bar do João",
+    ]);
+    expect(filterContacts(CONTACTS, { q: "SONORA" }).map((c) => c.name)).toEqual([
+      "Estúdio Sonora",
+    ]);
+  });
+
+  it("busca casa e-mail, telefone e notas", () => {
+    expect(filterContacts(CONTACTS, { q: "bardojoao.com" })).toHaveLength(1);
+    expect(filterContacts(CONTACTS, { q: "99999" })).toHaveLength(1);
+    expect(filterContacts(CONTACTS, { q: "masterização" })).toHaveLength(1);
+  });
+
+  it("combina busca e papel em AND", () => {
+    expect(filterContacts(CONTACTS, { q: "maria", role: "VENUE" })).toHaveLength(0);
+    expect(filterContacts(CONTACTS, { q: "maria", role: "PROMOTER" })).toHaveLength(1);
+  });
+
+  it("termo sem correspondência retorna vazio", () => {
+    expect(filterContacts(CONTACTS, { q: "zzz" })).toHaveLength(0);
+  });
+
+  it("não muta a lista original", () => {
+    const original = [...CONTACTS];
+    filterContacts(CONTACTS, { q: "joao", role: "VENUE" });
+    expect(CONTACTS).toEqual(original);
+  });
+});
