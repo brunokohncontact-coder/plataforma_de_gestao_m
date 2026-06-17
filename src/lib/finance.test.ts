@@ -16,6 +16,7 @@ import {
   pendingDueStatus,
   isOverdue,
   summarizeOverdue,
+  projectCashflow,
   type TxLike,
   type ShowLike,
 } from "./finance";
@@ -462,5 +463,87 @@ describe("summarizeOverdue", () => {
       incomeCount: 0,
       expenseCount: 0,
     });
+  });
+});
+
+describe("projectCashflow", () => {
+  const now = "2026-03-15T12:00:00.000Z"; // mês atual = 2026-03
+
+  it("parte do caixa realizado e ignora pendências quando só há realizadas", () => {
+    const txs = [
+      tx({ type: "INCOME", amount: 100_00, received: true }),
+      tx({ type: "EXPENSE", amount: 40_00, received: true }),
+    ];
+    const p = projectCashflow(txs, { now, months: 3 });
+    expect(p.startBalance).toBe(60_00);
+    expect(p.months).toHaveLength(3);
+    expect(p.months.map((m) => m.month)).toEqual(["2026-03", "2026-04", "2026-05"]);
+    // nenhuma pendência → saldo projetado constante
+    expect(p.months.every((m) => m.endBalance === 60_00)).toBe(true);
+  });
+
+  it("distribui pendências por mês de vencimento e acumula o saldo", () => {
+    const txs = [
+      tx({ type: "INCOME", amount: 100_00, received: true }), // caixa atual = 100
+      tx({ type: "INCOME", amount: 50_00, received: false, date: "2026-04-10T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 20_00, received: false, date: "2026-04-20T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 70_00, received: false, date: "2026-05-05T00:00:00.000Z" }),
+    ];
+    const p = projectCashflow(txs, { now, months: 3 });
+    expect(p.startBalance).toBe(100_00);
+    expect(p.months[0]).toMatchObject({ month: "2026-03", net: 0, endBalance: 100_00 });
+    expect(p.months[1]).toMatchObject({
+      month: "2026-04",
+      income: 50_00,
+      expense: 20_00,
+      net: 30_00,
+      endBalance: 130_00,
+    });
+    expect(p.months[2]).toMatchObject({
+      month: "2026-05",
+      net: -70_00,
+      endBalance: 60_00,
+    });
+  });
+
+  it("dobra pendências vencidas/antigas no mês atual", () => {
+    const txs = [
+      tx({ type: "EXPENSE", amount: 30_00, received: false, date: "2026-01-10T00:00:00.000Z" }), // antiga
+      tx({ type: "INCOME", amount: 10_00, received: false, date: "2026-03-02T00:00:00.000Z" }), // já passou no mês
+    ];
+    const p = projectCashflow(txs, { now, months: 2 });
+    expect(p.startBalance).toBe(0);
+    expect(p.months[0]).toMatchObject({
+      month: "2026-03",
+      income: 10_00,
+      expense: 30_00,
+      net: -20_00,
+      endBalance: -20_00,
+    });
+  });
+
+  it("ignora pendências além do horizonte projetado", () => {
+    const txs = [
+      tx({ type: "INCOME", amount: 99_00, received: false, date: "2026-09-10T00:00:00.000Z" }),
+    ];
+    const p = projectCashflow(txs, { now, months: 3 }); // horizonte vai até 2026-05
+    expect(p.months.every((m) => m.income === 0 && m.expense === 0)).toBe(true);
+    expect(p.months[p.months.length - 1].endBalance).toBe(0);
+  });
+
+  it("sinaliza saldo projetado negativo (decisão de caixa)", () => {
+    const txs = [
+      tx({ type: "INCOME", amount: 50_00, received: true }), // caixa atual = 50
+      tx({ type: "EXPENSE", amount: 120_00, received: false, date: "2026-04-10T00:00:00.000Z" }),
+    ];
+    const p = projectCashflow(txs, { now, months: 2 });
+    expect(p.months[1].endBalance).toBe(-70_00);
+  });
+
+  it("horizonte mínimo de 1 mês e vira o ano corretamente", () => {
+    const p = projectCashflow([], { now: "2026-11-15T00:00:00.000Z", months: 3 });
+    expect(p.months.map((m) => m.month)).toEqual(["2026-11", "2026-12", "2027-01"]);
+    const single = projectCashflow([], { now, months: 0 });
+    expect(single.months).toHaveLength(1);
   });
 });

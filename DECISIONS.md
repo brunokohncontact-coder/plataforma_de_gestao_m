@@ -161,3 +161,21 @@ contexto, decisão, justificativa e alternativas consideradas.
   horário local com `TZID`/`VTIMEZONE` — over-engineering (exigiria embutir a base de fusos;
   UTC é inequívoco); biblioteca de iCal de terceiros — desnecessária (o subconjunto usado é
   pequeno e a dependência somaria superfície de `npm audit`).
+
+## 2026-06-17 — D13: Projeção de caixa parte do realizado e dobra vencidas no mês atual
+- **Decisão:** a projeção de caixa (`projectCashflow`, exibida no Painel) parte do
+  **caixa realizado** (`cashBalance` = recebido − pago) e projeta os próximos meses somando
+  apenas as **pendências** (`received === false`) pelo seu **mês de vencimento**, acumulando
+  o saldo. Pendências **vencidas ou de meses anteriores** ao atual são **dobradas no mês
+  atual** (não no passado); pendências **além do horizonte** (6 meses no Painel) são
+  ignoradas. Mês de referência e horizonte são injetáveis (pureza/teste).
+- **Justificativa:** responde à pergunta de decisão "vou ter caixa nos próximos meses?".
+  Partir do realizado evita contar duas vezes o que já entrou/saiu. Bucketizar pendências
+  por vencimento dá a curva de saldo; dobrar as vencidas no mês atual reflete a expectativa
+  realista (ainda se espera receber/pagar) sem inventar datas passadas. Reaproveita
+  `summarizeFinances` (uma fonte de verdade para o caixa). Distinta da D-anterior de
+  **vencidas** (Sessão 16), que olha o passado; esta olha para frente.
+- **Alternativas consideradas:** distribuir vencidas no mês original (descartado: poluiria
+  meses passados que não aparecem na projeção e some o impacto); incluir transações
+  realizadas futuras (não existem no modelo — realizado é sempre passado/presente);
+  projeção diária/semanal (over-engineering para o MVP; mensal cobre a decisão de fluxo).
