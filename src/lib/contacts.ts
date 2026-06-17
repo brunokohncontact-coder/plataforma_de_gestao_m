@@ -1,7 +1,8 @@
 // Lógica de negócio do CRM de contatos (pura, sem dependência de banco/UI).
 // Testada em contacts.test.ts. Valores monetários em CENTAVOS (inteiros).
 
-import { SHOW_STATUSES, type ShowStatus } from "./domain";
+import { normalizeText } from "./finance";
+import { CONTACT_ROLES, SHOW_STATUSES, type ContactRole, type ShowStatus } from "./domain";
 
 /** Forma mínima de show exigida pela agregação por contato. */
 export interface ContactShowLike {
@@ -82,4 +83,59 @@ export function summarizeContactShows<T extends ContactShowLike>(
     totalFee,
     nextShow,
   };
+}
+
+// ── Filtro da lista de contatos ────────────────────────────────────────────
+// Espelha o padrão de `filterShows`/`filterTransactions`: critérios via query
+// string, filtragem em memória sobre o recorte já carregado do usuário (D9).
+
+/** Forma mínima de contato exigida pela filtragem da lista. */
+export interface ContactLike {
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  notes?: string | null;
+  role: string;
+}
+
+export interface ContactFilter {
+  /** Termo de busca livre (casa nome + e-mail + telefone + notas, sem acento/caixa). */
+  q?: string | null;
+  /** Papel exato (VENUE/PROMOTER/...); inválido é ignorado. */
+  role?: string | null;
+}
+
+/** True se `value` é um papel de contato conhecido. */
+export function isValidContactRole(
+  value: string | undefined | null,
+): value is ContactRole {
+  return Boolean(value) && (CONTACT_ROLES as readonly string[]).includes(value as string);
+}
+
+/** True se ao menos um critério do filtro está ativo (e válido). */
+export function hasActiveContactFilter(filter: ContactFilter): boolean {
+  return Boolean(normalizeText(filter.q) || isValidContactRole(filter.role));
+}
+
+/**
+ * Filtra contatos pelos critérios informados. Critérios ausentes/inválidos são
+ * ignorados. O termo `q` casa contra nome + e-mail + telefone + notas
+ * normalizados (substring), combinado em AND com o papel. Pura.
+ */
+export function filterContacts<T extends ContactLike>(
+  contacts: T[],
+  filter: ContactFilter,
+): T[] {
+  const q = normalizeText(filter.q);
+  const role = isValidContactRole(filter.role) ? filter.role : null;
+  return contacts.filter((c) => {
+    if (role && c.role !== role) return false;
+    if (q) {
+      const haystack = `${normalizeText(c.name)} ${normalizeText(c.email)} ${normalizeText(
+        c.phone,
+      )} ${normalizeText(c.notes)}`;
+      if (!haystack.includes(q)) return false;
+    }
+    return true;
+  });
 }
