@@ -102,7 +102,9 @@ describe("deleteContactAction — posse", () => {
     h.currentUser = attacker;
     const fd = new FormData();
     fd.set("id", contact.id);
-    await deleteContactAction(fd);
+    // Redireciona para /contatos ao fim (como deleteShowAction); a exclusão em si
+    // é bloqueada por posse (deleteMany com userId), então o contato continua existindo.
+    expect(await catchRedirect(deleteContactAction(fd))).toBe("/contatos");
 
     expect(await prisma.contact.findUnique({ where: { id: contact.id } })).not.toBeNull();
   });

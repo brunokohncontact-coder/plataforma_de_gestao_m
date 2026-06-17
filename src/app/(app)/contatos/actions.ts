@@ -74,4 +74,5 @@ export async function deleteContactAction(formData: FormData): Promise<void> {
   const id = String(formData.get("id"));
   await prisma.contact.deleteMany({ where: { id, userId: user.id } });
   revalidatePath("/contatos");
+  redirect("/contatos");
 }
