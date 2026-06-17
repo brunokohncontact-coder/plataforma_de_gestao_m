@@ -20,6 +20,7 @@ import {
   isOverdue,
   summarizeOverdue,
   projectCashflow,
+  buildDueAgenda,
   annualSummary,
   availableYears,
   type TxLike,
@@ -849,5 +850,82 @@ describe("availableYears", () => {
 
   it("lista vazia → []", () => {
     expect(availableYears([])).toEqual([]);
+  });
+});
+
+describe("buildDueAgenda", () => {
+  const now = "2026-03-15T12:00:00.000Z"; // hoje = 2026-03-15 (UTC)
+
+  function buckets(agenda: ReturnType<typeof buildDueAgenda>) {
+    return Object.fromEntries(agenda.buckets.map((b) => [b.key, b]));
+  }
+
+  it("ignora transações já realizadas e devolve 4 janelas zeradas quando vazio", () => {
+    const agenda = buildDueAgenda(
+      [
+        tx({ type: "INCOME", amount: 100_00, received: true, date: "2026-03-10T00:00:00.000Z" }),
+        tx({ type: "EXPENSE", amount: 40_00, received: true, date: "2026-03-20T00:00:00.000Z" }),
+      ],
+      { now },
+    );
+    expect(agenda.count).toBe(0);
+    expect(agenda.totalIncome).toBe(0);
+    expect(agenda.totalExpense).toBe(0);
+    expect(agenda.buckets.map((b) => b.key)).toEqual(["overdue", "today", "week", "later"]);
+    expect(agenda.buckets.every((b) => b.count === 0 && b.net === 0)).toBe(true);
+  });
+
+  it("distribui as pendências nas janelas pelo vencimento (UTC)", () => {
+    const txs = [
+      tx({ type: "EXPENSE", amount: 20_00, received: false, date: "2026-03-01T00:00:00.000Z" }), // vencida
+      tx({ type: "INCOME", amount: 50_00, received: false, date: "2026-03-15T00:00:00.000Z" }), // hoje
+      tx({ type: "EXPENSE", amount: 30_00, received: false, date: "2026-03-18T00:00:00.000Z" }), // +3d → semana
+      tx({ type: "INCOME", amount: 70_00, received: false, date: "2026-03-22T00:00:00.000Z" }), // +7d → semana (limite)
+      tx({ type: "INCOME", amount: 90_00, received: false, date: "2026-04-30T00:00:00.000Z" }), // mais tarde
+    ];
+    const b = buckets(buildDueAgenda(txs, { now }));
+    expect(b.overdue.count).toBe(1);
+    expect(b.overdue.expense).toBe(20_00);
+    expect(b.today.count).toBe(1);
+    expect(b.today.income).toBe(50_00);
+    expect(b.week.count).toBe(2); // +3d e +7d
+    expect(b.week.income).toBe(70_00);
+    expect(b.week.expense).toBe(30_00);
+    expect(b.later.count).toBe(1);
+    expect(b.later.income).toBe(90_00);
+  });
+
+  it("calcula income/expense/net por janela e totais gerais", () => {
+    const txs = [
+      tx({ type: "INCOME", amount: 100_00, received: false, date: "2026-03-10T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 40_00, received: false, date: "2026-03-12T00:00:00.000Z" }),
+    ];
+    const agenda = buildDueAgenda(txs, { now });
+    const b = buckets(agenda);
+    expect(b.overdue).toMatchObject({ income: 100_00, expense: 40_00, net: 60_00, count: 2 });
+    expect(agenda.totalIncome).toBe(100_00);
+    expect(agenda.totalExpense).toBe(40_00);
+    expect(agenda.count).toBe(2);
+  });
+
+  it("ordena os itens da janela por vencimento crescente e informa daysUntil", () => {
+    const txs = [
+      tx({ type: "EXPENSE", amount: 10_00, received: false, date: "2026-03-05T00:00:00.000Z" }), // -10
+      tx({ type: "EXPENSE", amount: 10_00, received: false, date: "2026-03-01T00:00:00.000Z" }), // -14
+      tx({ type: "EXPENSE", amount: 10_00, received: false, date: "2026-03-14T00:00:00.000Z" }), // -1
+    ];
+    const overdue = buckets(buildDueAgenda(txs, { now })).overdue;
+    expect(overdue.items.map((i) => i.daysUntil)).toEqual([-14, -10, -1]);
+    expect(overdue.items.every((i) => i.bucket === "overdue")).toBe(true);
+  });
+
+  it("respeita weekHorizon customizado", () => {
+    const txs = [
+      tx({ type: "INCOME", amount: 10_00, received: false, date: "2026-03-18T00:00:00.000Z" }), // +3d
+    ];
+    // horizonte de 2 dias → +3d cai em "later"
+    const b = buckets(buildDueAgenda(txs, { now, weekHorizon: 2 }));
+    expect(b.week.count).toBe(0);
+    expect(b.later.count).toBe(1);
   });
 });

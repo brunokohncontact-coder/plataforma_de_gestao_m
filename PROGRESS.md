@@ -59,7 +59,9 @@ pelo cachê total (shows não cancelados) e nº de shows que trazem, com destaqu
 (ver D18). **246 testes** verdes. Sessão 28 entregou a **rentabilidade por local**
 (`/shows/locais`): agrega o P&L dos shows por casa/venue (normalizando acento/caixa, com
 fallback à cidade e grupo "Sem local"), respondendo "quais casas valem a pena?" (ver D19).
-**252 testes** verdes.
+**252 testes** verdes. Sessão 29 entregou a **agenda de contas a pagar/receber**
+(`/financas/agenda`): distribui as pendências em janelas de vencimento (Vencidas/Hoje/
+Próximos 7 dias/Mais tarde) com totais por janela e ações inline (ver D20). **257 testes** verdes.
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias) ou evoluções
 de filtros (persistir o último filtro usado).
 
@@ -644,6 +646,34 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   cancelado de R$ 999,00, exibe a grafia "Bar do Zé"), "Recife" (show sem venue, via cidade)
   separado em R$ 30,00, "Café Acústico" R$ 50,00, total R$ 380,00 — verificado). `npm audit`
   inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova — ver D6/D8).
+
+### Sessão 29 — 2026-06-17 (Fase 1 — agenda de contas a pagar/receber)
+- **Lógica pura** (`src/lib/finance.ts`): `buildDueAgenda(txs, opts?)` →
+  `{ buckets, totalIncome, totalExpense, count }`. Distribui as pendências (`received === false`)
+  em **4 janelas fixas** comparando por dia (UTC): `overdue` (vencidas), `today` (hoje), `week`
+  (próximos `weekHorizon` dias, padrão 7) e `later` (mais tarde). Cada janela (`DueBucket`) traz
+  os itens (`DueAgendaItem`, com `daysUntil`) ordenados por vencimento crescente e os totais
+  income/expense/net/count; o retorno soma os totais gerais. Transações realizadas são ignoradas.
+  `now`/`weekHorizon` injetáveis. Constante exportada `DUE_BUCKET_ORDER`; helpers privados
+  `utcMidnight`/`txTime`. Testes em `src/lib/finance.test.ts` (+5 → **90 no arquivo, 257 no
+  projeto**, eram 252): ignora realizadas + 4 janelas zeradas, distribuição por janela, totais
+  por janela + gerais, ordenação por vencimento + `daysUntil`, `weekHorizon` customizado.
+- **Página** `src/app/(app)/financas/agenda/page.tsx` (`force-dynamic`): consulta só as pendências
+  do usuário (`received: false`) numa leitura, chama `buildDueAgenda`, mostra cards de resumo
+  (A receber/A pagar/Saldo pendente) e uma seção por janela **não vazia** (rótulo, dica, totais e
+  lista de contas com vencimento relativo "vence em N dias"/"venceu há N dias", badge a receber/a
+  pagar, valor, link de edição e ✓ para marcar pago/recebido). Estado vazio "Tudo em dia! 🎉".
+  Decisão registrada em **DECISIONS.md D20**.
+- **Reuso/UI**: a página reaproveita `toggleReceivedAction` (marcar pago/recebido inline) — que
+  passou a **revalidar `/financas/agenda`** (junto de `deleteTransactionAction`). Botão
+  **A pagar/receber** no cabeçalho de Finanças (`src/app/(app)/financas/page.tsx`), exibido quando
+  há pendências. Sem novas dependências.
+- Definition of Done verde: build (21 rotas, nova `/financas/agenda`), typecheck (`tsc --noEmit`)
+  limpo, lint (0), 257 testes, smoke test (/financas/agenda sem sessão → 307; **e2e autenticado com
+  cookie de sessão real**: página → 200, 4 pendências distribuídas (Vencidas/Hoje/Próximos 7 dias/
+  Mais tarde), realizada excluída, totais A receber R$ 1.500,00 / A pagar R$ 580,00 / Saldo
+  pendente R$ 920,00 — verificado). `npm audit` inalterado (10 advisories: 4 moderate / 5 high /
+  1 critical; nenhuma dependência nova — ver D6/D8).
 
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),

@@ -109,6 +109,7 @@ export async function toggleReceivedAction(formData: FormData): Promise<void> {
   if (tx) {
     await prisma.transaction.update({ where: { id }, data: { received: !tx.received } });
     revalidatePath("/financas");
+    revalidatePath("/financas/agenda");
     revalidatePath("/dashboard");
   }
 }
@@ -118,5 +119,6 @@ export async function deleteTransactionAction(formData: FormData): Promise<void>
   const id = String(formData.get("id"));
   await prisma.transaction.deleteMany({ where: { id, userId: user.id } });
   revalidatePath("/financas");
+  revalidatePath("/financas/agenda");
   revalidatePath("/dashboard");
 }

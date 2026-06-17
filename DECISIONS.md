@@ -323,3 +323,30 @@ contexto, decisão, justificativa e alternativas consideradas.
   quando o show tem vários contatos (não se aplica — o cachê do show é do local, atribuído ao
   grupo do show, sem múltipla contagem como em D18); incluir cancelados (descartado: não
   representam rentabilidade real, alinhado a D15).
+
+## 2026-06-17 — D20: Agenda de contas a pagar/receber por janelas de vencimento
+- **Contexto:** já havia a projeção de caixa (`projectCashflow`, D13) — visão **mensal agregada**
+  ("vou ter dinheiro nos próximos meses?") — e o resumo de pendências vencidas (`summarizeOverdue`,
+  Sessão 16). Faltava a leitura **acionável do dia a dia**: a lista individual de cada conta
+  pendente ordenada por vencimento, para responder "o que preciso cobrar/pagar agora?". A página
+  de Finanças tem filtro por situação=pendente, mas mistura tudo numa lista única ordenada por data
+  decrescente, sem separar o que já venceu do que vence em breve.
+- **Decisão:** `buildDueAgenda` (`src/lib/finance.ts`, pura/testada) distribui as pendências
+  (`received === false`) em **4 janelas fixas** comparando por dia (UTC): `overdue` (vencidas),
+  `today` (hoje), `week` (próximos `weekHorizon` dias, padrão 7) e `later` (mais tarde). Cada
+  janela traz os itens ordenados por vencimento crescente (com `daysUntil`), e os totais a
+  receber/a pagar/saldo; o retorno também soma os totais gerais. A página `/financas/agenda`
+  (`force-dynamic`) consulta só as pendências do usuário (`received: false`) e renderiza as janelas
+  não vazias; o ponto de entrada é o botão "A pagar/receber" em Finanças, exibido quando há
+  pendências. O `weekHorizon` é injetável (default 7) para teste e evolução.
+- **Justificativa:** a decisão operacional do músico é "o que está atrasado e o que vence essa
+  semana?", não um agregado mensal. Janelas fixas (vencidas/hoje/semana/depois) dão a triagem de
+  urgência que a projeção mensal e a lista plana não dão, sem inventar configuração. Comparar por
+  dia em UTC reaproveita a convenção já usada (`dayKey`/`pendingDueStatus`) e mantém a lógica
+  determinística e testável sem HTTP. Reusa `toggleReceivedAction` (marcar pago/recebido direto da
+  agenda) — que passou a revalidar `/financas/agenda`. Sem novas dependências.
+- **Alternativas consideradas:** aging financeiro por faixas (0–30/31–60/61–90 dias, padrão de
+  contas a receber — descartado: granularidade de cobrança corporativa, excessiva para o público
+  do MVP); só reusar o filtro `status=pending` da página de Finanças (descartado: não separa
+  urgência nem ordena por vencimento crescente); incluir realizadas como histórico (descartado: a
+  tela é uma agenda de ação, não um extrato — o extrato já é a lista de Finanças).
