@@ -296,3 +296,30 @@ contexto, decisão, justificativa e alternativas consideradas.
   shows (descartado: ignora o valor, que é o sinal mais útil); incluir contatos sem shows com
   zero (descartado: ruído — a tela é um ranking, não a lista completa, que já existe em
   `/contatos`).
+
+## 2026-06-17 — D19: Rentabilidade por local agrupa por venue normalizado (fallback cidade)
+- **Contexto:** já havia rentabilidade por show (`/shows/rentabilidade`, D15, P&L de cada gig
+  isolado). Faltava a leitura agregada por **casa/venue** — "quais lugares valem a pena tocar?"
+  —, somando todos os shows do mesmo local. O `venue` (e `city`) é texto livre e opcional, então
+  era preciso decidir como agrupar grafias diferentes da mesma casa e o que fazer sem local.
+- **Decisão:** `rankVenuesByProfit` (`src/lib/finance.ts`, pura/testada) agrupa por uma **chave
+  normalizada** `normalizeText(venue)` (sem acento, minúsculo, trim) — assim "Bar do Zé" e
+  "bar do zé" caem no mesmo grupo. Se `venue` for vazio, a chave **cai para a cidade**
+  (`normalizeText(city)`); se ambos vazios, o grupo é "Sem local" (chave `""`). O **nome exibido**
+  é a grafia original mais frequente do grupo (desempate pela 1ª ocorrência), preservando o que o
+  usuário digitou. Soma o P&L via `computeShowPnL` (fonte única), **exclui `CANCELLED`** por
+  padrão (mesmo critério de D15/D18) e ordena por resultado total desc (desempate por nº de shows,
+  nome pt-BR, chave). A página `/shows/locais` é o ponto de entrada (botão "Por local" em Shows).
+- **Justificativa:** a decisão de negócio "continuar tocando nesta casa?" é por local, não por
+  gig. Normalizar acento/caixa junta os registros que o músico digitou de formas levemente
+  diferentes sem exigir um cadastro de locais (over-engineering para o MVP, dados livres). O
+  fallback para a cidade aproveita o dado mais grosseiro quando o local não foi preenchido, em
+  vez de jogar tudo em "Sem local". Reusar `computeShowPnL`/`normalizeText` evita duplicar regra
+  e mantém a lógica testável sem HTTP (posse garantida no servidor por `requireUser`). Sem novas
+  dependências.
+- **Alternativas consideradas:** um modelo `Venue` com FK nos shows (descartado: muito cadastro
+  para o MVP de dados livres; dá para migrar depois se o agrupamento textual não bastar); agrupar
+  só por cidade (descartado: perde o grão da casa, que é a unidade de decisão); ratear o cachê
+  quando o show tem vários contatos (não se aplica — o cachê do show é do local, atribuído ao
+  grupo do show, sem múltipla contagem como em D18); incluir cancelados (descartado: não
+  representam rentabilidade real, alinhado a D15).

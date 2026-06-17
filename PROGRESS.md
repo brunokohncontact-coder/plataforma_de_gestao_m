@@ -56,7 +56,10 @@ ao trocar a senha** (`passwordChangedAt` no `User`; `getCurrentUser` recusa toke
 antes da troca — fecha o gap de segurança da D10/D17). **240 testes** verdes. Sessão 27
 entregou o **ranking de contatos por atividade** (`/contatos/ranking`): ordena os contatos
 pelo cachê total (shows não cancelados) e nº de shows que trazem, com destaque do mais ativo
-(ver D18). **246 testes** verdes.
+(ver D18). **246 testes** verdes. Sessão 28 entregou a **rentabilidade por local**
+(`/shows/locais`): agrega o P&L dos shows por casa/venue (normalizando acento/caixa, com
+fallback à cidade e grupo "Sem local"), respondendo "quais casas valem a pena?" (ver D19).
+**252 testes** verdes.
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias) ou evoluções
 de filtros (persistir o último filtro usado).
 
@@ -611,6 +614,36 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   R$ 9.990,00) no topo, "Casa Pequena" (R$ 1.500,00) abaixo, contato "Sem Shows" excluído —
   verificado). `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma
   dependência nova — ver D6/D8).
+
+### Sessão 28 — 2026-06-17 (Fase 1 — rentabilidade por local / venue)
+- **Lógica pura** (`src/lib/finance.ts`): `rankVenuesByProfit(shows, txs, opts?)` →
+  `{ rows, count, totalNet, best, worst }`. Agrupa os shows por **local** e soma o P&L de
+  cada grupo (reaproveitando `computeShowPnL`, fonte única do cálculo por show). A chave de
+  agrupamento é `normalizeText(venue)` (sem acento, minúsculo, trim); se `venue` for vazio,
+  cai para `city`; se ambos vazios, agrupa em "Sem local" (chave `""`). O **nome exibido** é a
+  grafia original mais frequente do grupo (desempate pela 1ª ocorrência), preservando acento/
+  caixa do usuário (helper `pickLabel`). Cada linha traz `showCount`, `totalFee`, `totalExtra`,
+  `totalExpenses`, `totalNet`, `avgNet` (resultado médio por show) e `margin` (margem agregada).
+  Por padrão **exclui `CANCELLED`** (`opts.excludeStatuses` configurável). Ordena por `totalNet`
+  desc, desempatando por nº de shows desc, nome (pt-BR) e chave — estável. Tipos
+  `VenueShowLike`/`VenueProfitRow`/`VenuesProfitability`. Testes em `src/lib/finance.test.ts`
+  (+6 → total do projeto **252**, eram 246): vazio, agrupamento por acento/caixa + soma de P&L
+  + grafia exibida, fallback à cidade + grupo "Sem local", receita extra + margem, ordenação +
+  best/worst, exclusão de cancelados.
+- **Página** `src/app/(app)/shows/locais/page.tsx` (`force-dynamic`): consulta os shows do
+  usuário (id/fee/status/venue/city) e as transações vinculadas (`showId != null`) numa só
+  leitura cada, chama `rankVenuesByProfit`, e mostra cards de resumo (Locais analisados/
+  Resultado líquido total/Local mais rentável), destaque Mais/Menos rentável e uma tabela por
+  local (Shows, Cachê, Extras, Despesas, Resultado, Média/show); estado vazio dedicado e nota
+  de rodapé sobre o critério de agrupamento. Decisão registrada em **DECISIONS.md D19**.
+- **UI Shows** (`src/app/(app)/shows/page.tsx`): botão **Por local** no cabeçalho (ao lado de
+  Rentabilidade, exibido quando há shows). Sem novas dependências.
+- Definition of Done verde: build (20 rotas, nova `/shows/locais`), typecheck (`tsc --noEmit`)
+  limpo, lint (0), 252 testes, smoke test (/shows/locais sem sessão → 307; **e2e autenticado
+  com cookie de sessão real**: página → 200, "Bar do Zé" agrega 2 shows (R$ 300,00, ignora
+  cancelado de R$ 999,00, exibe a grafia "Bar do Zé"), "Recife" (show sem venue, via cidade)
+  separado em R$ 30,00, "Café Acústico" R$ 50,00, total R$ 380,00 — verificado). `npm audit`
+  inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova — ver D6/D8).
 
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
