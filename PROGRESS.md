@@ -38,7 +38,10 @@ domingo a sábado da semana, com navegação ←/→/Esta semana, criar show por
 detalhe; o alternador de visões virou Lista/Semana/Mês. Sessão 20 entregou a **página de detalhe do
 contato** (`/contatos/[id]`): histórico de shows do contato (futuros/anteriores), resumo de
 relacionamento (nº de shows, futuros, cachê total, próximo show) e navegação cruzada
-shows↔contatos. **187 testes** verdes (medição real `vitest run` na Sessão 20; eram 180).
+shows↔contatos. Sessão 21 entregou o **relatório mensal das Finanças** (`/financas/relatorio`):
+fechamento de um mês com resumo (receitas/despesas/saldo/caixa), pendências do mês e a quebra
+por categoria (receitas e despesas) com participação (%), navegação ←/→/Mês atual e exportação
+CSV do mês. **192 testes** verdes (medição real `vitest run` na Sessão 21; eram 187).
 Próxima sessão: continuar o polimento de UX (estados de loading/erro inline nos formulários)
 ou evoluções de filtros (persistir o último filtro usado).
 
@@ -427,6 +430,31 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   cookie de sessão real**: /contatos e /contatos/[id] → 200, detalhe renderiza resumo e a
   lista de shows agrupada após vincular shows ao contato — verificado). `npm audit` inalterado
   (10 advisories: 3 moderate / 6 high / 1 critical; nenhuma dependência nova — ver D6/D8).
+
+### Sessão 21 — 2026-06-17 (Fase 1 — relatório mensal das Finanças)
+- **Lógica pura** (`src/lib/finance.ts`): nova `categoryReport(txs)` →
+  `{ income, expense, totalIncome, totalExpense }`, onde `income`/`expense` são listas de
+  `CategorySlice` (`{ category, amount, share }`) agregadas por categoria, separando receitas
+  de despesas, ordenadas por valor decrescente (empate pelo nome, pt-BR), com a participação
+  (`share`, 0..1) de cada categoria no total do seu tipo; categorias em branco/ausentes caem
+  em **"Sem categoria"**. Testes em `src/lib/finance.test.ts` (+5 → **65 no arquivo, 192 no
+  projeto**, eram 187): lista vazia, separação receita/despesa + agregação, ordenação + share,
+  desempate por nome e bucket "Sem categoria".
+- **Página** `src/app/(app)/financas/relatorio/page.tsx` (`force-dynamic`): fechamento de UM
+  mês (`?mes=YYYY-MM`, fallback ao mês atual via `parseMonthKey`). Reaproveita `filterTransactions`
+  (só `{ month }`), `summarizeFinances` e a nova `categoryReport` — uma fonte de verdade. Mostra
+  resumo (Receitas/Despesas/Saldo do mês/Caixa realizado), banner de pendências do mês, e dois
+  cartões **Receitas/Despesas por categoria** com barra de participação (%); navegação
+  ←/→/**Mês atual** (`shiftMonth`/`formatMonthTitle` do `calendar.ts`), link **Exportar CSV**
+  do mês (`/financas/export?mes=`) e estado vazio dedicado. Sem novas dependências.
+- **UI Finanças** (`src/app/(app)/financas/page.tsx`): botão **Relatório** no cabeçalho
+  (exibido quando há transações). Decisão de escopo registrada em **DECISIONS.md D14**.
+- Definition of Done verde: build (17 rotas + `/financas/relatorio`), typecheck (`tsc --noEmit`)
+  limpo, lint (0), 192 testes, smoke test (/financas/relatorio e variações sem sessão → 307,
+  inclusive `?mes=lixo`; **e2e autenticado com cookie de sessão real**: mês com dados renderiza
+  resumo, categorias e shares 75%/25%, "A pagar no mês"; mês sem dados → estado vazio — verificado).
+  `npm audit` inalterado (10 advisories: 3 moderate / 6 high / 1 critical; nenhuma dependência
+  nova — ver D6/D8).
 
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),

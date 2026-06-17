@@ -135,6 +135,68 @@ export function totalsByCategory(txs: TxLike[]): CategoryTotal[] {
     .sort((a, b) => b.income + b.expense - (a.income + a.expense));
 }
 
+export interface CategorySlice {
+  /** Nome da categoria (categorias em branco caem em "Sem categoria"). */
+  category: string;
+  /** Total da categoria (centavos). */
+  amount: number;
+  /** Participação no total do tipo (0..1); 0 quando o total do tipo é 0. */
+  share: number;
+}
+
+export interface CategoryReport {
+  /** Categorias de receita, ordem decrescente por valor. */
+  income: CategorySlice[];
+  /** Categorias de despesa, ordem decrescente por valor. */
+  expense: CategorySlice[];
+  /** Soma das receitas. */
+  totalIncome: number;
+  /** Soma das despesas. */
+  totalExpense: number;
+}
+
+/**
+ * Agrupa as transações por categoria separando receitas de despesas, com a
+ * participação (`share`, 0..1) de cada categoria no total do seu tipo. As
+ * categorias vêm ordenadas por valor decrescente (empate desempatado pelo nome,
+ * pt-BR). Categorias em branco/ausentes caem em "Sem categoria". Pura.
+ *
+ * Pensada para o relatório mensal (fechamento): "para onde foi o dinheiro?".
+ */
+export function categoryReport(txs: TxLike[]): CategoryReport {
+  const income = new Map<string, number>();
+  const expense = new Map<string, number>();
+  let totalIncome = 0;
+  let totalExpense = 0;
+
+  for (const t of txs) {
+    const category = t.category?.trim() || "Sem categoria";
+    if (t.type === "INCOME") {
+      income.set(category, (income.get(category) ?? 0) + t.amount);
+      totalIncome += t.amount;
+    } else {
+      expense.set(category, (expense.get(category) ?? 0) + t.amount);
+      totalExpense += t.amount;
+    }
+  }
+
+  const toSlices = (map: Map<string, number>, total: number): CategorySlice[] =>
+    Array.from(map.entries())
+      .map(([category, amount]) => ({
+        category,
+        amount,
+        share: total === 0 ? 0 : amount / total,
+      }))
+      .sort((a, b) => b.amount - a.amount || a.category.localeCompare(b.category, "pt-BR"));
+
+  return {
+    income: toSlices(income, totalIncome),
+    expense: toSlices(expense, totalExpense),
+    totalIncome,
+    totalExpense,
+  };
+}
+
 export interface MonthlyTotal {
   /** Chave "YYYY-MM". */
   month: string;

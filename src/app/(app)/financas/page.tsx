@@ -109,6 +109,11 @@ export default async function FinancesPage({
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">Finanças</h1>
         <div className="flex items-center gap-2">
+          {transactions.length > 0 && (
+            <Link href="/financas/relatorio" className="btn-secondary">
+              Relatório
+            </Link>
+          )}
           {visible.length > 0 && (
             <a href={exportHref} className="btn-secondary" download>
               Exportar CSV
