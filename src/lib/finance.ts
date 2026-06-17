@@ -11,6 +11,8 @@ export interface TxLike {
   date: Date | string;
   received: boolean;
   showId?: string | null;
+  /** Descrição livre; usada apenas na busca textual (`q`). Opcional para callers que não a têm. */
+  description?: string | null;
 }
 
 /** Forma mínima de show exigida pelos cálculos. */
@@ -246,6 +248,23 @@ export interface TransactionFilter {
   from?: string | null;
   /** Fim do período "YYYY-MM-DD" (inclusive); quando ausente, sem limite superior. */
   to?: string | null;
+  /**
+   * Busca textual (descrição + categoria), sem distinção de maiúsculas/minúsculas
+   * nem de acentos. Quando ausente/em branco, não filtra por texto.
+   */
+  q?: string | null;
+}
+
+/**
+ * Normaliza texto para busca: minúsculas, sem acentos (decompõe e remove
+ * diacríticos) e com espaços das bordas removidos. Pura.
+ */
+export function normalizeText(value: string | null | undefined): string {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
 }
 
 /** Valida uma chave de mês "YYYY-MM" (mês entre 01 e 12). */
@@ -276,7 +295,8 @@ export function hasActiveFilter(filter: TransactionFilter): boolean {
       filter.received != null ||
       filter.category ||
       filter.from ||
-      filter.to,
+      filter.to ||
+      normalizeText(filter.q),
   );
 }
 
@@ -293,6 +313,7 @@ export function filterTransactions<T extends TxLike>(
   const month = isValidMonthKey(filter.month) ? filter.month : null;
   const from = isValidDateKey(filter.from) ? filter.from : null;
   const to = isValidDateKey(filter.to) ? filter.to : null;
+  const q = normalizeText(filter.q);
   return txs.filter((t) => {
     if (filter.type && t.type !== filter.type) return false;
     if (month && monthKey(t.date) !== month) return false;
@@ -303,6 +324,10 @@ export function filterTransactions<T extends TxLike>(
       const day = dayKey(t.date);
       if (from && day < from) return false;
       if (to && day > to) return false;
+    }
+    if (q) {
+      const haystack = `${normalizeText(t.description)} ${normalizeText(t.category)}`;
+      if (!haystack.includes(q)) return false;
     }
     return true;
   });

@@ -12,6 +12,7 @@ import {
   isValidMonthKey,
   isValidDateKey,
   hasActiveFilter,
+  normalizeText,
   pendingDueStatus,
   isOverdue,
   summarizeOverdue,
@@ -279,6 +280,52 @@ describe("filterTransactions", () => {
     expect(r).toHaveLength(1);
     expect(r[0].amount).toBe(30_00);
   });
+
+  const qTxs: TxLike[] = [
+    tx({ type: "INCOME", amount: 100_00, category: "cachê", description: "Show no Bar São João" }),
+    tx({ type: "EXPENSE", amount: 30_00, category: "transporte", description: "Gasolina da van" }),
+    tx({ type: "EXPENSE", amount: 20_00, category: "equipamento", description: "Cordas de violão" }),
+    tx({ type: "INCOME", amount: 50_00, category: "merch", description: "Venda de camisetas" }),
+  ];
+
+  it("filtra por texto na descrição (sem distinção de maiúsculas/minúsculas)", () => {
+    const r = filterTransactions(qTxs, { q: "GASOLINA" });
+    expect(r).toHaveLength(1);
+    expect(r[0].description).toBe("Gasolina da van");
+  });
+
+  it("filtra por texto também na categoria", () => {
+    const r = filterTransactions(qTxs, { q: "merch" });
+    expect(r).toHaveLength(1);
+    expect(r[0].description).toBe("Venda de camisetas");
+  });
+
+  it("ignora acentos na busca (são casa com sao e vice-versa)", () => {
+    expect(filterTransactions(qTxs, { q: "sao joao" })).toHaveLength(1);
+    expect(filterTransactions(qTxs, { q: "violao" })).toHaveLength(1);
+  });
+
+  it("ignora termo de busca vazio/em branco (não filtra por texto)", () => {
+    expect(filterTransactions(qTxs, { q: "" })).toHaveLength(4);
+    expect(filterTransactions(qTxs, { q: "   " })).toHaveLength(4);
+  });
+
+  it("combina busca textual com outro critério (q + tipo)", () => {
+    expect(filterTransactions(qTxs, { q: "a", type: "INCOME" })).toHaveLength(2);
+    expect(filterTransactions(qTxs, { q: "gasolina", type: "INCOME" })).toHaveLength(0);
+  });
+});
+
+describe("normalizeText", () => {
+  it("remove acentos e baixa a caixa", () => {
+    expect(normalizeText("São João")).toBe("sao joao");
+    expect(normalizeText("CACHÊ")).toBe("cache");
+  });
+  it("apara espaços das bordas e trata nulos/indefinidos", () => {
+    expect(normalizeText("  texto  ")).toBe("texto");
+    expect(normalizeText(null)).toBe("");
+    expect(normalizeText(undefined)).toBe("");
+  });
 });
 
 describe("availableMonths", () => {
@@ -330,6 +377,8 @@ describe("hasActiveFilter", () => {
     expect(hasActiveFilter({ category: "transporte" })).toBe(true);
     expect(hasActiveFilter({ from: "2026-01-01" })).toBe(true);
     expect(hasActiveFilter({ to: "2026-01-31" })).toBe(true);
+    expect(hasActiveFilter({ q: "gasolina" })).toBe(true);
+    expect(hasActiveFilter({ q: "   " })).toBe(false);
   });
 });
 

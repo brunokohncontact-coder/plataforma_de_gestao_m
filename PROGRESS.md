@@ -28,10 +28,11 @@ entregou a **exportação CSV das Finanças** (`/financas/export`) respeitando o
 ativos. Sessão 15 entregou a **exportação iCalendar (.ics) da agenda de shows**
 (`/shows/agenda.ics`), para assinar/importar no Google/Apple Calendar. Sessão 16
 entregou o **destaque de pendências vencidas** (a receber/a pagar com data já passada)
-no Painel e nas Finanças. **154 testes** verdes (a contagem anterior de "161" no histórico
-estava superestimada; medição real `vitest run` na Sessão 16). Próxima sessão: continuar o
-polimento de UX (estados de loading/erro inline nos formulários) ou evoluções do
-calendário/filtros (persistir o último filtro usado).
+no Painel e nas Finanças. Sessão 17 entregou a **busca textual nas Finanças** (campo
+livre que casa descrição + categoria, ignorando acentos e caixa), integrada ao recorte
+filtrado e à exportação CSV. **161 testes** verdes (medição real `vitest run` na Sessão 17;
+eram 154). Próxima sessão: continuar o polimento de UX (estados de loading/erro inline nos
+formulários) ou evoluções de filtros (persistir o último filtro usado).
 
 ## Modelo de branches (a partir de 2026-06-16)
 O repositório tem um tronco **`main`** (ver DECISIONS.md D7), já definido como **default
@@ -326,6 +327,28 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   nas Finanças renderizados — verificado). `npm audit` inalterado (10 advisories: 3
   moderate / 6 high / 1 critical; nenhuma dependência nova — ver D6/D8).
 
+### Sessão 17 — 2026-06-17 (Fase 1 — busca textual nas Finanças)
+- **Lógica pura** (`src/lib/finance.ts`): nova `normalizeText(value)` (minúsculas, sem
+  acentos via `NFD` + remoção de diacríticos, espaços das bordas aparados) e novo campo
+  `q` em `TransactionFilter`. `filterTransactions` passa a casar o termo contra
+  **descrição + categoria** normalizadas (substring, AND com os demais critérios; termo
+  vazio/em branco é ignorado). `hasActiveFilter` considera `q` (mas ignora só-espaços).
+  Para suportar a busca, `TxLike` ganhou `description?` opcional. Testes em
+  `src/lib/finance.test.ts` (+7 → **54 no arquivo, 161 no projeto**, eram 154): busca em
+  descrição/categoria, case-insensitive, sem acento (são↔sao, violão↔violao), termo vazio
+  ignorado, combinação com tipo, e bloco dedicado de `normalizeText`.
+- **UI** (`src/app/(app)/financas/page.tsx`): campo **Buscar** (`<input type="search">`,
+  `?q=`) no início do formulário de filtros, combinado (AND) com os demais critérios e
+  recomputando o resumo sobre o recorte; integrado ao link **Limpar** e à query de
+  exportação (`buildExportQuery`).
+- **Exportação** (`src/app/(app)/financas/export/route.ts`): lê `?q=` e reaproveita o mesmo
+  `filterTransactions`, mantendo a exportação fiel ao recorte visível. Sem novas dependências.
+- Definition of Done verde: build (16 rotas + `/financas/export`), typecheck limpo, lint (0),
+  161 testes, smoke test (/financas sem sessão → 307; **teste end-to-end autenticado**:
+  `?q=transporte` → 200 com 2 linhas; `?q=` inexistente → estado vazio; `/financas/export?q=transporte`
+  → CSV só com a linha de transporte — verificado). `npm audit` inalterado (10 advisories:
+  3 moderate / 6 high / 1 critical; nenhuma dependência nova — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)
@@ -335,7 +358,8 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `src/lib/ics.ts`.)
 3. **Filtros — evoluções**: persistir o último filtro usado (ex.: cookie/localStorage).
    (filtro por categoria entregue na Sessão 10; intervalo de datas na Sessão 12;
-   exportação CSV do recorte filtrado na Sessão 14; base em `src/lib/finance.ts`.)
+   exportação CSV do recorte filtrado na Sessão 14; busca textual na Sessão 17;
+   base em `src/lib/finance.ts`.)
 4. **Sessões/segurança** (ver D10): considerar `tokenVersion`/`passwordChangedAt` no `User`
    para invalidar sessões ao trocar a senha quando houver login em múltiplos dispositivos.
 
