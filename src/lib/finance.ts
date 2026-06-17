@@ -668,6 +668,101 @@ export function projectCashflow(
   return { startBalance, months };
 }
 
+// ── Agenda de contas a pagar/receber (F3 — "o que vence quando") ────────────
+
+/** Janela de vencimento de uma pendência (relativa a hoje, comparada por dia UTC). */
+export type DueBucketKey = "overdue" | "today" | "week" | "later";
+
+/** Ordem canônica das janelas (do mais urgente ao menos). */
+export const DUE_BUCKET_ORDER: DueBucketKey[] = ["overdue", "today", "week", "later"];
+
+export interface DueAgendaItem<T extends TxLike = TxLike> {
+  tx: T;
+  bucket: DueBucketKey;
+  /** Dias até o vencimento (UTC): negativo = vencida há N dias; 0 = hoje. */
+  daysUntil: number;
+}
+
+export interface DueBucket<T extends TxLike = TxLike> {
+  key: DueBucketKey;
+  /** Itens da janela, ordenados por vencimento crescente. */
+  items: DueAgendaItem<T>[];
+  /** Total a receber (INCOME) na janela (centavos). */
+  income: number;
+  /** Total a pagar (EXPENSE) na janela (centavos). */
+  expense: number;
+  /** income − expense. */
+  net: number;
+  /** Nº de itens na janela. */
+  count: number;
+}
+
+export interface DueAgenda<T extends TxLike = TxLike> {
+  /** Sempre 4 janelas, na ordem overdue → today → week → later. */
+  buckets: DueBucket<T>[];
+  /** Total a receber pendente (todas as janelas). */
+  totalIncome: number;
+  /** Total a pagar pendente (todas as janelas). */
+  totalExpense: number;
+  /** Nº total de pendências. */
+  count: number;
+}
+
+/**
+ * Monta a agenda de contas a pagar e a receber: distribui as pendências
+ * (received === false) em janelas de vencimento — vencidas, hoje, próximos
+ * `weekHorizon` dias (padrão 7) e mais tarde — comparando por dia (UTC).
+ *
+ * Complementa `projectCashflow` (visão mensal agregada): aqui cada conta é
+ * listada individualmente e ordenada pelo vencimento, para a ação do dia a dia
+ * ("o que preciso cobrar/pagar agora?"). Transações já realizadas são ignoradas.
+ * Pura; `now` e `weekHorizon` são injetáveis para teste.
+ */
+export function buildDueAgenda<T extends TxLike>(
+  txs: T[],
+  options: { now?: Date | string; weekHorizon?: number } = {},
+): DueAgenda<T> {
+  const now = options.now ?? new Date();
+  const weekHorizon = Math.max(1, Math.floor(options.weekHorizon ?? 7));
+  const todayMs = utcMidnight(now);
+
+  const byBucket = new Map<DueBucketKey, DueAgendaItem<T>[]>();
+  for (const key of DUE_BUCKET_ORDER) byBucket.set(key, []);
+
+  for (const t of txs) {
+    if (t.received) continue; // só pendências (a receber / a pagar)
+    const daysUntil = Math.round((utcMidnight(t.date) - todayMs) / DAY_MS);
+    let bucket: DueBucketKey;
+    if (daysUntil < 0) bucket = "overdue";
+    else if (daysUntil === 0) bucket = "today";
+    else if (daysUntil <= weekHorizon) bucket = "week";
+    else bucket = "later";
+    byBucket.get(bucket)!.push({ tx: t, bucket, daysUntil });
+  }
+
+  let totalIncome = 0;
+  let totalExpense = 0;
+  let count = 0;
+
+  const buckets: DueBucket<T>[] = DUE_BUCKET_ORDER.map((key) => {
+    const items = byBucket
+      .get(key)!
+      .sort((a, b) => a.daysUntil - b.daysUntil || txTime(a.tx) - txTime(b.tx));
+    let income = 0;
+    let expense = 0;
+    for (const { tx } of items) {
+      if (tx.type === "INCOME") income += tx.amount;
+      else expense += tx.amount;
+    }
+    totalIncome += income;
+    totalExpense += expense;
+    count += items.length;
+    return { key, items, income, expense, net: income - expense, count: items.length };
+  });
+
+  return { buckets, totalIncome, totalExpense, count };
+}
+
 // ── Filtros (F3 — exploração das finanças) ──────────────────────────────────
 
 export interface TransactionFilter {
@@ -791,6 +886,20 @@ export function availableCategories(txs: TxLike[]): string[] {
 
 function sum(nums: number[]): number {
   return nums.reduce((acc, n) => acc + n, 0);
+}
+
+const DAY_MS = 86_400_000;
+
+/** Timestamp (ms) da meia-noite UTC do dia da data — para comparar por dia. */
+function utcMidnight(date: Date | string): number {
+  const d = typeof date === "string" ? new Date(date) : date;
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+
+/** Timestamp (ms) exato da transação — para ordenação determinística no mesmo dia. */
+function txTime(t: TxLike): number {
+  const d = typeof t.date === "string" ? new Date(t.date) : t.date;
+  return d.getTime();
 }
 
 /** Sequência de `count` meses "YYYY-MM" a partir de `startKey` (inclusive), em UTC. */
