@@ -51,7 +51,9 @@ resultado líquido (P&L), com totais agregados e destaque do mais/menos rentáve
 cancelados. Sessão 25 entregou o **resumo anual das Finanças** (`/financas/anual`): visão de
 12 meses (receitas/despesas/resultado), totais do ano e destaque do melhor/pior mês, com
 navegação por ano e link de cada mês para o relatório mensal. **231 testes** verdes (medição
-real `vitest run` na Sessão 25; eram 224).
+real `vitest run` na Sessão 25; eram 224). Sessão 26 entregou a **invalidação de sessões
+ao trocar a senha** (`passwordChangedAt` no `User`; `getCurrentUser` recusa tokens emitidos
+antes da troca — fecha o gap de segurança da D10/D17). **240 testes** verdes.
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias) ou evoluções
 de filtros (persistir o último filtro usado).
 
@@ -554,6 +556,33 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   high→moderate na árvore existente do Next/postcss; total inalterado, **nenhuma dependência
   nova** — ver D6/D8).
 
+### Sessão 26 — 2026-06-17 (Fase 1 — invalidar sessões ao trocar a senha) [segurança]
+- **Schema** (`prisma/schema.prisma`): novo campo `passwordChangedAt DateTime @default(now())`
+  no `User` — marca temporal da última troca de senha.
+- **Lógica pura** (`src/lib/auth.ts`): `verifySessionToken` passa a devolver também `issuedAt`
+  (o `iat` do JWT, em segundos UNIX) em `SessionPayload`; nova `isSessionFresh(issuedAt,
+  passwordChangedAt)` decide se um token ainda vale — recusa tokens emitidos **antes** da
+  última troca de senha (compara em segundos UNIX, tolerando o arredondamento; sem
+  `passwordChangedAt` → válido p/ legados; token sem `iat` → recusado). Testes em
+  `src/lib/auth.test.ts` (**6**).
+- **Enforcement** (`src/lib/session.ts`): `getCurrentUser` busca o usuário e, antes de
+  devolvê-lo, aplica `isSessionFresh(payload.issuedAt, user.passwordChangedAt)` — token
+  obsoleto → `null` (redireciona para /login via `requireUser`). Teste de integração em
+  `src/lib/session.test.ts` (**3**, mockando `next/headers`): token novo → usuário; token
+  emitido antes de `passwordChangedAt` → null; sem cookie → null.
+- **Troca de senha** (`src/app/(app)/conta/actions.ts`): `changePasswordAction` grava
+  `passwordChangedAt = now` junto com o novo hash e **reemite o cookie do dispositivo atual**
+  (`setSessionCookie`) — quem trocou a senha continua logado aqui; os demais dispositivos
+  com tokens antigos são deslogados no próximo request. Mensagem de sucesso atualizada
+  ("As outras sessões foram encerradas."). Teste de `conta` ajustado (mock de
+  `setSessionCookie`; asserção de que `passwordChangedAt` avança).
+- **Decisão** registrada em **DECISIONS.md D17** (substitui D10). Sem novas dependências.
+- Definition of Done verde: build (18 rotas), typecheck (`tsc --noEmit`) limpo, lint (0),
+  **240 testes** (eram 231), smoke test + **e2e de runtime** (servidor real `next start`:
+  token válido em `/conta` → 200; após avançar `passwordChangedAt` para depois do `iat`,
+  o mesmo token em `/conta` → 307 → /login — invalidação confirmada ao vivo). `npm audit`
+  inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)
@@ -565,8 +594,9 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    (filtro por categoria entregue na Sessão 10; intervalo de datas na Sessão 12;
    exportação CSV do recorte filtrado na Sessão 14; busca textual na Sessão 17;
    base em `src/lib/finance.ts`.)
-4. **Sessões/segurança** (ver D10): considerar `tokenVersion`/`passwordChangedAt` no `User`
-   para invalidar sessões ao trocar a senha quando houver login em múltiplos dispositivos.
+4. **Sessões/segurança**: invalidação ao trocar a senha entregue na Sessão 26
+   (`passwordChangedAt` + `isSessionFresh`, ver D17). Evoluções possíveis: "encerrar sessão
+   específica" (lista de sessões revogáveis) e recuperação de senha por e-mail — adiáveis.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

@@ -108,7 +108,7 @@ contexto, decisão, justificativa e alternativas consideradas.
   reconsiderado se o volume por usuário crescer muito); filtros client-side com estado React
   (descartado: quebraria o padrão server-component e a navegabilidade por URL).
 
-## 2026-06-16 — D10: Troca de senha não invalida sessões ativas
+## 2026-06-16 — D10: Troca de senha não invalida sessões ativas  _(SUPERSEDIDA por D17 em 2026-06-17)_
 - **Decisão:** ao trocar a senha em `/conta`, atualiza-se apenas o `passwordHash`; o
   cookie de sessão (JWT) **não** é reemitido nem invalidado. A `changePasswordAction`
   exige a senha atual correta antes de gravar a nova.
@@ -248,3 +248,27 @@ contexto, decisão, justificativa e alternativas consideradas.
   CSV do ano inteiro — adiável (o relatório mensal e a lista de Finanças já exportam; dá para
   somar depois reaproveitando `filterTransactions`); gráfico de linha/biblioteca de charts —
   over-engineering para o MVP (barras CSS bastam e não somam superfície de `npm audit`).
+
+## 2026-06-17 — D17: Trocar a senha invalida sessões antigas (passwordChangedAt no JWT iat)
+- **Decisão:** **substitui D10.** Ao trocar a senha em `/conta`, além de gravar o novo
+  `passwordHash`, grava-se `passwordChangedAt = now` no `User` (novo campo, default `now()`).
+  O JWT de sessão já carrega `iat` (emitido em); `getCurrentUser` (`src/lib/session.ts`)
+  passa a recusar tokens cujo `iat` seja **anterior** a `passwordChangedAt`, via a função
+  pura `isSessionFresh(iat, passwordChangedAt)` em `src/lib/auth.ts`. A `changePasswordAction`
+  reemite o cookie do dispositivo atual (`setSessionCookie`) logo após gravar — assim quem
+  trocou a senha **continua logado aqui** (token novo com `iat >= passwordChangedAt`), e os
+  **demais dispositivos** com tokens antigos são deslogados no próximo request.
+- **Justificativa:** fecha o gap de segurança apontado em D10 e nos bloqueios do PROGRESS —
+  ao trocar a senha (cenário típico: suspeita de comprometimento), todas as sessões antigas
+  deixam de valer, sem precisar de uma tabela de sessões/revogação. Usar o `iat` que o JWT
+  já emite + um único timestamp no `User` é a abordagem mais simples que invalida **todos**
+  os tokens anteriores de uma vez (mais simples que `tokenVersion`, que exigiria embutir e
+  incrementar um contador). A comparação é em segundos UNIX, tolerando o arredondamento
+  entre a gravação de `passwordChangedAt` (ms) e o `iat` do token reemitido na mesma operação.
+  Registros sem `passwordChangedAt` (legados, caso houvesse) são tratados como válidos para
+  não deslogar ninguém na introdução do campo; token sem `iat` é recusado por segurança.
+- **Alternativas consideradas:** `tokenVersion` incremental no `User` embutido no JWT
+  (descartado: equivalente em efeito, porém mais estado e mais código que um timestamp);
+  manter D10 / não invalidar (descartado: deixa sessões roubadas válidas por até 30 dias);
+  lista de sessões revogáveis no banco (over-engineering para o MVP single-user — adiável se
+  surgir necessidade de "encerrar uma sessão específica" em vez de "todas").

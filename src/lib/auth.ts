@@ -20,6 +20,8 @@ export async function verifyPassword(plain: string, hash: string): Promise<boole
 
 export interface SessionPayload {
   userId: string;
+  /** Momento de emissão do token (`iat`), em segundos UNIX. */
+  issuedAt?: number;
 }
 
 /** Cria um JWT de sessão assinado contendo o id do usuário. */
@@ -37,12 +39,38 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
   try {
     const { payload } = await jwtVerify(token, SECRET, { issuer: ISSUER });
     if (typeof payload.userId === "string") {
-      return { userId: payload.userId };
+      return {
+        userId: payload.userId,
+        issuedAt: typeof payload.iat === "number" ? payload.iat : undefined,
+      };
     }
     return null;
   } catch {
     return null;
   }
+}
+
+/**
+ * Decide se um token ainda é válido frente à última troca de senha do usuário.
+ * Regra: um token emitido (`iat`) antes de `passwordChangedAt` é considerado
+ * inválido — assim, trocar a senha desloga sessões antigas (ver DECISIONS.md D10).
+ *
+ * - Sem `passwordChangedAt` (registros legados antes da migração) → válido,
+ *   para não deslogar todo mundo na introdução do campo.
+ * - Token sem `iat` → inválido (não dá para comparar; rejeita por segurança).
+ *
+ * A comparação é feita em segundos UNIX (mesma granularidade do `iat` do JWT),
+ * tolerando o arredondamento entre a gravação de `passwordChangedAt` e a emissão
+ * do novo token na mesma operação de troca.
+ */
+export function isSessionFresh(
+  issuedAtSeconds: number | undefined,
+  passwordChangedAt: Date | null | undefined,
+): boolean {
+  if (!passwordChangedAt) return true;
+  if (typeof issuedAtSeconds !== "number") return false;
+  const changedAtSeconds = Math.floor(passwordChangedAt.getTime() / 1000);
+  return issuedAtSeconds >= changedAtSeconds;
 }
 
 export const SESSION_COOKIE = "palco_session";

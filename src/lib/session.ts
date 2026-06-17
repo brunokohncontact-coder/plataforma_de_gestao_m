@@ -7,6 +7,7 @@ import {
   SESSION_COOKIE,
   SESSION_MAX_AGE,
   createSessionToken,
+  isSessionFresh,
   verifySessionToken,
 } from "./auth";
 
@@ -31,7 +32,11 @@ export async function getCurrentUser() {
   if (!token) return null;
   const payload = await verifySessionToken(token);
   if (!payload) return null;
-  return prisma.user.findUnique({ where: { id: payload.userId } });
+  const user = await prisma.user.findUnique({ where: { id: payload.userId } });
+  if (!user) return null;
+  // Invalida tokens emitidos antes da última troca de senha (ver D10).
+  if (!isSessionFresh(payload.issuedAt, user.passwordChangedAt)) return null;
+  return user;
 }
 
 /** Exige usuário autenticado; redireciona para /login caso contrário. */
