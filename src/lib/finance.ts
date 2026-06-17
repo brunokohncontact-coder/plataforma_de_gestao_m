@@ -231,6 +231,72 @@ export function summarizeOverdue(
   return { income, expense, incomeCount, expenseCount };
 }
 
+// ── Projeção de caixa (F3 — decisão "vou ter dinheiro nos próximos meses?") ──
+
+export interface CashflowMonth {
+  /** Chave "YYYY-MM". */
+  month: string;
+  /** A receber pendente (received=false, INCOME) com vencimento neste mês. */
+  income: number;
+  /** A pagar pendente (received=false, EXPENSE) com vencimento neste mês. */
+  expense: number;
+  /** income − expense (variação esperada de caixa no mês). */
+  net: number;
+  /** Saldo de caixa projetado ao fim do mês (acumulado a partir do caixa atual). */
+  endBalance: number;
+}
+
+export interface CashflowProjection {
+  /** Caixa realizado atual (received/paid), ponto de partida da projeção. */
+  startBalance: number;
+  /** Meses do horizonte, do mês atual em diante, com saldo projetado acumulado. */
+  months: CashflowMonth[];
+}
+
+/**
+ * Projeta o caixa dos próximos meses a partir do caixa realizado atual.
+ *
+ * Parte do `cashBalance` (o que já entrou/saiu de fato) e, mês a mês, soma as
+ * pendências (received=false) pelo seu mês de vencimento, acumulando o saldo. As
+ * pendências **vencidas ou de meses anteriores** ao atual são dobradas no mês
+ * atual (ainda esperam-se receber/pagar); pendências além do horizonte são
+ * ignoradas. Pura; mês de referência e horizonte são injetáveis para teste.
+ */
+export function projectCashflow(
+  txs: TxLike[],
+  options: { now?: Date | string; months?: number } = {},
+): CashflowProjection {
+  const now = options.now ?? new Date();
+  const horizon = Math.max(1, Math.floor(options.months ?? 6));
+
+  const startBalance = summarizeFinances(txs).cashBalance;
+  const currentMonth = monthKey(now);
+  const monthsSeq = sequentialMonths(currentMonth, horizon);
+  const lastMonth = monthsSeq[monthsSeq.length - 1];
+
+  const incomeByMonth = new Map<string, number>();
+  const expenseByMonth = new Map<string, number>();
+  for (const t of txs) {
+    if (t.received) continue; // realizado já está no startBalance
+    let m = monthKey(t.date);
+    if (m < currentMonth) m = currentMonth; // vencidas/antigas caem no mês atual
+    if (m > lastMonth) continue; // além do horizonte projetado
+    if (t.type === "INCOME") incomeByMonth.set(m, (incomeByMonth.get(m) ?? 0) + t.amount);
+    else expenseByMonth.set(m, (expenseByMonth.get(m) ?? 0) + t.amount);
+  }
+
+  let running = startBalance;
+  const months: CashflowMonth[] = monthsSeq.map((month) => {
+    const income = incomeByMonth.get(month) ?? 0;
+    const expense = expenseByMonth.get(month) ?? 0;
+    const net = income - expense;
+    running += net;
+    return { month, income, expense, net, endBalance: running };
+  });
+
+  return { startBalance, months };
+}
+
 // ── Filtros (F3 — exploração das finanças) ──────────────────────────────────
 
 export interface TransactionFilter {
@@ -354,6 +420,17 @@ export function availableCategories(txs: TxLike[]): string[] {
 
 function sum(nums: number[]): number {
   return nums.reduce((acc, n) => acc + n, 0);
+}
+
+/** Sequência de `count` meses "YYYY-MM" a partir de `startKey` (inclusive), em UTC. */
+function sequentialMonths(startKey: string, count: number): string[] {
+  const [y, m] = startKey.split("-").map(Number);
+  const out: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const d = new Date(Date.UTC(y, m - 1 + i, 1));
+    out.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`);
+  }
+  return out;
 }
 
 /** Extrai a chave "YYYY-MM" de uma data, em UTC para estabilidade nos testes. */

@@ -30,9 +30,12 @@ ativos. Sessão 15 entregou a **exportação iCalendar (.ics) da agenda de shows
 entregou o **destaque de pendências vencidas** (a receber/a pagar com data já passada)
 no Painel e nas Finanças. Sessão 17 entregou a **busca textual nas Finanças** (campo
 livre que casa descrição + categoria, ignorando acentos e caixa), integrada ao recorte
-filtrado e à exportação CSV. **161 testes** verdes (medição real `vitest run` na Sessão 17;
-eram 154). Próxima sessão: continuar o polimento de UX (estados de loading/erro inline nos
-formulários) ou evoluções de filtros (persistir o último filtro usado).
+filtrado e à exportação CSV. Sessão 18 entregou a **projeção de caixa** no Painel
+(`projectCashflow`): saldo de caixa projetado mês a mês a partir do caixa realizado,
+somando pendências pelo mês de vencimento, com alerta de saldo negativo. **167 testes**
+verdes (medição real `vitest run` na Sessão 18; eram 161). Próxima sessão: continuar o
+polimento de UX (estados de loading/erro inline nos formulários) ou evoluções de filtros
+(persistir o último filtro usado).
 
 ## Modelo de branches (a partir de 2026-06-16)
 O repositório tem um tronco **`main`** (ver DECISIONS.md D7), já definido como **default
@@ -348,6 +351,28 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   `?q=transporte` → 200 com 2 linhas; `?q=` inexistente → estado vazio; `/financas/export?q=transporte`
   → CSV só com a linha de transporte — verificado). `npm audit` inalterado (10 advisories:
   3 moderate / 6 high / 1 critical; nenhuma dependência nova — ver D6/D8).
+
+### Sessão 18 — 2026-06-17 (Fase 1 — projeção de caixa no Painel)
+- **Lógica pura** (`src/lib/finance.ts`): `projectCashflow(txs, { now?, months? })` →
+  `{ startBalance, months[] }`. Parte do `cashBalance` (caixa realizado) e, mês a mês a
+  partir do mês atual, soma as pendências (`received === false`) pelo seu **mês de
+  vencimento**, acumulando o saldo projetado (`endBalance`). Pendências **vencidas/de meses
+  anteriores** são dobradas no mês atual (ainda esperadas); pendências **além do horizonte**
+  são ignoradas; horizonte mínimo de 1 mês; `now`/`months` injetáveis. Helper privado
+  `sequentialMonths` (sequência "YYYY-MM" em UTC, vira o ano). Tipos `CashflowMonth`/
+  `CashflowProjection`. Testes em `src/lib/finance.test.ts` (+6 → **60 no arquivo, 167 no
+  projeto**, eram 161): só-realizadas, distribuição por vencimento + acúmulo, dobra de
+  vencidas no mês atual, corte pelo horizonte, sinal de saldo negativo, virada de ano/mínimo.
+- **UI Painel** (`src/app/(app)/dashboard/page.tsx`): seção **Projeção de caixa** (6 meses)
+  com tiles por mês — saldo projetado (vermelho quando negativo) e a variação do mês;
+  intro com o caixa atual; aviso "⚠ Caixa projetado fica negativo…" quando algum mês fica no
+  vermelho; link "Ver pendências" (`/financas?status=pending`). Exibida só quando há
+  pendências. Decisão registrada em **DECISIONS.md D13**. Sem novas dependências.
+- Definition of Done verde: build (16 rotas), typecheck limpo, lint (0), 167 testes, smoke
+  test (/login 200, / 200, /dashboard sem sessão → 307; **teste end-to-end autenticado**:
+  caixa realizado + pendência de despesa no mês seguinte → seção renderiza com saldo
+  projetado negativo e o aviso — verificado). `npm audit` inalterado (10 advisories: 3
+  moderate / 6 high / 1 critical; nenhuma dependência nova — ver D6/D8).
 
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),

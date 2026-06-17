@@ -7,6 +7,7 @@ import {
   totalsByMonth,
   totalsByCategory,
   computeShowPnL,
+  projectCashflow,
   type TxLike,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
@@ -41,6 +42,8 @@ export default async function DashboardPage() {
   const overdue = summarizeOverdue(txs);
   const monthly = totalsByMonth(txs).slice(-6);
   const categories = totalsByCategory(txs).slice(0, 5);
+  const cashflow = projectCashflow(txs, { months: 6 });
+  const hasProjection = cashflow.months.some((m) => m.income > 0 || m.expense > 0);
 
   // Rentabilidade: top shows realizados por resultado
   const playedShows = shows.filter((s) => s.status === "PLAYED");
@@ -85,6 +88,56 @@ export default async function DashboardPage() {
         <SummaryCard label="A receber" value={summary.pendingIncome} tone="amber" />
         <SummaryCard label="A pagar" value={summary.pendingExpense} tone="red" />
       </div>
+
+      {/* Projeção de caixa */}
+      {hasProjection && (
+        <section className="card">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="font-semibold">Projeção de caixa</h2>
+            <Link href="/financas?status=pending" className="text-sm text-brand-700 hover:underline">
+              Ver pendências
+            </Link>
+          </div>
+          <p className="mb-3 text-xs text-gray-500">
+            A partir do caixa atual ({formatMoney(cashflow.startBalance)}), somando o que está
+            a receber e a pagar pelo mês de vencimento.
+          </p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {cashflow.months.map((m) => (
+              <div key={m.month} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                  {formatMonthKey(m.month)}
+                </p>
+                <p
+                  className={
+                    "mt-1 text-lg font-bold " +
+                    (m.endBalance < 0 ? "text-red-600" : "text-gray-900")
+                  }
+                  title="Saldo projetado ao fim do mês"
+                >
+                  {formatMoney(m.endBalance)}
+                </p>
+                {m.net !== 0 && (
+                  <p
+                    className={
+                      "mt-0.5 text-xs " + (m.net >= 0 ? "text-emerald-600" : "text-red-600")
+                    }
+                  >
+                    {m.net >= 0 ? "+" : "−"}
+                    {formatMoney(Math.abs(m.net))}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+          {cashflow.months.some((m) => m.endBalance < 0) && (
+            <p className="mt-3 text-xs text-red-600">
+              ⚠ Caixa projetado fica negativo em algum mês — revise os prazos de recebimento
+              ou despesas.
+            </p>
+          )}
+        </section>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Próximos shows */}
