@@ -26,6 +26,10 @@ model User {
   name         String
   passwordHash String
   artistName   String? // nome artístico / da banda
+  // Marca temporal da última troca de senha. Sessões (JWT) emitidas antes
+  // desta data são invalidadas — desloga logins antigos ao trocar a senha
+  // (ver DECISIONS.md D10).
+  passwordChangedAt DateTime @default(now())
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 

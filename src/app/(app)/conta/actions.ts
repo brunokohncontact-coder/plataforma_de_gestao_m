@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/session";
+import { requireUser, setSessionCookie } from "@/lib/session";
 import { hashPassword, verifyPassword } from "@/lib/auth";
 import { updateProfileSchema, changePasswordSchema } from "@/lib/validation";
 
@@ -50,10 +50,17 @@ export async function changePasswordAction(
   const ok = await verifyPassword(d.currentPassword, user.passwordHash);
   if (!ok) return { error: "Senha atual incorreta." };
 
+  // Grava o novo hash e marca o momento da troca: isso invalida quaisquer
+  // sessões (JWT) emitidas antes de agora (ver DECISIONS.md D10).
   await prisma.user.update({
     where: { id: user.id },
-    data: { passwordHash: await hashPassword(d.newPassword) },
+    data: { passwordHash: await hashPassword(d.newPassword), passwordChangedAt: new Date() },
   });
 
-  return { success: "Senha alterada com sucesso." };
+  // Reemite o cookie deste dispositivo para que quem trocou a senha continue
+  // logado aqui (o token novo tem `iat` >= passwordChangedAt); os demais
+  // dispositivos com tokens antigos passam a ser rejeitados em getCurrentUser.
+  await setSessionCookie(user.id);
+
+  return { success: "Senha alterada com sucesso. As outras sessões foram encerradas." };
 }

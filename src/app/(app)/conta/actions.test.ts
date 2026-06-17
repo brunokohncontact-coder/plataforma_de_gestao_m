@@ -11,6 +11,9 @@ vi.mock("@/lib/session", () => ({
     if (!h.currentUser) throw new Error("não autenticado");
     return h.currentUser;
   }),
+  // A troca de senha reemite o cookie da sessão atual — sem acesso a cookies()
+  // nos testes, basta um stub.
+  setSessionCookie: vi.fn(),
 }));
 
 import { prisma } from "@/lib/prisma";
@@ -95,6 +98,8 @@ describe("changePasswordAction", () => {
     const fresh = await prisma.user.findUnique({ where: { id: user.id } });
     expect(await verifyPassword("nova-senha-segura", fresh!.passwordHash)).toBe(true);
     expect(await verifyPassword("senha-original", fresh!.passwordHash)).toBe(false);
+    // Marca de troca de senha avança (invalida sessões antigas — D10).
+    expect(fresh!.passwordChangedAt.getTime()).toBeGreaterThanOrEqual(user.passwordChangedAt.getTime());
   });
 
   it("NÃO troca a senha quando a senha atual está incorreta", async () => {
