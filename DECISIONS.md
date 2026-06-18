@@ -495,3 +495,35 @@ contexto, decisão, justificativa e alternativas consideradas.
   marcação; (b) considerar qualquer receita lançada (recebida ou não) como quitação — descartado:
   confundiria "faturado" com "recebido" e esconderia atrasos; (c) só `PLAYED` — descartado por
   perder os confirmados-passados que o usuário esqueceu de atualizar (o caso mais perigoso).
+
+## D26 — Quitar o cachê inline a partir de "Cachês a receber" (Sessão 35)
+- **Contexto:** a Sessão 34 (D25) entregou a lista `/shows/a-receber` que mostra o dinheiro
+  esquecido (gig já realizado cujo cachê não entrou no caixa), mas para registrar o recebimento
+  o usuário tinha de sair para as Finanças, criar uma receita, vinculá-la ao show e marcá-la como
+  recebida — quatro passos para a ação mais comum da própria tela. O atrito anulava metade do valor
+  da página.
+- **Decisão:** um botão **Quitar** por linha que dispara `settleShowFeeAction(formData)` (server
+  action em `src/app/(app)/shows/actions.ts`). A ação **recalcula o saldo no servidor** (cachê do
+  show − soma das receitas INCOME já `received=true` vinculadas, via `prisma.transaction.aggregate`)
+  e cria **uma** receita recebida (`type=INCOME`, `received=true`, `category="Cachê"`,
+  `description="Cachê — {título}"`, `date=now`, `showId`) no valor em aberto. Reaproveita o
+  componente `DeleteButton` (confirmação em duas etapas, sem diálogo bloqueante) — generalizado com
+  uma prop `groupLabel` para corrigir o `aria-label` do grupo (era fixo em "Confirmar exclusão").
+- **Saldo recalculado no servidor, nunca vindo do cliente:** o valor a lançar é derivado do banco
+  no momento do clique, não de um campo do formulário. Isso torna a ação **idempotente** (se o show
+  já foi quitado entre o carregamento da página e o clique — ou em duplo-clique — `outstanding <= 0`
+  e nada é criado) e fecha o vetor de um cliente forjar o valor. Espelha exatamente a regra pura de
+  `reconcileShowFees` (D25): só recebido abate; pendente não; `fee <= 0` é ignorado; posse do show
+  é exigida (`findFirst` por `userId`).
+- **Justificativa:** transforma a página de relatório em ferramenta de ação com um clique, sem
+  duplicar a verdade financeira (continua tudo em `Transaction`, sem flag "pago" no `Show` — ver a
+  alternativa (a) rejeitada na D25) e sem mudança de schema. Cobertura: 6 testes de integração em
+  `shows/actions.test.ts` (saldo total, recebimento parcial, idempotência quando já quitado,
+  pendente não abate, isolamento por usuário, `fee=0` no-op).
+- **Alternativas consideradas:** (a) um formulário inline com campo de valor editável — descartado:
+  o caso esmagador é "recebi o cachê combinado, inteiro"; um campo abre espaço para erro e para o
+  vetor de valor forjado; lançar parcial continua possível pelas Finanças. (b) confiar no
+  `outstanding` já calculado e renderizado na linha — descartado: dado obsoleto/forjável; o recálculo
+  no servidor é barato (um `aggregate`) e correto. (c) marcar como recebida uma receita pendente
+  existente em vez de criar nova — descartado: nem sempre existe pendente lançada (o caso
+  `unregistered`), e criar a receita unifica os dois fluxos num só caminho.

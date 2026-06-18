@@ -115,6 +115,52 @@ export async function unlinkContactFromShowAction(formData: FormData): Promise<v
   revalidatePath(`/shows/${showId}`);
 }
 
+/**
+ * Quita o cachê em aberto de um show direto da lista de "Cachês a receber",
+ * sem passar pelas Finanças: cria UMA receita (INCOME) já recebida no valor que
+ * ainda falta entrar. O saldo é recalculado no servidor (cachê acordado − receita
+ * já recebida vinculada) — nunca confiando num valor vindo do cliente — então a
+ * ação é idempotente: se o show já está quitado (ou não é do usuário, ou não tem
+ * cachê), nada é criado. Espelha a regra pura de `reconcileShowFees` (ver D25).
+ */
+export async function settleShowFeeAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const id = String(formData.get("id"));
+
+  // confirma posse e descarta shows sem cachê acordado (nada a cobrar)
+  const show = await prisma.show.findFirst({ where: { id, userId: user.id } });
+  if (!show || show.fee <= 0) return;
+
+  // soma só as receitas já RECEBIDAS vinculadas ao show — o que de fato entrou
+  const collectedAgg = await prisma.transaction.aggregate({
+    _sum: { amount: true },
+    where: { userId: user.id, showId: id, type: "INCOME", received: true },
+  });
+  const collected = collectedAgg._sum.amount ?? 0;
+  const outstanding = Math.max(0, show.fee - collected);
+  if (outstanding <= 0) return; // já quitado — idempotente
+
+  await prisma.transaction.create({
+    data: {
+      userId: user.id,
+      type: "INCOME",
+      description: `Cachê — ${show.title}`,
+      category: "Cachê",
+      amount: outstanding,
+      date: new Date(),
+      received: true,
+      showId: id,
+    },
+  });
+
+  revalidatePath("/shows/a-receber");
+  revalidatePath("/shows");
+  revalidatePath(`/shows/${id}`);
+  revalidatePath("/financas");
+  revalidatePath("/financas/agenda");
+  revalidatePath("/dashboard");
+}
+
 export async function deleteShowAction(formData: FormData): Promise<void> {
   const user = await requireUser();
   const id = String(formData.get("id"));
