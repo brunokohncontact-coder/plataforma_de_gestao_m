@@ -25,6 +25,9 @@ import {
   availableYears,
   forecastBookedRevenue,
   reconcileShowFees,
+  bucketReceivablesByAge,
+  receivableAgeBucket,
+  RECEIVABLE_AGE_BUCKET_ORDER,
   resolveSettlementAmount,
   resolveReceivedDate,
   type TxLike,
@@ -1105,6 +1108,98 @@ describe("reconcileShowFees", () => {
     ];
     const r = reconcileShowFees(shows, [], { now });
     expect(r.rows.map((row) => row.show.id)).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("bucketReceivablesByAge", () => {
+  const now = new Date("2026-04-01T12:00:00.000Z");
+
+  function gig(partial: Partial<ReceivableShowLike>): ReceivableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-03-15T20:00:00.000Z",
+      ...partial,
+    };
+  }
+
+  it("classifica cada recebível no balde certo pela idade do atraso", () => {
+    const shows = [
+      gig({ id: "novo", date: "2026-03-20T00:00:00.000Z" }), // 12 dias → d30
+      gig({ id: "meio", date: "2026-02-15T00:00:00.000Z" }), // 45 dias → d60
+      gig({ id: "tres", date: "2026-01-20T00:00:00.000Z" }), // 71 dias → d90
+      gig({ id: "velho", date: "2025-10-01T00:00:00.000Z" }), // 182 dias → older
+    ];
+    const aging = bucketReceivablesByAge(reconcileShowFees(shows, [], { now }), { now });
+    const byKey = Object.fromEntries(aging.buckets.map((b) => [b.key, b]));
+    expect(byKey.d30.rows.map((a) => a.row.show.id)).toEqual(["novo"]);
+    expect(byKey.d60.rows.map((a) => a.row.show.id)).toEqual(["meio"]);
+    expect(byKey.d90.rows.map((a) => a.row.show.id)).toEqual(["tres"]);
+    expect(byKey.older.rows.map((a) => a.row.show.id)).toEqual(["velho"]);
+    expect(byKey.d30.rows[0].daysOutstanding).toBe(12);
+  });
+
+  it("sempre traz os 4 baldes na ordem fixa, mesmo vazios", () => {
+    const aging = bucketReceivablesByAge(reconcileShowFees([], [], { now }), { now });
+    expect(aging.buckets.map((b) => b.key)).toEqual(RECEIVABLE_AGE_BUCKET_ORDER);
+    expect(aging.count).toBe(0);
+    expect(aging.totalOutstanding).toBe(0);
+    expect(aging.maxDaysOutstanding).toBe(0);
+    expect(aging.weightedAvgDays).toBe(0);
+    expect(aging.buckets.every((b) => b.share === 0)).toBe(true);
+  });
+
+  it("soma totais e participação (share) por balde sobre o total a receber", () => {
+    const shows = [
+      gig({ id: "a", fee: 100_00, date: "2026-03-25T00:00:00.000Z" }), // d30
+      gig({ id: "b", fee: 300_00, date: "2025-12-01T00:00:00.000Z" }), // older
+    ];
+    const aging = bucketReceivablesByAge(reconcileShowFees(shows, [], { now }), { now });
+    const byKey = Object.fromEntries(aging.buckets.map((b) => [b.key, b]));
+    expect(aging.totalOutstanding).toBe(400_00);
+    expect(byKey.d30.totalOutstanding).toBe(100_00);
+    expect(byKey.d30.share).toBeCloseTo(0.25, 5);
+    expect(byKey.older.share).toBeCloseTo(0.75, 5);
+  });
+
+  it("ordena dentro do balde do atraso mais longo ao mais curto", () => {
+    const shows = [
+      gig({ id: "menos", date: "2026-01-25T00:00:00.000Z" }), // 66 dias
+      gig({ id: "mais", date: "2026-01-05T00:00:00.000Z" }), // 86 dias
+    ];
+    const aging = bucketReceivablesByAge(reconcileShowFees(shows, [], { now }), { now });
+    const d90 = aging.buckets.find((b) => b.key === "d90")!;
+    expect(d90.rows.map((a) => a.row.show.id)).toEqual(["mais", "menos"]);
+  });
+
+  it("pondera o atraso médio pelo valor em aberto e expõe o pior caso", () => {
+    const shows = [
+      gig({ id: "pequeno", fee: 100_00, date: "2026-03-22T00:00:00.000Z" }), // 10 dias
+      gig({ id: "grande", fee: 300_00, date: "2026-02-20T00:00:00.000Z" }), // 40 dias
+    ];
+    const aging = bucketReceivablesByAge(reconcileShowFees(shows, [], { now }), { now });
+    // (10*100 + 40*300) / 400 = (1000 + 12000)/400 = 32.5 → 33 (arredondado)
+    expect(aging.weightedAvgDays).toBe(33);
+    expect(aging.maxDaysOutstanding).toBe(40);
+  });
+
+  it("nunca produz atraso negativo para um show de hoje", () => {
+    const shows = [gig({ id: "hoje", date: "2026-04-01T23:00:00.000Z" })];
+    const aging = bucketReceivablesByAge(reconcileShowFees(shows, [], { now }), { now });
+    expect(aging.buckets.find((b) => b.key === "d30")!.rows[0].daysOutstanding).toBe(0);
+  });
+});
+
+describe("receivableAgeBucket", () => {
+  it("mapeia as fronteiras dos baldes (30/60/90)", () => {
+    expect(receivableAgeBucket(0)).toBe("d30");
+    expect(receivableAgeBucket(30)).toBe("d30");
+    expect(receivableAgeBucket(31)).toBe("d60");
+    expect(receivableAgeBucket(60)).toBe("d60");
+    expect(receivableAgeBucket(61)).toBe("d90");
+    expect(receivableAgeBucket(90)).toBe("d90");
+    expect(receivableAgeBucket(91)).toBe("older");
   });
 });
 

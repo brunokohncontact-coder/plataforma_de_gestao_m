@@ -1,7 +1,13 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { reconcileShowFees, dayKey, type ReceivableShowLike, type TxLike } from "@/lib/finance";
+import {
+  reconcileShowFees,
+  bucketReceivablesByAge,
+  dayKey,
+  type ReceivableShowLike,
+  type TxLike,
+} from "@/lib/finance";
 import { buildShowBillings, type ShowBilling } from "@/lib/billing";
 import { formatMoney } from "@/lib/money";
 import { formatDate } from "@/lib/format";
@@ -42,6 +48,10 @@ export default async function ShowReceivablesPage() {
   }));
 
   const result = reconcileShowFees(shows as ReceivableShowLike[], txs);
+  const aging = bucketReceivablesByAge(result);
+  const daysByShow = new Map(
+    aging.buckets.flatMap((b) => b.rows.map((a) => [a.row.show.id, a.daysOutstanding])),
+  );
   const showById = new Map(shows.map((s) => [s.id, s]));
   const today = dayKey(new Date());
 
@@ -80,6 +90,59 @@ export default async function ShowReceivablesPage() {
               hint={`${formatMoney(result.totalFee)} em cachês`}
             />
             <Stat label="Já recebido" value={formatMoney(result.totalCollected)} tone="emerald" />
+          </div>
+
+          <div className="card">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-sm font-semibold text-gray-700">
+                Aging — há quanto tempo o dinheiro está parado
+              </h2>
+              <p className="text-xs text-gray-400">
+                Atraso médio (ponderado): <strong>{aging.weightedAvgDays} dias</strong> · pior
+                caso: <strong>{aging.maxDaysOutstanding} dias</strong>
+              </p>
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {aging.buckets.map((bucket) => {
+                const stale = bucket.key === "d90" || bucket.key === "older";
+                return (
+                  <div
+                    key={bucket.key}
+                    className={
+                      "rounded-lg border p-3 " +
+                      (bucket.count === 0
+                        ? "border-gray-100 bg-gray-50"
+                        : stale
+                          ? "border-red-200 bg-red-50"
+                          : "border-amber-200 bg-amber-50")
+                    }
+                  >
+                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                      {bucket.label}
+                    </p>
+                    <p
+                      className={
+                        "mt-1 text-lg font-bold " +
+                        (bucket.count === 0
+                          ? "text-gray-400"
+                          : stale
+                            ? "text-red-700"
+                            : "text-amber-700")
+                      }
+                    >
+                      {formatMoney(bucket.totalOutstanding)}
+                    </p>
+                    <p className="mt-0.5 text-xs text-gray-500">
+                      {bucket.count === 0
+                        ? "nada parado"
+                        : `${bucket.count} ${bucket.count === 1 ? "show" : "shows"} · ${Math.round(
+                            bucket.share * 100,
+                          )}% do total`}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           <div className="card overflow-x-auto p-0">
@@ -134,6 +197,23 @@ export default async function ShowReceivablesPage() {
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-gray-600">
                         {formatDate(row.show.date)}
+                        {(() => {
+                          const days = daysByShow.get(row.show.id) ?? 0;
+                          return (
+                            <span
+                              className={
+                                "mt-0.5 block text-xs " +
+                                (days > 90
+                                  ? "text-red-600"
+                                  : days > 60
+                                    ? "text-amber-600"
+                                    : "text-gray-400")
+                              }
+                            >
+                              {days === 0 ? "hoje" : `há ${days} ${days === 1 ? "dia" : "dias"}`}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-3 text-right text-gray-700">
                         {formatMoney(row.fee)}
@@ -187,7 +267,8 @@ export default async function ShowReceivablesPage() {
             abrem uma mensagem de cobrança pronta para o contato do show (aparecem quando há
             um contato vinculado com e-mail/telefone). Quando o show tem mais de um contato
             alcançável, escolha no seletor <strong>quem cobrar</strong> antes de abrir a
-            mensagem.
+            mensagem. O <strong>aging</strong> agrupa o que falta receber pela idade do atraso
+            (dias desde o show), para você priorizar o dinheiro parado há mais tempo.
           </p>
         </>
       )}
