@@ -380,3 +380,28 @@ contexto, decisão, justificativa e alternativas consideradas.
   (descartado: o eixo da tela é "há quanto tempo sumiu"; o cachê entra como desempate). Marcar
   "contato feito" para sair da lista exigiria um campo `lastContactedAt` no modelo — adiado por
   ser mudança de schema + CRUD; hoje a saída natural é agendar um novo show.
+
+## D22 — Receita agendada: pipeline de cachês a partir da agenda de shows (Sessão 31)
+- **Contexto:** o app já tinha visões financeiras de competência/realizado (P&L por show,
+  resumo mensal/anual, projeção de caixa pelas pendências). Faltava responder, do ponto de vista
+  da **agenda**, "quanto já tenho contratado para faturar nos próximos meses?" — o pipeline de
+  cachês dos shows ainda por acontecer, separando o que está garantido do que ainda é proposta.
+- **Decisão:** `forecastBookedRevenue(shows, { now? })` (em `src/lib/finance.ts`, pura) considera
+  os shows com dia `>= hoje` (UTC, mesma convenção de `dayKey`), **exclui `CANCELLED`**, e soma o
+  cachê (`fee`) por mês de realização. Cada mês separa `confirmed` (status CONFIRMED/PLAYED) de
+  `tentative` (PROPOSED ou status ausente), mantendo a invariante `total = confirmed + tentative`.
+  Só meses com shows aparecem (lista esparsa, ordem crescente). A página `/shows/receita-agendada`
+  (`force-dynamic`) lê só os shows futuros do usuário (`date >= hoje`) e renderiza resumo + tabela
+  mês a mês. Ponto de entrada: botão "Receita agendada" no cabeçalho de Shows.
+- **Justificativa:** a fonte é a **agenda** (cachê acordado do show), não os lançamentos
+  financeiros — por isso é distinto de `projectCashflow` (que parte das transações pendentes) e
+  não os mistura. O corte por status confirmado/proposto codifica a diferença entre receita
+  contratada e pipeline incerto, decisão central para o planejamento do músico. Lista esparsa de
+  meses (sem horizonte fixo) evita uma escolha arbitrária de "próximos N meses" e acomoda tanto
+  bookings próximos quanto um festival distante. Cachê bruto (sem extras/despesas) mantém a tela
+  focada no "quanto entra contratado"; o resultado líquido já é coberto por `/shows/rentabilidade`.
+- **Alternativas consideradas:** horizonte fixo de N meses com zeros (descartado: arbitrário e
+  esconde bookings além do horizonte; a lista esparsa é mais fiel); somar à projeção de caixa
+  existente (descartado: dupla contagem com pendências financeiras e mistura duas fontes de
+  verdade); usar net (P&L) em vez do cachê bruto (descartado: extras/despesas de shows futuros
+  raramente estão lançadas, distorceriam a projeção — o eixo aqui é receita contratada).
