@@ -675,3 +675,32 @@ contexto, decisão, justificativa e alternativas consideradas.
   deveria ter entrado. (b) baldes configuráveis pelo usuário — exagero para o MVP; 30/60/90 é a
   convenção de aging de contas a receber. (c) página dedicada `/shows/a-receber/aging` — preferi
   integrar na própria lista para manter o fluxo "ver → priorizar → cobrar → quitar" num só lugar.
+
+## D32 — Aging dos recebíveis no Painel: destacar o que está parado há +90 dias (Sessão 41)
+- **Contexto:** a Sessão 40 (D31) entregou o aging dos cachês a receber dentro de `/shows/a-receber`
+  (card com 4 baldes por idade do atraso). Mas o sinal mais crítico — dinheiro **encalhado** há muito
+  tempo, que tende a virar perda — só aparecia depois de o usuário abrir aquela página. O Painel já
+  tinha um alerta âmbar "🎤 Cachês a receber" (Sessão 34) com o total agregado, sem distinguir o
+  recebível novo do velho. Queríamos que o recebível velho saltasse aos olhos já na primeira tela.
+- **Decisão:** o Painel passou a chamar `bucketReceivablesByAge(receivables)` (a mesma lógica pura
+  testada da D31) e a destacar o **balde "older"** — recebíveis parados **há mais de 90 dias**.
+  Quando esse balde tem itens, o alerta de cachês a receber **escala de âmbar para vermelho** e
+  ganha um segmento "🚨 R$ X parado há mais de 90 dias (N)". Sem stale, o banner segue âmbar (igual
+  ao anterior). Nenhuma mudança de schema, dependência ou server action.
+- **Por que >90 dias (balde "older") e não ≥61 dias:** 90 dias é a fronteira clássica de "conta a
+  receber em risco" no aging contábil; é o ponto em que vale interromper o usuário no Painel. Os
+  baldes 31–60 / 61–90 continuam visíveis no card detalhado de `/shows/a-receber` (D31) para a
+  priorização fina; o Painel mostra só o sinal de urgência máxima para não poluir.
+- **Por que escalar o banner existente em vez de um segundo alerta:** o assunto é o mesmo
+  ("cachês a receber") e o destino do clique é o mesmo (`/shows/a-receber`); um segundo banner
+  separado duplicaria a chamada para ação e competiria por atenção com o de "Pendências vencidas".
+  Escalar a cor + acrescentar um segmento mantém um único ponto de entrada, mais legível.
+- **Sem novos testes unitários:** a regra de negócio (classificação por idade, total do balde) já é
+  pura e coberta por `bucketReceivablesByAge` (8 testes, D31); esta sessão é só apresentação. A
+  verificação foi por build + typecheck + lint + suíte completa + smoke (mesmo critério das demais
+  mudanças de UI — ver Sessão 8).
+- **Alternativas consideradas:** (a) um segundo banner vermelho dedicado a ≥90 dias — descartado
+  (duplicaria CTA/destino, ver acima); (b) trazer os 4 baldes inteiros para o Painel — descartado
+  (excesso de informação na visão de resumo; o detalhe é o papel de `/shows/a-receber`); (c) usar
+  ≥61 dias como gatilho — descartado (90 dias é o limiar de risco real; 61–90 ainda é cobrança de
+  rotina).

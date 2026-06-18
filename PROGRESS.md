@@ -107,6 +107,11 @@ em quatro baldes (até 30 / 31–60 / 61–90 / mais de 90 dias), com total, con
 (%) por balde, atraso médio ponderado pelo valor e pior caso; a página ganhou um card de aging
 (baldes ≥61 dias destacados) e um selo "há N dias" por linha, para priorizar a cobrança do
 dinheiro parado há mais tempo (ver D31). **358 testes** verdes.
+Sessão 41 trouxe o **aging dos recebíveis para o Painel**: o alerta "🎤 Cachês a receber" do
+dashboard passa a destacar, com escalonamento para vermelho, o dinheiro **parado há mais de 90
+dias** (balde "older" de `bucketReceivablesByAge`, reaproveitado), mostrando o valor encalhado e
+a contagem — o sinal de cobrança urgente aparece já na primeira tela (ver D32). **358 testes**
+verdes (mudança de UI, reaproveita lógica pura já testada).
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias, estados de erro
 inline dos server actions) ou evoluções de calendário (arrastar/soltar para remarcar).
 
@@ -967,6 +972,20 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   (`tsc --noEmit`) limpo, lint (0), **351 testes** (`vitest run`), smoke test ao vivo (`next start`):
   `/shows/a-receber` sem sessão → 307; `/login` → 200. `npm audit` inalterado (10 advisories: 4
   moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
+
+### Sessão 41 — 2026-06-18 (Fase 1 — aging dos recebíveis no Painel)
+- **UI Painel** (`src/app/(app)/dashboard/page.tsx`): o alerta "🎤 Cachês a receber" passou a
+  computar o aging dos recebíveis com `bucketReceivablesByAge(receivables)` (lógica pura já testada
+  na Sessão 40) e a destacar o **balde "older"** (parado **há mais de 90 dias**). Quando há dinheiro
+  encalhado, o banner **escala de âmbar para vermelho** e ganha um segmento "🚨 R$ X parado há mais
+  de 90 dias (N)" — o sinal de cobrança urgente aparece já na primeira tela, sem precisar abrir
+  `/shows/a-receber`. Sem novas dependências, sem mudança de schema, sem novo server action.
+- Decisão registrada em **DECISIONS.md D32** (limiar >90 dias = balde "older"; escalonamento de cor
+  no banner existente em vez de um segundo alerta).
+- Definition of Done verde: build (25 rotas), typecheck (`tsc --noEmit`) limpo, lint (0),
+  **358 testes** (`vitest run`; inalterado — mudança de UI que reaproveita lógica pura já coberta),
+  smoke test ao vivo (`next start`): `/dashboard` sem sessão → 307; `/login` → 200. `npm audit`
+  inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova — ver D6/D8).
 
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
