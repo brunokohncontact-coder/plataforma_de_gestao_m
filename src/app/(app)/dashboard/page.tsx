@@ -9,6 +9,7 @@ import {
   computeShowPnL,
   projectCashflow,
   reconcileShowFees,
+  bucketReceivablesByAge,
   type TxLike,
   type ReceivableShowLike,
 } from "@/lib/finance";
@@ -47,6 +48,10 @@ export default async function DashboardPage() {
   const cashflow = projectCashflow(txs, { months: 6 });
   const hasProjection = cashflow.months.some((m) => m.income > 0 || m.expense > 0);
   const receivables = reconcileShowFees(shows as ReceivableShowLike[], txs);
+  const receivablesAging = bucketReceivablesByAge(receivables);
+  // Recebível "encalhado": parado há mais de 90 dias (balde "older" do aging).
+  const staleReceivables = receivablesAging.buckets.find((b) => b.key === "older");
+  const hasStaleReceivables = staleReceivables != null && staleReceivables.count > 0;
 
   // Rentabilidade: top shows realizados por resultado
   const playedShows = shows.filter((s) => s.status === "PLAYED");
@@ -84,18 +89,33 @@ export default async function DashboardPage() {
         </Link>
       )}
 
-      {/* Aviso de cachês a receber de shows já realizados */}
+      {/* Aviso de cachês a receber de shows já realizados; escala para vermelho
+          quando há dinheiro parado há mais de 90 dias (recebível encalhado). */}
       {receivables.count > 0 && (
         <Link
           href="/shows/a-receber"
-          className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 transition hover:bg-amber-100"
+          className={
+            "flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3 text-sm transition " +
+            (hasStaleReceivables
+              ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100")
+          }
         >
           <span className="font-semibold">🎤 Cachês a receber</span>
           <span>
             <strong>{formatMoney(receivables.totalOutstanding)}</strong> em{" "}
             {receivables.count} {receivables.count === 1 ? "show realizado" : "shows realizados"}
           </span>
-          <span className="text-amber-600">Ver →</span>
+          {hasStaleReceivables && (
+            <span className="font-semibold text-red-700">
+              🚨 {formatMoney(staleReceivables!.totalOutstanding)} parado há mais de 90 dias
+              <span className="font-normal text-red-500">
+                {" "}
+                ({staleReceivables!.count})
+              </span>
+            </span>
+          )}
+          <span className={hasStaleReceivables ? "text-red-600" : "text-amber-600"}>Ver →</span>
         </Link>
       )}
 
