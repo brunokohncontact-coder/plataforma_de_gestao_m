@@ -95,6 +95,12 @@ do recebimento** ao quitar um cachê em `/shows/a-receber`: `settleShowFeeAction
 opcional `receivedAt` (`YYYY-MM-DD`), decidido pelo helper puro `resolveReceivedDate` (vazio/inválido
 → agora; passado/hoje → meia-noite UTC daquele dia; futuro → agora) — a receita cai no **mês certo**,
 corrigindo projeção de caixa, relatório mensal e resumo anual (ver D29). **346 testes** verdes.
+Sessão 39 entregou o **seletor de qual contato cobrar** em `/shows/a-receber`: a lógica pura
+de `billing.ts` passou a expor todos os contatos alcançáveis (`reachableBillingContacts` +
+`buildShowBillings`, com `pickBillingContact`/`buildShowBilling` agora delegando a elas — DRY); o
+novo componente client `BillingActions` mostra um `<select>` "quem cobrar" quando o show tem mais
+de um contato alcançável (default = escolha automática por papel), com os botões ✉ E-mail/WhatsApp
+montados no servidor para cada contato (ver D30). **351 testes** verdes.
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias, estados de erro
 inline dos server actions) ou evoluções de calendário (arrastar/soltar para remarcar).
 
@@ -932,6 +938,30 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   `/shows/a-receber` sem sessão → 307. `npm audit` inalterado (10 advisories: 4 moderate / 5 high /
   1 critical; nenhuma dependência nova — ver D6/D8).
 
+### Sessão 39 — 2026-06-18 (Fase 1 — seletor de qual contato cobrar em "Cachês a receber")
+- **Lógica pura** (`src/lib/billing.ts`): extraído o comparador `compareBillingContacts`
+  (papel → nome pt-BR → id) e a nova `reachableBillingContacts(contacts)` (lista todos os contatos
+  alcançáveis — com e-mail/telefone — em ordem de prioridade de cobrança). `pickBillingContact`
+  virou `reachableBillingContacts(...)[0] ?? null` (DRY). Nova `buildShowBillings(show, contacts,
+  opts)` → `ShowBilling[]`: monta a cobrança (assunto/corpo/mailto/wa.me) para **cada** contato
+  alcançável, na mesma ordem (o 1º é a escolha automática); `buildShowBilling` (singular) preservado
+  como `buildShowBillings(...)[0] ?? null`, mantendo API e testes antigos intactos. **5 testes**
+  novos em `src/lib/billing.test.ts` (20→25 no arquivo; total do projeto **351**, eram 346):
+  `reachableBillingContacts` (ordem + exclusão de não-alcançáveis + vazio) e `buildShowBillings`
+  (vazio, cobrança por contato com mensagem personalizada, equivalência com `buildShowBilling`).
+- **Componente client** `src/components/BillingActions.tsx`: recebe `ShowBilling[]` pronto do
+  servidor. Com **um** contato, mostra direto os botões ✉ E-mail / WhatsApp (idêntico ao anterior);
+  com **vários**, antepõe um `<select>` "quem cobrar" (escolha automática pré-selecionada, rótulo
+  `Nome (Papel)` via `CONTACT_ROLE_LABELS`) e os botões refletem o contato escolhido. O cliente só
+  alterna o índice — nenhum recálculo no cliente. Acessível (`<label sr-only>`, `title`/`aria-label`).
+- **Página** (`src/app/(app)/shows/a-receber/page.tsx`): passou a chamar `buildShowBillings` por
+  linha e renderiza `<BillingActions billings={...} />` na coluna Ações (substituindo a renderização
+  inline de um único contato). Nota de rodapé atualizada (escolher quem cobrar). Decisão em **D30**.
+- Definition of Done verde: build (25 rotas; `/shows/a-receber` 1.97 kB com o seletor), typecheck
+  (`tsc --noEmit`) limpo, lint (0), **351 testes** (`vitest run`), smoke test ao vivo (`next start`):
+  `/shows/a-receber` sem sessão → 307; `/login` → 200. `npm audit` inalterado (10 advisories: 4
+  moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)
@@ -951,8 +981,10 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    **atalho de cobrança** mailto/WhatsApp para o contato do show entregue na Sessão 36 —
    `src/lib/billing.ts`, ver D27; **quitar valor parcial** entregue na Sessão 37 —
    `SettleFeeButton` + `resolveSettlementAmount`, ver D28; **data real do recebimento** entregue na
-   Sessão 38 — `resolveReceivedDate` + campo `receivedAt`, ver D29): próximo possível — seletor de
-   qual contato cobrar (hoje a escolha é automática por papel).
+   Sessão 38 — `resolveReceivedDate` + campo `receivedAt`, ver D29; **seletor de qual contato
+   cobrar** entregue na Sessão 39 — `buildShowBillings` + `BillingActions`, ver D30): próximo
+   possível — lembrar a última escolha de contato por show, ou registrar a data prometida de
+   pagamento na própria cobrança.
 4. **Sessões/segurança**: invalidação ao trocar a senha entregue na Sessão 26
    (`passwordChangedAt` + `isSessionFresh`, ver D17). Evoluções possíveis: "encerrar sessão
    específica" (lista de sessões revogáveis) e recuperação de senha por e-mail — adiáveis.

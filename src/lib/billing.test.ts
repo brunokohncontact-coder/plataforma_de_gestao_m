@@ -1,11 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
   pickBillingContact,
+  reachableBillingContacts,
   buildDunningMessage,
   normalizeWhatsappPhone,
   buildMailtoUrl,
   buildWhatsappUrl,
   buildShowBilling,
+  buildShowBillings,
   type BillingContactLike,
   type BillingShowInfo,
 } from "./billing";
@@ -174,5 +176,62 @@ describe("buildShowBilling", () => {
     ]);
     expect(r?.mailtoUrl).not.toBeNull();
     expect(r?.whatsappUrl).toBeNull();
+  });
+});
+
+describe("reachableBillingContacts", () => {
+  it("lista só os alcançáveis, em ordem de prioridade", () => {
+    const list = reachableBillingContacts([
+      contact({ id: "v", name: "Casa", role: "VENUE", email: "v@x.com" }),
+      contact({ id: "s", name: "Sem canal", role: "BOOKER" }),
+      contact({ id: "b", name: "Booker", role: "BOOKER", phone: "81999998888" }),
+    ]);
+    expect(list.map((c) => c.id)).toEqual(["b", "v"]);
+  });
+
+  it("vazio quando ninguém é alcançável", () => {
+    expect(reachableBillingContacts([])).toEqual([]);
+    expect(reachableBillingContacts([contact({ id: "a" })])).toEqual([]);
+  });
+});
+
+describe("buildShowBillings", () => {
+  it("vazio sem contato alcançável", () => {
+    expect(buildShowBillings(SHOW, [])).toEqual([]);
+    expect(buildShowBillings(SHOW, [contact({ id: "a" })])).toEqual([]);
+  });
+
+  it("monta a cobrança de cada contato alcançável, escolha automática primeiro", () => {
+    const list = buildShowBillings(
+      SHOW,
+      [
+        contact({ id: "v", name: "Casa", role: "VENUE", email: "casa@x.com" }),
+        contact({
+          id: "b",
+          name: "Booker",
+          role: "BOOKER",
+          email: "booker@x.com",
+          phone: "81999998888",
+        }),
+        contact({ id: "z", name: "Sem canal", role: "BOOKER" }),
+      ],
+      { fromName: "Trio Acústico" },
+    );
+    // Só os 2 alcançáveis; Booker (papel mais prioritário) primeiro.
+    expect(list.map((b) => b.contact.id)).toEqual(["b", "v"]);
+    // Cada cobrança é personalizada para o seu próprio contato.
+    expect(list[0].body.startsWith("Olá, Booker!")).toBe(true);
+    expect(list[1].body.startsWith("Olá, Casa!")).toBe(true);
+    expect(list[1].mailtoUrl).toContain("mailto:casa%40x.com?");
+    expect(list[1].whatsappUrl).toBeNull();
+  });
+
+  it("buildShowBilling continua devolvendo o primeiro de buildShowBillings", () => {
+    const contacts = [
+      contact({ id: "v", name: "Casa", role: "VENUE", email: "casa@x.com" }),
+      contact({ id: "b", name: "Booker", role: "BOOKER", email: "booker@x.com" }),
+    ];
+    const first = buildShowBillings(SHOW, contacts)[0];
+    expect(buildShowBilling(SHOW, contacts)).toEqual(first);
   });
 });
