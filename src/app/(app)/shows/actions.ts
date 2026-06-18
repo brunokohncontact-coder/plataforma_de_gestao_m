@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { showSchema } from "@/lib/validation";
+import { resolveSettlementAmount } from "@/lib/finance";
+import { parseMoneyToCents, showSchema } from "@/lib/validation";
 
 export interface FormState {
   error?: string;
@@ -122,6 +123,12 @@ export async function unlinkContactFromShowAction(formData: FormData): Promise<v
  * já recebida vinculada) — nunca confiando num valor vindo do cliente — então a
  * ação é idempotente: se o show já está quitado (ou não é do usuário, ou não tem
  * cachê), nada é criado. Espelha a regra pura de `reconcileShowFees` (ver D25).
+ *
+ * O campo opcional `amount` (string em reais pt-BR) permite quitar um valor
+ * PARCIAL pela própria lista: vazio/inválido → quita o saldo inteiro; informado →
+ * é validado e limitado ao saldo no servidor (`resolveSettlementAmount`), nunca
+ * confiando no valor do cliente. Lançar parcial deixa a linha na lista com o
+ * restante a receber (ver D28).
  */
 export async function settleShowFeeAction(formData: FormData): Promise<void> {
   const user = await requireUser();
@@ -140,13 +147,22 @@ export async function settleShowFeeAction(formData: FormData): Promise<void> {
   const outstanding = Math.max(0, show.fee - collected);
   if (outstanding <= 0) return; // já quitado — idempotente
 
+  // valor opcional: vazio → quita tudo; informado → validado e limitado ao saldo
+  const rawAmount = formData.get("amount");
+  const requested =
+    typeof rawAmount === "string" && rawAmount.trim() !== ""
+      ? parseMoneyToCents(rawAmount)
+      : null;
+  const amount = resolveSettlementAmount(outstanding, requested);
+  if (amount <= 0) return; // valor inválido/zerado após o clamp — no-op
+
   await prisma.transaction.create({
     data: {
       userId: user.id,
       type: "INCOME",
       description: `Cachê — ${show.title}`,
       category: "Cachê",
-      amount: outstanding,
+      amount,
       date: new Date(),
       received: true,
       showId: id,

@@ -1096,6 +1096,27 @@ export function reconcileShowFees<S extends ReceivableShowLike>(
   };
 }
 
+/**
+ * Decide quanto lançar ao quitar um cachê, dado o valor pedido pelo usuário e o
+ * saldo em aberto (recalculado no servidor — a fonte de verdade). Regras:
+ * - Saldo <= 0 → 0 (nada a quitar).
+ * - Sem valor pedido (null/undefined), inválido (NaN) ou <= 0 → quita o saldo
+ *   inteiro (comportamento padrão do botão "Quitar").
+ * - Valor pedido válido → nunca passa do saldo (clamp em `outstanding`), evitando
+ *   sobre-lançamento mesmo que o cliente envie um número maior.
+ * Retorna sempre um inteiro de centavos em [0, outstanding].
+ */
+export function resolveSettlementAmount(
+  outstanding: number,
+  requested?: number | null,
+): number {
+  if (outstanding <= 0) return 0;
+  if (requested == null || !Number.isFinite(requested) || requested <= 0) {
+    return outstanding;
+  }
+  return Math.min(Math.round(requested), outstanding);
+}
+
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 function sum(nums: number[]): number {

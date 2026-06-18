@@ -25,6 +25,7 @@ import {
   availableYears,
   forecastBookedRevenue,
   reconcileShowFees,
+  resolveSettlementAmount,
   type TxLike,
   type ShowLike,
   type VenueShowLike,
@@ -1103,5 +1104,36 @@ describe("reconcileShowFees", () => {
     ];
     const r = reconcileShowFees(shows, [], { now });
     expect(r.rows.map((row) => row.show.id)).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("resolveSettlementAmount", () => {
+  it("quita o saldo inteiro quando não há valor pedido", () => {
+    expect(resolveSettlementAmount(125_00, null)).toBe(125_00);
+    expect(resolveSettlementAmount(125_00, undefined)).toBe(125_00);
+  });
+
+  it("quita o saldo inteiro quando o valor pedido é inválido (NaN) ou <= 0", () => {
+    expect(resolveSettlementAmount(125_00, NaN)).toBe(125_00);
+    expect(resolveSettlementAmount(125_00, 0)).toBe(125_00);
+    expect(resolveSettlementAmount(125_00, -50_00)).toBe(125_00);
+  });
+
+  it("aceita um valor parcial menor que o saldo", () => {
+    expect(resolveSettlementAmount(125_00, 50_00)).toBe(50_00);
+  });
+
+  it("limita (clamp) o valor pedido ao saldo em aberto", () => {
+    expect(resolveSettlementAmount(125_00, 200_00)).toBe(125_00);
+  });
+
+  it("retorna 0 quando não há saldo a quitar", () => {
+    expect(resolveSettlementAmount(0, 50_00)).toBe(0);
+    expect(resolveSettlementAmount(-10_00, null)).toBe(0);
+  });
+
+  it("arredonda o valor pedido para centavos inteiros", () => {
+    expect(resolveSettlementAmount(125_00, 50_00.4)).toBe(50_00);
+    expect(resolveSettlementAmount(125_00, 50_00.6)).toBe(50_01);
   });
 });

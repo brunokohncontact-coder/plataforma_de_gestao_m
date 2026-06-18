@@ -239,6 +239,52 @@ describe("settleShowFeeAction — quita o cachê em aberto", () => {
 
     expect(await prisma.transaction.count({ where: { showId: show.id } })).toBe(0);
   });
+
+  it("lança um valor PARCIAL quando o campo amount é informado", async () => {
+    const owner = await createUser("owner@example.com");
+    const show = await createShow(owner.id, { fee: 50000, status: "PLAYED" });
+
+    h.currentUser = owner;
+    const fd = new FormData();
+    fd.set("id", show.id);
+    fd.set("amount", "200,00"); // R$ 200,00 dos R$ 500,00 em aberto
+    await settleShowFeeAction(fd);
+
+    const txs = await prisma.transaction.findMany({ where: { showId: show.id } });
+    expect(txs).toHaveLength(1);
+    expect(txs[0].amount).toBe(20000);
+    expect(txs[0].received).toBe(true);
+  });
+
+  it("limita o valor parcial ao saldo em aberto (não sobre-lança)", async () => {
+    const owner = await createUser("owner@example.com");
+    const show = await createShow(owner.id, { fee: 50000, status: "PLAYED" });
+
+    h.currentUser = owner;
+    const fd = new FormData();
+    fd.set("id", show.id);
+    fd.set("amount", "999,00"); // mais que o saldo → clamp para 500,00
+    await settleShowFeeAction(fd);
+
+    const txs = await prisma.transaction.findMany({ where: { showId: show.id } });
+    expect(txs).toHaveLength(1);
+    expect(txs[0].amount).toBe(50000);
+  });
+
+  it("amount vazio quita o saldo inteiro (compatível com o botão Quitar)", async () => {
+    const owner = await createUser("owner@example.com");
+    const show = await createShow(owner.id, { fee: 50000, status: "PLAYED" });
+
+    h.currentUser = owner;
+    const fd = new FormData();
+    fd.set("id", show.id);
+    fd.set("amount", "");
+    await settleShowFeeAction(fd);
+
+    const txs = await prisma.transaction.findMany({ where: { showId: show.id } });
+    expect(txs).toHaveLength(1);
+    expect(txs[0].amount).toBe(50000);
+  });
 });
 
 describe("linkContactToShowAction — posse cruzada", () => {

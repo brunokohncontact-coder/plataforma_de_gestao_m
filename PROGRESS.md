@@ -85,7 +85,12 @@ com `groupLabel` (ver D26). **311 testes** verdes. Sessão 36 entregou o **atalh
 em `/shows/a-receber`: botões **✉ E-mail** e **WhatsApp** por linha que abrem uma mensagem de
 cobrança pronta (assunto/corpo com show, data, local e valor) para o contato vinculado ao show
 — módulo puro `src/lib/billing.ts` (escolha do contato por papel, redação, normalização de
-telefone pt-BR, montagem de `mailto:`/`wa.me`), ver D27. **331 testes** verdes.
+telefone pt-BR, montagem de `mailto:`/`wa.me`), ver D27. **331 testes** verdes. Sessão 37
+entregou o **quitar valor parcial** em `/shows/a-receber`: `settleShowFeeAction` aceita um campo
+opcional `amount` (validado e limitado ao saldo no servidor via o helper puro
+`resolveSettlementAmount`), e o novo componente client `SettleFeeButton` abre na linha um campo
+de valor (reusa `MoneyInput`) pré-preenchido com o saldo e editável — lançar menos deixa o
+restante na lista (ver D28). **340 testes** verdes.
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias, estados de erro
 inline dos server actions) ou evoluções de calendário (arrastar/soltar para remarcar).
 
@@ -875,6 +880,33 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   verificado. `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma
   dependência nova — ver D6/D8).
 
+### Sessão 37 — 2026-06-18 (Fase 1 — quitar valor parcial em "Cachês a receber")
+- **Lógica pura** (`src/lib/finance.ts`): `resolveSettlementAmount(outstanding, requested?)` →
+  decide quanto lançar ao quitar. Saldo ≤ 0 → 0; valor pedido ausente/inválido (NaN)/≤ 0 → quita
+  o saldo inteiro (mesmo comportamento do botão da Sessão 35); valor válido → `min(round(req),
+  outstanding)` (clamp em `[0, outstanding]`, impedindo sobre-lançamento). Retorna sempre inteiro
+  de centavos. **6 testes** novos em `finance.test.ts`. Ver **DECISIONS.md D28**.
+- **Server action** (`src/app/(app)/shows/actions.ts`): `settleShowFeeAction` passou a ler um
+  campo **opcional** `amount` (string reais pt-BR, via `parseMoneyToCents`). O saldo continua
+  recalculado no servidor (`prisma.transaction.aggregate`) e o valor a lançar passa por
+  `resolveSettlementAmount` — o `amount` do cliente nunca ultrapassa o saldo (mantém a regra da
+  D26). Vazio = quita tudo. **3 testes** de integração novos em `shows/actions.test.ts` (parcial
+  real, clamp ao saldo, vazio = saldo cheio) — total **340** (eram 331).
+- **Componente client** `src/components/SettleFeeButton.tsx`: substitui o uso do `DeleteButton`
+  na página. O clique em **Quitar** abre, na própria linha, um `MoneyInput` pré-preenchido com o
+  saldo em aberto (editável) + **Lançar/Cancelar** (`SubmitButton` com estado pendente). Lançar o
+  valor cheio quita; lançar menos deixa o restante na lista. `DeleteButton` segue intacto nos
+  pontos de exclusão.
+- **Página** (`src/app/(app)/shows/a-receber/page.tsx`): troca do `DeleteButton` pelo
+  `SettleFeeButton` na coluna Ações; nota de rodapé atualizada (quitação total ou parcial). Sem
+  novas dependências nem mudança de schema.
+- Definition of Done verde: build (25 rotas; `/shows/a-receber` 1.06 kB com o client de valor),
+  typecheck (`tsc --noEmit`) limpo, lint (0), **340 testes**, smoke test ao vivo (`next start`):
+  rota sem sessão → 307; **e2e autenticado com cookie de sessão real** (seed demo) →
+  `/shows/a-receber` 200 com "Show no Bar do Zé", o botão **Quitar** e a nota de quitação parcial
+  — verificado. `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma
+  dependência nova — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)
@@ -892,8 +924,10 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
 5. **Cachês a receber — evoluções** (entregue na Sessão 34, `/shows/a-receber` + `reconcileShowFees`,
    ver D25; **quitar cachê inline** entregue na Sessão 35 — `settleShowFeeAction`, ver D26;
    **atalho de cobrança** mailto/WhatsApp para o contato do show entregue na Sessão 36 —
-   `src/lib/billing.ts`, ver D27): próximo possível — seletor de qual contato cobrar (hoje a
-   escolha é automática por papel), ou "lançar valor parcial" pela própria lista.
+   `src/lib/billing.ts`, ver D27; **quitar valor parcial** entregue na Sessão 37 —
+   `SettleFeeButton` + `resolveSettlementAmount`, ver D28): próximo possível — seletor de qual
+   contato cobrar (hoje a escolha é automática por papel), ou registrar a data real do
+   recebimento (hoje usa `now`).
 4. **Sessões/segurança**: invalidação ao trocar a senha entregue na Sessão 26
    (`passwordChangedAt` + `isSessionFresh`, ver D17). Evoluções possíveis: "encerrar sessão
    específica" (lista de sessões revogáveis) e recuperação de senha por e-mail — adiáveis.
