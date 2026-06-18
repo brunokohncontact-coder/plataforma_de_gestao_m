@@ -243,7 +243,7 @@ export default async function FinancesPage({
               Filtrar
             </button>
             {active && (
-              <Link href="/financas" className="text-sm text-gray-500 hover:underline">
+              <Link href="/financas?reset=1" className="text-sm text-gray-500 hover:underline">
                 Limpar
               </Link>
             )}
@@ -297,7 +297,7 @@ export default async function FinancesPage({
       ) : visible.length === 0 ? (
         <div className="card text-center text-gray-500">
           <p>Nenhuma transação para os filtros selecionados.</p>
-          <Link href="/financas" className="mt-3 inline-block text-brand-700 hover:underline">
+          <Link href="/financas?reset=1" className="mt-3 inline-block text-brand-700 hover:underline">
             Limpar filtros
           </Link>
         </div>

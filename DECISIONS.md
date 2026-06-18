@@ -405,3 +405,33 @@ contexto, decisão, justificativa e alternativas consideradas.
   existente (descartado: dupla contagem com pendências financeiras e mistura duas fontes de
   verdade); usar net (P&L) em vez do cachê bruto (descartado: extras/despesas de shows futuros
   raramente estão lançadas, distorceriam a projeção — o eixo aqui é receita contratada).
+
+## D23 — Persistir o último filtro das Finanças via middleware + cookie (Sessão 32)
+- **Contexto:** a página `/financas` filtra por query string (GET). Ao sair e voltar pelo menu,
+  o usuário perdia o recorte e tinha de refiltrar. Queríamos lembrar o último filtro entre
+  navegações/sessões. Restrição técnica: no App Router, `cookies().set()` não pode ser chamado
+  durante o render de um Server Component (só em Server Action, Route Handler ou middleware).
+- **Decisão:** um **middleware** com `matcher: ["/financas"]` decide persistir/restaurar. A
+  lógica de decisão é uma **função pura testada** (`decideFinancasFilter` em
+  `src/lib/financasFilter.ts`) com quatro casos: `reset` (link "Limpar" → `?reset=1` apaga o
+  cookie), `persist` (URL com qualquer chave de filtro → grava o recorte canônico, ou apaga se
+  vazio), `restore` (visita sem chaves + cookie salvo → redireciona para `/financas?<filtro>`),
+  `pass`. O cookie guarda só as chaves conhecidas e não-vazias, em ordem estável
+  (`canonicalFilterQuery`), evitando lixo e loops (a URL restaurada já tem chaves → vira persist,
+  não restaura de novo). Cookie httpOnly, SameSite=Lax, 180 dias.
+- **Justificativa:** o middleware é o único ponto pré-render onde dá para ler a URL **e** gravar
+  cookie **e** redirecionar, fechando o ciclo sem tocar em cada Server Action. Manter a decisão
+  como função pura preserva o padrão do projeto (lógica de negócio testável fora do framework) e
+  cobre os casos de borda (reset, recorte vazio, ausência de loop) com testes unitários baratos.
+- **Path do cookie = `/`:** o `cookies.delete` do `NextResponse` sempre emite `Path=/` (ignora
+  options de path nesta versão do Next), e `set(..., maxAge: 0)` é tratado como deleção e também
+  força `Path=/`. Um cookie gravado em `Path=/financas` não casaria com essa deleção (o browser
+  distingue cookies por nome+path), então "Limpar" não o apagaria. Para `set` e `delete` casarem,
+  ambos usam `Path=/`. O escopo amplo é inócuo: o cookie só é **lido** pelo middleware em
+  `/financas`; o custo é alguns bytes a mais nas demais requisições.
+- **Alternativas consideradas:** `localStorage` + JS no cliente (descartado: exigiria componente
+  client e re-navegação no `useEffect`, com flash de conteúdo sem filtro; o cookie+middleware
+  resolve no servidor, sem flicker); gravar o cookie numa Server Action a cada filtro (descartado:
+  o filtro é um GET via `<form method="get">`, não uma action — middleware é o encaixe natural);
+  redirecionar a partir do próprio Server Component (descartado: não pode gravar cookie no render);
+  cookie em `Path=/financas` (descartado: deleção não casaria — ver acima).
