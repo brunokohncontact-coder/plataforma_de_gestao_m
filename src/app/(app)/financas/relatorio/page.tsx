@@ -5,8 +5,10 @@ import {
   summarizeFinances,
   categoryReport,
   filterTransactions,
+  compareSummaries,
   type TxLike,
   type CategorySlice,
+  type MetricDelta,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import {
@@ -57,6 +59,13 @@ export default async function FinanceReportPage({
   const visible = filterTransactions(allTxs, { month: key });
   const summary = summarizeFinances(visible);
   const report = categoryReport(visible);
+
+  // Comparativo com o mês anterior ("estou melhor que o mês passado?").
+  const prevKey = monthKeyOf(prev.year, prev.month);
+  const prevVisible = filterTransactions(allTxs, { month: prevKey });
+  const prevSummary = summarizeFinances(prevVisible);
+  const comparison = compareSummaries(summary, prevSummary);
+  const hasPrevData = prevVisible.length > 0;
 
   const exportHref = `/financas/export?mes=${key}`;
 
@@ -109,13 +118,42 @@ export default async function FinanceReportPage({
         </div>
       ) : (
         <>
-          {/* Resumo do mês */}
+          {/* Resumo do mês (com comparativo ao mês anterior quando houver) */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat label="Receitas" value={summary.totalIncome} tone="emerald" />
-            <Stat label="Despesas" value={summary.totalExpense} tone="red" />
-            <Stat label="Saldo do mês" value={summary.balance} tone="brand" />
-            <Stat label="Caixa realizado" value={summary.cashBalance} tone="gray" />
+            <Stat
+              label="Receitas"
+              value={summary.totalIncome}
+              tone="emerald"
+              delta={hasPrevData ? comparison.totalIncome : undefined}
+              upIsGood
+            />
+            <Stat
+              label="Despesas"
+              value={summary.totalExpense}
+              tone="red"
+              delta={hasPrevData ? comparison.totalExpense : undefined}
+              upIsGood={false}
+            />
+            <Stat
+              label="Saldo do mês"
+              value={summary.balance}
+              tone="brand"
+              delta={hasPrevData ? comparison.balance : undefined}
+              upIsGood
+            />
+            <Stat
+              label="Caixa realizado"
+              value={summary.cashBalance}
+              tone="gray"
+              delta={hasPrevData ? comparison.cashBalance : undefined}
+              upIsGood
+            />
           </div>
+          {hasPrevData && (
+            <p className="-mt-2 text-xs text-gray-400">
+              Comparado a {formatMonthTitle(prev.year, prev.month)}.
+            </p>
+          )}
 
           {(summary.pendingIncome > 0 || summary.pendingExpense > 0) && (
             <div className="flex flex-wrap gap-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -206,10 +244,14 @@ function Stat({
   label,
   value,
   tone,
+  delta,
+  upIsGood = true,
 }: {
   label: string;
   value: number;
   tone: "emerald" | "red" | "brand" | "gray";
+  delta?: MetricDelta;
+  upIsGood?: boolean;
 }) {
   const tones: Record<string, string> = {
     emerald: "text-emerald-600",
@@ -221,6 +263,26 @@ function Stat({
     <div className="card">
       <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
       <p className={"mt-1 text-xl font-bold " + tones[tone]}>{formatMoney(value)}</p>
+      {delta && <DeltaLine delta={delta} upIsGood={upIsGood} />}
     </div>
+  );
+}
+
+/** Linha de variação mês a mês: seta + valor absoluto + porcentagem. */
+function DeltaLine({ delta, upIsGood }: { delta: MetricDelta; upIsGood: boolean }) {
+  if (delta.direction === "flat") {
+    return <p className="mt-1 text-xs text-gray-400">→ sem variação</p>;
+  }
+
+  const isGood = delta.direction === "up" ? upIsGood : !upIsGood;
+  const colorClass = isGood ? "text-emerald-600" : "text-red-600";
+  const arrow = delta.direction === "up" ? "▲" : "▼";
+  const pctLabel =
+    delta.pct == null ? "novo" : `${Math.round(Math.abs(delta.pct) * 100)}%`;
+
+  return (
+    <p className={"mt-1 text-xs font-medium " + colorClass}>
+      {arrow} {formatMoney(Math.abs(delta.delta))} <span className="opacity-70">({pctLabel})</span>
+    </p>
   );
 }

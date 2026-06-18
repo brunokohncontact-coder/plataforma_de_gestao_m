@@ -30,6 +30,8 @@ import {
   RECEIVABLE_AGE_BUCKET_ORDER,
   resolveSettlementAmount,
   resolveReceivedDate,
+  computeDelta,
+  compareSummaries,
   type TxLike,
   type ShowLike,
   type VenueShowLike,
@@ -1260,5 +1262,90 @@ describe("resolveReceivedDate", () => {
   it("rejeita datas no futuro, caindo para `now`", () => {
     expect(resolveReceivedDate("2026-06-19", now)).toBe(now);
     expect(resolveReceivedDate("2027-01-01", now)).toBe(now);
+  });
+});
+
+describe("computeDelta", () => {
+  it("calcula a diferença absoluta e a variação relativa (subida)", () => {
+    const d = computeDelta(125_00, 100_00);
+    expect(d.delta).toBe(25_00);
+    expect(d.pct).toBeCloseTo(0.25, 10);
+    expect(d.direction).toBe("up");
+  });
+
+  it("calcula queda (delta e pct negativos)", () => {
+    const d = computeDelta(80_00, 100_00);
+    expect(d.delta).toBe(-20_00);
+    expect(d.pct).toBeCloseTo(-0.2, 10);
+    expect(d.direction).toBe("down");
+  });
+
+  it("trata valores iguais como estável (flat), pct = 0", () => {
+    const d = computeDelta(100_00, 100_00);
+    expect(d.delta).toBe(0);
+    expect(d.pct).toBe(0);
+    expect(d.direction).toBe("flat");
+  });
+
+  it("retorna pct null quando a base anterior é zero (sem base de %)", () => {
+    const d = computeDelta(50_00, 0);
+    expect(d.delta).toBe(50_00);
+    expect(d.pct).toBeNull();
+    expect(d.direction).toBe("up");
+  });
+
+  it("usa o valor absoluto da base anterior negativa no pct", () => {
+    // saldo de competência pode ser negativo; % deve refletir a magnitude
+    const d = computeDelta(-50_00, -100_00);
+    expect(d.delta).toBe(50_00);
+    expect(d.pct).toBeCloseTo(0.5, 10); // 50/100, subindo (menos negativo)
+    expect(d.direction).toBe("up");
+  });
+
+  it("preserva current e previous no resultado", () => {
+    const d = computeDelta(7_00, 3_00);
+    expect(d.current).toBe(7_00);
+    expect(d.previous).toBe(3_00);
+  });
+});
+
+describe("compareSummaries", () => {
+  const tx = (over: Partial<TxLike>): TxLike => ({
+    type: "INCOME",
+    amount: 0,
+    category: "",
+    date: "2026-06-01",
+    received: true,
+    ...over,
+  });
+
+  it("compara as quatro métricas principais entre dois meses", () => {
+    const current = summarizeFinances([
+      tx({ type: "INCOME", amount: 200_00, received: true }),
+      tx({ type: "EXPENSE", amount: 50_00, received: true }),
+    ]);
+    const previous = summarizeFinances([
+      tx({ type: "INCOME", amount: 100_00, received: true }),
+      tx({ type: "EXPENSE", amount: 40_00, received: true }),
+    ]);
+
+    const cmp = compareSummaries(current, previous);
+
+    expect(cmp.totalIncome.delta).toBe(100_00);
+    expect(cmp.totalIncome.direction).toBe("up");
+    expect(cmp.totalExpense.delta).toBe(10_00);
+    expect(cmp.totalExpense.direction).toBe("up");
+    // saldo: (200-50)=150 vs (100-40)=60 → +90
+    expect(cmp.balance.delta).toBe(90_00);
+    // caixa realizado idem (tudo received)
+    expect(cmp.cashBalance.delta).toBe(90_00);
+  });
+
+  it("usa pct null quando o mês anterior estava zerado", () => {
+    const current = summarizeFinances([tx({ type: "INCOME", amount: 100_00 })]);
+    const previous = summarizeFinances([]);
+    const cmp = compareSummaries(current, previous);
+    expect(cmp.totalIncome.pct).toBeNull();
+    expect(cmp.totalIncome.current).toBe(100_00);
   });
 });
