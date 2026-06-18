@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { reconcileShowFees, type ReceivableShowLike, type TxLike } from "@/lib/finance";
+import { buildShowBilling, type ShowBilling } from "@/lib/billing";
 import { formatMoney } from "@/lib/money";
 import { formatDate } from "@/lib/format";
 import { DeleteButton } from "@/components/DeleteButton";
@@ -14,17 +15,21 @@ export default async function ShowReceivablesPage() {
 
   // Só interessam os shows que já podem ter gerado cachê (PLAYED ou CONFIRMED) e as
   // receitas vinculadas a shows; a regra fina de "já aconteceu" e o abatimento ficam
-  // na lógica pura (reconcileShowFees).
+  // na lógica pura (reconcileShowFees). Trazemos os contatos vinculados ao show para
+  // montar o atalho de cobrança (e-mail/WhatsApp).
   const [shows, transactions] = await Promise.all([
     prisma.show.findMany({
       where: { userId: user.id, status: { in: ["PLAYED", "CONFIRMED"] } },
       orderBy: { date: "asc" },
+      include: { contacts: { include: { contact: true } } },
     }),
     prisma.transaction.findMany({
       where: { userId: user.id, type: "INCOME", showId: { not: null } },
       select: { type: true, amount: true, category: true, date: true, received: true, showId: true },
     }),
   ]);
+
+  const fromName = user.artistName?.trim() || user.name;
 
   const txs: TxLike[] = transactions.map((t) => ({
     type: t.type as TxLike["type"],
@@ -90,6 +95,19 @@ export default async function ShowReceivablesPage() {
               <tbody className="divide-y divide-gray-100">
                 {result.rows.map((row) => {
                   const show = showById.get(row.show.id);
+                  const billing: ShowBilling | null = show
+                    ? buildShowBilling(
+                        {
+                          title: show.title,
+                          date: row.show.date,
+                          venue: show.venue,
+                          city: show.city,
+                          outstanding: row.outstanding,
+                        },
+                        show.contacts.map((cs) => cs.contact),
+                        { fromName },
+                      )
+                    : null;
                   return (
                     <tr key={row.show.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3">
@@ -124,19 +142,43 @@ export default async function ShowReceivablesPage() {
                       <td className="px-4 py-3 text-right font-semibold text-amber-600">
                         {formatMoney(row.outstanding)}
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <DeleteButton
-                          action={settleShowFeeAction}
-                          id={row.show.id}
-                          trigger="Quitar"
-                          triggerClassName="btn border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 py-1.5 text-xs"
-                          triggerTitle={`Lançar ${formatMoney(row.outstanding)} como recebido`}
-                          confirmMessage={`Lançar ${formatMoney(row.outstanding)} como recebido?`}
-                          confirmLabel="Confirmar"
-                          pendingLabel="Lançando..."
-                          confirmClassName="btn bg-emerald-600 text-white hover:bg-emerald-500 py-1.5 text-xs"
-                          groupLabel="Confirmar lançamento do cachê"
-                        />
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {billing?.mailtoUrl && (
+                            <a
+                              href={billing.mailtoUrl}
+                              className="btn border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 py-1.5 text-xs"
+                              title={`Cobrar ${billing.contact.name} por e-mail`}
+                              aria-label={`Cobrar ${billing.contact.name} por e-mail`}
+                            >
+                              ✉ E-mail
+                            </a>
+                          )}
+                          {billing?.whatsappUrl && (
+                            <a
+                              href={billing.whatsappUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="btn border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 py-1.5 text-xs"
+                              title={`Cobrar ${billing.contact.name} pelo WhatsApp`}
+                              aria-label={`Cobrar ${billing.contact.name} pelo WhatsApp`}
+                            >
+                              WhatsApp
+                            </a>
+                          )}
+                          <DeleteButton
+                            action={settleShowFeeAction}
+                            id={row.show.id}
+                            trigger="Quitar"
+                            triggerClassName="btn border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 py-1.5 text-xs"
+                            triggerTitle={`Lançar ${formatMoney(row.outstanding)} como recebido`}
+                            confirmMessage={`Lançar ${formatMoney(row.outstanding)} como recebido?`}
+                            confirmLabel="Confirmar"
+                            pendingLabel="Lançando..."
+                            confirmClassName="btn bg-emerald-600 text-white hover:bg-emerald-500 py-1.5 text-xs"
+                            groupLabel="Confirmar lançamento do cachê"
+                          />
+                        </div>
                       </td>
                     </tr>
                   );
@@ -164,7 +206,9 @@ export default async function ShowReceivablesPage() {
             &quot;A receber&quot; = cachê acordado menos a receita já recebida vinculada ao
             show. <strong>Quitar</strong> lança uma receita já recebida no valor em aberto e
             vinculada ao show — sem precisar ir às Finanças. Receitas pendentes (ainda não
-            recebidas) não abatem o saldo.
+            recebidas) não abatem o saldo. <strong>✉ E-mail</strong> / <strong>WhatsApp</strong>
+            abrem uma mensagem de cobrança pronta para o contato do show (aparecem quando há
+            um contato vinculado com e-mail/telefone).
           </p>
         </>
       )}

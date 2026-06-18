@@ -81,7 +81,11 @@ Painel (ver D25). **305 testes** verdes. Sessão 35 entregou o **quitar cachê i
 `/shows/a-receber`: botão **Quitar** por linha que cria a receita recebida vinculada ao show no
 valor em aberto, sem passar pelas Finanças; o saldo é recalculado no servidor (idempotente), via
 `settleShowFeeAction`, reaproveitando o `DeleteButton` (confirmação em duas etapas) generalizado
-com `groupLabel` (ver D26). **311 testes** verdes.
+com `groupLabel` (ver D26). **311 testes** verdes. Sessão 36 entregou o **atalho de cobrança**
+em `/shows/a-receber`: botões **✉ E-mail** e **WhatsApp** por linha que abrem uma mensagem de
+cobrança pronta (assunto/corpo com show, data, local e valor) para o contato vinculado ao show
+— módulo puro `src/lib/billing.ts` (escolha do contato por papel, redação, normalização de
+telefone pt-BR, montagem de `mailto:`/`wa.me`), ver D27. **331 testes** verdes.
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias, estados de erro
 inline dos server actions) ou evoluções de calendário (arrastar/soltar para remarcar).
 
@@ -848,6 +852,29 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   recebido"; rota sem sessão → 307. `npm audit` inalterado (10 advisories: 4 moderate / 5 high /
   1 critical; nenhuma dependência nova — ver D6/D8).
 
+### Sessão 36 — 2026-06-18 (Fase 1 — atalho de cobrança em "Cachês a receber")
+- **Lógica pura** (`src/lib/billing.ts`): `buildShowBilling(show, contacts, { fromName })` →
+  `{ contact, subject, body, mailtoUrl, whatsappUrl } | null`. Reúne: `pickBillingContact`
+  (escolhe entre os contatos vinculados ao show só os com e-mail/telefone, prioriza por papel
+  BOOKER→PROMOTER→VENUE→PRODUCER→OTHER→PRESS, desempate por nome pt-BR/id), `buildDunningMessage`
+  (assunto "Cachê pendente — {título}" + corpo educado pt-BR com data UTC, local "venue · city"
+  e valor `formatMoney`, saudação personalizada e assinatura opcional), `normalizeWhatsappPhone`
+  (heurística pt-BR: 10–11 díg. ganham DDI 55; 12–13 começando com 55 mantidos; demais ≥8 díg.
+  usados como vieram; <8 → null), `buildMailtoUrl`/`buildWhatsappUrl` (encoding de URL; WhatsApp
+  só com o corpo). **20 testes** novos em `src/lib/billing.test.ts`. Ver **DECISIONS.md D27**.
+- **Página** (`src/app/(app)/shows/a-receber/page.tsx`): a consulta de shows passou a incluir
+  `contacts.include.contact`; cada linha monta o `buildShowBilling` (assinatura = `artistName`
+  ou `name` do usuário) e renderiza, na coluna **Ações** (ao lado de Quitar), os botões
+  **✉ E-mail** (`<a href=mailto:>`) e **WhatsApp** (`<a href=wa.me target=_blank rel=noopener>`),
+  exibidos só quando há o canal. Nota de rodapé atualizada. Sem novas dependências nem mudança de schema.
+- Definition of Done verde: build (25 rotas; `/shows/a-receber` 707 B), typecheck (`tsc --noEmit`)
+  limpo, lint (0), **331 testes** (eram 311), smoke test ao vivo (`next start`): rota sem sessão →
+  307; **e2e autenticado com cookie de sessão real** (seed demo + contato "Zé do Bar" vinculado ao
+  show PLAYED) → `/shows/a-receber` 200 com `mailto:ze@bardoze.com` (assunto "Cachê pendente"),
+  `wa.me/5511999990001` (telefone `(11) 99999-0001` normalizado) e os botões ✉ E-mail / WhatsApp —
+  verificado. `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma
+  dependência nova — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)
@@ -863,9 +890,10 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    exportação CSV do recorte filtrado na Sessão 14; busca textual na Sessão 17;
    base em `src/lib/finance.ts`.)
 5. **Cachês a receber — evoluções** (entregue na Sessão 34, `/shows/a-receber` + `reconcileShowFees`,
-   ver D25; **quitar cachê inline** entregue na Sessão 35 — `settleShowFeeAction`, ver D26):
-   próximo possível — atalho de cobrança (mailto/whatsapp para o contato do show vinculado),
-   ou "lançar valor parcial" pela própria lista.
+   ver D25; **quitar cachê inline** entregue na Sessão 35 — `settleShowFeeAction`, ver D26;
+   **atalho de cobrança** mailto/WhatsApp para o contato do show entregue na Sessão 36 —
+   `src/lib/billing.ts`, ver D27): próximo possível — seletor de qual contato cobrar (hoje a
+   escolha é automática por papel), ou "lançar valor parcial" pela própria lista.
 4. **Sessões/segurança**: invalidação ao trocar a senha entregue na Sessão 26
    (`passwordChangedAt` + `isSessionFresh`, ver D17). Evoluções possíveis: "encerrar sessão
    específica" (lista de sessões revogáveis) e recuperação de senha por e-mail — adiáveis.
