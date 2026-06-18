@@ -882,6 +882,106 @@ export function availableCategories(txs: TxLike[]): string[] {
   return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
 }
 
+// ── Pipeline de receita agendada (cachês de shows futuros) ──────────────────
+//
+// Responde "quanto já tenho agendado para receber nos próximos meses?" — a partir
+// dos cachês (`fee`) dos shows ainda por acontecer (data >= hoje), agrupados por
+// mês de vencimento. Distinto de `projectCashflow` (que parte das pendências de
+// caixa): aqui a fonte é a AGENDA de shows, não os lançamentos financeiros. Cada
+// mês separa o que já está CONFIRMADO do que ainda é PROPOSTO (tentativo), para o
+// músico distinguir receita garantida de pipeline incerto. Pura.
+
+/** Forma mínima de show para a projeção de receita agendada. */
+export interface BookedRevenueShowLike {
+  fee: number; // cachê acordado, centavos
+  status?: string;
+  date: Date | string;
+}
+
+export interface BookedRevenueMonth {
+  /** Chave do mês "YYYY-MM" (UTC). */
+  month: string;
+  /** Soma dos cachês dos shows do mês (centavos). */
+  total: number;
+  /** Nº de shows agendados no mês. */
+  count: number;
+  /** Cachês de shows já confirmados/realizados (CONFIRMED/PLAYED). */
+  confirmed: number;
+  /** Cachês de shows ainda tentativos (PROPOSED ou status ausente). */
+  tentative: number;
+}
+
+export interface BookedRevenueForecast {
+  /** Meses com shows futuros, em ordem cronológica crescente (só meses com shows). */
+  months: BookedRevenueMonth[];
+  /** Soma de todos os cachês futuros (centavos). */
+  total: number;
+  /** Nº total de shows futuros considerados. */
+  count: number;
+  /** Total já confirmado (CONFIRMED/PLAYED). */
+  confirmedTotal: number;
+  /** Total ainda tentativo (PROPOSED/sem status). */
+  tentativeTotal: number;
+  /** Mês do próximo show ("YYYY-MM") ou null se não houver shows futuros. */
+  nextMonth: string | null;
+}
+
+/** True se o show conta como receita já confirmada (não apenas proposta). */
+function isConfirmedBooking(status?: string): boolean {
+  return status === "CONFIRMED" || status === "PLAYED";
+}
+
+/**
+ * Projeta a receita agendada a partir dos cachês de shows ainda por acontecer.
+ *
+ * - "Futuro" = dia do show `>= hoje` (comparação por dia em UTC, mesma convenção
+ *   de `dayKey`; um show de hoje ainda conta).
+ * - Shows `CANCELLED` são ignorados (não geram receita).
+ * - Agrupa por mês do show ("YYYY-MM"); só meses com shows aparecem, em ordem
+ *   crescente. `total = confirmed + tentative` em cada mês (invariante).
+ * - `now` injetável para testes determinísticos.
+ */
+export function forecastBookedRevenue(
+  shows: BookedRevenueShowLike[],
+  opts: { now?: Date } = {},
+): BookedRevenueForecast {
+  const todayMs = utcMidnight(opts.now ?? new Date());
+
+  const future = shows.filter(
+    (s) => s.status !== "CANCELLED" && utcMidnight(s.date) >= todayMs,
+  );
+
+  const byMonth = new Map<string, BookedRevenueMonth>();
+  for (const s of future) {
+    const key = monthKey(s.date);
+    const bucket =
+      byMonth.get(key) ??
+      { month: key, total: 0, count: 0, confirmed: 0, tentative: 0 };
+    bucket.total += s.fee;
+    bucket.count += 1;
+    if (isConfirmedBooking(s.status)) bucket.confirmed += s.fee;
+    else bucket.tentative += s.fee;
+    byMonth.set(key, bucket);
+  }
+
+  const months = Array.from(byMonth.values()).sort((a, b) =>
+    a.month.localeCompare(b.month),
+  );
+
+  const total = sum(months.map((m) => m.total));
+  const confirmedTotal = sum(months.map((m) => m.confirmed));
+  const tentativeTotal = sum(months.map((m) => m.tentative));
+
+  return {
+    months,
+    total,
+    count: future.length,
+    confirmedTotal,
+    tentativeTotal,
+    nextMonth: months.length > 0 ? months[0].month : null,
+  };
+}
+
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 function sum(nums: number[]): number {

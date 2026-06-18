@@ -65,6 +65,9 @@ Próximos 7 dias/Mais tarde) com totais por janela e ações inline (ver D20). *
 Sessão 30 entregou os **contatos para reativar** (`/contatos/reativar`): lista os contratantes
 dormentes (já tocaram, sem nada agendado e há >60 dias sem show), ordenados pelos mais esquecidos,
 com atalho de contato (mailto/tel) — follow-up de prospecção (ver D21). **263 testes** verdes.
+Sessão 31 entregou a **receita agendada** (`/shows/receita-agendada`): projeta os cachês dos
+shows futuros (não cancelados) por mês, separando confirmado de a confirmar — pipeline de
+faturamento a partir da agenda (ver D22). **269 testes** verdes.
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias) ou evoluções
 de filtros (persistir o último filtro usado).
 
@@ -705,6 +708,35 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   listado com atalho mailto e rótulo "há … meses", "Bar Ativo" (tem show futuro) corretamente
   excluído — verificado). `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical;
   nenhuma dependência nova — ver D6/D8).
+
+### Sessão 31 — 2026-06-18 (Fase 1 — receita agendada / pipeline de cachês futuros)
+- **Lógica pura** (`src/lib/finance.ts`): `forecastBookedRevenue(shows, opts?)` →
+  `{ months, total, count, confirmedTotal, tentativeTotal, nextMonth }`. A partir dos shows
+  ainda por acontecer (dia `>= hoje` em UTC, mesma convenção de `dayKey`; show de hoje conta),
+  **excluindo `CANCELLED`**, soma o cachê (`fee`) por mês de realização ("YYYY-MM"). Cada mês
+  (`BookedRevenueMonth`) separa `confirmed` (status CONFIRMED/PLAYED) de `tentative` (PROPOSED
+  ou sem status), com a invariante `total = confirmed + tentative`. Só meses com shows aparecem,
+  em ordem crescente; `nextMonth` aponta o primeiro. `now` injetável. Tipos
+  `BookedRevenueShowLike`/`BookedRevenueMonth`/`BookedRevenueForecast`; helper privado
+  `isConfirmedBooking`. Distinto de `projectCashflow` (parte das pendências de caixa) — aqui a
+  fonte é a **agenda de shows**. Testes em `src/lib/finance.test.ts` (+6 → **96 no arquivo, 269
+  no projeto**, eram 263): vazio, ignora passados/inclui hoje, ignora cancelados, agrupa por mês
+  + invariante confirmed+tentative, status ausente = tentativo, totais gerais + ordenação.
+- **Página** `src/app/(app)/shows/receita-agendada/page.tsx` (`force-dynamic`): consulta só os
+  shows futuros do usuário (`date >= hoje`) numa leitura, chama `forecastBookedRevenue`, e mostra
+  cards de resumo (Total agendado/Confirmado/A confirmar/Shows agendados com % confirmado) e uma
+  tabela mês a mês (Shows, Confirmado, A confirmar, Total) com mini-barra de proporção
+  confirmado/a confirmar e link do mês para o calendário (`/shows/calendario?mes=`), além de
+  linha de Total no rodapé; estado vazio dedicado e nota de rodapé sobre o critério. Decisão
+  registrada em **DECISIONS.md D22**.
+- **UI Shows** (`src/app/(app)/shows/page.tsx`): botão **Receita agendada** no cabeçalho (ao
+  lado de Por local, exibido quando há shows). Sem novas dependências.
+- Definition of Done verde: build (23 rotas, nova `/shows/receita-agendada`), typecheck
+  (`tsc --noEmit`) limpo, lint (0), 269 testes, smoke test (/shows/receita-agendada sem sessão →
+  307; **e2e autenticado com cookie de sessão real**: página → 200, "Confirmado fut" (R$ 2.000,00)
+  e "Proposto fut" (R$ 500,00) somam R$ 2.500,00 em jul/2026, show passado e cancelado excluídos —
+  verificado ao vivo com `next start`). `npm audit` inalterado (10 advisories: 4 moderate / 5 high
+  / 1 critical; nenhuma dependência nova — ver D6/D8).
 
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),

@@ -23,6 +23,7 @@ import {
   buildDueAgenda,
   annualSummary,
   availableYears,
+  forecastBookedRevenue,
   type TxLike,
   type ShowLike,
   type VenueShowLike,
@@ -927,5 +928,89 @@ describe("buildDueAgenda", () => {
     const b = buckets(buildDueAgenda(txs, { now, weekHorizon: 2 }));
     expect(b.week.count).toBe(0);
     expect(b.later.count).toBe(1);
+  });
+});
+
+describe("forecastBookedRevenue", () => {
+  const now = new Date("2026-03-15T12:00:00.000Z");
+
+  function s(partial: Partial<{ fee: number; status: string; date: string }>) {
+    return {
+      fee: 100_00,
+      status: "CONFIRMED",
+      date: "2026-04-10T20:00:00.000Z",
+      ...partial,
+    };
+  }
+
+  it("retorna vazio quando não há shows futuros", () => {
+    const f = forecastBookedRevenue([], { now });
+    expect(f.months).toEqual([]);
+    expect(f.total).toBe(0);
+    expect(f.count).toBe(0);
+    expect(f.confirmedTotal).toBe(0);
+    expect(f.tentativeTotal).toBe(0);
+    expect(f.nextMonth).toBeNull();
+  });
+
+  it("ignora shows passados, mas inclui o show de hoje", () => {
+    const shows = [
+      s({ date: "2026-03-01T20:00:00.000Z", fee: 50_00 }), // passado
+      s({ date: "2026-03-15T20:00:00.000Z", fee: 70_00 }), // hoje (>= hoje)
+      s({ date: "2026-04-02T20:00:00.000Z", fee: 90_00 }), // futuro
+    ];
+    const f = forecastBookedRevenue(shows, { now });
+    expect(f.count).toBe(2);
+    expect(f.total).toBe(160_00);
+    expect(f.months.map((m) => m.month)).toEqual(["2026-03", "2026-04"]);
+    expect(f.nextMonth).toBe("2026-03");
+  });
+
+  it("ignora shows cancelados", () => {
+    const shows = [
+      s({ date: "2026-04-10T20:00:00.000Z", fee: 100_00, status: "CANCELLED" }),
+      s({ date: "2026-04-12T20:00:00.000Z", fee: 60_00, status: "CONFIRMED" }),
+    ];
+    const f = forecastBookedRevenue(shows, { now });
+    expect(f.count).toBe(1);
+    expect(f.total).toBe(60_00);
+  });
+
+  it("agrupa por mês e mantém total = confirmed + tentative", () => {
+    const shows = [
+      s({ date: "2026-04-05T20:00:00.000Z", fee: 100_00, status: "CONFIRMED" }),
+      s({ date: "2026-04-20T20:00:00.000Z", fee: 30_00, status: "PROPOSED" }),
+      s({ date: "2026-05-01T20:00:00.000Z", fee: 200_00, status: "PLAYED" }),
+    ];
+    const f = forecastBookedRevenue(shows, { now });
+    const abr = f.months.find((m) => m.month === "2026-04")!;
+    expect(abr.count).toBe(2);
+    expect(abr.total).toBe(130_00);
+    expect(abr.confirmed).toBe(100_00);
+    expect(abr.tentative).toBe(30_00);
+    expect(abr.confirmed + abr.tentative).toBe(abr.total);
+    const mai = f.months.find((m) => m.month === "2026-05")!;
+    expect(mai.confirmed).toBe(200_00); // PLAYED conta como confirmado
+  });
+
+  it("classifica status ausente como tentativo", () => {
+    const shows = [{ fee: 40_00, date: "2026-04-10T20:00:00.000Z" }];
+    const f = forecastBookedRevenue(shows, { now });
+    expect(f.confirmedTotal).toBe(0);
+    expect(f.tentativeTotal).toBe(40_00);
+  });
+
+  it("soma os totais gerais e ordena os meses crescente", () => {
+    const shows = [
+      s({ date: "2026-06-10T20:00:00.000Z", fee: 100_00, status: "PROPOSED" }),
+      s({ date: "2026-04-10T20:00:00.000Z", fee: 200_00, status: "CONFIRMED" }),
+      s({ date: "2026-05-10T20:00:00.000Z", fee: 50_00, status: "CONFIRMED" }),
+    ];
+    const f = forecastBookedRevenue(shows, { now });
+    expect(f.months.map((m) => m.month)).toEqual(["2026-04", "2026-05", "2026-06"]);
+    expect(f.total).toBe(350_00);
+    expect(f.confirmedTotal).toBe(250_00);
+    expect(f.tentativeTotal).toBe(100_00);
+    expect(f.nextMonth).toBe("2026-04");
   });
 });
