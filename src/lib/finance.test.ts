@@ -26,6 +26,7 @@ import {
   forecastBookedRevenue,
   reconcileShowFees,
   resolveSettlementAmount,
+  resolveReceivedDate,
   type TxLike,
   type ShowLike,
   type VenueShowLike,
@@ -1135,5 +1136,34 @@ describe("resolveSettlementAmount", () => {
   it("arredonda o valor pedido para centavos inteiros", () => {
     expect(resolveSettlementAmount(125_00, 50_00.4)).toBe(50_00);
     expect(resolveSettlementAmount(125_00, 50_00.6)).toBe(50_01);
+  });
+});
+
+describe("resolveReceivedDate", () => {
+  const now = new Date("2026-06-18T15:30:00Z");
+
+  it("usa `now` quando a data é vazia, nula ou inválida", () => {
+    expect(resolveReceivedDate(null, now)).toBe(now);
+    expect(resolveReceivedDate(undefined, now)).toBe(now);
+    expect(resolveReceivedDate("", now)).toBe(now);
+    expect(resolveReceivedDate("18/06/2026", now)).toBe(now);
+    expect(resolveReceivedDate("2026-13-40", now)).toBe(now);
+  });
+
+  it("converte uma data válida no passado para a meia-noite UTC daquele dia", () => {
+    const d = resolveReceivedDate("2026-05-10", now);
+    expect(d.toISOString()).toBe("2026-05-10T00:00:00.000Z");
+    // cai no mês de maio — alimenta a projeção de caixa / relatório do mês certo
+    expect(monthKey(d)).toBe("2026-05");
+  });
+
+  it("aceita o próprio dia de hoje (não é futuro)", () => {
+    const d = resolveReceivedDate("2026-06-18", now);
+    expect(d.toISOString()).toBe("2026-06-18T00:00:00.000Z");
+  });
+
+  it("rejeita datas no futuro, caindo para `now`", () => {
+    expect(resolveReceivedDate("2026-06-19", now)).toBe(now);
+    expect(resolveReceivedDate("2027-01-01", now)).toBe(now);
   });
 });

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { reconcileShowFees, type ReceivableShowLike, type TxLike } from "@/lib/finance";
+import { reconcileShowFees, dayKey, type ReceivableShowLike, type TxLike } from "@/lib/finance";
 import { buildShowBilling, type ShowBilling } from "@/lib/billing";
 import { formatMoney } from "@/lib/money";
 import { formatDate } from "@/lib/format";
@@ -42,6 +42,7 @@ export default async function ShowReceivablesPage() {
 
   const result = reconcileShowFees(shows as ReceivableShowLike[], txs);
   const showById = new Map(shows.map((s) => [s.id, s]));
+  const today = dayKey(new Date());
 
   return (
     <div className="space-y-6">
@@ -170,6 +171,7 @@ export default async function ShowReceivablesPage() {
                             action={settleShowFeeAction}
                             id={row.show.id}
                             outstanding={row.outstanding}
+                            today={today}
                           />
                         </div>
                       </td>
@@ -199,8 +201,9 @@ export default async function ShowReceivablesPage() {
             &quot;A receber&quot; = cachê acordado menos a receita já recebida vinculada ao
             show. <strong>Quitar</strong> lança uma receita já recebida vinculada ao show —
             sem precisar ir às Finanças — no valor em aberto ou num valor menor (parcial),
-            deixando o restante na lista. Receitas pendentes (ainda não recebidas) não abatem
-            o saldo. <strong>✉ E-mail</strong> / <strong>WhatsApp</strong>
+            deixando o restante na lista. Você pode informar a <strong>data real</strong> do
+            recebimento (o caixa entra no mês dessa data). Receitas pendentes (ainda não
+            recebidas) não abatem o saldo. <strong>✉ E-mail</strong> / <strong>WhatsApp</strong>
             abrem uma mensagem de cobrança pronta para o contato do show (aparecem quando há
             um contato vinculado com e-mail/telefone).
           </p>

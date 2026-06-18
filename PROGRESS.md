@@ -90,7 +90,11 @@ entregou o **quitar valor parcial** em `/shows/a-receber`: `settleShowFeeAction`
 opcional `amount` (validado e limitado ao saldo no servidor via o helper puro
 `resolveSettlementAmount`), e o novo componente client `SettleFeeButton` abre na linha um campo
 de valor (reusa `MoneyInput`) pré-preenchido com o saldo e editável — lançar menos deixa o
-restante na lista (ver D28). **340 testes** verdes.
+restante na lista (ver D28). **340 testes** verdes. Sessão 38 entregou o **registro da data real
+do recebimento** ao quitar um cachê em `/shows/a-receber`: `settleShowFeeAction` aceita um campo
+opcional `receivedAt` (`YYYY-MM-DD`), decidido pelo helper puro `resolveReceivedDate` (vazio/inválido
+→ agora; passado/hoje → meia-noite UTC daquele dia; futuro → agora) — a receita cai no **mês certo**,
+corrigindo projeção de caixa, relatório mensal e resumo anual (ver D29). **346 testes** verdes.
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias, estados de erro
 inline dos server actions) ou evoluções de calendário (arrastar/soltar para remarcar).
 
@@ -907,6 +911,27 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   — verificado. `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma
   dependência nova — ver D6/D8).
 
+### Sessão 38 — 2026-06-18 (Fase 1 — data real do recebimento ao quitar cachê)
+- **Lógica pura** (`src/lib/finance.ts`): `resolveReceivedDate(raw, now)` → decide a DATA da
+  receita ao quitar. Vazio/ inválido (regex `isValidDateKey`) → `now` (comportamento histórico
+  da D26); data válida no passado/hoje → **meia-noite UTC daquele dia** (consistente com
+  `dayKey`/`monthKey`, que keyam por UTC); data no **futuro** → `now` (não se recebe no futuro —
+  mantém a projeção de caixa sã). **4 testes** novos em `finance.test.ts`. Ver **DECISIONS.md D29**.
+- **Server action** (`src/app/(app)/shows/actions.ts`): `settleShowFeeAction` passou a ler um
+  campo **opcional** `receivedAt` (`YYYY-MM-DD`) e usa `resolveReceivedDate(...)` como `date` da
+  `Transaction` (antes era `new Date()` fixo). A validação/ rejeição de futuro fica no servidor
+  (não confia no `max` do input). Revalida também `/financas/relatorio` e `/financas/anual` (o
+  caixa pode cair noutro mês). **2 testes** de integração novos em `shows/actions.test.ts` (data
+  informada gravada; futura cai para agora) — total **346** (eram 340).
+- **Componente client** `src/components/SettleFeeButton.tsx`: ganhou um `<input type="date">`
+  (`name="receivedAt"`, label `sr-only`) ao lado do `MoneyInput`, default = hoje (prop `today`,
+  calculada no servidor via `dayKey(new Date())` para evitar mismatch de hidratação; `max={today}`
+  bloqueia futuro na UI). A página passa `today` ao botão e a nota de rodapé menciona a data real.
+- Definition of Done verde: build (25 rotas; `/shows/a-receber` 1.14 kB), typecheck (`tsc
+  --noEmit`) limpo, lint (0), **346 testes** (`vitest run`), smoke test ao vivo (`next start`):
+  `/shows/a-receber` sem sessão → 307. `npm audit` inalterado (10 advisories: 4 moderate / 5 high /
+  1 critical; nenhuma dependência nova — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)
@@ -925,9 +950,9 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    ver D25; **quitar cachê inline** entregue na Sessão 35 — `settleShowFeeAction`, ver D26;
    **atalho de cobrança** mailto/WhatsApp para o contato do show entregue na Sessão 36 —
    `src/lib/billing.ts`, ver D27; **quitar valor parcial** entregue na Sessão 37 —
-   `SettleFeeButton` + `resolveSettlementAmount`, ver D28): próximo possível — seletor de qual
-   contato cobrar (hoje a escolha é automática por papel), ou registrar a data real do
-   recebimento (hoje usa `now`).
+   `SettleFeeButton` + `resolveSettlementAmount`, ver D28; **data real do recebimento** entregue na
+   Sessão 38 — `resolveReceivedDate` + campo `receivedAt`, ver D29): próximo possível — seletor de
+   qual contato cobrar (hoje a escolha é automática por papel).
 4. **Sessões/segurança**: invalidação ao trocar a senha entregue na Sessão 26
    (`passwordChangedAt` + `isSessionFresh`, ver D17). Evoluções possíveis: "encerrar sessão
    específica" (lista de sessões revogáveis) e recuperação de senha por e-mail — adiáveis.

@@ -593,3 +593,31 @@ contexto, decisão, justificativa e alternativas consideradas.
   com `MoneyInput` é mais claro e mantém o `DeleteButton` focado em exclusão. (c) validar/limitar o
   valor só no cliente — descartado pela mesma razão da D26: dado do cliente é forjável; o clamp
   tem de estar no servidor.
+
+## D29 — Registrar a data REAL do recebimento ao quitar um cachê (Sessão 38)
+- **Contexto:** desde a D26/D28 o botão **Quitar** em `/shows/a-receber` cria a receita do cachê
+  sempre com `date: new Date()` — ou seja, o caixa entrava no mês em que o usuário *clicou*, não no
+  mês em que o dinheiro de fato caiu. Como a data da transação é o que alimenta `monthKey` (e logo a
+  **projeção de caixa**, o **relatório mensal** e o **resumo anual**), lançar com atraso jogava a
+  receita no mês errado, distorcendo justamente os relatórios financeiros que são o valor do produto.
+- **Decisão:** `settleShowFeeAction` passou a aceitar um campo **opcional** `receivedAt` (string de
+  dia `YYYY-MM-DD`, de um `<input type="date">`). A decisão de qual data usar virou o helper **puro**
+  `resolveReceivedDate(raw, now)` em `src/lib/finance.ts`: vazio/inválido → `now` (comportamento
+  histórico, sem quebrar a D26); data válida no passado/hoje → **meia-noite UTC daquele dia**
+  (consistente com `dayKey`/`monthKey`, que keyam por UTC em todo o app); data no **futuro** → `now`
+  (não se recebe dinheiro no futuro — mantém a projeção de caixa sã). O `SettleFeeButton` ganhou o
+  campo de data (default = hoje, calculado no **servidor** via `dayKey(new Date())` e passado como
+  prop `today` para evitar mismatch de hidratação; `max={today}` impede escolher futuro na própria UI).
+- **A validação fica no servidor (mantém a D26/D28):** o `receivedAt` do formulário é conveniência da
+  UI; `resolveReceivedDate` re-valida o formato e **rejeita futuro** independentemente do `max` do
+  input — um cliente não consegue forjar uma data de recebimento no futuro.
+- **Justificativa:** completa o fluxo "ver → cobrar → quitar" com fidelidade contábil (a receita cai
+  no mês certo) sem nova dependência nem mudança de schema (continua tudo em `Transaction.date`). A
+  lógica é pura e isolada, coberta por **4 testes** em `finance.test.ts` (vazio/nulo/inválido → now;
+  passado → meia-noite UTC + mês certo; hoje aceito; futuro → now) + **2 testes de integração** em
+  `shows/actions.test.ts` (data informada gravada; futura cai para o momento atual).
+- **Alternativas consideradas:** (a) manter `new Date()` e mandar o usuário corrigir a data nas
+  Finanças — descartado: é o atrito que a D26 atacou. (b) adicionar uma coluna `receivedAt` separada
+  no schema — desnecessário: `Transaction.date` já É a data do caixa para receitas recebidas;
+  duplicar abriria divergência. (c) parsear a data no fuso local do navegador — descartado: o app
+  inteiro keya por UTC (`dayKey`/`monthKey`); misturar fusos quebraria a estabilidade dos relatórios.

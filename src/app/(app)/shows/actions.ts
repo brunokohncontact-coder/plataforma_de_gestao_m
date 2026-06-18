@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { resolveSettlementAmount } from "@/lib/finance";
+import { resolveSettlementAmount, resolveReceivedDate } from "@/lib/finance";
 import { parseMoneyToCents, showSchema } from "@/lib/validation";
 
 export interface FormState {
@@ -156,6 +156,13 @@ export async function settleShowFeeAction(formData: FormData): Promise<void> {
   const amount = resolveSettlementAmount(outstanding, requested);
   if (amount <= 0) return; // valor inválido/zerado após o clamp — no-op
 
+  // data REAL do recebimento: campo opcional `receivedAt` ("YYYY-MM-DD"); vazio/
+  // inválido/futuro → agora. Determina em que mês o caixa entra (ver D29).
+  const rawReceivedAt = formData.get("receivedAt");
+  const receivedAt = resolveReceivedDate(
+    typeof rawReceivedAt === "string" ? rawReceivedAt : null,
+  );
+
   await prisma.transaction.create({
     data: {
       userId: user.id,
@@ -163,7 +170,7 @@ export async function settleShowFeeAction(formData: FormData): Promise<void> {
       description: `Cachê — ${show.title}`,
       category: "Cachê",
       amount,
-      date: new Date(),
+      date: receivedAt,
       received: true,
       showId: id,
     },
@@ -174,6 +181,8 @@ export async function settleShowFeeAction(formData: FormData): Promise<void> {
   revalidatePath(`/shows/${id}`);
   revalidatePath("/financas");
   revalidatePath("/financas/agenda");
+  revalidatePath("/financas/relatorio");
+  revalidatePath("/financas/anual");
   revalidatePath("/dashboard");
 }
 
