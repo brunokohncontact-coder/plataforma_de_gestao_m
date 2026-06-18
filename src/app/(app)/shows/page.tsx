@@ -78,6 +78,11 @@ export default async function ShowsPage({
             </Link>
           )}
           {shows.length > 0 && (
+            <Link href="/shows/a-receber" className="btn-secondary">
+              A receber
+            </Link>
+          )}
+          {shows.length > 0 && (
             <a
               href="/shows/agenda.ics"
               className="text-sm text-brand-700 hover:underline"

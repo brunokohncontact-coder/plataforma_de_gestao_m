@@ -24,9 +24,11 @@ import {
   annualSummary,
   availableYears,
   forecastBookedRevenue,
+  reconcileShowFees,
   type TxLike,
   type ShowLike,
   type VenueShowLike,
+  type ReceivableShowLike,
 } from "./finance";
 
 const show: ShowLike = { id: "show1", fee: 100_00, status: "CONFIRMED" };
@@ -1012,5 +1014,94 @@ describe("forecastBookedRevenue", () => {
     expect(f.confirmedTotal).toBe(250_00);
     expect(f.tentativeTotal).toBe(100_00);
     expect(f.nextMonth).toBe("2026-04");
+  });
+});
+
+describe("reconcileShowFees", () => {
+  const now = new Date("2026-03-15T12:00:00.000Z");
+
+  function gig(partial: Partial<ReceivableShowLike>): ReceivableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-03-01T20:00:00.000Z",
+      ...partial,
+    };
+  }
+
+  it("lista o gig realizado sem nenhuma receita lançada como totalmente a receber", () => {
+    const shows = [gig({ id: "g1", fee: 100_00 })];
+    const r = reconcileShowFees(shows, [], { now });
+    expect(r.count).toBe(1);
+    expect(r.rows[0].outstanding).toBe(100_00);
+    expect(r.rows[0].collected).toBe(0);
+    expect(r.rows[0].registeredPending).toBe(0);
+    expect(r.rows[0].unregistered).toBe(true);
+    expect(r.totalOutstanding).toBe(100_00);
+    expect(r.totalFee).toBe(100_00);
+    expect(r.totalCollected).toBe(0);
+  });
+
+  it("considera só a receita recebida no abatimento (pendente não reduz o saldo)", () => {
+    const shows = [gig({ id: "g1", fee: 100_00 })];
+    const txs = [
+      tx({ type: "INCOME", amount: 40_00, received: true, showId: "g1" }),
+      tx({ type: "INCOME", amount: 60_00, received: false, showId: "g1" }),
+    ];
+    const r = reconcileShowFees(shows, txs, { now });
+    expect(r.rows[0].collected).toBe(40_00);
+    expect(r.rows[0].registeredPending).toBe(60_00);
+    expect(r.rows[0].outstanding).toBe(60_00); // 100 − 40 recebidos
+    expect(r.rows[0].unregistered).toBe(false);
+  });
+
+  it("omite o gig já quitado (recebido >= cachê) e nunca fica negativo", () => {
+    const shows = [gig({ id: "g1", fee: 100_00 })];
+    const txs = [tx({ type: "INCOME", amount: 120_00, received: true, showId: "g1" })];
+    const r = reconcileShowFees(shows, txs, { now });
+    expect(r.count).toBe(0);
+    expect(r.totalOutstanding).toBe(0);
+  });
+
+  it("inclui Confirmado com data passada, mas ignora Confirmado futuro, Proposto e Cancelado", () => {
+    const shows = [
+      gig({ id: "passado", status: "CONFIRMED", date: "2026-03-01T20:00:00.000Z" }),
+      gig({ id: "futuro", status: "CONFIRMED", date: "2026-04-01T20:00:00.000Z" }),
+      gig({ id: "proposto", status: "PROPOSED", date: "2026-03-01T20:00:00.000Z" }),
+      gig({ id: "cancelado", status: "CANCELLED", date: "2026-03-01T20:00:00.000Z" }),
+    ];
+    const r = reconcileShowFees(shows, [], { now });
+    expect(r.rows.map((row) => row.show.id)).toEqual(["passado"]);
+  });
+
+  it("ignora shows sem cachê (fee <= 0)", () => {
+    const shows = [gig({ id: "g1", fee: 0 }), gig({ id: "g2", fee: 50_00 })];
+    const r = reconcileShowFees(shows, [], { now });
+    expect(r.rows.map((row) => row.show.id)).toEqual(["g2"]);
+  });
+
+  it("não confunde receita de outro show (filtra por showId)", () => {
+    const shows = [gig({ id: "g1", fee: 100_00 })];
+    const txs = [tx({ type: "INCOME", amount: 100_00, received: true, showId: "outro" })];
+    const r = reconcileShowFees(shows, txs, { now });
+    expect(r.rows[0].outstanding).toBe(100_00);
+  });
+
+  it("despesa vinculada não abate o cachê a receber", () => {
+    const shows = [gig({ id: "g1", fee: 100_00 })];
+    const txs = [tx({ type: "EXPENSE", amount: 30_00, received: true, showId: "g1" })];
+    const r = reconcileShowFees(shows, txs, { now });
+    expect(r.rows[0].outstanding).toBe(100_00);
+  });
+
+  it("ordena do gig mais antigo ao mais recente, desempatando por id", () => {
+    const shows = [
+      gig({ id: "b", date: "2026-02-10T20:00:00.000Z" }),
+      gig({ id: "a", date: "2026-01-05T20:00:00.000Z" }),
+      gig({ id: "c", date: "2026-02-10T20:00:00.000Z" }),
+    ];
+    const r = reconcileShowFees(shows, [], { now });
+    expect(r.rows.map((row) => row.show.id)).toEqual(["a", "b", "c"]);
   });
 });

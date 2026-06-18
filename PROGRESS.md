@@ -74,7 +74,10 @@ Sessão 33 **generalizou a persistência de filtro para as listas de Shows e Con
 pura da D23 virou o módulo genérico `src/lib/listFilter.ts` (parametrizado pelas chaves de cada
 lista) + registro `LIST_FILTER_CONFIGS`; o middleware passou a cobrir `/financas`, `/shows` e
 `/contatos` (cada um com cookie próprio); `financasFilter.ts` virou fachada fina (ver D24).
-**297 testes** verdes.
+**297 testes** verdes. Sessão 34 entregou os **cachês a receber** (`/shows/a-receber`):
+`reconcileShowFees` cruza a agenda (cachê do show) com as finanças (receitas recebidas) e lista os
+shows já realizados cujo cachê ainda não entrou no caixa — o dinheiro esquecido — com alerta no
+Painel (ver D25). **305 testes** verdes.
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias, estados de erro
 inline dos server actions) ou evoluções de calendário (arrastar/soltar para remarcar).
 
@@ -794,6 +797,30 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   visita limpa sem cookie (passa direto, auth 307 → /login). `npm audit` inalterado (10 advisories:
   4 moderate / 5 high / 1 critical; nenhuma dependência nova — ver D6/D8).
 
+### Sessão 34 — 2026-06-18 (Fase 1 — cachês a receber: reconciliar agenda × finanças)
+- **Lógica pura** (`src/lib/finance.ts`): `reconcileShowFees(shows, txs, { now })` cruza o cachê
+  acordado (`Show.fee`) com a receita de fato recebida (INCOME vinculada por `showId`, `received=true`).
+  Para cada show **já realizado** calcula `outstanding = max(0, fee − collected)` e lista só os com
+  saldo > 0, do gig mais antigo ao mais recente. "Realizado" (`isHappenedGig`) = `PLAYED` ou
+  `CONFIRMED` com data passada (cobre quem esqueceu de virar o status). Expõe também
+  `registeredPending` (receita lançada mas não recebida, que **não** abate o saldo) e `unregistered`.
+  Tipos `ReceivableShowLike`/`ShowReceivableRow`/`ShowReceivables`. **8 testes** novos em
+  `finance.test.ts` (abatimento só por recebido, exclusão de futuro/proposto/cancelado, sem cachê,
+  isolamento por `showId`, despesa não abate, clamp em zero, ordenação). Ver **DECISIONS.md D25**.
+- **Página** `src/app/(app)/shows/a-receber/page.tsx` (`force-dynamic`): lê os shows
+  `PLAYED`/`CONFIRMED` e as receitas vinculadas a shows numa só consulta cada; cards (Total a receber/
+  Shows pendentes/Já recebido) + tabela (show, data, cachê, recebido, a receber) com link do show,
+  anotação "receita não lançada" / "X pendente", rodapé de total e estado vazio comemorativo.
+- **Painel** (`src/app/(app)/dashboard/page.tsx`): alerta âmbar "🎤 Cachês a receber" com total e
+  contagem, linkando para a página, quando há saldo (reaproveita `shows`+`txs` já carregados).
+- **UI Shows** (`src/app/(app)/shows/page.tsx`): botão **A receber** no cabeçalho (ao lado de
+  Receita agendada). Sem novas dependências nem mudança de schema.
+- Definition of Done verde: build (25 rotas, nova `/shows/a-receber`), typecheck (`tsc --noEmit`)
+  limpo, lint (0), **305 testes**, smoke test ao vivo (`next start`): rota sem sessão → 307; **e2e
+  autenticado com cookie de sessão real** (seed demo) → `/shows/a-receber` 200 com "Total a receber"
+  e linhas "pendente", `/dashboard` 200 com o alerta "Cachês a receber". `npm audit` inalterado
+  (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)
@@ -808,6 +835,9 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    (filtro por categoria entregue na Sessão 10; intervalo de datas na Sessão 12;
    exportação CSV do recorte filtrado na Sessão 14; busca textual na Sessão 17;
    base em `src/lib/finance.ts`.)
+5. **Cachês a receber — evoluções** (entregue na Sessão 34, `/shows/a-receber` + `reconcileShowFees`,
+   ver D25): ação inline para "lançar/quitar o cachê" direto da lista (criar a receita vinculada já
+   recebida sem ir às Finanças); atalho de cobrança (mailto para o contato do show).
 4. **Sessões/segurança**: invalidação ao trocar a senha entregue na Sessão 26
    (`passwordChangedAt` + `isSessionFresh`, ver D17). Evoluções possíveis: "encerrar sessão
    específica" (lista de sessões revogáveis) e recuperação de senha por e-mail — adiáveis.
