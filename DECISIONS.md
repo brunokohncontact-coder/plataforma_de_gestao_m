@@ -560,3 +560,36 @@ contexto, decisão, justificativa e alternativas consideradas.
   contato a cobrar — adiado: a prioridade por papel acerta o caso comum (um contratante por
   show); um seletor é polimento futuro. (c) link de WhatsApp via `api.whatsapp.com` — `wa.me`
   é o encurtador oficial e mais curto, equivalente em comportamento.
+
+## D28 — Quitar valor PARCIAL do cachê a partir de "Cachês a receber" (Sessão 37)
+- **Contexto:** o botão **Quitar** (D26) lançava sempre o saldo **inteiro** em aberto. Mas
+  cachê de gig com frequência entra em partes (sinal + saldo, ou parcelas), e nesses casos o
+  usuário só podia registrar o recebimento parcial saindo para as Finanças — exatamente o
+  atrito que a D26 queria eliminar. A alternativa (a) da D26 (campo de valor editável) havia
+  sido adiada por priorizar o caso "recebi tudo"; com o fluxo de quitação já consolidado e
+  testado, vale agora cobrir o recebimento parcial sem reintroduzir o risco que motivou a recusa.
+- **Decisão:** `settleShowFeeAction` passou a aceitar um campo **opcional** `amount` (string em
+  reais pt-BR). Vazio/ausente → quita o saldo inteiro (comportamento idêntico ao da D26, para
+  não quebrar nada); informado → o servidor valida e **limita** o valor ao saldo recalculado
+  via o helper **puro** `resolveSettlementAmount(outstanding, requested)` em `src/lib/finance.ts`.
+  A UI virou um componente client dedicado `src/components/SettleFeeButton.tsx`: o clique em
+  **Quitar** abre, na própria linha, um campo de valor (reaproveita `MoneyInput`) já preenchido
+  com o saldo em aberto e editável + **Lançar/Cancelar**. Lançar o valor cheio quita; lançar
+  menos deixa o restante na lista (a página é `force-dynamic`, então recalcula no próximo render).
+- **A verdade do saldo continua no servidor (mantém a D26):** o `amount` do formulário é só uma
+  conveniência da UI. O servidor recalcula `outstanding` do banco e aplica
+  `resolveSettlementAmount`, que faz **clamp** em `[0, outstanding]` — um cliente não consegue
+  sobre-lançar (forjar valor maior que o saldo), e `amount` inválido/zerado cai no caso "quita
+  tudo" ou vira no-op. Isso responde diretamente à objeção da D26-(a): o campo editável **não**
+  abre vetor de valor forjado porque o limite superior é imposto no servidor.
+- **Justificativa:** completa o fluxo "ver → cobrar → quitar" para o caso de pagamento em partes
+  sem nova dependência nem mudança de schema (continua tudo em `Transaction`). A lógica de decisão
+  é pura e isolada (`resolveSettlementAmount`), coberta por **6 testes** em `finance.test.ts`
+  (sem valor → tudo; inválido/≤0 → tudo; parcial; clamp ao saldo; saldo 0 → 0; arredondamento) +
+  **3 testes de integração** em `shows/actions.test.ts` (parcial real, clamp, vazio = saldo cheio).
+- **Alternativas consideradas:** (a) manter só a quitação total e mandar o usuário às Finanças
+  para parcial — descartado: é o atrito que a D26 atacou. (b) reaproveitar o `DeleteButton`
+  (confirmação em duas etapas, sem campo) — não comporta entrada de valor; um componente próprio
+  com `MoneyInput` é mais claro e mantém o `DeleteButton` focado em exclusão. (c) validar/limitar o
+  valor só no cliente — descartado pela mesma razão da D26: dado do cliente é forjável; o clamp
+  tem de estar no servidor.

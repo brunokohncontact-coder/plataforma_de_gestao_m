@@ -5,7 +5,7 @@ import { reconcileShowFees, type ReceivableShowLike, type TxLike } from "@/lib/f
 import { buildShowBilling, type ShowBilling } from "@/lib/billing";
 import { formatMoney } from "@/lib/money";
 import { formatDate } from "@/lib/format";
-import { DeleteButton } from "@/components/DeleteButton";
+import { SettleFeeButton } from "@/components/SettleFeeButton";
 import { settleShowFeeAction } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -166,17 +166,10 @@ export default async function ShowReceivablesPage() {
                               WhatsApp
                             </a>
                           )}
-                          <DeleteButton
+                          <SettleFeeButton
                             action={settleShowFeeAction}
                             id={row.show.id}
-                            trigger="Quitar"
-                            triggerClassName="btn border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 py-1.5 text-xs"
-                            triggerTitle={`Lançar ${formatMoney(row.outstanding)} como recebido`}
-                            confirmMessage={`Lançar ${formatMoney(row.outstanding)} como recebido?`}
-                            confirmLabel="Confirmar"
-                            pendingLabel="Lançando..."
-                            confirmClassName="btn bg-emerald-600 text-white hover:bg-emerald-500 py-1.5 text-xs"
-                            groupLabel="Confirmar lançamento do cachê"
+                            outstanding={row.outstanding}
                           />
                         </div>
                       </td>
@@ -204,9 +197,10 @@ export default async function ShowReceivablesPage() {
 
           <p className="text-xs text-gray-400">
             &quot;A receber&quot; = cachê acordado menos a receita já recebida vinculada ao
-            show. <strong>Quitar</strong> lança uma receita já recebida no valor em aberto e
-            vinculada ao show — sem precisar ir às Finanças. Receitas pendentes (ainda não
-            recebidas) não abatem o saldo. <strong>✉ E-mail</strong> / <strong>WhatsApp</strong>
+            show. <strong>Quitar</strong> lança uma receita já recebida vinculada ao show —
+            sem precisar ir às Finanças — no valor em aberto ou num valor menor (parcial),
+            deixando o restante na lista. Receitas pendentes (ainda não recebidas) não abatem
+            o saldo. <strong>✉ E-mail</strong> / <strong>WhatsApp</strong>
             abrem uma mensagem de cobrança pronta para o contato do show (aparecem quando há
             um contato vinculado com e-mail/telefone).
           </p>
