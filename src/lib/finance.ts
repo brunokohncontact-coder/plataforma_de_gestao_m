@@ -982,6 +982,120 @@ export function forecastBookedRevenue(
   };
 }
 
+// ── Cachês a receber (reconciliação agenda × finanças) ──────────────────────
+//
+// Responde "de quais shows que já toquei eu ainda não recebi o cachê?". É a ponte
+// entre a AGENDA (o cachê acordado de cada show) e as FINANÇAS (as receitas de fato
+// lançadas e recebidas). Pega o gap que nenhum outro relatório cobre: o gig que já
+// aconteceu mas cujo dinheiro nunca entrou no caixa — seja porque a receita não foi
+// lançada, seja porque foi lançada mas continua pendente. Pura.
+
+/** Forma mínima de show para a reconciliação de cachês a receber. */
+export interface ReceivableShowLike extends ShowLike {
+  date: Date | string;
+}
+
+export interface ShowReceivableRow<S extends ReceivableShowLike = ReceivableShowLike> {
+  show: S;
+  /** Cachê acordado do show (centavos). */
+  fee: number;
+  /** Receita vinculada já recebida (INCOME, received=true) — o que entrou no caixa. */
+  collected: number;
+  /** Receita vinculada lançada mas ainda pendente (INCOME, received=false). */
+  registeredPending: number;
+  /** Quanto ainda falta receber: max(0, fee − collected). */
+  outstanding: number;
+  /** True se nenhuma receita foi sequer lançada para o show (nem recebida nem pendente). */
+  unregistered: boolean;
+}
+
+export interface ShowReceivables<S extends ReceivableShowLike = ReceivableShowLike> {
+  /** Shows com saldo a receber (outstanding > 0), do mais antigo ao mais recente. */
+  rows: ShowReceivableRow<S>[];
+  /** Nº de shows com saldo a receber. */
+  count: number;
+  /** Soma do que ainda falta receber (centavos). */
+  totalOutstanding: number;
+  /** Soma dos cachês dos shows pendentes (centavos). */
+  totalFee: number;
+  /** Soma do que já foi recebido nesses shows (centavos). */
+  totalCollected: number;
+}
+
+/**
+ * True se o show já aconteceu e deveria ter gerado receita: explicitamente
+ * Realizado (PLAYED) ou Confirmado (CONFIRMED) com data já passada (o usuário
+ * pode ter esquecido de marcar como realizado). Propostos e Cancelados não contam.
+ */
+function isHappenedGig(show: ReceivableShowLike, todayMs: number): boolean {
+  if (show.status === "PLAYED") return true;
+  if (show.status === "CONFIRMED") return utcMidnight(show.date) < todayMs;
+  return false;
+}
+
+/**
+ * Reconcilia os cachês dos shows já realizados contra a receita efetivamente
+ * recebida, listando os que ainda têm dinheiro a entrar (`outstanding > 0`).
+ *
+ * - Considera "realizado" o show PLAYED ou CONFIRMED com data passada (ver
+ *   `isHappenedGig`); PROPOSED e CANCELLED ficam de fora.
+ * - `collected` = soma das receitas (INCOME) vinculadas ao show já recebidas
+ *   (received=true). `outstanding` = max(0, fee − collected): o que falta entrar.
+ * - Shows sem cachê (`fee <= 0`) são ignorados (nada a cobrar).
+ * - Ordena do gig mais antigo ao mais recente (o atraso mais longo primeiro);
+ *   empate desfeito pelo `id` para estabilidade. `now` injetável para teste.
+ */
+export function reconcileShowFees<S extends ReceivableShowLike>(
+  shows: S[],
+  txs: TxLike[],
+  opts: { now?: Date | string } = {},
+): ShowReceivables<S> {
+  const todayMs = utcMidnight(opts.now ?? new Date());
+
+  // Receita vinculada por show, separando recebida de pendente, numa só passada.
+  const collectedByShow = new Map<string, number>();
+  const pendingByShow = new Map<string, number>();
+  for (const t of txs) {
+    if (t.type !== "INCOME" || t.showId == null) continue;
+    const target = t.received ? collectedByShow : pendingByShow;
+    target.set(t.showId, (target.get(t.showId) ?? 0) + t.amount);
+  }
+
+  const rows: ShowReceivableRow<S>[] = [];
+  for (const show of shows) {
+    if (show.fee <= 0) continue;
+    if (!isHappenedGig(show, todayMs)) continue;
+
+    const collected = collectedByShow.get(show.id) ?? 0;
+    const registeredPending = pendingByShow.get(show.id) ?? 0;
+    const outstanding = Math.max(0, show.fee - collected);
+    if (outstanding <= 0) continue;
+
+    rows.push({
+      show,
+      fee: show.fee,
+      collected,
+      registeredPending,
+      outstanding,
+      unregistered: collected === 0 && registeredPending === 0,
+    });
+  }
+
+  rows.sort(
+    (a, b) =>
+      utcMidnight(a.show.date) - utcMidnight(b.show.date) ||
+      a.show.id.localeCompare(b.show.id),
+  );
+
+  return {
+    rows,
+    count: rows.length,
+    totalOutstanding: sum(rows.map((r) => r.outstanding)),
+    totalFee: sum(rows.map((r) => r.fee)),
+    totalCollected: sum(rows.map((r) => r.collected)),
+  };
+}
+
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 function sum(nums: number[]): number {

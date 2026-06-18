@@ -8,7 +8,9 @@ import {
   totalsByCategory,
   computeShowPnL,
   projectCashflow,
+  reconcileShowFees,
   type TxLike,
+  type ReceivableShowLike,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { formatDate, formatMonthKey } from "@/lib/format";
@@ -44,6 +46,7 @@ export default async function DashboardPage() {
   const categories = totalsByCategory(txs).slice(0, 5);
   const cashflow = projectCashflow(txs, { months: 6 });
   const hasProjection = cashflow.months.some((m) => m.income > 0 || m.expense > 0);
+  const receivables = reconcileShowFees(shows as ReceivableShowLike[], txs);
 
   // Rentabilidade: top shows realizados por resultado
   const playedShows = shows.filter((s) => s.status === "PLAYED");
@@ -78,6 +81,21 @@ export default async function DashboardPage() {
               <span className="text-red-500"> ({overdue.expenseCount})</span>
             </span>
           )}
+        </Link>
+      )}
+
+      {/* Aviso de cachês a receber de shows já realizados */}
+      {receivables.count > 0 && (
+        <Link
+          href="/shows/a-receber"
+          className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 transition hover:bg-amber-100"
+        >
+          <span className="font-semibold">🎤 Cachês a receber</span>
+          <span>
+            <strong>{formatMoney(receivables.totalOutstanding)}</strong> em{" "}
+            {receivables.count} {receivables.count === 1 ? "show realizado" : "shows realizados"}
+          </span>
+          <span className="text-amber-600">Ver →</span>
         </Link>
       )}
 

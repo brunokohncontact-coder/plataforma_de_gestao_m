@@ -464,3 +464,34 @@ contexto, decisão, justificativa e alternativas consideradas.
   duplicação da lógica de borda da D23); um middleware por rota (descartado: o `matcher` já roteia,
   e o registro centraliza a config). O `matcher` do middleware deve ser mantido em sincronia com os
   `path` de `LIST_FILTER_CONFIGS` (anotado em ambos os arquivos).
+
+## D25 — Cachês a receber: reconciliar a agenda (cachê do show) com as finanças (Sessão 34)
+- **Contexto:** o app já projeta receita futura (`forecastBookedRevenue`, D22) e lista pendências
+  financeiras (`buildDueAgenda`/`summarizeOverdue`), mas faltava o elo que pega o dinheiro
+  esquecido: o gig que **já aconteceu** e cujo cachê nunca entrou no caixa — seja porque a
+  receita nunca foi lançada, seja porque foi lançada mas segue pendente. Esse é o atrito real do
+  músico ("toquei, e cadê o pagamento?"), e nenhum relatório existente o respondia, porque o cachê
+  acordado vive no `Show.fee` (agenda) e o recebimento vive nas `Transaction` (finanças).
+- **Decisão:** uma função pura `reconcileShowFees(shows, txs, { now })` em `src/lib/finance.ts`
+  cruza as duas fontes. Para cada show que **já aconteceu** ela calcula `outstanding =
+  max(0, fee − collected)`, onde `collected` é a soma das receitas (INCOME) vinculadas ao show e
+  **já recebidas** (`received=true`). Lista só os shows com `outstanding > 0`, do gig mais antigo
+  ao mais recente. Página `/shows/a-receber` (cards Total a receber / Shows pendentes / Já recebido
+  + tabela com link do show) e um alerta âmbar no Painel quando há saldo. Link "A receber" no
+  cabeçalho de Shows.
+- **"Já aconteceu" (`isHappenedGig`):** conta como realizado o show `PLAYED` **ou** `CONFIRMED`
+  com data já passada (UTC) — porque o usuário frequentemente esquece de virar o status para
+  Realizado depois do show. `PROPOSED` e `CANCELLED` ficam de fora (não geram cobrança).
+- **Só `received=true` abate o saldo:** uma receita lançada mas ainda pendente (`received=false`)
+  **não** reduz o `outstanding` (ela própria é uma conta a receber); o valor pendente é exposto
+  à parte (`registeredPending`) só para informar a UI ("X pendente"). Assim o saldo a receber
+  reflete caixa de fato, coerente com `cashBalance`. Shows com `fee <= 0` são ignorados.
+- **Justificativa:** mantém a regra de negócio pura e testável (8 testes cobrindo abatimento por
+  recebido, exclusão do futuro/proposto/cancelado, sem cachê, isolamento por `showId`, despesa não
+  abate, clamp em zero, ordenação) e reaproveita o vínculo `Transaction.showId` já existente — sem
+  mudança de schema.
+- **Alternativas consideradas:** (a) marcar o próprio `Show` como "pago" com um booleano dedicado
+  — descartado: duplicaria a verdade que já está nas transações e exigiria migração + UI de
+  marcação; (b) considerar qualquer receita lançada (recebida ou não) como quitação — descartado:
+  confundiria "faturado" com "recebido" e esconderia atrasos; (c) só `PLAYED` — descartado por
+  perder os confirmados-passados que o usuário esqueceu de atualizar (o caso mais perigoso).
