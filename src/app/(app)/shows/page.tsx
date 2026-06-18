@@ -150,7 +150,7 @@ export default async function ShowsPage({
               Filtrar
             </button>
             {active && (
-              <Link href="/shows" className="text-sm text-gray-500 hover:underline">
+              <Link href="/shows?reset=1" className="text-sm text-gray-500 hover:underline">
                 Limpar
               </Link>
             )}
@@ -168,7 +168,7 @@ export default async function ShowsPage({
       ) : visible.length === 0 ? (
         <div className="card text-center text-gray-500">
           <p>Nenhum show corresponde aos filtros.</p>
-          <Link href="/shows" className="mt-3 inline-block text-brand-700 hover:underline">
+          <Link href="/shows?reset=1" className="mt-3 inline-block text-brand-700 hover:underline">
             Limpar filtros
           </Link>
         </div>

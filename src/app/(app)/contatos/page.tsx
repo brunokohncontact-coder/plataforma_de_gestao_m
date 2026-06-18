@@ -104,7 +104,7 @@ export default async function ContactsPage({
               Filtrar
             </button>
             {active && (
-              <Link href="/contatos" className="text-sm text-gray-500 hover:underline">
+              <Link href="/contatos?reset=1" className="text-sm text-gray-500 hover:underline">
                 Limpar
               </Link>
             )}
@@ -122,7 +122,7 @@ export default async function ContactsPage({
       ) : visible.length === 0 ? (
         <div className="card text-center text-gray-500">
           <p>Nenhum contato corresponde aos filtros.</p>
-          <Link href="/contatos" className="mt-3 inline-block text-brand-700 hover:underline">
+          <Link href="/contatos?reset=1" className="mt-3 inline-block text-brand-700 hover:underline">
             Limpar filtros
           </Link>
         </div>

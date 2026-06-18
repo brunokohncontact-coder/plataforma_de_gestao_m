@@ -435,3 +435,32 @@ contexto, decisão, justificativa e alternativas consideradas.
   o filtro é um GET via `<form method="get">`, não uma action — middleware é o encaixe natural);
   redirecionar a partir do próprio Server Component (descartado: não pode gravar cookie no render);
   cookie em `Path=/financas` (descartado: deleção não casaria — ver acima).
+
+## D24 — Generalizar a persistência de filtro para Shows e Contatos (Sessão 33)
+- **Contexto:** a D23 entregou a persistência do filtro só para `/financas`. As listas de
+  `/shows` (busca + status + intervalo de datas) e `/contatos` (busca + tipo) filtram do mesmo
+  jeito (query string via `<form method="get">`) e sofriam o mesmo atrito: sair e voltar pelo
+  menu perdia o recorte. Queríamos o mesmo comportamento sem duplicar a lógica nem o middleware.
+- **Decisão:** extrair a lógica pura da D23 para um módulo **genérico** `src/lib/listFilter.ts`
+  (`canonicalQuery`/`hasAnyFilterParam`/`decideListFilter`), parametrizado pelo conjunto de chaves
+  de cada lista. Um **registro** `LIST_FILTER_CONFIGS` declara `{ path, cookie, keys }` para as três
+  listas (`/financas`, `/shows`, `/contatos`), cada uma com cookie próprio. O middleware passa a
+  casar a rota exata da requisição contra esse registro (`matcher: ["/financas","/shows","/contatos"]`)
+  e aplicar a mesma tradução decisão→HTTP. `src/lib/financasFilter.ts` vira uma fachada fina que
+  delega ao genérico, preservando sua API e os 13 testes existentes. Os links "Limpar" de Shows e
+  Contatos passaram a apontar para `?reset=1` (como já fazia Finanças), senão o cookie salvo os
+  re-restauraria.
+- **Justificativa:** o comportamento (persist/restore/reset/pass, canonização, ausência de loop,
+  Path=/ do cookie) é idêntico entre as listas; uma única implementação genérica testada evita
+  três cópias divergentes e um middleware com ramos repetidos. O registro declarativo torna trivial
+  adicionar uma quarta lista no futuro (basta uma entrada + a rota no matcher).
+- **Cookies separados por lista:** cada lista guarda seu recorte num cookie distinto
+  (`financas_filtro`/`shows_filtro`/`contatos_filtro`), pois as chaves não se sobrepõem por completo
+  (ex.: `status` existe em Finanças e Shows com domínios diferentes; `papel` só em Contatos). A
+  sanitização (`canonicalQuery` filtra pelas `keys` da lista) já descartaria chaves estranhas, mas
+  cookies separados deixam o escopo explícito e evitam vazamento de um filtro entre listas.
+- **Alternativas consideradas:** um único cookie compartilhado com todas as chaves (descartado:
+  acoplaria as listas e exigiria namespacing das chaves); manter três módulos copiados (descartado:
+  duplicação da lógica de borda da D23); um middleware por rota (descartado: o `matcher` já roteia,
+  e o registro centraliza a config). O `matcher` do middleware deve ser mantido em sincronia com os
+  `path` de `LIST_FILTER_CONFIGS` (anotado em ambos os arquivos).
