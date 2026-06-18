@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { reconcileShowFees, type ReceivableShowLike, type TxLike } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { formatDate } from "@/lib/format";
+import { DeleteButton } from "@/components/DeleteButton";
+import { settleShowFeeAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -82,6 +84,7 @@ export default async function ShowReceivablesPage() {
                   <th className="px-4 py-3 text-right font-medium">Cachê</th>
                   <th className="px-4 py-3 text-right font-medium">Recebido</th>
                   <th className="px-4 py-3 text-right font-medium">A receber</th>
+                  <th className="px-4 py-3 text-right font-medium">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -121,6 +124,20 @@ export default async function ShowReceivablesPage() {
                       <td className="px-4 py-3 text-right font-semibold text-amber-600">
                         {formatMoney(row.outstanding)}
                       </td>
+                      <td className="px-4 py-3 text-right">
+                        <DeleteButton
+                          action={settleShowFeeAction}
+                          id={row.show.id}
+                          trigger="Quitar"
+                          triggerClassName="btn border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 py-1.5 text-xs"
+                          triggerTitle={`Lançar ${formatMoney(row.outstanding)} como recebido`}
+                          confirmMessage={`Lançar ${formatMoney(row.outstanding)} como recebido?`}
+                          confirmLabel="Confirmar"
+                          pendingLabel="Lançando..."
+                          confirmClassName="btn bg-emerald-600 text-white hover:bg-emerald-500 py-1.5 text-xs"
+                          groupLabel="Confirmar lançamento do cachê"
+                        />
+                      </td>
                     </tr>
                   );
                 })}
@@ -137,6 +154,7 @@ export default async function ShowReceivablesPage() {
                   <td className="px-4 py-3 text-right text-amber-700">
                     {formatMoney(result.totalOutstanding)}
                   </td>
+                  <td className="px-4 py-3" />
                 </tr>
               </tfoot>
             </table>
@@ -144,8 +162,9 @@ export default async function ShowReceivablesPage() {
 
           <p className="text-xs text-gray-400">
             &quot;A receber&quot; = cachê acordado menos a receita já recebida vinculada ao
-            show. Para quitar um cachê, lance a receita no show (ou marque-a como recebida)
-            em Finanças. Receitas pendentes (ainda não recebidas) não abatem o saldo.
+            show. <strong>Quitar</strong> lança uma receita já recebida no valor em aberto e
+            vinculada ao show — sem precisar ir às Finanças. Receitas pendentes (ainda não
+            recebidas) não abatem o saldo.
           </p>
         </>
       )}

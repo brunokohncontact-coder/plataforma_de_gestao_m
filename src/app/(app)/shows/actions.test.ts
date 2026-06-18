@@ -25,6 +25,7 @@ import { prisma } from "@/lib/prisma";
 import {
   createShow,
   createContact,
+  createTransaction,
   createUser,
   resetDb,
 } from "@/test/db";
@@ -32,6 +33,7 @@ import {
   createShowAction,
   deleteShowAction,
   linkContactToShowAction,
+  settleShowFeeAction,
   unlinkContactFromShowAction,
   updateShowAction,
 } from "./actions";
@@ -144,6 +146,98 @@ describe("deleteShowAction — posse", () => {
     await catchRedirect(deleteShowAction(fd));
 
     expect(await prisma.show.findUnique({ where: { id: show.id } })).toBeNull();
+  });
+});
+
+describe("settleShowFeeAction — quita o cachê em aberto", () => {
+  it("cria UMA receita recebida com o saldo total quando nada foi recebido", async () => {
+    const owner = await createUser("owner@example.com");
+    const show = await createShow(owner.id, { fee: 50000, status: "PLAYED" });
+
+    h.currentUser = owner;
+    const fd = new FormData();
+    fd.set("id", show.id);
+    await settleShowFeeAction(fd);
+
+    const txs = await prisma.transaction.findMany({ where: { showId: show.id } });
+    expect(txs).toHaveLength(1);
+    expect(txs[0].type).toBe("INCOME");
+    expect(txs[0].received).toBe(true);
+    expect(txs[0].amount).toBe(50000);
+    expect(txs[0].userId).toBe(owner.id);
+  });
+
+  it("quita apenas o saldo restante quando já houve recebimento parcial", async () => {
+    const owner = await createUser("owner@example.com");
+    const show = await createShow(owner.id, { fee: 50000, status: "PLAYED" });
+    await createTransaction(owner.id, { showId: show.id, amount: 20000, received: true });
+
+    h.currentUser = owner;
+    const fd = new FormData();
+    fd.set("id", show.id);
+    await settleShowFeeAction(fd);
+
+    const created = await prisma.transaction.findMany({
+      where: { showId: show.id },
+      orderBy: { amount: "asc" },
+    });
+    // a parcial (20000) + a quitação do restante (30000)
+    expect(created.map((t) => t.amount)).toEqual([20000, 30000]);
+  });
+
+  it("NÃO cria nada quando o cachê já está quitado (idempotente)", async () => {
+    const owner = await createUser("owner@example.com");
+    const show = await createShow(owner.id, { fee: 50000, status: "PLAYED" });
+    await createTransaction(owner.id, { showId: show.id, amount: 50000, received: true });
+
+    h.currentUser = owner;
+    const fd = new FormData();
+    fd.set("id", show.id);
+    await settleShowFeeAction(fd);
+
+    expect(await prisma.transaction.count({ where: { showId: show.id } })).toBe(1);
+  });
+
+  it("ignora receita PENDENTE ao calcular o saldo (só recebida abate)", async () => {
+    const owner = await createUser("owner@example.com");
+    const show = await createShow(owner.id, { fee: 50000, status: "PLAYED" });
+    await createTransaction(owner.id, { showId: show.id, amount: 50000, received: false });
+
+    h.currentUser = owner;
+    const fd = new FormData();
+    fd.set("id", show.id);
+    await settleShowFeeAction(fd);
+
+    const received = await prisma.transaction.findMany({
+      where: { showId: show.id, received: true },
+    });
+    expect(received).toHaveLength(1);
+    expect(received[0].amount).toBe(50000);
+  });
+
+  it("NÃO quita o show de outro usuário", async () => {
+    const owner = await createUser("owner@example.com");
+    const attacker = await createUser("attacker@example.com");
+    const show = await createShow(owner.id, { fee: 50000, status: "PLAYED" });
+
+    h.currentUser = attacker;
+    const fd = new FormData();
+    fd.set("id", show.id);
+    await settleShowFeeAction(fd);
+
+    expect(await prisma.transaction.count({ where: { showId: show.id } })).toBe(0);
+  });
+
+  it("NÃO faz nada para um show sem cachê (fee <= 0)", async () => {
+    const owner = await createUser("owner@example.com");
+    const show = await createShow(owner.id, { fee: 0, status: "PLAYED" });
+
+    h.currentUser = owner;
+    const fd = new FormData();
+    fd.set("id", show.id);
+    await settleShowFeeAction(fd);
+
+    expect(await prisma.transaction.count({ where: { showId: show.id } })).toBe(0);
   });
 });
 

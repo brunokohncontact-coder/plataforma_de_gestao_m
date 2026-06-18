@@ -39,6 +39,7 @@ export function DeleteButton({
   pendingLabel = "Excluindo...",
   confirmClassName = "btn-danger py-1.5 text-xs",
   cancelClassName = "btn-secondary py-1.5 text-xs",
+  groupLabel = "Confirmar exclusão",
 }: {
   action: DeleteAction;
   id: string;
@@ -51,6 +52,7 @@ export function DeleteButton({
   pendingLabel?: string;
   confirmClassName?: string;
   cancelClassName?: string;
+  groupLabel?: string;
 }) {
   const [confirming, setConfirming] = useState(false);
 
@@ -69,7 +71,7 @@ export function DeleteButton({
   }
 
   return (
-    <div className="inline-flex items-center gap-2" role="group" aria-label="Confirmar exclusão">
+    <div className="inline-flex items-center gap-2" role="group" aria-label={groupLabel}>
       {confirmMessage && <span className="text-xs text-gray-600">{confirmMessage}</span>}
       <form action={action}>
         <input type="hidden" name="id" value={id} />

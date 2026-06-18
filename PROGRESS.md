@@ -77,7 +77,11 @@ lista) + registro `LIST_FILTER_CONFIGS`; o middleware passou a cobrir `/financas
 **297 testes** verdes. Sessão 34 entregou os **cachês a receber** (`/shows/a-receber`):
 `reconcileShowFees` cruza a agenda (cachê do show) com as finanças (receitas recebidas) e lista os
 shows já realizados cujo cachê ainda não entrou no caixa — o dinheiro esquecido — com alerta no
-Painel (ver D25). **305 testes** verdes.
+Painel (ver D25). **305 testes** verdes. Sessão 35 entregou o **quitar cachê inline** em
+`/shows/a-receber`: botão **Quitar** por linha que cria a receita recebida vinculada ao show no
+valor em aberto, sem passar pelas Finanças; o saldo é recalculado no servidor (idempotente), via
+`settleShowFeeAction`, reaproveitando o `DeleteButton` (confirmação em duas etapas) generalizado
+com `groupLabel` (ver D26). **311 testes** verdes.
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias, estados de erro
 inline dos server actions) ou evoluções de calendário (arrastar/soltar para remarcar).
 
@@ -821,6 +825,29 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   e linhas "pendente", `/dashboard` 200 com o alerta "Cachês a receber". `npm audit` inalterado
   (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova — ver D6/D8).
 
+### Sessão 35 — 2026-06-18 (Fase 1 — quitar cachê inline em "Cachês a receber")
+- **Server action** (`src/app/(app)/shows/actions.ts`): `settleShowFeeAction(formData)` quita o
+  saldo em aberto de um show direto da lista, sem ir às Finanças. Confirma posse (`findFirst` por
+  `userId`), recalcula no servidor `outstanding = max(0, fee − Σ receitas INCOME já recebidas)` via
+  `prisma.transaction.aggregate` (nunca confia em valor do cliente) e, se houver saldo, cria UMA
+  receita `INCOME`/`received=true`/`category="Cachê"`/`description="Cachê — {título}"`/`date=now`
+  vinculada ao show. **Idempotente**: já quitado/`fee<=0`/show de outro usuário → no-op. Revalida
+  `/shows/a-receber`, `/shows`, `/shows/{id}`, `/financas`, `/financas/agenda`, `/dashboard`.
+- **UI** (`src/app/(app)/shows/a-receber/page.tsx`): nova coluna **Ações** com o botão **Quitar**
+  por linha (confirmação em duas etapas) e nota de rodapé atualizada explicando o atalho.
+- **Reúso** (`src/components/DeleteButton.tsx`): generalizado com a prop `groupLabel` (default
+  "Confirmar exclusão") para o `aria-label` do grupo de confirmação ficar correto em usos que não
+  são exclusão; o botão Quitar passa `groupLabel="Confirmar lançamento do cachê"`. Ver **D26**.
+- **Testes** (`src/app/(app)/shows/actions.test.ts`): +6 (saldo total, recebimento parcial só
+  quita o restante, idempotência quando já quitado, pendente não abate, isolamento por usuário,
+  `fee=0` no-op). Sem mudança de schema nem novas dependências.
+- Definition of Done verde: build (25 rotas; `/shows/a-receber` agora 707 B com o client de
+  confirmação), typecheck (`tsc --noEmit`) limpo, lint (0), **311 testes**, smoke test ao vivo
+  (`next start` + cookie de sessão real do seed demo): `/shows/a-receber` 200 com a linha "Show no
+  Bar do Zé" (cachê R$ 1.500,00, **A receber R$ 1.250,00**) e o botão "Lançar R$ 1.250,00 como
+  recebido"; rota sem sessão → 307. `npm audit` inalterado (10 advisories: 4 moderate / 5 high /
+  1 critical; nenhuma dependência nova — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)
@@ -836,8 +863,9 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    exportação CSV do recorte filtrado na Sessão 14; busca textual na Sessão 17;
    base em `src/lib/finance.ts`.)
 5. **Cachês a receber — evoluções** (entregue na Sessão 34, `/shows/a-receber` + `reconcileShowFees`,
-   ver D25): ação inline para "lançar/quitar o cachê" direto da lista (criar a receita vinculada já
-   recebida sem ir às Finanças); atalho de cobrança (mailto para o contato do show).
+   ver D25; **quitar cachê inline** entregue na Sessão 35 — `settleShowFeeAction`, ver D26):
+   próximo possível — atalho de cobrança (mailto/whatsapp para o contato do show vinculado),
+   ou "lançar valor parcial" pela própria lista.
 4. **Sessões/segurança**: invalidação ao trocar a senha entregue na Sessão 26
    (`passwordChangedAt` + `isSessionFresh`, ver D17). Evoluções possíveis: "encerrar sessão
    específica" (lista de sessões revogáveis) e recuperação de senha por e-mail — adiáveis.
