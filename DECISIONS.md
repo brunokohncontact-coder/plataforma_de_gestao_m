@@ -704,3 +704,35 @@ contexto, decisão, justificativa e alternativas consideradas.
   (excesso de informação na visão de resumo; o detalhe é o papel de `/shows/a-receber`); (c) usar
   ≥61 dias como gatilho — descartado (90 dias é o limiar de risco real; 61–90 ainda é cobrança de
   rotina).
+
+## D33 — Comparativo mês a mês no Relatório mensal (Sessão 42)
+- **Contexto:** o Relatório mensal (`/financas/relatorio`, D14) mostrava os números do mês isolados
+  (receitas, despesas, saldo, caixa), sem responder à pergunta de gestão mais imediata do músico:
+  "estou indo melhor ou pior que o mês passado?". O usuário tinha de navegar ←/→ e comparar de
+  cabeça.
+- **Decisão:** adicionar à `src/lib/finance.ts` duas funções puras — `computeDelta(current,
+  previous)` (variação de uma métrica: `delta` absoluto, `pct` relativo, `direction` up/down/flat) e
+  `compareSummaries(current, previous)` (aplica `computeDelta` às quatro métricas de
+  `FinanceSummary`: receitas, despesas, saldo de competência e caixa realizado). A página computa o
+  resumo do mês anterior reaproveitando `filterTransactions({ month: prevKey })` +
+  `summarizeFinances` (mesma fonte de verdade do mês corrente) e renderiza, sob cada card de número,
+  uma linha "▲/▼ R$ X (Y%)".
+- **Semântica de cor (bom/ruim) na UI, não na lógica:** `computeDelta.direction` é puramente o sinal
+  do delta. Quem renderiza decide o que é bom: receitas/saldo/caixa subindo = verde; despesas
+  subindo = vermelho (`upIsGood` por card). Mantém a lógica pura neutra e testável sem assumir
+  domínio.
+- **`pct = null` quando a base anterior é 0:** não há porcentagem a partir de zero; a UI mostra
+  "novo" no lugar do percentual (ex.: primeira receita de uma categoria nova). Base anterior
+  negativa usa `|previous|` no denominador (saldo de competência pode ser negativo).
+- **Comparativo só aparece quando o mês anterior tem transações** (`hasPrevData`): comparar contra
+  um mês vazio produziria "novo/—" em tudo, sem valor; melhor omitir e manter a tela limpa.
+- **Sem schema, sem dependência, sem server action:** é leitura/derivação sobre dados já carregados;
+  uma consulta a mais ao banco não é feita (filtra-se o mesmo conjunto já em memória).
+- **Testes:** 8 testes unitários novos (`computeDelta`: subida, queda, flat, base zero→null, base
+  negativa, preserva current/previous; `compareSummaries`: quatro métricas e base zerada). Total do
+  projeto 358→366.
+- **Alternativas consideradas:** (a) comparar contra a média dos últimos N meses — descartado por
+  ora (mês-a-mês é o comparativo que o usuário tem em mente ao abrir o relatório; média móvel pode
+  vir depois sobre a mesma `computeDelta`); (b) sparkline/tendência — fora do escopo desta sessão
+  (cabe no resumo anual, D16); (c) embutir a cor "bom/ruim" no `direction` da lógica — descartado
+  (acoplaria semântica de domínio à função pura).

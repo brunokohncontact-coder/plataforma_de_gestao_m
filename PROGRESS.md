@@ -112,6 +112,12 @@ dashboard passa a destacar, com escalonamento para vermelho, o dinheiro **parado
 dias** (balde "older" de `bucketReceivablesByAge`, reaproveitado), mostrando o valor encalhado e
 a contagem — o sinal de cobrança urgente aparece já na primeira tela (ver D32). **358 testes**
 verdes (mudança de UI, reaproveita lógica pura já testada).
+Sessão 42 entregou o **comparativo mês a mês no Relatório mensal** (`/financas/relatorio`):
+as funções puras `computeDelta` e `compareSummaries` (em `src/lib/finance.ts`) calculam a
+variação (absoluta + %, com sentido up/down/flat) das quatro métricas do mês frente ao mês
+anterior, e cada card de número ganha uma linha "▲/▼ R$ X (Y%)" colorida por bom/ruim
+(receita/saldo/caixa subindo = verde; despesa subindo = vermelho), respondendo "estou melhor
+que o mês passado?" (ver D33). **366 testes** verdes.
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias, estados de erro
 inline dos server actions) ou evoluções de calendário (arrastar/soltar para remarcar).
 
@@ -986,6 +992,32 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   **358 testes** (`vitest run`; inalterado — mudança de UI que reaproveita lógica pura já coberta),
   smoke test ao vivo (`next start`): `/dashboard` sem sessão → 307; `/login` → 200. `npm audit`
   inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova — ver D6/D8).
+
+### Sessão 42 — 2026-06-18 (Fase 1 — comparativo mês a mês no Relatório mensal)
+- **Lógica pura** (`src/lib/finance.ts`): `computeDelta(current, previous)` → `MetricDelta`
+  (`{ current, previous, delta, pct, direction }`): `delta` absoluto, `pct` relativo (à base
+  anterior; `null` quando a base é 0; usa `|previous|` para base negativa) e `direction`
+  (`up`/`down`/`flat`, só o sinal do delta). `compareSummaries(current, previous)` →
+  `FinanceComparison`: aplica `computeDelta` às quatro métricas de `FinanceSummary` (receitas,
+  despesas, saldo de competência, caixa realizado). A semântica de bom/ruim fica na UI (a função
+  é neutra). **8 testes** novos em `finance.test.ts` (subida/queda/flat, base zero→null, base
+  negativa, preserva current/previous; `compareSummaries` com quatro métricas e base zerada) —
+  total do projeto **366** (eram 358). Ver **DECISIONS.md D33**.
+- **Página** (`src/app/(app)/financas/relatorio/page.tsx`): computa o resumo do **mês anterior**
+  reaproveitando `filterTransactions({ month: prevKey })` + `summarizeFinances` (mesma fonte de
+  verdade do mês corrente) e passa `compareSummaries(...)` aos cards. Cada `Stat` ganhou props
+  `delta`/`upIsGood` e um sub-componente `DeltaLine` que mostra "▲/▼ R$ X (Y%)" — verde quando a
+  variação é boa (receita/saldo/caixa subindo; despesa caindo), vermelha caso contrário, e
+  "→ sem variação" no empate; `pct` nulo vira "novo". O comparativo só aparece quando o mês
+  anterior tem transações (`hasPrevData`), com a legenda "Comparado a <mês anterior>". Sem novas
+  dependências, sem mudança de schema nem server action.
+- Definition of Done verde: build (25 rotas; `/financas/relatorio` inalterado), typecheck
+  (`tsc --noEmit`) limpo, lint (0), **366 testes** (`vitest run`), smoke test ao vivo
+  (`next start`): `/financas/relatorio` sem sessão → 307, `/login` → 200; **e2e autenticado com
+  cookie de sessão real** (seed demo + transações de maio inseridas) → junho renderiza o
+  comparativo "Comparado a Maio de 2026" com Receitas ▲ +100% (verde), Despesas ▲ +150% (vermelho),
+  Saldo ▲ +79% (verde) e Caixa ▼ −171% (vermelho) — verificado. `npm audit` inalterado
+  (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova — ver D6/D8).
 
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),

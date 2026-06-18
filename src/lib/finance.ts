@@ -327,6 +327,65 @@ export function summarizeFinances(txs: TxLike[]): FinanceSummary {
   };
 }
 
+// ── Comparativo mês a mês (estou melhor que o mês passado?) ──────────────────
+
+/** Variação de uma métrica entre dois períodos (atual vs anterior). */
+export interface MetricDelta {
+  /** Valor do período atual (centavos). */
+  current: number;
+  /** Valor do período anterior (centavos). */
+  previous: number;
+  /** Diferença absoluta (current − previous), em centavos (pode ser negativa). */
+  delta: number;
+  /**
+   * Variação relativa (delta / |previous|), ex.: 0.25 = +25%.
+   * `null` quando o período anterior é 0 (não há base para porcentagem).
+   */
+  pct: number | null;
+  /** Sentido da variação, puramente pelo sinal de `delta` (UI decide se é bom/ruim). */
+  direction: "up" | "down" | "flat";
+}
+
+/**
+ * Variação de uma única métrica entre dois valores (atual e anterior).
+ *
+ * - `delta` é a diferença absoluta; `pct` é a variação relativa à base anterior.
+ * - Base anterior 0 → `pct = null` (porcentagem indefinida; a UI mostra "novo"/"—").
+ * - `direction` reflete só o sinal do delta — comparar receitas (subir é bom) e
+ *   despesas (subir é ruim) é responsabilidade de quem renderiza.
+ */
+export function computeDelta(current: number, previous: number): MetricDelta {
+  const delta = current - previous;
+  const pct = previous === 0 ? null : delta / Math.abs(previous);
+  const direction: MetricDelta["direction"] = delta > 0 ? "up" : delta < 0 ? "down" : "flat";
+  return { current, previous, delta, pct, direction };
+}
+
+/** Comparativo das principais métricas de um resumo financeiro entre dois meses. */
+export interface FinanceComparison {
+  totalIncome: MetricDelta;
+  totalExpense: MetricDelta;
+  balance: MetricDelta;
+  cashBalance: MetricDelta;
+}
+
+/**
+ * Compara dois resumos financeiros (tipicamente mês atual vs mês anterior),
+ * respondendo "estou melhor que o mês passado?". Reaproveita `computeDelta`
+ * para receitas, despesas, saldo de competência e caixa realizado.
+ */
+export function compareSummaries(
+  current: FinanceSummary,
+  previous: FinanceSummary,
+): FinanceComparison {
+  return {
+    totalIncome: computeDelta(current.totalIncome, previous.totalIncome),
+    totalExpense: computeDelta(current.totalExpense, previous.totalExpense),
+    balance: computeDelta(current.balance, previous.balance),
+    cashBalance: computeDelta(current.cashBalance, previous.cashBalance),
+  };
+}
+
 export interface CategoryTotal {
   category: string;
   income: number;
