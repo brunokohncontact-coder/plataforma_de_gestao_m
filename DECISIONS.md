@@ -527,3 +527,36 @@ contexto, decisão, justificativa e alternativas consideradas.
   no servidor é barato (um `aggregate`) e correto. (c) marcar como recebida uma receita pendente
   existente em vez de criar nova — descartado: nem sempre existe pendente lançada (o caso
   `unregistered`), e criar a receita unifica os dois fluxos num só caminho.
+
+## D27 — Atalho de cobrança (e-mail/WhatsApp) a partir de "Cachês a receber" (Sessão 36)
+- **Contexto:** a página `/shows/a-receber` (D25) já aponta os cachês esquecidos e permite
+  **Quitar** o recebimento (D26), mas o passo que antecede o recebimento — **cobrar** o
+  contratante/casa — continuava manual: o usuário tinha de abrir o app de e-mail/WhatsApp,
+  achar o contato, lembrar a data/valor do show e redigir a mensagem do zero. É justamente o
+  trabalho chato que faz o cachê ficar "na mesa".
+- **Decisão:** um módulo **puro** `src/lib/billing.ts` monta a cobrança e os atalhos prontos
+  (`buildShowBilling` → `{ contact, subject, body, mailtoUrl, whatsappUrl }`). A página passa
+  a carregar os contatos vinculados ao show (`contacts.include.contact`) e renderiza, por
+  linha, os botões **✉ E-mail** (link `mailto:` com assunto/corpo) e **WhatsApp** (link
+  `https://wa.me/<telefone>?text=...`), exibidos só quando há canal disponível.
+- **Escolha do contato (`pickBillingContact`):** entre os contatos vinculados ao show, só os
+  que têm e-mail **ou** telefone; prioriza pelo papel que costuma pagar primeiro
+  (BOOKER → PROMOTER → VENUE → PRODUCER → OTHER → PRESS), desempatando por nome (pt-BR) e id
+  para ser determinístico. Sem contato alcançável → nenhum botão (a nota de rodapé orienta a
+  vincular um contato).
+- **Telefone (`normalizeWhatsappPhone`):** heurística pt-BR (foco LATAM, ver business-plan.md)
+  — número local de 10–11 dígitos (DDD + assinante) ganha o DDI **55**; número que já começa
+  com 55 e tem 12–13 dígitos é mantido; demais comprimentos (≥ 8 dígitos) são usados como
+  vieram, assumindo DDI próprio; < 8 dígitos → sem link. O WhatsApp recebe só o **corpo** da
+  mensagem (não tem campo de assunto); o e-mail recebe assunto + corpo.
+- **Justificativa:** fecha o ciclo "ver o que falta → cobrar → quitar" na mesma tela, sem
+  backend novo (nenhum envio server-side: os links abrem o cliente nativo do usuário, que
+  preserva sua identidade/assinatura e evita custo/risco de e-mail transacional no MVP). Toda
+  a lógica difícil (escolha de contato, redação, normalização de telefone, encoding de URL) é
+  pura e coberta por **20 testes** em `src/lib/billing.test.ts`.
+- **Alternativas consideradas:** (a) enviar o e-mail pelo servidor (SMTP/serviço) — descartado
+  no MVP: exige provedor, segredos e tratamento de bounce/spam; o `mailto:`/`wa.me` resolve com
+  zero infra e mantém a mensagem sob controle do usuário. (b) deixar o usuário escolher o
+  contato a cobrar — adiado: a prioridade por papel acerta o caso comum (um contratante por
+  show); um seletor é polimento futuro. (c) link de WhatsApp via `api.whatsapp.com` — `wa.me`
+  é o encurtador oficial e mais curto, equivalente em comportamento.
