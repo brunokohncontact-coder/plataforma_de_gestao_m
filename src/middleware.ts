@@ -1,50 +1,54 @@
 import { NextResponse, type NextRequest } from "next/server";
-import {
-  decideFinancasFilter,
-  FINANCAS_FILTER_COOKIE,
-} from "@/lib/financasFilter";
+import { decideListFilter, LIST_FILTER_CONFIGS } from "@/lib/listFilter";
 
 // ~180 dias: o filtro preferido sobrevive entre sessões sem ser eterno.
 const FILTER_MAX_AGE = 60 * 60 * 24 * 180;
 
 // Path "/" para `set` e `delete` casarem (o browser distingue cookies por
 // nome+path). O `cookies.delete` do Next sempre emite `Path=/`, então o `set`
-// também usa "/". O cookie só é lido em `/financas`, então o escopo amplo é inócuo.
+// também usa "/". O cookie só é lido na própria rota, então o escopo amplo é inócuo.
 const FILTER_COOKIE_PATH = "/";
 
 /**
- * Persiste/restaura o último filtro usado nas Finanças (ver `@/lib/financasFilter`).
- * A decisão é pura e testada; aqui só a traduzimos em resposta HTTP.
+ * Persiste/restaura o último filtro usado nas listas (ver `@/lib/listFilter`).
+ * A decisão é pura e testada; aqui só a traduzimos em resposta HTTP. Cada lista
+ * registrada em `LIST_FILTER_CONFIGS` tem seu próprio cookie e conjunto de chaves.
  */
 export function middleware(req: NextRequest) {
-  const decision = decideFinancasFilter(
+  const config = LIST_FILTER_CONFIGS.find(
+    (c) => c.path === req.nextUrl.pathname,
+  );
+  if (!config) return NextResponse.next();
+
+  const decision = decideListFilter(
     req.nextUrl.searchParams,
-    req.cookies.get(FINANCAS_FILTER_COOKIE)?.value,
+    req.cookies.get(config.cookie)?.value,
+    config.keys,
   );
 
   switch (decision.kind) {
     case "reset": {
-      const res = NextResponse.redirect(new URL("/financas", req.nextUrl.origin));
-      res.cookies.delete(FINANCAS_FILTER_COOKIE);
+      const res = NextResponse.redirect(new URL(config.path, req.nextUrl.origin));
+      res.cookies.delete(config.cookie);
       return res;
     }
     case "persist": {
       const res = NextResponse.next();
       if (decision.cookie) {
-        res.cookies.set(FINANCAS_FILTER_COOKIE, decision.cookie, {
+        res.cookies.set(config.cookie, decision.cookie, {
           httpOnly: true,
           sameSite: "lax",
           path: FILTER_COOKIE_PATH,
           maxAge: FILTER_MAX_AGE,
         });
       } else {
-        res.cookies.delete(FINANCAS_FILTER_COOKIE);
+        res.cookies.delete(config.cookie);
       }
       return res;
     }
     case "restore": {
       return NextResponse.redirect(
-        new URL(`/financas?${decision.query}`, req.nextUrl.origin),
+        new URL(`${config.path}?${decision.query}`, req.nextUrl.origin),
       );
     }
     default:
@@ -52,7 +56,8 @@ export function middleware(req: NextRequest) {
   }
 }
 
-// Só a rota exata da lista de Finanças (não os subcaminhos como /financas/nova).
+// Só as rotas exatas das listas (não os subcaminhos como /financas/nova).
+// Manter em sincronia com os `path` de LIST_FILTER_CONFIGS.
 export const config = {
-  matcher: ["/financas"],
+  matcher: ["/financas", "/shows", "/contatos"],
 };
