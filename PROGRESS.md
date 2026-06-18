@@ -101,6 +101,12 @@ de `billing.ts` passou a expor todos os contatos alcançáveis (`reachableBillin
 novo componente client `BillingActions` mostra um `<select>` "quem cobrar" quando o show tem mais
 de um contato alcançável (default = escolha automática por papel), com os botões ✉ E-mail/WhatsApp
 montados no servidor para cada contato (ver D30). **351 testes** verdes.
+Sessão 40 entregou o **aging dos cachês a receber** em `/shows/a-receber`: a função pura
+`bucketReceivablesByAge` agrupa o que falta receber pela idade do atraso (dias desde o show)
+em quatro baldes (até 30 / 31–60 / 61–90 / mais de 90 dias), com total, contagem e participação
+(%) por balde, atraso médio ponderado pelo valor e pior caso; a página ganhou um card de aging
+(baldes ≥61 dias destacados) e um selo "há N dias" por linha, para priorizar a cobrança do
+dinheiro parado há mais tempo (ver D31). **358 testes** verdes.
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias, estados de erro
 inline dos server actions) ou evoluções de calendário (arrastar/soltar para remarcar).
 
@@ -982,9 +988,10 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `src/lib/billing.ts`, ver D27; **quitar valor parcial** entregue na Sessão 37 —
    `SettleFeeButton` + `resolveSettlementAmount`, ver D28; **data real do recebimento** entregue na
    Sessão 38 — `resolveReceivedDate` + campo `receivedAt`, ver D29; **seletor de qual contato
-   cobrar** entregue na Sessão 39 — `buildShowBillings` + `BillingActions`, ver D30): próximo
-   possível — lembrar a última escolha de contato por show, ou registrar a data prometida de
-   pagamento na própria cobrança.
+   cobrar** entregue na Sessão 39 — `buildShowBillings` + `BillingActions`, ver D30; **aging dos
+   recebíveis** entregue na Sessão 40 — `bucketReceivablesByAge`, ver D31): próximo
+   possível — lembrar a última escolha de contato por show, registrar a data prometida de
+   pagamento na própria cobrança, ou trazer o aging para o Painel (alerta de recebível ≥90 dias).
 4. **Sessões/segurança**: invalidação ao trocar a senha entregue na Sessão 26
    (`passwordChangedAt` + `isSessionFresh`, ver D17). Evoluções possíveis: "encerrar sessão
    específica" (lista de sessões revogáveis) e recuperação de senha por e-mail — adiáveis.

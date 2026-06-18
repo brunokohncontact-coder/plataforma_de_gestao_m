@@ -649,3 +649,29 @@ contexto, decisão, justificativa e alternativas consideradas.
   contato — desnecessário e arriscado (duplicaria a redação pt-BR); montar tudo no servidor e só
   alternar é mais simples e determinístico. (c) um seletor de papel/prioridade configurável —
   exagero para o MVP; a ordem por papel continua sendo o default sensato.
+
+## D31 — Aging dos cachês a receber (Sessão 40)
+- **Contexto:** desde a D25 (Sessão 34) `/shows/a-receber` lista os cachês em aberto ordenados do
+  show mais antigo ao mais recente, mas só com o valor em aberto por linha e os totais agregados.
+  Faltava a leitura clássica de cobrança: **quanto** do dinheiro está parado **há quanto tempo** —
+  o sinal que diz onde concentrar o esforço de cobrança (o recebível velho tende a virar perda).
+- **Decisão:** nova função pura `bucketReceivablesByAge(reconcileShowFees(...))` em `finance.ts`
+  que agrupa os recebíveis por idade do atraso (dias UTC desde a data do show, nunca negativo) em
+  quatro baldes fixos — até 30 / 31–60 / 61–90 / mais de 90 dias (`receivableAgeBucket` +
+  `RECEIVABLE_AGE_BUCKET_ORDER`/`LABELS`). Cada balde traz total, contagem e participação (`share`)
+  no total a receber; o agregado expõe `weightedAvgDays` (atraso médio ponderado pelo valor em
+  aberto — destaca onde está o dinheiro grande e velho) e `maxDaysOutstanding` (pior caso). A
+  página ganhou um card de aging (4 baldes, com os ≥61 dias destacados em vermelho/âmbar) e um
+  selo "há N dias" por linha. Nada de schema, dependência ou server action novos — apenas leitura
+  derivada do que `reconcileShowFees` já produz.
+- **Justificativa:** transforma a lista plana num instrumento de priorização de cobrança com
+  custo marginal mínimo (reaproveita `ShowReceivables`). Lógica pura e isolada, coberta por
+  **8 testes** novos em `finance.test.ts` (classificação por balde, fronteiras 30/60/90, baldes
+  sempre presentes mesmo vazios, share, ordenação intra-balde, média ponderada, pior caso, atraso
+  nunca negativo).
+- **Alternativas consideradas:** (a) datar o atraso pela data de vencimento de uma transação
+  pendente em vez da data do show — descartado: o caso central é o cachê **sem** receita lançada
+  (`unregistered`), que não tem transação; a data do show é o marco objetivo de quando o dinheiro
+  deveria ter entrado. (b) baldes configuráveis pelo usuário — exagero para o MVP; 30/60/90 é a
+  convenção de aging de contas a receber. (c) página dedicada `/shows/a-receber/aging` — preferi
+  integrar na própria lista para manter o fluxo "ver → priorizar → cobrar → quitar" num só lugar.

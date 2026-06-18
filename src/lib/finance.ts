@@ -1096,6 +1096,120 @@ export function reconcileShowFees<S extends ReceivableShowLike>(
   };
 }
 
+// ── Aging dos recebíveis (priorizar a cobrança pela idade do atraso) ────────
+
+export type ReceivableAgeBucketKey = "d30" | "d60" | "d90" | "older";
+
+/** Ordem de exibição dos baldes de aging, do mais recente ao mais antigo. */
+export const RECEIVABLE_AGE_BUCKET_ORDER: ReceivableAgeBucketKey[] = [
+  "d30",
+  "d60",
+  "d90",
+  "older",
+];
+
+export const RECEIVABLE_AGE_BUCKET_LABELS: Record<ReceivableAgeBucketKey, string> = {
+  d30: "Até 30 dias",
+  d60: "31 a 60 dias",
+  d90: "61 a 90 dias",
+  older: "Mais de 90 dias",
+};
+
+export interface AgedReceivableRow<S extends ReceivableShowLike = ReceivableShowLike> {
+  row: ShowReceivableRow<S>;
+  /** Dias decorridos desde a data do show (>= 0). */
+  daysOutstanding: number;
+  bucket: ReceivableAgeBucketKey;
+}
+
+export interface ReceivableAgeBucket<S extends ReceivableShowLike = ReceivableShowLike> {
+  key: ReceivableAgeBucketKey;
+  label: string;
+  /** Recebíveis do balde, do atraso mais longo ao mais curto. */
+  rows: AgedReceivableRow<S>[];
+  count: number;
+  totalOutstanding: number;
+  /** Participação no total a receber (0..1). 0 se o total for 0. */
+  share: number;
+}
+
+export interface ReceivableAging<S extends ReceivableShowLike = ReceivableShowLike> {
+  /** Todos os baldes, sempre na ordem de `RECEIVABLE_AGE_BUCKET_ORDER`. */
+  buckets: ReceivableAgeBucket<S>[];
+  totalOutstanding: number;
+  count: number;
+  /** Maior atraso em dias entre os recebíveis (0 se vazio). */
+  maxDaysOutstanding: number;
+  /** Atraso médio em dias, ponderado pelo valor em aberto (0 se vazio). */
+  weightedAvgDays: number;
+}
+
+/** Classifica um atraso (em dias) num dos baldes de aging. */
+export function receivableAgeBucket(days: number): ReceivableAgeBucketKey {
+  if (days <= 30) return "d30";
+  if (days <= 60) return "d60";
+  if (days <= 90) return "d90";
+  return "older";
+}
+
+/**
+ * Agrupa os cachês a receber (saída de `reconcileShowFees`) por idade do atraso,
+ * medindo os dias decorridos desde a data do show. Responde "qual dinheiro está
+ * encalhando há mais tempo?" — base para priorizar a cobrança.
+ *
+ * - Atraso = dias (UTC, por dia) entre a data do show e `now`, nunca negativo.
+ * - Baldes: até 30 / 31–60 / 61–90 / mais de 90 dias (ver `receivableAgeBucket`).
+ *   Todos os baldes vêm presentes, mesmo vazios, na ordem fixa de exibição.
+ * - Dentro de cada balde, ordena do atraso mais longo ao mais curto (id desempata).
+ * - `weightedAvgDays` pondera o atraso pelo valor em aberto (centavos), destacando
+ *   onde está o dinheiro velho; `maxDaysOutstanding` é o pior caso. `now` injetável.
+ */
+export function bucketReceivablesByAge<S extends ReceivableShowLike>(
+  receivables: ShowReceivables<S>,
+  opts: { now?: Date | string } = {},
+): ReceivableAging<S> {
+  const todayMs = utcMidnight(opts.now ?? new Date());
+
+  const aged: AgedReceivableRow<S>[] = receivables.rows.map((row) => {
+    const days = Math.max(
+      0,
+      Math.round((todayMs - utcMidnight(row.show.date)) / DAY_MS),
+    );
+    return { row, daysOutstanding: days, bucket: receivableAgeBucket(days) };
+  });
+
+  const total = sum(aged.map((a) => a.row.outstanding));
+
+  const buckets: ReceivableAgeBucket<S>[] = RECEIVABLE_AGE_BUCKET_ORDER.map((key) => {
+    const rows = aged
+      .filter((a) => a.bucket === key)
+      .sort(
+        (a, b) =>
+          b.daysOutstanding - a.daysOutstanding ||
+          a.row.show.id.localeCompare(b.row.show.id),
+      );
+    const bucketTotal = sum(rows.map((a) => a.row.outstanding));
+    return {
+      key,
+      label: RECEIVABLE_AGE_BUCKET_LABELS[key],
+      rows,
+      count: rows.length,
+      totalOutstanding: bucketTotal,
+      share: total === 0 ? 0 : bucketTotal / total,
+    };
+  });
+
+  const weightedDays = sum(aged.map((a) => a.daysOutstanding * a.row.outstanding));
+
+  return {
+    buckets,
+    totalOutstanding: total,
+    count: aged.length,
+    maxDaysOutstanding: aged.reduce((m, a) => Math.max(m, a.daysOutstanding), 0),
+    weightedAvgDays: total === 0 ? 0 : Math.round(weightedDays / total),
+  };
+}
+
 /**
  * Decide quanto lançar ao quitar um cachê, dado o valor pedido pelo usuário e o
  * saldo em aberto (recalculado no servidor — a fonte de verdade). Regras:
