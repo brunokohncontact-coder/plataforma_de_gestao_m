@@ -67,9 +67,11 @@ dormentes (já tocaram, sem nada agendado e há >60 dias sem show), ordenados pe
 com atalho de contato (mailto/tel) — follow-up de prospecção (ver D21). **263 testes** verdes.
 Sessão 31 entregou a **receita agendada** (`/shows/receita-agendada`): projeta os cachês dos
 shows futuros (não cancelados) por mês, separando confirmado de a confirmar — pipeline de
-faturamento a partir da agenda (ver D22). **269 testes** verdes.
+faturamento a partir da agenda (ver D22). **269 testes** verdes. Sessão 32 entregou a
+**persistência do último filtro das Finanças** (middleware em `/financas`): salva o recorte
+filtrado num cookie e o restaura ao voltar à página pelo menu (ver D23). **282 testes** verdes.
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias) ou evoluções
-de filtros (persistir o último filtro usado).
+de filtros (persistir filtro também na lista de Shows/Contatos).
 
 ## Modelo de branches (a partir de 2026-06-16)
 O repositório tem um tronco **`main`** (ver DECISIONS.md D7), já definido como **default
@@ -738,6 +740,32 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   verificado ao vivo com `next start`). `npm audit` inalterado (10 advisories: 4 moderate / 5 high
   / 1 critical; nenhuma dependência nova — ver D6/D8).
 
+### Sessão 32 — 2026-06-18 (Fase 1 — persistir o último filtro das Finanças)
+- **Lógica pura** (`src/lib/financasFilter.ts`): `decideFinancasFilter(searchParams, cookie)` →
+  `{ kind }` de quatro casos (`reset` | `persist` | `restore` | `pass`), com helpers
+  `canonicalFilterQuery` (serializa só as chaves de filtro conhecidas e não-vazias, em ordem
+  estável — descarta `reset`/lixo) e `hasAnyFilterParam`. Constantes `FINANCAS_FILTER_COOKIE`
+  e `FINANCAS_FILTER_KEYS` (`q/mes/tipo/categoria/show/status/de/ate`). Regras: `?reset=1` →
+  esquece; URL com qualquer chave de filtro → persiste o recorte canônico (ou apaga se vazio);
+  visita "limpa" (sem chaves) com cookie salvo → restaura. Testes em
+  `src/lib/financasFilter.test.ts` (+13 → **282 no projeto**, eram 269): canonização/ordem/trim,
+  prioridade do reset, persist com recorte vazio = apagar, restore + sanitização do cookie,
+  ausência de loop (a URL restaurada já tem chaves → vira persist).
+- **Middleware** (`src/middleware.ts`, `matcher: ["/financas"]`): traduz a decisão pura em
+  resposta HTTP. Persiste com `Set-Cookie` httpOnly/SameSite=Lax/180d; **set e delete usam
+  `Path=/`** para casar (o `cookies.delete` do Next sempre emite `Path=/`; o cookie só é lido
+  em `/financas`, então o escopo amplo é inócuo — ver D23). Cookies não podem ser gravados no
+  render de um Server Component, daí o middleware.
+- **UI** (`src/app/(app)/financas/page.tsx`): os dois links **Limpar** apontam para
+  `/financas?reset=1` (antes `/financas`, que com o cookie salvo voltaria a restaurar). O link
+  "Finanças" do menu agora reabre a página já com o último filtro aplicado.
+- Definition of Done verde: build (23 rotas + **Middleware** 26.8 kB), typecheck (`tsc --noEmit`)
+  limpo, lint (0), **282 testes**, smoke test ao vivo (`next start`) dos 4 caminhos do middleware
+  via `curl -i`: persist (Set-Cookie canônico, `q=` vazio descartado, Path=/), restore (307 →
+  `/financas?q=...&mes=...`), reset (307 → `/financas` + cookie expirado Path=/), visita limpa
+  sem cookie (passa direto, auth 307 → /login). `npm audit` inalterado (10 advisories: 4 moderate
+  / 5 high / 1 critical; nenhuma dependência nova — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)
@@ -745,7 +773,9 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    (visão semanal entregue na Sessão 19 — `/shows/semana`; link do dashboard para a agenda na
    Sessão 19; clicar num dia para criar show com a data na Sessão 13; exportação iCalendar
    `.ics` na Sessão 15 — base em `src/lib/calendar.ts` e `src/lib/ics.ts`.)
-3. **Filtros — evoluções**: persistir o último filtro usado (ex.: cookie/localStorage).
+3. **Filtros — evoluções**: persistência do último filtro das Finanças entregue na Sessão 32
+   (cookie via middleware, ver D23). Próximo: persistir filtro também nas listas de Shows e
+   Contatos (reaproveitar o padrão de `src/lib/financasFilter.ts` + middleware).
    (filtro por categoria entregue na Sessão 10; intervalo de datas na Sessão 12;
    exportação CSV do recorte filtrado na Sessão 14; busca textual na Sessão 17;
    base em `src/lib/finance.ts`.)
