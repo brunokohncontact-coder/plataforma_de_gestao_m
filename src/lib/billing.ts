@@ -63,6 +63,27 @@ function hasChannel(c: BillingContactLike): boolean {
   return Boolean((c.email && c.email.trim()) || (c.phone && c.phone.trim()));
 }
 
+// Ordem de prioridade de cobrança: papel, depois nome (pt-BR) e id (estável).
+function compareBillingContacts(a: BillingContactLike, b: BillingContactLike): number {
+  return (
+    roleRank(a.role) - roleRank(b.role) ||
+    a.name.localeCompare(b.name, "pt-BR") ||
+    a.id.localeCompare(b.id)
+  );
+}
+
+/**
+ * Lista os contatos alcançáveis (com e-mail ou telefone) vinculados ao show, em
+ * ordem de prioridade de cobrança (contratante/promoter antes da casa; desempate
+ * por nome/id). O primeiro é a escolha automática; os demais ficam disponíveis para
+ * o usuário escolher manualmente quem cobrar.
+ */
+export function reachableBillingContacts(
+  contacts: BillingContactLike[],
+): BillingContactLike[] {
+  return contacts.filter(hasChannel).sort(compareBillingContacts);
+}
+
 /**
  * Escolhe o melhor contato para cobrar entre os vinculados ao show: só os que têm
  * algum canal (e-mail ou telefone); prioriza pelo papel (contratante/promoter antes
@@ -72,14 +93,7 @@ function hasChannel(c: BillingContactLike): boolean {
 export function pickBillingContact(
   contacts: BillingContactLike[],
 ): BillingContactLike | null {
-  const reachable = contacts.filter(hasChannel);
-  if (reachable.length === 0) return null;
-  return [...reachable].sort(
-    (a, b) =>
-      roleRank(a.role) - roleRank(b.role) ||
-      a.name.localeCompare(b.name, "pt-BR") ||
-      a.id.localeCompare(b.id),
-  )[0];
+  return reachableBillingContacts(contacts)[0] ?? null;
 }
 
 /** "YYYY-MM-DD"/Date → "DD/MM/AAAA" em UTC (sem depender de locale/timezone). */
@@ -182,24 +196,16 @@ export function buildWhatsappUrl(
   return `https://wa.me/${normalized}?text=${encodeURIComponent(text)}`;
 }
 
-/**
- * Junta tudo: escolhe o contato a cobrar, redige a mensagem e monta os atalhos
- * mailto/WhatsApp prontos para a UI. `null` quando o show não tem nenhum contato
- * alcançável vinculado (a UI então sugere vincular um contato).
- */
-export function buildShowBilling(
+// Redige a cobrança e monta os atalhos para UM contato (já sabido alcançável).
+function billingFor(
   show: BillingShowInfo,
-  contacts: BillingContactLike[],
-  opts: { fromName?: string | null } = {},
-): ShowBilling | null {
-  const contact = pickBillingContact(contacts);
-  if (!contact) return null;
-
+  contact: BillingContactLike,
+  fromName?: string | null,
+): ShowBilling {
   const { subject, body } = buildDunningMessage(show, {
     contactName: contact.name,
-    fromName: opts.fromName,
+    fromName,
   });
-
   return {
     contact,
     subject,
@@ -208,4 +214,33 @@ export function buildShowBilling(
     // O WhatsApp não usa assunto; manda só o corpo da mensagem.
     whatsappUrl: buildWhatsappUrl(contact.phone, body),
   };
+}
+
+/**
+ * Monta a cobrança para TODOS os contatos alcançáveis do show, em ordem de
+ * prioridade (o primeiro é a escolha automática — ver `reachableBillingContacts`).
+ * Permite à UI oferecer um seletor de "quem cobrar" sem recalcular nada no cliente.
+ * Lista vazia quando o show não tem nenhum contato alcançável vinculado.
+ */
+export function buildShowBillings(
+  show: BillingShowInfo,
+  contacts: BillingContactLike[],
+  opts: { fromName?: string | null } = {},
+): ShowBilling[] {
+  return reachableBillingContacts(contacts).map((contact) =>
+    billingFor(show, contact, opts.fromName),
+  );
+}
+
+/**
+ * Junta tudo para o contato de maior prioridade: escolhe o contato a cobrar, redige
+ * a mensagem e monta os atalhos mailto/WhatsApp prontos para a UI. `null` quando o
+ * show não tem nenhum contato alcançável vinculado (a UI então sugere vincular um).
+ */
+export function buildShowBilling(
+  show: BillingShowInfo,
+  contacts: BillingContactLike[],
+  opts: { fromName?: string | null } = {},
+): ShowBilling | null {
+  return buildShowBillings(show, contacts, opts)[0] ?? null;
 }

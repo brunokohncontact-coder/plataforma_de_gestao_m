@@ -621,3 +621,31 @@ contexto, decisão, justificativa e alternativas consideradas.
   no schema — desnecessário: `Transaction.date` já É a data do caixa para receitas recebidas;
   duplicar abriria divergência. (c) parsear a data no fuso local do navegador — descartado: o app
   inteiro keya por UTC (`dayKey`/`monthKey`); misturar fusos quebraria a estabilidade dos relatórios.
+
+## D30 — Seletor de qual contato cobrar em "Cachês a receber" (Sessão 39)
+- **Contexto:** desde a D27 (Sessão 36) os atalhos de cobrança (✉ E-mail / WhatsApp) em
+  `/shows/a-receber` cobram sempre UM contato — o de maior prioridade de papel
+  (`pickBillingContact`: BOOKER→PROMOTER→VENUE→…). Mas um show pode ter vários contatos
+  alcançáveis vinculados (ex.: contratante E casa), e nem sempre quem paga é o do papel mais
+  alto. O usuário não tinha como cobrar outro contato sem sair da página.
+- **Decisão:** a lógica pura de `billing.ts` passou a expor **todos** os contatos alcançáveis,
+  não só o escolhido. Extraído o comparador `compareBillingContacts` (papel→nome pt-BR→id) e a
+  nova `reachableBillingContacts(contacts)` (lista ordenada por prioridade); `pickBillingContact`
+  virou `reachableBillingContacts(...)[0] ?? null` (DRY). Nova `buildShowBillings(show, contacts,
+  opts)` → `ShowBilling[]` (uma cobrança montada por contato alcançável, na mesma ordem; o
+  primeiro é a escolha automática). `buildShowBilling` (singular) preservado como
+  `buildShowBillings(...)[0] ?? null` — API e testes antigos intactos. O novo componente client
+  `src/components/BillingActions.tsx` recebe a lista pronta do servidor e, quando há **mais de um**
+  contato, antepõe um `<select>` "quem cobrar" (escolha automática pré-selecionada); com um só,
+  mostra direto os botões — comportamento idêntico ao anterior. Tudo (assunto/corpo/links) já vem
+  montado do servidor; o cliente só alterna o índice (sem recálculo nem segredo no cliente).
+- **Justificativa:** dá controle ao usuário sobre quem cobrar sem nova dependência, mudança de
+  schema ou server action. A lógica é pura e isolada, coberta por testes (ordem de prioridade,
+  exclusão de não-alcançáveis, lista vazia, mensagem personalizada por contato, equivalência
+  `buildShowBilling` = primeiro de `buildShowBillings`) — **5 testes** novos em `billing.test.ts`
+  (20→25).
+- **Alternativas consideradas:** (a) manter a escolha automática única — descartado: não cobre o
+  caso real de mais de um pagador possível. (b) recalcular a mensagem no cliente ao trocar de
+  contato — desnecessário e arriscado (duplicaria a redação pt-BR); montar tudo no servidor e só
+  alternar é mais simples e determinístico. (c) um seletor de papel/prioridade configurável —
+  exagero para o MVP; a ordem por papel continua sendo o default sensato.

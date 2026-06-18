@@ -2,9 +2,10 @@ import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { reconcileShowFees, dayKey, type ReceivableShowLike, type TxLike } from "@/lib/finance";
-import { buildShowBilling, type ShowBilling } from "@/lib/billing";
+import { buildShowBillings, type ShowBilling } from "@/lib/billing";
 import { formatMoney } from "@/lib/money";
 import { formatDate } from "@/lib/format";
+import { BillingActions } from "@/components/BillingActions";
 import { SettleFeeButton } from "@/components/SettleFeeButton";
 import { settleShowFeeAction } from "../actions";
 
@@ -96,8 +97,8 @@ export default async function ShowReceivablesPage() {
               <tbody className="divide-y divide-gray-100">
                 {result.rows.map((row) => {
                   const show = showById.get(row.show.id);
-                  const billing: ShowBilling | null = show
-                    ? buildShowBilling(
+                  const billings: ShowBilling[] = show
+                    ? buildShowBillings(
                         {
                           title: show.title,
                           date: row.show.date,
@@ -108,7 +109,7 @@ export default async function ShowReceivablesPage() {
                         show.contacts.map((cs) => cs.contact),
                         { fromName },
                       )
-                    : null;
+                    : [];
                   return (
                     <tr key={row.show.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3">
@@ -145,28 +146,7 @@ export default async function ShowReceivablesPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1.5">
-                          {billing?.mailtoUrl && (
-                            <a
-                              href={billing.mailtoUrl}
-                              className="btn border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 py-1.5 text-xs"
-                              title={`Cobrar ${billing.contact.name} por e-mail`}
-                              aria-label={`Cobrar ${billing.contact.name} por e-mail`}
-                            >
-                              ✉ E-mail
-                            </a>
-                          )}
-                          {billing?.whatsappUrl && (
-                            <a
-                              href={billing.whatsappUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="btn border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 py-1.5 text-xs"
-                              title={`Cobrar ${billing.contact.name} pelo WhatsApp`}
-                              aria-label={`Cobrar ${billing.contact.name} pelo WhatsApp`}
-                            >
-                              WhatsApp
-                            </a>
-                          )}
+                          <BillingActions billings={billings} />
                           <SettleFeeButton
                             action={settleShowFeeAction}
                             id={row.show.id}
@@ -205,7 +185,9 @@ export default async function ShowReceivablesPage() {
             recebimento (o caixa entra no mês dessa data). Receitas pendentes (ainda não
             recebidas) não abatem o saldo. <strong>✉ E-mail</strong> / <strong>WhatsApp</strong>
             abrem uma mensagem de cobrança pronta para o contato do show (aparecem quando há
-            um contato vinculado com e-mail/telefone).
+            um contato vinculado com e-mail/telefone). Quando o show tem mais de um contato
+            alcançável, escolha no seletor <strong>quem cobrar</strong> antes de abrir a
+            mensagem.
           </p>
         </>
       )}
