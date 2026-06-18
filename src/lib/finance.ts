@@ -1117,6 +1117,30 @@ export function resolveSettlementAmount(
   return Math.min(Math.round(requested), outstanding);
 }
 
+/**
+ * Decide a DATA de recebimento ao quitar um cachê. `raw` é uma string de dia
+ * "YYYY-MM-DD" (vinda de um `<input type="date">`); `now` é o momento da ação.
+ *
+ * Essa data determina em que mês o caixa entra (alimenta `monthKey`, a projeção de
+ * caixa, o relatório mensal e o resumo anual), então registrar a data real importa:
+ * o músico pode lançar hoje um cachê que de fato recebeu semana passada.
+ *
+ * Regras: vazio/ inválido → `now` (comportamento histórico, antes da D29); data
+ * válida no passado/hoje → meia-noite UTC daquele dia (consistente com `dayKey`/
+ * `monthKey`, que keyam por UTC); data no futuro → `now` (não se recebe dinheiro no
+ * futuro — manter a projeção de caixa sã). Nunca confia no cliente: o clamp é aqui.
+ */
+export function resolveReceivedDate(
+  raw: string | null | undefined,
+  now: Date = new Date(),
+): Date {
+  if (!isValidDateKey(raw)) return now;
+  const [y, m, d] = raw.trim().split("-").map(Number);
+  const parsed = new Date(Date.UTC(y, m - 1, d));
+  const nowDay = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return parsed.getTime() > nowDay ? now : parsed;
+}
+
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 function sum(nums: number[]): number {

@@ -15,15 +15,22 @@ type SettleAction = (formData: FormData) => void | Promise<void>;
  *
  * `outstanding` é o saldo em centavos; vira a sugestão padrão do campo. Lançar o
  * valor inteiro quita o cachê; lançar menos deixa o restante na lista.
+ *
+ * `today` é o dia atual ("YYYY-MM-DD", calculado no servidor para evitar mismatch
+ * de hidratação): preenche e limita (`max`) o campo de data do recebimento, que
+ * permite registrar a data REAL em que o cachê entrou — não necessariamente hoje
+ * (ver D29). O servidor revalida e nunca aceita data futura.
  */
 export function SettleFeeButton({
   action,
   id,
   outstanding,
+  today,
 }: {
   action: SettleAction;
   id: string;
   outstanding: number;
+  today: string;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -59,6 +66,18 @@ export function SettleFeeButton({
         defaultValue={String(outstanding)}
         className="input w-24 py-1.5 text-right text-xs"
         required
+      />
+      <label htmlFor={`settle-date-${id}`} className="sr-only">
+        Data do recebimento
+      </label>
+      <input
+        type="date"
+        id={`settle-date-${id}`}
+        name="receivedAt"
+        defaultValue={today}
+        max={today}
+        className="input w-36 py-1.5 text-xs"
+        title="Data em que o cachê foi recebido"
       />
       <SubmitButton
         className="btn bg-emerald-600 text-white hover:bg-emerald-500 py-1.5 text-xs"

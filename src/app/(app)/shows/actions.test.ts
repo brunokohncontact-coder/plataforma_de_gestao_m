@@ -285,6 +285,41 @@ describe("settleShowFeeAction — quita o cachê em aberto", () => {
     expect(txs).toHaveLength(1);
     expect(txs[0].amount).toBe(50000);
   });
+
+  it("registra a data REAL do recebimento quando `receivedAt` é informada", async () => {
+    const owner = await createUser("owner@example.com");
+    const show = await createShow(owner.id, { fee: 50000, status: "PLAYED" });
+
+    h.currentUser = owner;
+    const fd = new FormData();
+    fd.set("id", show.id);
+    fd.set("receivedAt", "2026-05-10"); // recebido num mês anterior
+
+    await settleShowFeeAction(fd);
+
+    const txs = await prisma.transaction.findMany({ where: { showId: show.id } });
+    expect(txs).toHaveLength(1);
+    expect(txs[0].date.toISOString()).toBe("2026-05-10T00:00:00.000Z");
+  });
+
+  it("ignora `receivedAt` no futuro/ inválida e cai para o momento atual", async () => {
+    const owner = await createUser("owner@example.com");
+    const show = await createShow(owner.id, { fee: 50000, status: "PLAYED" });
+
+    h.currentUser = owner;
+    const before = Date.now();
+    const fd = new FormData();
+    fd.set("id", show.id);
+    fd.set("receivedAt", "2999-01-01"); // futuro → agora
+    await settleShowFeeAction(fd);
+    const after = Date.now();
+
+    const txs = await prisma.transaction.findMany({ where: { showId: show.id } });
+    expect(txs).toHaveLength(1);
+    const t = txs[0].date.getTime();
+    expect(t).toBeGreaterThanOrEqual(before);
+    expect(t).toBeLessThanOrEqual(after);
+  });
 });
 
 describe("linkContactToShowAction — posse cruzada", () => {
