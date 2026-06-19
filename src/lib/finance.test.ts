@@ -38,6 +38,8 @@ import {
   averageSummaries,
   recurringExpenses,
   computeBreakEven,
+  taxReserve,
+  DEFAULT_TAX_RATE,
   type TxLike,
   type ShowLike,
   type VenueShowLike,
@@ -1803,5 +1805,72 @@ describe("computeBreakEven", () => {
     expect(r.showsNeeded).toBe(1);
     expect(r.avgShowsPerMonth).toBe(2);
     expect(r.covered).toBe(true);
+  });
+});
+
+describe("taxReserve", () => {
+  it("usa a alíquota padrão quando nenhuma é informada", () => {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 1000_00, received: true, date: "2026-03-10T00:00:00.000Z" }),
+    ];
+    const r = taxReserve(txs, { year: 2026 });
+    expect(r.rate).toBe(DEFAULT_TAX_RATE);
+    expect(r.totalReceivedIncome).toBe(1000_00);
+    // 6% de 1000,00 = 60,00
+    expect(r.totalReserve).toBe(60_00);
+    expect(r.months[2].monthIndex).toBe(3);
+    expect(r.months[2].receivedIncome).toBe(1000_00);
+    expect(r.months[2].reserve).toBe(60_00);
+  });
+
+  it("considera apenas receitas recebidas (ignora despesas e pendências)", () => {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 500_00, received: true, date: "2026-05-01T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 999_00, received: false, date: "2026-05-02T00:00:00.000Z" }), // a receber
+      tx({ type: "EXPENSE", amount: 800_00, received: true, date: "2026-05-03T00:00:00.000Z" }),
+    ];
+    const r = taxReserve(txs, { year: 2026, rate: 0.1 });
+    expect(r.totalReceivedIncome).toBe(500_00);
+    expect(r.totalReserve).toBe(50_00); // 10% de 500
+  });
+
+  it("filtra pelo ano informado (UTC)", () => {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 100_00, received: true, date: "2025-12-31T12:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 200_00, received: true, date: "2026-01-01T12:00:00.000Z" }),
+    ];
+    const r = taxReserve(txs, { year: 2026, rate: 0.06 });
+    expect(r.totalReceivedIncome).toBe(200_00);
+    expect(r.months[0].monthIndex).toBe(1);
+    expect(r.months[0].receivedIncome).toBe(200_00);
+  });
+
+  it("retorna 12 meses zerados quando não há receita no ano", () => {
+    const r = taxReserve([], { year: 2026 });
+    expect(r.months).toHaveLength(12);
+    expect(r.totalReceivedIncome).toBe(0);
+    expect(r.totalReserve).toBe(0);
+    expect(r.months.every((m) => m.reserve === 0)).toBe(true);
+  });
+
+  it("arredonda a reserva de cada mês ao centavo (soma das mensais)", () => {
+    // 333,33 a 6% = 19,9998 → arredonda para 20,00 por mês.
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 333_33, received: true, date: "2026-01-10T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 333_33, received: true, date: "2026-02-10T00:00:00.000Z" }),
+    ];
+    const r = taxReserve(txs, { year: 2026, rate: 0.06 });
+    expect(r.months[0].reserve).toBe(20_00);
+    expect(r.months[1].reserve).toBe(20_00);
+    expect(r.totalReserve).toBe(40_00);
+  });
+
+  it("saneia a alíquota para o intervalo [0, 1]", () => {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 100_00, received: true, date: "2026-04-10T00:00:00.000Z" }),
+    ];
+    expect(taxReserve(txs, { year: 2026, rate: 5 }).rate).toBe(1);
+    expect(taxReserve(txs, { year: 2026, rate: -1 }).rate).toBe(0);
+    expect(taxReserve(txs, { year: 2026, rate: NaN }).rate).toBe(DEFAULT_TAX_RATE);
   });
 });

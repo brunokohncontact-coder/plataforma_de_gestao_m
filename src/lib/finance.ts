@@ -1774,6 +1774,89 @@ export function computeBreakEven(
   };
 }
 
+// ── Reserva para impostos (guardar parte do que entra) ──────────────────────
+
+/**
+ * Alíquota padrão para a reserva de impostos (6%).
+ *
+ * HIPÓTESE a validar: aproxima a faixa inicial do Simples Nacional (Anexo III) e dá
+ * uma ordem de grandeza segura para o autônomo guardar sobre o faturamento. O regime
+ * real (MEI/Simples/carnê-leão) varia muito por perfil — a página permite ajustar a
+ * alíquota e isto deve ser confirmado com um contador antes de virar premissa fixa.
+ */
+export const DEFAULT_TAX_RATE = 0.06;
+
+export interface TaxReserveMonth {
+  /** Chave "YYYY-MM". */
+  month: string;
+  /** Mês 1-12 (janeiro = 1). */
+  monthIndex: number;
+  /** Receita efetivamente recebida no mês (caixa de entrada), em centavos. */
+  receivedIncome: number;
+  /** Reserva sugerida = round(receivedIncome × rate), em centavos. */
+  reserve: number;
+}
+
+export interface TaxReserveReport {
+  /** Ano de referência. */
+  year: number;
+  /** Alíquota efetiva aplicada (0..1), após saneamento. */
+  rate: number;
+  /** Exatamente 12 meses (janeiro→dezembro), zeros inclusive. */
+  months: TaxReserveMonth[];
+  /** Soma da receita recebida no ano (centavos). */
+  totalReceivedIncome: number;
+  /** Soma da reserva sugerida no ano (centavos). */
+  totalReserve: number;
+}
+
+/**
+ * Sugere quanto guardar para impostos a partir do que de fato entrou no caixa.
+ *
+ * Base = receitas **recebidas** (`type === "INCOME"` e `received === true`) cujo mês
+ * (UTC) cai no `year` — imposto incide sobre faturamento realizado, não sobre o que
+ * ainda está a receber nem sobre o regime de competência. A reserva de cada mês é
+ * arredondada ao centavo antes de somar (o total é a soma das reservas mensais, não
+ * a reserva do total — diferença de no máximo alguns centavos, coerente com a UI).
+ *
+ * `rate` é saneada para o intervalo [0, 1]; ausente → `DEFAULT_TAX_RATE`. Pura.
+ */
+export function taxReserve(
+  txs: TxLike[],
+  options: { year: number; rate?: number },
+): TaxReserveReport {
+  const { year } = options;
+  const rawRate = options.rate ?? DEFAULT_TAX_RATE;
+  const rate = Number.isFinite(rawRate) ? Math.min(1, Math.max(0, rawRate)) : DEFAULT_TAX_RATE;
+
+  const prefix = `${year}-`;
+  const received = new Array(12).fill(0);
+
+  for (const t of txs) {
+    if (t.type !== "INCOME" || !t.received) continue;
+    const key = monthKey(t.date);
+    if (!key.startsWith(prefix)) continue;
+    const idx = Number(key.slice(5, 7)) - 1;
+    if (idx < 0 || idx > 11) continue;
+    received[idx] += t.amount;
+  }
+
+  const months: TaxReserveMonth[] = received.map((inc, i) => ({
+    month: `${year}-${String(i + 1).padStart(2, "0")}`,
+    monthIndex: i + 1,
+    receivedIncome: inc,
+    reserve: Math.round(inc * rate),
+  }));
+
+  return {
+    year,
+    rate,
+    months,
+    totalReceivedIncome: sum(received),
+    totalReserve: sum(months.map((m) => m.reserve)),
+  };
+}
+
 /** Sequência de `count` meses "YYYY-MM" a partir de `startKey` (inclusive), em UTC. */
 function sequentialMonths(startKey: string, count: number): string[] {
   const [y, m] = startKey.split("-").map(Number);

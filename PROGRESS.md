@@ -164,6 +164,13 @@ shows por mês preciso fazer só para cobrir os custos fixos?" — `showsNeeded 
 mais o ritmo atual (`avgShowsPerMonth`) e o selo verde/âmbar `covered`. A página mostra a meta em
 destaque + os três números por trás; link na barra de Finanças quando há despesas (ver D40).
 **401 testes** verdes (medição real `vitest run`; eram 394 na main).
+Sessão 50 entregou a **reserva para impostos** (`/financas/reserva-impostos`): a função pura
+`taxReserve(txs, { year, rate })` (em `src/lib/finance.ts`) aplica uma alíquota sobre as receitas
+**efetivamente recebidas** (caixa de entrada) do ano e responde "quanto devo guardar de cada cachê
+para o imposto?" — mês a mês + total do ano, com seletor de alíquota (atalhos 6/11/15/27,5%, query
+`?aliquota=`), navegação por ano e aviso de que a alíquota padrão (6%) é hipótese a confirmar com
+contador; link na barra de Finanças quando há receitas (ver D41). **407 testes** verdes (medição
+real `vitest run`; eram 401 na main).
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias, estados de erro
 inline dos server actions) ou evoluções de calendário (arrastar/soltar para remarcar).
 
@@ -1147,6 +1154,9 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)
   precisam de 5–10 entrevistas com músicos reais antes de investimento pesado.
+- **Reserva para impostos (Sessão 50/D41)**: a alíquota padrão de 6% é **hipótese** (faixa inicial do
+  Simples Nacional). O regime real do músico (MEI/Simples/carnê-leão) varia muito — confirmar com
+  contador a alíquota e o modelo (faturamento bruto vs. lucro/progressivo) antes de virar premissa fixa.
 - Foco **português/LATAM** e faixas de preço (`business-plan.md`) são hipóteses — validar.
 - **Segurança em produção**: definir `AUTH_SECRET` forte e migrar para PostgreSQL antes
   de qualquer deploy real. Revisar advisories do Next (D6) e planejar upgrade p/ Next 15+.
