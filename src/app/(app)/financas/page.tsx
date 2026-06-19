@@ -124,6 +124,11 @@ export default async function FinancesPage({
               Sazonalidade
             </Link>
           )}
+          {transactions.some((t) => t.type === "EXPENSE") && (
+            <Link href="/financas/custos-fixos" className="btn-secondary">
+              Custos fixos
+            </Link>
+          )}
           {transactions.length > 0 && (
             <Link href="/financas/relatorio" className="btn-secondary">
               Relatório

@@ -871,3 +871,46 @@ contexto, decisão, justificativa e alternativas consideradas.
   visão se houver demanda; (b) reaproveitar `/financas/export?mes=` doze vezes — descartado: não dá
   a consolidação anual numa planilha única, que é o ponto; (c) gerar XLSX em vez de CSV — fora do
   escopo (exigiria dependência nova); CSV com BOM já abre no Excel/Sheets pt-BR.
+
+## D39 — Custos fixos recorrentes / custo fixo mensal estimado (Sessão 48)
+- **Contexto:** as Finanças tinham muitas visões de receita e de resultado (resumo anual,
+  sazonalidade, relatório mensal, projeção de caixa, rentabilidade), mas nenhuma respondia à
+  pergunta de sobrevivência do freelancer: "qual é meu custo fixo mensal — quanto preciso faturar
+  TODO mês só para manter as luzes acesas?". As despesas existem soltas; o que faltava era separar
+  o **recorrente** (sala de ensaio, streaming, telefone, software) do **pontual** (um conserto, um
+  equipamento) e estimar o piso mensal. `categoryReport`/`monthlySeasonality` agregam valores, mas
+  nenhuma detecta **recorrência** (em quantos meses distintos a categoria reaparece).
+- **Decisão:** função pura `recurringExpenses(txs, options)` em `src/lib/finance.ts`, que agrupa as
+  despesas por categoria e marca como recorrente toda categoria presente em ≥ `minMonths` meses
+  distintos (default 3). Por categoria expõe: total, meses-ativos, janela (`monthsSpan` = meses
+  entre 1ª e última ocorrência), conta típica (`avgPerActiveMonth` = total / meses-ativos,
+  arredondada), `regularity` (meses-ativos / janela, 0..1), `lastMonth` e `active`. O
+  **`estimatedMonthlyFixedCost`** soma a conta típica apenas das categorias AINDA ATIVAS. Nova
+  página `/financas/custos-fixos` (card do custo estimado + tabela de categorias com barras), com
+  link na barra de ações de `/financas` quando há despesas.
+- **Recorrência = nº de MESES DISTINTOS, não de lançamentos:** dois lançamentos no mesmo mês não
+  fazem um custo fixo; três meses diferentes sim. `minMonths = 3` evita falso positivo de uma
+  despesa esporádica que por acaso caiu duas vezes seguidas.
+- **Conta típica = total / meses-ativos (não / janela):** mede "quanto custa quando cai", sem
+  diluir por meses em que a despesa não ocorreu — mesmo princípio de denominador-ativo da média
+  móvel (D35) e da sazonalidade (D37). A `regularity` separada informa o quão constante ela é
+  dentro da janela (1 = todo mês).
+- **Custo estimado só conta o que ainda está ativo:** `active` = última ocorrência dentro dos
+  últimos `activeWithinMonths` meses (default 2). Assim um custo que você já cortou (ex.: assinatura
+  cancelada há meses) continua listado para histórico, mas **não infla** o piso mensal. A página
+  marca as encerradas com selo e as exclui do total.
+- **Sem schema, sem dependência, sem server action:** leitura/derivação sobre as transações de
+  despesa já filtradas no banco (`where type EXPENSE`); reaproveita `monthKey` (UTC). Categoria
+  vazia → "Sem categoria".
+- **Testes:** 11 testes unitários novos (`recurringExpenses`: vazio; ignora receitas; limiar de
+  `minMonths`; `monthsObserved`; arredondamento da conta típica; `regularity` com gap; custo
+  estimado exclui categorias encerradas; ordenação por conta típica desc; "Sem categoria").
+  Total do projeto 385→396.
+- **Alternativas consideradas:** (a) detectar recorrência por descrição/valor exato (assinaturas
+  idênticas) — mais preciso para casos limpos, mas frágil com valores que variam (conta de luz) e
+  exige texto livre nem sempre preenchido; categoria é o eixo já estruturado e estável; (b) usar a
+  média de TODAS as despesas mensais como "custo fixo" — descartado: misturaria custo variável de
+  show (transporte, cachê de banda) com o fixo, inflando o piso; (c) persistir custos fixos
+  declarados pelo usuário (um cadastro) — mais exato, porém pede schema/UI nova e disciplina de
+  cadastro; a detecção automática entrega valor imediato sobre os dados que já existem. Pode evoluir
+  para um modo declarado depois se houver demanda.

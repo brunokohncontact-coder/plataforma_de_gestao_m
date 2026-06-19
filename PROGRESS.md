@@ -145,6 +145,18 @@ Sessão 46 entregou a **sazonalidade das Finanças** (`/financas/sazonalidade`):
 e a tabela com barras (mesmo padrão do Resumo anual), respondendo "qual época do ano costuma render
 mais?" para planejar o ano. Denominador = anos com movimento naquele mês (não a amplitude do
 histórico), coerente com a média móvel (D35); link na barra de Finanças (ver D37). **381 testes** verdes.
+Sessão 47 entregou a **exportação CSV do Resumo anual** (`/financas/anual/export?ano=YYYY`): a função
+pura `annualSummaryToCsv(summary)` (em `src/lib/csv.ts`) serializa um `AnnualSummary` já computado
+(cabeçalho + 12 meses + total do ano) e um route handler espelha o de `/financas/export`, devolvendo
+CSV com BOM UTF-8; botão "⬇ CSV" no resumo anual. `MONTH_NAMES_LONG` virou export de `calendar.ts`
+(fonte única dos nomes pt-BR). **385 testes** verdes (ver D38).
+Sessão 48 entregou os **custos fixos recorrentes** (`/financas/custos-fixos`): a função pura
+`recurringExpenses(txs, options)` (em `src/lib/finance.ts`) agrupa as despesas por categoria, marca
+como recorrente a que aparece em ≥3 meses distintos e calcula a **conta típica/mês** (total /
+meses-ativos) e o **custo fixo mensal estimado** (soma das contas típicas das categorias ainda
+ativas) — respondendo "quanto preciso faturar todo mês só para me manter?". A página mostra o custo
+estimado em destaque + tabela de categorias com barras (encerradas marcadas e fora do total); link na
+barra de Finanças quando há despesas (ver D39). **396 testes** verdes.
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias, estados de erro
 inline dos server actions) ou evoluções de calendário (arrastar/soltar para remarcar).
 
