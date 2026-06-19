@@ -736,3 +736,27 @@ contexto, decisão, justificativa e alternativas consideradas.
   vir depois sobre a mesma `computeDelta`); (b) sparkline/tendência — fora do escopo desta sessão
   (cabe no resumo anual, D16); (c) embutir a cor "bom/ruim" no `direction` da lógica — descartado
   (acoplaria semântica de domínio à função pura).
+
+## D34 — Comparativo ano a ano (YoY) no Resumo anual (Sessão 43)
+- **Contexto:** o Resumo anual (`/financas/anual`, D16) mostrava os 12 meses, totais e melhor/pior
+  mês de um ano isolado. Faltava a pergunta seguinte de planejamento: "estou melhor que no ano
+  passado?". O comparativo mês a mês já existia no Relatório mensal (D33), com a base pura
+  `computeDelta`/`MetricDelta` pronta para reúso em outro nível de agregação.
+- **Decisão:** adicionar a função pura `compareAnnualSummaries(current, previous)` em
+  `src/lib/finance.ts`, que aplica `computeDelta` aos três totais do ano (receitas, despesas,
+  resultado) e a cada mês casado por `monthIndex` ao mesmo mês do ano anterior (`AnnualComparison`
+  + `AnnualMonthComparison`). A página `/financas/anual` computa `annualSummary(allTxs, year-1)`
+  sobre o **mesmo** conjunto já carregado (sem consulta extra ao banco) e renderiza: linha
+  "▲/▼ R$ X (Y%)" sob cada card de total e um selo compacto "▲/▼ Y%" na coluna Resultado do mês a
+  mês (só quando aquele mês teve movimento no ano anterior).
+- **Semântica de cor reaproveitada de D33:** `direction` é só o sinal; a UI decide bom/ruim via
+  `upIsGood` (receitas/resultado subindo = verde; despesas subindo = vermelho). `pct = null` →
+  "novo". O comparativo só aparece quando o ano anterior tem transações (`prevHasActivity`); contra
+  ano vazio seria "novo" em tudo, sem valor.
+- **Sem schema, sem dependência, sem server action:** leitura/derivação sobre dados em memória.
+- **Testes:** 3 testes unitários novos (`compareAnnualSummaries`: totais YoY + pct, casamento por
+  mês com flat em mês sem movimento, base zerada→pct null). Total do projeto 366→369.
+- **Alternativas consideradas:** (a) comparativo de todos os meses lado a lado (tabela 24 colunas) —
+  descartado por poluição visual; o selo por mês + os totais cobrem a leitura rápida; (b) gráfico de
+  duas séries (este ano vs anterior) — fora do escopo desta sessão, cabe sobre a mesma
+  `compareAnnualSummaries` depois.

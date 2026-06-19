@@ -22,6 +22,7 @@ import {
   projectCashflow,
   buildDueAgenda,
   annualSummary,
+  compareAnnualSummaries,
   availableYears,
   forecastBookedRevenue,
   reconcileShowFees,
@@ -844,6 +845,67 @@ describe("annualSummary", () => {
     );
     expect(a.best?.month).toBe("2026-04");
     expect(a.worst?.month).toBe("2026-04");
+  });
+});
+
+describe("compareAnnualSummaries", () => {
+  it("compara os totais do ano frente ao ano anterior", () => {
+    const current = annualSummary(
+      [
+        tx({ type: "INCOME", amount: 300_00, date: "2026-02-10T00:00:00.000Z" }),
+        tx({ type: "EXPENSE", amount: 100_00, date: "2026-05-10T00:00:00.000Z" }),
+      ],
+      2026,
+    );
+    const previous = annualSummary(
+      [
+        tx({ type: "INCOME", amount: 200_00, date: "2025-02-10T00:00:00.000Z" }),
+        tx({ type: "EXPENSE", amount: 50_00, date: "2025-05-10T00:00:00.000Z" }),
+      ],
+      2025,
+    );
+
+    const cmp = compareAnnualSummaries(current, previous);
+    expect(cmp.year).toBe(2026);
+    expect(cmp.previousYear).toBe(2025);
+    expect(cmp.totalIncome.delta).toBe(100_00);
+    expect(cmp.totalIncome.direction).toBe("up");
+    expect(cmp.totalExpense.delta).toBe(50_00);
+    // resultado: (300-100)=200 vs (200-50)=150 → +50
+    expect(cmp.net.delta).toBe(50_00);
+    expect(cmp.net.pct).toBeCloseTo(1 / 3);
+  });
+
+  it("casa cada mês com o mesmo mês do ano anterior", () => {
+    const current = annualSummary(
+      [tx({ type: "INCOME", amount: 90_00, date: "2026-02-10T00:00:00.000Z" })],
+      2026,
+    );
+    const previous = annualSummary(
+      [tx({ type: "INCOME", amount: 60_00, date: "2025-02-10T00:00:00.000Z" })],
+      2025,
+    );
+
+    const cmp = compareAnnualSummaries(current, previous);
+    expect(cmp.months).toHaveLength(12);
+    const fev = cmp.months[1];
+    expect(fev.monthIndex).toBe(2);
+    expect(fev.income.current).toBe(90_00);
+    expect(fev.income.previous).toBe(60_00);
+    expect(fev.income.delta).toBe(30_00);
+    // janeiro sem movimento nos dois anos → flat
+    expect(cmp.months[0].net.direction).toBe("flat");
+  });
+
+  it("usa pct null quando o ano anterior estava zerado", () => {
+    const current = annualSummary(
+      [tx({ type: "INCOME", amount: 100_00, date: "2026-04-10T00:00:00.000Z" })],
+      2026,
+    );
+    const previous = annualSummary([], 2025);
+    const cmp = compareAnnualSummaries(current, previous);
+    expect(cmp.totalIncome.pct).toBeNull();
+    expect(cmp.totalIncome.current).toBe(100_00);
   });
 });
 

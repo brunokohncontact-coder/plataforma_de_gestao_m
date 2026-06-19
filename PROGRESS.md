@@ -118,6 +118,12 @@ variação (absoluta + %, com sentido up/down/flat) das quatro métricas do mês
 anterior, e cada card de número ganha uma linha "▲/▼ R$ X (Y%)" colorida por bom/ruim
 (receita/saldo/caixa subindo = verde; despesa subindo = vermelho), respondendo "estou melhor
 que o mês passado?" (ver D33). **366 testes** verdes.
+Sessão 43 entregou o **comparativo ano a ano (YoY) no Resumo anual** (`/financas/anual`): a função
+pura `compareAnnualSummaries` (em `src/lib/finance.ts`) aplica `computeDelta` aos três totais do ano
+e a cada mês casado por `monthIndex` ao mesmo mês do ano anterior; a página computa o resumo do ano
+anterior sobre o mesmo conjunto já carregado (sem consulta extra) e renderiza a linha "▲/▼ R$ X (Y%)"
+sob cada card de total e um selo compacto "▲/▼ Y%" na coluna Resultado do mês a mês — só quando o ano
+anterior teve movimento (ver D34). **369 testes** verdes.
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias, estados de erro
 inline dos server actions) ou evoluções de calendário (arrastar/soltar para remarcar).
 
