@@ -135,6 +135,11 @@ export default async function FinancesPage({
             </Link>
           )}
           {transactions.some((t) => t.type === "INCOME") && (
+            <Link href="/financas/fontes-de-renda" className="btn-secondary">
+              Fontes de renda
+            </Link>
+          )}
+          {transactions.some((t) => t.type === "INCOME") && (
             <Link href="/financas/reserva-impostos" className="btn-secondary">
               Reserva p/ impostos
             </Link>

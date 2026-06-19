@@ -197,6 +197,17 @@ cobrando mais com o tempo?". É a evolução do **preço** (só `show.fee`), com
 subiu/caiu") e a tabela mês a mês com barras; link "Evolução do cachê" na barra de `/shows`. Sem
 schema, sem dependência, sem server action (ver D44). **420 testes** verdes (medição real `vitest
 run`; eram 413 na main).
+Sessão 54 entregou o **mix de receitas / fontes de renda** (`/financas/fontes-de-renda`): a função
+pura `incomeMix(txs)` (em `src/lib/finance.ts`) agrupa as receitas (`INCOME`) por categoria (= fonte
+de renda) e deriva participação por fonte, concentração nas maiores (`topShare`/`top3Share`), o
+índice **HHI** (Herfindahl–Hirschman), o **número efetivo de fontes** (1/HHI) e um **veredito de
+diversificação** (concentrada/moderada/diversificada) — respondendo "de onde vem minha renda e o
+quanto dependo de uma única fonte?". Considera todas as receitas lançadas (recebidas e a receber);
+categoria em branco → "Sem categoria" (mesma norma de `categoryReport`). A página mostra o veredito,
+cards de destaque (receita total, maior fonte, nº de fontes) e a tabela de composição com barras de
+participação; link "Fontes de renda" na barra de `/financas` quando há receitas. Distinta do ranking
+de contatos (cliente × fonte) e dos relatórios mês a mês. Sem schema, sem dependência, sem server
+action (ver D45). **429 testes** verdes (medição real `vitest run`; eram 420 na main).
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias, estados de erro
 inline dos server actions) ou evoluções de calendário (arrastar/soltar para remarcar).
 
@@ -1174,6 +1185,31 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   tabela Jan/Mar/Jun, o card "Seu cachê médio subiu" e "Comparando Jan 2026 (R$ 800,00) com Jun 2026
   (R$ 1.500,00)" — verificado. `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1
   critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
+
+### Sessão 54 — 2026-06-19 (Fase 1 — mix de receitas / fontes de renda)
+- **Lógica pura** (`src/lib/finance.ts`): nova `incomeMix(txs)` que agrega as transações `INCOME`
+  por categoria (fonte de renda) e retorna `sources[]` (`category`/`amount`/`share`/`count`, ordem
+  decrescente, desempate por nome pt-BR), `total`, `sourceCount`, `top`, `topShare`, `top3Share`,
+  `hhi` (Herfindahl–Hirschman: Σ share²), `effectiveSources` (1/HHI) e `level`
+  (`concentrated`/`moderate`/`diversified`). O veredito vem do helper privado `diversificationLevel`
+  (thresholds: 1 fonte ou HHI ≥ 0,45 → concentrada; HHI ≥ 0,25 → moderada; senão diversificada —
+  marcados como hipótese). Despesas ignoradas; categoria em branco → "Sem categoria" (mesma norma de
+  `categoryReport`); considera receitas recebidas e a receber. **9 testes** novos em `finance.test.ts`
+  (vazio; ignora despesas/agrupa; "Sem categoria"; ordenação+desempate; top3/HHI/efetivas; fonte
+  única→concentrada; dominante→concentrada; distribuída→diversificada; intermediária→moderada). Total
+  do projeto **429** (eram 420). Ver **DECISIONS.md D45**.
+- **Página** (`src/app/(app)/financas/fontes-de-renda/page.tsx`): server component que carrega as
+  transações do usuário, chama `incomeMix` e renderiza o veredito de diversificação (faixa colorida
+  com mensagem por nível), três cards de destaque (receita total, maior fonte com %, nº de fontes +
+  top3) e a tabela de composição por fonte com barra de participação. Estado vazio honesto quando não
+  há receitas. Link **Fontes de renda** na barra de `/financas` quando há receita. Sem schema, sem
+  dependência, sem server action.
+- Definition of Done verde: build (**29 rotas**; nova `/financas/fontes-de-renda`), typecheck
+  (`tsc --noEmit`) limpo, lint (0), **429 testes** (`vitest run`), smoke test ao vivo (`next start`):
+  `/financas/fontes-de-renda` sem sessão → 307, `/login` → 200; **e2e autenticado com cookie de sessão
+  real** (seed demo) → página renderiza "Renda concentrada", a maior fonte "cachê" com 88% e os cards
+  de destaque — verificado. `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical;
+  nenhuma dependência nova nem mudança de schema — ver D6/D8).
 
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),

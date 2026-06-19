@@ -42,6 +42,7 @@ import {
   DEFAULT_TAX_RATE,
   showPipeline,
   feeTrend,
+  incomeMix,
   type TxLike,
   type ShowLike,
   type VenueShowLike,
@@ -342,6 +343,105 @@ describe("totalsByCategory", () => {
     const transporte = result.find((r) => r.category === "transporte")!;
     expect(transporte.expense).toBe(80_00);
     expect(transporte.net).toBe(-80_00);
+  });
+});
+
+describe("incomeMix", () => {
+  it("retorna vazio/zerado quando não há receitas", () => {
+    const result = incomeMix([
+      tx({ type: "EXPENSE", amount: 100_00, category: "transporte" }),
+    ]);
+    expect(result.sources).toEqual([]);
+    expect(result.total).toBe(0);
+    expect(result.sourceCount).toBe(0);
+    expect(result.top).toBeNull();
+    expect(result.topShare).toBe(0);
+    expect(result.top3Share).toBe(0);
+    expect(result.hhi).toBe(0);
+    expect(result.effectiveSources).toBe(0);
+  });
+
+  it("ignora despesas e agrupa receitas por fonte (categoria)", () => {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 600_00, category: "cachê" }),
+      tx({ type: "INCOME", amount: 200_00, category: "cachê" }),
+      tx({ type: "INCOME", amount: 200_00, category: "aulas" }),
+      tx({ type: "EXPENSE", amount: 999_00, category: "cachê" }),
+    ];
+    const result = incomeMix(txs);
+    expect(result.total).toBe(1000_00);
+    expect(result.sourceCount).toBe(2);
+    expect(result.sources[0]).toMatchObject({ category: "cachê", amount: 800_00, count: 2 });
+    expect(result.sources[0].share).toBeCloseTo(0.8, 10);
+    expect(result.sources[1]).toMatchObject({ category: "aulas", amount: 200_00, count: 1 });
+    expect(result.top?.category).toBe("cachê");
+    expect(result.topShare).toBeCloseTo(0.8, 10);
+  });
+
+  it("categoria em branco/ausente cai em 'Sem categoria'", () => {
+    const result = incomeMix([
+      tx({ type: "INCOME", amount: 100_00, category: "   " }),
+    ]);
+    expect(result.sources[0].category).toBe("Sem categoria");
+  });
+
+  it("ordena por valor decrescente, desempatando por nome (pt-BR)", () => {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 100_00, category: "streaming" }),
+      tx({ type: "INCOME", amount: 100_00, category: "aulas" }),
+    ];
+    const result = incomeMix(txs);
+    expect(result.sources.map((s) => s.category)).toEqual(["aulas", "streaming"]);
+  });
+
+  it("calcula top3Share, HHI e nº efetivo de fontes", () => {
+    // 4 fontes de R$ 250 cada = participações iguais de 0,25.
+    const txs: TxLike[] = ["a", "b", "c", "d"].map((c) =>
+      tx({ type: "INCOME", amount: 250_00, category: c }),
+    );
+    const result = incomeMix(txs);
+    expect(result.top3Share).toBeCloseTo(0.75, 10);
+    expect(result.hhi).toBeCloseTo(0.25, 10); // 4 × 0,25²
+    expect(result.effectiveSources).toBeCloseTo(4, 10); // 1 / 0,25
+  });
+
+  it("fonte única → concentrada (HHI = 1)", () => {
+    const result = incomeMix([tx({ type: "INCOME", amount: 500_00, category: "cachê" })]);
+    expect(result.hhi).toBeCloseTo(1, 10);
+    expect(result.effectiveSources).toBeCloseTo(1, 10);
+    expect(result.level).toBe("concentrated");
+  });
+
+  it("uma fonte dominante (≥45% HHI) → concentrada", () => {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 700_00, category: "cachê" }),
+      tx({ type: "INCOME", amount: 200_00, category: "aulas" }),
+      tx({ type: "INCOME", amount: 100_00, category: "merch" }),
+    ];
+    // HHI = 0,7² + 0,2² + 0,1² = 0,54
+    const result = incomeMix(txs);
+    expect(result.hhi).toBeCloseTo(0.54, 10);
+    expect(result.level).toBe("concentrated");
+  });
+
+  it("renda bem distribuída → diversificada", () => {
+    // 5 fontes iguais → HHI = 0,2, abaixo de 0,25.
+    const txs: TxLike[] = ["a", "b", "c", "d", "e"].map((c) =>
+      tx({ type: "INCOME", amount: 100_00, category: c }),
+    );
+    const result = incomeMix(txs);
+    expect(result.hhi).toBeCloseTo(0.2, 10);
+    expect(result.level).toBe("diversified");
+  });
+
+  it("concentração intermediária → moderada", () => {
+    // 3 fontes iguais → HHI ≈ 0,333, entre 0,25 e 0,45.
+    const txs: TxLike[] = ["a", "b", "c"].map((c) =>
+      tx({ type: "INCOME", amount: 100_00, category: c }),
+    );
+    const result = incomeMix(txs);
+    expect(result.hhi).toBeCloseTo(1 / 3, 6);
+    expect(result.level).toBe("moderate");
   });
 });
 
