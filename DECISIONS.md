@@ -982,3 +982,37 @@ contexto, decisão, justificativa e alternativas consideradas.
   para a v1 e evita migração; (b) reserva sobre o lucro (receita − despesa) em vez do faturamento —
   descartado p/ Simples/MEI, que tributam faturamento; fica como modo futuro junto do carnê-leão;
   (c) exportação CSV — adiável, o padrão de `/financas/anual/export` (D38) é reaproveitável depois.
+
+## D42 — Funil de propostas / pipeline de shows (Sessão 51)
+- **Contexto:** as análises de shows até aqui olhavam o que **já aconteceu** (rentabilidade D-,
+  por local, a receber) ou o caixa futuro por mês (receita agendada D22). Faltava a visão de
+  **booking**: quantos shows estão em cada estágio (proposta → confirmado → realizado → cancelado),
+  quanto de cachê está parado em negociação/confirmado e quão bem as propostas viram show de verdade.
+- **Decisão:** função pura `showPipeline(shows)` em `src/lib/finance.ts`, que agrupa os shows pelo
+  `status` em quatro etapas (`PIPELINE_STAGE_ORDER`), somando contagem e cachê por etapa, e deriva:
+  `openValue`/`openCount` (PROPOSED + CONFIRMED — dinheiro ainda não realizado), os recortes de
+  proposto/confirmado/realizado/cancelado, `decidedCount` (PLAYED + CANCELLED) e a
+  `conversionRate = PLAYED / (PLAYED + CANCELLED)`. Nova página `/shows/funil` com cards de destaque,
+  barras por etapa (cor sólida de `SHOW_STATUS_DOT`) e atalhos para a lista filtrada por status
+  (`/shows?status=…`). Link "Funil" na barra de `/shows`.
+- **Snapshot, não fluxo histórico:** os status são o estado **atual** de cada show (um show pode
+  mudar de PROPOSED→CONFIRMED→PLAYED com o tempo), e o schema não registra transições. Por isso a
+  página é explícita ("retrato do estado atual, não histórico de conversão") e a única taxa exposta
+  é a **concretização sobre shows já decididos** (PLAYED vs. CANCELLED) — honesta sem precisar de
+  histórico. Uma taxa proposta→realizado de verdade exigiria log de transições (evolução futura).
+- **`conversionRate` é `null`, não 0, sem shows decididos:** distinguir "ainda não dá para dizer"
+  (nada PLAYED/CANCELLED) de "0% de aproveitamento" — a UI mostra "—" nesse caso. Mesma escolha de
+  `MetricDelta`/comparativos (evitar divisão por zero sinalizando ausência).
+- **Status desconhecido é ignorado** (não entra em `total`): robustez a dados legados/inesperados,
+  espelhando `rankShowsByProfit`/`computeShowPnL`, que toleram o campo opcional `status` de `ShowLike`.
+- **Cachê em aberto exclui realizado e cancelado:** o valor de PLAYED já virou (ou deveria virar)
+  caixa — vive em "a receber" (D25); o de CANCELLED não vai entrar. "Em aberto" = só o que ainda
+  está em jogo (proposto + confirmado), respondendo "quanto tenho na mesa?".
+- **Sem schema/persistência:** tudo deriva dos campos `status` e `fee` já existentes; zero migração.
+- **Testes:** 6 testes unitários novos (`showPipeline`: funil vazio com as 4 etapas; agregação por
+  etapa; valor em aberto; taxa de concretização; `null` sem decididos; ignora status desconhecido).
+  Total do projeto 407→413.
+- **Alternativas consideradas:** (a) registrar transições de status (histórico) para uma taxa de
+  conversão real e tempo médio em cada etapa — adiado, exige schema e captura nas server actions;
+  (b) incluir o funil no Painel — adiável, a página dedicada basta e o dashboard já está denso;
+  (c) exportação CSV do funil — desnecessária para uma visão de contagem/valor agregado.

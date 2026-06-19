@@ -1857,6 +1857,111 @@ export function taxReserve(
   };
 }
 
+// ── Funil de propostas / pipeline de shows ──────────────────────────────────
+// Responde "quantas propostas viram show de verdade?" e "quanto de cachê está
+// em negociação/confirmado (ainda não realizado)?". É um retrato (snapshot) do
+// estado atual de cada show — não um fluxo histórico (um show pode mudar de
+// status com o tempo); a taxa de concretização olha só os shows já decididos.
+
+/** Ordem canônica das etapas do funil (do mais incerto ao terminal). */
+export const PIPELINE_STAGE_ORDER = [
+  "PROPOSED",
+  "CONFIRMED",
+  "PLAYED",
+  "CANCELLED",
+] as const;
+
+export type PipelineStageKey = (typeof PIPELINE_STAGE_ORDER)[number];
+
+export interface PipelineStage {
+  status: PipelineStageKey;
+  count: number;
+  /** Soma dos cachês acordados dos shows nesta etapa (centavos). */
+  fee: number;
+}
+
+export interface ShowPipeline {
+  /** Etapas na ordem canônica (sempre as quatro, mesmo com count 0). */
+  stages: PipelineStage[];
+  /** Total de shows considerados. */
+  total: number;
+  /** Cachê em aberto: PROPOSED + CONFIRMED (dinheiro ainda não realizado). */
+  openValue: number;
+  /** Shows em aberto: PROPOSED + CONFIRMED. */
+  openCount: number;
+  /** Shows propostos (em negociação). */
+  proposedCount: number;
+  /** Cachê dos propostos (em negociação). */
+  proposedValue: number;
+  /** Shows confirmados (fechados, ainda não tocados). */
+  confirmedCount: number;
+  /** Cachê dos confirmados. */
+  confirmedValue: number;
+  /** Shows realizados. */
+  playedCount: number;
+  /** Shows cancelados. */
+  cancelledCount: number;
+  /** Shows já decididos (PLAYED + CANCELLED). */
+  decidedCount: number;
+  /**
+   * Taxa de concretização: PLAYED / (PLAYED + CANCELLED). De tudo que já teve
+   * desfecho, a fração que de fato aconteceu. `null` quando nada foi decidido.
+   */
+  conversionRate: number | null;
+}
+
+/**
+ * Agrega os shows pelo status num funil, somando contagem e cachê por etapa,
+ * o valor em aberto (proposto + confirmado) e a taxa de concretização dos
+ * shows já decididos. Status desconhecido é ignorado (não entra em `total`).
+ */
+export function showPipeline(shows: ShowLike[]): ShowPipeline {
+  const byStatus: Record<PipelineStageKey, { count: number; fee: number }> = {
+    PROPOSED: { count: 0, fee: 0 },
+    CONFIRMED: { count: 0, fee: 0 },
+    PLAYED: { count: 0, fee: 0 },
+    CANCELLED: { count: 0, fee: 0 },
+  };
+
+  for (const s of shows) {
+    const status = s.status as PipelineStageKey | undefined;
+    if (!status || !(status in byStatus)) continue;
+    byStatus[status].count += 1;
+    byStatus[status].fee += s.fee;
+  }
+
+  const stages: PipelineStage[] = PIPELINE_STAGE_ORDER.map((status) => ({
+    status,
+    count: byStatus[status].count,
+    fee: byStatus[status].fee,
+  }));
+
+  const proposedCount = byStatus.PROPOSED.count;
+  const proposedValue = byStatus.PROPOSED.fee;
+  const confirmedCount = byStatus.CONFIRMED.count;
+  const confirmedValue = byStatus.CONFIRMED.fee;
+  const playedCount = byStatus.PLAYED.count;
+  const cancelledCount = byStatus.CANCELLED.count;
+
+  const decidedCount = playedCount + cancelledCount;
+  const conversionRate = decidedCount === 0 ? null : playedCount / decidedCount;
+
+  return {
+    stages,
+    total: stages.reduce((acc, st) => acc + st.count, 0),
+    openValue: proposedValue + confirmedValue,
+    openCount: proposedCount + confirmedCount,
+    proposedCount,
+    proposedValue,
+    confirmedCount,
+    confirmedValue,
+    playedCount,
+    cancelledCount,
+    decidedCount,
+    conversionRate,
+  };
+}
+
 /** Sequência de `count` meses "YYYY-MM" a partir de `startKey` (inclusive), em UTC. */
 function sequentialMonths(startKey: string, count: number): string[] {
   const [y, m] = startKey.split("-").map(Number);
