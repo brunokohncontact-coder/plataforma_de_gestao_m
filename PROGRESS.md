@@ -157,6 +157,13 @@ meses-ativos) e o **custo fixo mensal estimado** (soma das contas típicas das c
 ativas) — respondendo "quanto preciso faturar todo mês só para me manter?". A página mostra o custo
 estimado em destaque + tabela de categorias com barras (encerradas marcadas e fora do total); link na
 barra de Finanças quando há despesas (ver D39). **396 testes** verdes.
+Sessão 49 entregou o **ponto de equilíbrio em shows** (`/financas/ponto-de-equilibrio`): a função pura
+`computeBreakEven(shows, txs)` (em `src/lib/finance.ts`) compõe o custo fixo mensal (D39) com o
+resultado líquido médio dos shows **realizados** (média do `computeShowPnL().net`) e responde "quantos
+shows por mês preciso fazer só para cobrir os custos fixos?" — `showsNeeded = ceil(custoFixo/netMédio)`,
+mais o ritmo atual (`avgShowsPerMonth`) e o selo verde/âmbar `covered`. A página mostra a meta em
+destaque + os três números por trás; link na barra de Finanças quando há despesas (ver D40).
+**401 testes** verdes (medição real `vitest run`; eram 394 na main).
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias, estados de erro
 inline dos server actions) ou evoluções de calendário (arrastar/soltar para remarcar).
 
@@ -1081,6 +1088,33 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   com `Content-Type text/csv`, BOM e `Total do ano (2026);2000,00;750,00;1250,00` — verificado.
   `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência
   nova nem mudança de schema — ver D6/D8).
+
+### Sessão 49 — 2026-06-19 (Fase 1 — ponto de equilíbrio em shows)
+- **Lógica pura** (`src/lib/finance.ts`): nova `computeBreakEven(shows, txs, options)` que compõe
+  o custo fixo mensal (`recurringExpenses(...).estimatedMonthlyFixedCost`, D39) com a média do
+  `computeShowPnL().net` dos shows **realizados** (PLAYED ou CONFIRMED com data passada — mesmo
+  critério de `isHappenedGig`/`reconcileShowFees`). Expõe `monthlyFixedCost`, `avgNetPerShow`,
+  `showsConsidered`, `avgShowsPerMonth` (shows realizados ÷ amplitude em meses), `showsNeeded`
+  (`ceil(custoFixo / netMédio)`, ou `null` quando não há custo fixo ou o net médio ≤ 0) e
+  `covered` (`avgShowsPerMonth >= showsNeeded`). Reaproveita `computeShowPnL`/`recurringExpenses`/
+  `monthsBetween`/`monthKey` (sem duplicar regra). **7 testes** novos em `finance.test.ts` (vazio→
+  nulls; cálculo da meta; desconto de despesa vinculada no P&L; só shows realizados; net médio
+  negativo→null; sem custo fixo→null; `covered` quando o ritmo bate a meta) — total do projeto
+  **401** (eram 394 na main). Ver **DECISIONS.md D40**.
+- **Página** (`src/app/(app)/financas/ponto-de-equilibrio/page.tsx`): server component que carrega
+  transações + shows do usuário, chama `computeBreakEven` e renderiza a meta de shows/mês em
+  destaque, um selo verde/âmbar comparando com o ritmo atual e três cards (custo fixo, resultado
+  médio por show, ritmo). Estados honestos quando `showsNeeded` é `null` (sem custo fixo → aponta
+  para Custos fixos; sem shows realizados ou net médio ≤ 0 → orienta rever cachê/custos). Link
+  **Ponto de equilíbrio** na barra de `/financas` quando há despesas. Sem schema, sem dependência,
+  sem server action.
+- Definition of Done verde: build (**27 rotas**; nova `/financas/ponto-de-equilibrio`), typecheck
+  (`tsc --noEmit`) limpo, lint (0), **401 testes** (`vitest run`), smoke test ao vivo (`next start`):
+  `/financas/ponto-de-equilibrio` sem sessão → 307, `/login` → 200; **e2e autenticado com cookie de
+  sessão real** (seed demo + custos recorrentes de "Sala de ensaio" e 2 shows PLAYED inseridos) →
+  página renderiza "1 show/mês" de meta, ritmo "1,5 shows/mês" e o selo verde "já cobre o custo
+  fixo" — verificado. `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical;
+  nenhuma dependência nova nem mudança de schema — ver D6/D8).
 
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),

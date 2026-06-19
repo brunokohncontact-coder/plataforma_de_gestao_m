@@ -129,6 +129,11 @@ export default async function FinancesPage({
               Custos fixos
             </Link>
           )}
+          {transactions.some((t) => t.type === "EXPENSE") && (
+            <Link href="/financas/ponto-de-equilibrio" className="btn-secondary">
+              Ponto de equilíbrio
+            </Link>
+          )}
           {transactions.length > 0 && (
             <Link href="/financas/relatorio" className="btn-secondary">
               Relatório
