@@ -7,6 +7,7 @@ import {
   totalsByCategory,
   categoryReport,
   totalsByMonth,
+  monthlySeasonality,
   monthKey,
   dayKey,
   filterTransactions,
@@ -348,6 +349,78 @@ describe("totalsByMonth", () => {
     expect(result.map((r) => r.month)).toEqual(["2026-01", "2026-02"]);
     expect(result[0]).toMatchObject({ month: "2026-01", income: 200_00, net: 200_00 });
     expect(result[1]).toMatchObject({ month: "2026-02", income: 100_00, expense: 40_00, net: 60_00 });
+  });
+});
+
+describe("monthlySeasonality", () => {
+  it("retorna 12 meses zerados e sem melhor/pior quando não há transações", () => {
+    const r = monthlySeasonality([]);
+    expect(r.months).toHaveLength(12);
+    expect(r.months.map((m) => m.monthIndex)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    expect(r.months.every((m) => m.totalIncome === 0 && m.years === 0 && m.avgNet === 0)).toBe(true);
+    expect(r.yearsObserved).toBe(0);
+    expect(r.best).toBeNull();
+    expect(r.worst).toBeNull();
+  });
+
+  it("soma o mesmo mês do calendário em anos diferentes e conta os anos ativos", () => {
+    const txs: TxLike[] = [
+      // Dezembro em dois anos distintos.
+      tx({ type: "INCOME", amount: 100_00, date: "2024-12-10T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 300_00, date: "2025-12-10T00:00:00.000Z" }),
+      // Janeiro em um só ano.
+      tx({ type: "INCOME", amount: 80_00, date: "2025-01-05T00:00:00.000Z" }),
+    ];
+    const r = monthlySeasonality(txs);
+    const dez = r.months[11];
+    const jan = r.months[0];
+    expect(dez).toMatchObject({ monthIndex: 12, totalIncome: 400_00, years: 2 });
+    expect(dez.avgIncome).toBe(200_00); // 400 / 2 anos ativos
+    expect(jan).toMatchObject({ monthIndex: 1, totalIncome: 80_00, years: 1, avgIncome: 80_00 });
+    expect(r.yearsObserved).toBe(2); // 2024 e 2025
+  });
+
+  it("a média divide só pelos anos com movimento naquele mês, não pelo histórico todo", () => {
+    const txs: TxLike[] = [
+      // Histórico abrange 2023, 2024 e 2025, mas março só teve movimento em 2025.
+      tx({ type: "INCOME", amount: 50_00, date: "2023-06-01T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 50_00, date: "2024-06-01T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 600_00, date: "2025-03-01T00:00:00.000Z" }),
+    ];
+    const r = monthlySeasonality(txs);
+    const mar = r.months[2];
+    expect(mar.years).toBe(1);
+    expect(mar.avgIncome).toBe(600_00); // não diluído por 2023/2024 sem março
+    expect(r.yearsObserved).toBe(3);
+  });
+
+  it("deriva avgNet de avgIncome−avgExpense e arredonda ao centavo", () => {
+    const txs: TxLike[] = [
+      // Mesmo mês (abril) em 2 anos: receita 100,01 total / 2 → arredonda; despesa 50,00.
+      tx({ type: "INCOME", amount: 100_01, date: "2024-04-01T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 30_00, date: "2024-04-02T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 70_00, date: "2025-04-02T00:00:00.000Z" }),
+    ];
+    const r = monthlySeasonality(txs);
+    const abr = r.months[3];
+    expect(abr.years).toBe(2);
+    expect(abr.avgIncome).toBe(Math.round(100_01 / 2)); // 5001 (centavos)
+    expect(abr.avgExpense).toBe(Math.round(100_00 / 2)); // 5000
+    expect(abr.avgNet).toBe(abr.avgIncome - abr.avgExpense);
+  });
+
+  it("escolhe melhor/pior mês pela média de resultado entre os meses ativos", () => {
+    const txs: TxLike[] = [
+      // Maio: ótimo resultado típico.
+      tx({ type: "INCOME", amount: 500_00, date: "2025-05-01T00:00:00.000Z" }),
+      // Setembro: prejuízo típico.
+      tx({ type: "EXPENSE", amount: 200_00, date: "2025-09-01T00:00:00.000Z" }),
+    ];
+    const r = monthlySeasonality(txs);
+    expect(r.best?.monthIndex).toBe(5);
+    expect(r.worst?.monthIndex).toBe(9);
+    expect(r.best?.avgNet).toBe(500_00);
+    expect(r.worst?.avgNet).toBe(-200_00);
   });
 });
 

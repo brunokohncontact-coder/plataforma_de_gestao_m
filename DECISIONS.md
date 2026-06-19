@@ -811,3 +811,34 @@ contexto, decisão, justificativa e alternativas consideradas.
   linha por categoria) — descartado: o usuário pensa receita e despesa separadamente, e `categoryReport`
   já entrega isso com participação; (b) gráfico de pizza — fora do escopo; as barras de participação
   por categoria (já usadas no relatório mensal) cobrem a leitura "quem pesa mais" com menos peso visual.
+
+## D37 — Sazonalidade das Finanças (Sessão 46)
+- **Contexto:** o Resumo anual (`/financas/anual`, D16/D34/D36) responde "como foi ESTE ano, mês a
+  mês?". Mas para planejar — quando empurrar mais shows, quando segurar despesa, quando guardar — o
+  músico precisa do padrão que se repete TODO ano: dezembro de festas costuma render, janeiro
+  costuma ser morto. Nenhuma função existente cruzava o mesmo mês do calendário entre anos
+  diferentes (`totalsByMonth` agrega por `YYYY-MM`; `annualSummary` é um único ano).
+- **Decisão:** adicionar a função pura `monthlySeasonality(txs)` em `src/lib/finance.ts`, que agrega
+  por **mês do calendário** (jan→dez, 1-12) somando todos os anos, e expõe por mês: total/ano somado,
+  nº de anos com movimento naquele mês (`years`) e a **média por ano-ativo** (`avgIncome`/`avgExpense`,
+  com `avgNet` derivado). Também devolve `yearsObserved` (anos distintos com qualquer transação) e o
+  melhor/pior mês por `avgNet`. Nova página `/financas/sazonalidade` com cards de destaque + tabela
+  de barras (mesmo padrão visual do Resumo anual), e link na barra de ações de `/financas`.
+- **Denominador = anos com movimento naquele mês (não a amplitude do histórico):** um dezembro só
+  conta como ano-ativo se teve receita ou despesa, então a média é "um dezembro típico em que houve
+  trabalho", não diluído por dezembros vazios de um histórico ainda curto. Mesmo princípio da média
+  móvel do relatório mensal (D35: denominador = meses ativos). `avgNet` é **derivado** de
+  `avgIncome−avgExpense` (não a média dos nets) para preservar a invariante após o arredondamento.
+- **Aviso com <2 anos:** com um único ano de histórico a "média" de cada mês é o próprio mês (não há
+  padrão sazonal real); a página mostra um aviso âmbar dizendo isso, em vez de esconder a tela.
+- **Sem schema, sem dependência, sem server action:** leitura/derivação sobre as transações já
+  carregadas (uma consulta, a mesma do resumo anual). Reaproveita `monthKey` (UTC).
+- **Testes:** 5 testes unitários novos (`monthlySeasonality`: vazio→12 meses zerados sem best/worst;
+  soma o mesmo mês entre anos + conta anos ativos; média divide só pelos anos ativos do mês, não pelo
+  histórico todo; `avgNet` derivado + arredondamento ao centavo; best/worst por resultado médio).
+  Total do projeto 376→381.
+- **Alternativas consideradas:** (a) dividir pela amplitude total do histórico (contando anos vazios
+  como zero) — descartado: distorceria a "época típica" de quem tem pouco histórico, igual à rejeição
+  em D35; (b) mediana em vez de média — mais robusta a outliers, mas menos intuitiva e desnecessária
+  com históricos curtos; (c) reaproveitar `annualSummary` por ano e somar — descartado: precisaria
+  varrer ano a ano e ainda não daria a contagem de anos-ativos por mês numa passada só.
