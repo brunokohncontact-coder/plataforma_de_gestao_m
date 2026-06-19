@@ -1,7 +1,13 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { annualSummary, type TxLike, type AnnualMonth } from "@/lib/finance";
+import {
+  annualSummary,
+  compareAnnualSummaries,
+  type TxLike,
+  type AnnualMonth,
+  type MetricDelta,
+} from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 
 export const dynamic = "force-dynamic";
@@ -54,7 +60,16 @@ export default async function FinanceAnnualPage({
   }));
 
   const summary = annualSummary(allTxs, year);
+  const prevSummary = annualSummary(allTxs, year - 1);
+  const comparison = compareAnnualSummaries(summary, prevSummary);
   const hasActivity = summary.totalIncome > 0 || summary.totalExpense > 0;
+  const prevHasActivity =
+    prevSummary.totalIncome > 0 || prevSummary.totalExpense > 0;
+
+  // Mapa monthIndex → variação de resultado (para a coluna do mês a mês).
+  const netDeltaByIndex = new Map(
+    comparison.months.map((m) => [m.monthIndex, m.net]),
+  );
 
   // Escala das barras: maior movimentação mensal (receita ou despesa) no ano.
   const peak = Math.max(
@@ -105,10 +120,33 @@ export default async function FinanceAnnualPage({
         <>
           {/* Totais do ano */}
           <div className="grid gap-4 sm:grid-cols-3">
-            <Stat label="Receitas do ano" value={summary.totalIncome} tone="emerald" />
-            <Stat label="Despesas do ano" value={summary.totalExpense} tone="red" />
-            <Stat label="Saldo do ano" value={summary.net} tone="brand" />
+            <Stat
+              label="Receitas do ano"
+              value={summary.totalIncome}
+              tone="emerald"
+              delta={prevHasActivity ? comparison.totalIncome : undefined}
+              upIsGood
+            />
+            <Stat
+              label="Despesas do ano"
+              value={summary.totalExpense}
+              tone="red"
+              delta={prevHasActivity ? comparison.totalExpense : undefined}
+              upIsGood={false}
+            />
+            <Stat
+              label="Saldo do ano"
+              value={summary.net}
+              tone="brand"
+              delta={prevHasActivity ? comparison.net : undefined}
+              upIsGood
+            />
           </div>
+          {prevHasActivity && (
+            <p className="-mt-2 text-xs text-gray-500">
+              Variação comparada a {year - 1}.
+            </p>
+          )}
 
           {/* Melhor / pior mês */}
           {(summary.best || summary.worst) && (
@@ -165,6 +203,12 @@ export default async function FinanceAnnualPage({
                         }
                       >
                         {empty ? "—" : formatMoney(m.net)}
+                        {prevHasActivity && !empty && (() => {
+                          const d = netDeltaByIndex.get(m.monthIndex);
+                          return d && d.previous !== 0 ? (
+                            <DeltaInline delta={d} upIsGood />
+                          ) : null;
+                        })()}
                       </td>
                     </tr>
                   );
@@ -247,10 +291,14 @@ function Stat({
   label,
   value,
   tone,
+  delta,
+  upIsGood = true,
 }: {
   label: string;
   value: number;
   tone: "emerald" | "red" | "brand";
+  delta?: MetricDelta;
+  upIsGood?: boolean;
 }) {
   const tones: Record<string, string> = {
     emerald: "text-emerald-600",
@@ -261,6 +309,40 @@ function Stat({
     <div className="card">
       <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
       <p className={"mt-1 text-xl font-bold " + tones[tone]}>{formatMoney(value)}</p>
+      {delta && <DeltaLine delta={delta} upIsGood={upIsGood} />}
     </div>
+  );
+}
+
+/** Linha de variação ano a ano: seta + valor absoluto + porcentagem. */
+function DeltaLine({ delta, upIsGood }: { delta: MetricDelta; upIsGood: boolean }) {
+  if (delta.direction === "flat") {
+    return <p className="mt-1 text-xs text-gray-400">→ sem variação</p>;
+  }
+  const isGood = delta.direction === "up" ? upIsGood : !upIsGood;
+  const colorClass = isGood ? "text-emerald-600" : "text-red-600";
+  const arrow = delta.direction === "up" ? "▲" : "▼";
+  const pctLabel =
+    delta.pct == null ? "novo" : `${Math.round(Math.abs(delta.pct) * 100)}%`;
+  return (
+    <p className={"mt-1 text-xs font-medium " + colorClass}>
+      {arrow} {formatMoney(Math.abs(delta.delta))}{" "}
+      <span className="opacity-70">({pctLabel})</span>
+    </p>
+  );
+}
+
+/** Variação compacta para dentro de uma célula da tabela (seta + porcentagem). */
+function DeltaInline({ delta, upIsGood }: { delta: MetricDelta; upIsGood: boolean }) {
+  if (delta.direction === "flat") return null;
+  const isGood = delta.direction === "up" ? upIsGood : !upIsGood;
+  const colorClass = isGood ? "text-emerald-600" : "text-red-600";
+  const arrow = delta.direction === "up" ? "▲" : "▼";
+  const pctLabel =
+    delta.pct == null ? "novo" : `${Math.round(Math.abs(delta.pct) * 100)}%`;
+  return (
+    <span className={"ml-2 text-xs font-normal " + colorClass}>
+      {arrow} {pctLabel}
+    </span>
   );
 }

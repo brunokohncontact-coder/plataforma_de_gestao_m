@@ -588,6 +588,63 @@ export function annualSummary(txs: TxLike[], year: number): AnnualSummary {
   };
 }
 
+/** Variação ano a ano de um mês (mesmo mês do ano anterior). */
+export interface AnnualMonthComparison {
+  /** Mês 1-12 (janeiro = 1). */
+  monthIndex: number;
+  income: MetricDelta;
+  expense: MetricDelta;
+  net: MetricDelta;
+}
+
+/**
+ * Comparativo ano a ano (YoY): totais do ano e cada mês frente ao mesmo período
+ * do ano anterior. Responde "estou melhor que no ano passado?".
+ */
+export interface AnnualComparison {
+  /** Ano de referência (atual). */
+  year: number;
+  /** Ano comparado (anterior). */
+  previousYear: number;
+  totalIncome: MetricDelta;
+  totalExpense: MetricDelta;
+  /** Resultado do ano (receitas − despesas). */
+  net: MetricDelta;
+  /** 12 meses (janeiro→dezembro), cada um comparado ao mesmo mês do ano anterior. */
+  months: AnnualMonthComparison[];
+}
+
+/**
+ * Compara dois resumos anuais (tipicamente o ano atual vs o ano anterior),
+ * reaproveitando `computeDelta` para totais e para cada mês (casado por
+ * `monthIndex`). Pura; assume que ambos os resumos têm os 12 meses (como
+ * produzido por `annualSummary`).
+ */
+export function compareAnnualSummaries(
+  current: AnnualSummary,
+  previous: AnnualSummary,
+): AnnualComparison {
+  const prevByIndex = new Map(previous.months.map((m) => [m.monthIndex, m]));
+  const months: AnnualMonthComparison[] = current.months.map((m) => {
+    const p = prevByIndex.get(m.monthIndex);
+    return {
+      monthIndex: m.monthIndex,
+      income: computeDelta(m.income, p?.income ?? 0),
+      expense: computeDelta(m.expense, p?.expense ?? 0),
+      net: computeDelta(m.net, p?.net ?? 0),
+    };
+  });
+
+  return {
+    year: current.year,
+    previousYear: previous.year,
+    totalIncome: computeDelta(current.totalIncome, previous.totalIncome),
+    totalExpense: computeDelta(current.totalExpense, previous.totalExpense),
+    net: computeDelta(current.net, previous.net),
+    months,
+  };
+}
+
 /** Anos presentes nas transações, em ordem decrescente. */
 export function availableYears(txs: TxLike[]): number[] {
   const set = new Set<number>();
