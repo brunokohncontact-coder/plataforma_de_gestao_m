@@ -63,6 +63,11 @@ export default async function ShowsPage({
         <div className="flex items-center gap-3">
           <ShowsViewToggle active="lista" />
           {shows.length > 0 && (
+            <Link href="/shows/funil" className="btn-secondary">
+              Funil
+            </Link>
+          )}
+          {shows.length > 0 && (
             <Link href="/shows/rentabilidade" className="btn-secondary">
               Rentabilidade
             </Link>

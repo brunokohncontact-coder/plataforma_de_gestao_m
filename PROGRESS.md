@@ -171,6 +171,15 @@ para o imposto?" — mês a mês + total do ano, com seletor de alíquota (atalh
 `?aliquota=`), navegação por ano e aviso de que a alíquota padrão (6%) é hipótese a confirmar com
 contador; link na barra de Finanças quando há receitas (ver D41). **407 testes** verdes (medição
 real `vitest run`; eram 401 na main).
+Sessão 51 entregou o **funil de propostas / pipeline de shows** (`/shows/funil`): a função pura
+`showPipeline(shows)` (em `src/lib/finance.ts`) agrupa os shows pelo `status` nas quatro etapas
+(proposto→confirmado→realizado→cancelado), somando contagem e cachê por etapa, e deriva o **cachê em
+aberto** (proposto + confirmado — dinheiro ainda não realizado), os recortes por etapa e a **taxa de
+concretização** (PLAYED / (PLAYED+CANCELLED), `null` sem shows decididos) — respondendo "quanto tenho
+na mesa e quantas propostas viram show?". A página mostra cards de destaque, barras por etapa (cor de
+`SHOW_STATUS_DOT`) e atalhos para a lista filtrada por status; é um **retrato** do estado atual, não
+um histórico de conversão (o schema não registra transições). Link "Funil" na barra de `/shows` (ver
+D42). **413 testes** verdes (medição real `vitest run`; eram 407 na main).
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias, estados de erro
 inline dos server actions) ou evoluções de calendário (arrastar/soltar para remarcar).
 
@@ -1130,6 +1139,10 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    (visão semanal entregue na Sessão 19 — `/shows/semana`; link do dashboard para a agenda na
    Sessão 19; clicar num dia para criar show com a data na Sessão 13; exportação iCalendar
    `.ics` na Sessão 15 — base em `src/lib/calendar.ts` e `src/lib/ics.ts`.)
+2b. **Funil de propostas — evoluções** (entregue na Sessão 51, `/shows/funil` + `showPipeline`,
+   ver D42): hoje é um retrato do estado atual. Próximo possível — registrar **transições de status**
+   (log) para uma taxa de conversão proposta→realizado de verdade e tempo médio em cada etapa; ou
+   trazer o cachê em aberto/funil para um card no Painel.
 3. **Filtros — evoluções**: persistência do último filtro entregue para Finanças (Sessão 32),
    Shows e Contatos (Sessão 33) — módulo genérico `src/lib/listFilter.ts` + middleware (ver D23/D24).
    Próximo possível: indicador visual de "filtro lembrado" na UI, ou estender a `/shows/calendario`

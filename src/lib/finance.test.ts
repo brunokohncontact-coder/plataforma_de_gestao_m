@@ -40,6 +40,7 @@ import {
   computeBreakEven,
   taxReserve,
   DEFAULT_TAX_RATE,
+  showPipeline,
   type TxLike,
   type ShowLike,
   type VenueShowLike,
@@ -1872,5 +1873,79 @@ describe("taxReserve", () => {
     expect(taxReserve(txs, { year: 2026, rate: 5 }).rate).toBe(1);
     expect(taxReserve(txs, { year: 2026, rate: -1 }).rate).toBe(0);
     expect(taxReserve(txs, { year: 2026, rate: NaN }).rate).toBe(DEFAULT_TAX_RATE);
+  });
+});
+
+describe("showPipeline", () => {
+  const sh = (id: string, status: string, fee: number): ShowLike => ({ id, status, fee });
+
+  it("retorna funil vazio (mas com as quatro etapas) sem shows", () => {
+    const p = showPipeline([]);
+    expect(p.total).toBe(0);
+    expect(p.stages).toHaveLength(4);
+    expect(p.stages.map((s) => s.status)).toEqual([
+      "PROPOSED",
+      "CONFIRMED",
+      "PLAYED",
+      "CANCELLED",
+    ]);
+    expect(p.stages.every((s) => s.count === 0 && s.fee === 0)).toBe(true);
+    expect(p.openValue).toBe(0);
+    expect(p.conversionRate).toBeNull();
+  });
+
+  it("agrega contagem e cachê por etapa", () => {
+    const p = showPipeline([
+      sh("a", "PROPOSED", 100_00),
+      sh("b", "PROPOSED", 200_00),
+      sh("c", "CONFIRMED", 300_00),
+      sh("d", "PLAYED", 400_00),
+      sh("e", "CANCELLED", 500_00),
+    ]);
+    expect(p.total).toBe(5);
+    expect(p.proposedCount).toBe(2);
+    expect(p.proposedValue).toBe(300_00);
+    expect(p.confirmedCount).toBe(1);
+    expect(p.confirmedValue).toBe(300_00);
+    expect(p.playedCount).toBe(1);
+    expect(p.cancelledCount).toBe(1);
+  });
+
+  it("valor em aberto = proposto + confirmado (exclui realizado e cancelado)", () => {
+    const p = showPipeline([
+      sh("a", "PROPOSED", 100_00),
+      sh("b", "CONFIRMED", 250_00),
+      sh("c", "PLAYED", 999_00),
+      sh("d", "CANCELLED", 999_00),
+    ]);
+    expect(p.openCount).toBe(2);
+    expect(p.openValue).toBe(350_00);
+  });
+
+  it("taxa de concretização = realizados / (realizados + cancelados)", () => {
+    const p = showPipeline([
+      sh("a", "PLAYED", 0),
+      sh("b", "PLAYED", 0),
+      sh("c", "PLAYED", 0),
+      sh("d", "CANCELLED", 0),
+      sh("e", "PROPOSED", 0), // não conta como decidido
+    ]);
+    expect(p.decidedCount).toBe(4);
+    expect(p.conversionRate).toBeCloseTo(0.75, 5);
+  });
+
+  it("taxa de concretização é null quando nada foi decidido", () => {
+    const p = showPipeline([sh("a", "PROPOSED", 100_00), sh("b", "CONFIRMED", 100_00)]);
+    expect(p.conversionRate).toBeNull();
+  });
+
+  it("ignora status desconhecido (não entra no total)", () => {
+    const p = showPipeline([
+      sh("a", "PLAYED", 100_00),
+      sh("b", "ARCHIVED", 999_00),
+      { id: "c", fee: 50_00 }, // sem status
+    ]);
+    expect(p.total).toBe(1);
+    expect(p.playedCount).toBe(1);
   });
 });
