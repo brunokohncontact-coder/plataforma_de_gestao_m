@@ -1070,3 +1070,40 @@ contexto, decisão, justificativa e alternativas consideradas.
   detalhe e a UI já lida bem com gaps (só meses com shows aparecem); (c) incluir shows futuros
   confirmados como "preço contratado" — não, distorceria a *evolução realizada* com expectativa;
   (d) trazer o indicador para o Painel — adiável (o dashboard já está denso); a página dedicada basta.
+
+## D45 — Mix de receitas / diversificação das fontes de renda (Sessão 54)
+- **Contexto:** a plataforma já tem muitos relatórios de receita (relatório mensal, resumo anual,
+  sazonalidade, rentabilidade por show/local, ranking de contatos), mas todos olham *quanto* e *quando*
+  se fatura. Faltava um sinal de **risco de concentração**: "de onde vem minha renda e o quanto eu
+  dependo de uma única fonte?". Para o músico autônomo, depender de um só tipo de receita (ou de um só
+  contratante recorrente que aparece como categoria) é uma fragilidade clássica — perder essa frente
+  derruba o faturamento.
+- **Decisão:** nova função pura `incomeMix(txs)` (em `src/lib/finance.ts`) + página
+  `/financas/fontes-de-renda`. Agrupa as receitas (`INCOME`) por **categoria** (= fonte de renda:
+  cachê, aulas, streaming, merch, etc.), com participação (`share`) de cada uma, concentração nas
+  maiores (`topShare`, `top3Share`), o índice **HHI** (Herfindahl–Hirschman), o **número efetivo de
+  fontes** (1/HHI, índice de Simpson) e um **veredito de diversificação**.
+- **Por que HHI:** é a métrica padrão de concentração (antitruste/portfólio) e responde exatamente à
+  pergunta de dependência. O número efetivo de fontes (1/HHI) traduz o HHI para uma linguagem
+  intuitiva ("como se a renda viesse de N fontes iguais"), melhor para a UI do que o índice cru.
+- **Thresholds do veredito (hipótese de produto):** uma fonte só → `concentrated`; HHI ≥ 0,45 (≈ uma
+  fonte dominante ou só duas relevantes) → `concentrated`; HHI ≥ 0,25 (≈ até 4 fontes equivalentes) →
+  `moderate`; abaixo → `diversified`. São cortes arbitrários e razoáveis — **marcados como hipótese**
+  a refinar com uso real; centralizados em `diversificationLevel` (uma só fonte de verdade).
+- **Categoria como proxy de fonte:** reusa o campo `category` já existente (mesma normalização de
+  `categoryReport`: em branco/ausente → "Sem categoria"); zero schema, zero migração, zero dependência
+  nova. Considera **todas as receitas lançadas** (recebidas e a receber) — a diversificação é estrutural,
+  não de caixa; documentado na função e na página.
+- **Não é o ranking de contatos (D18):** o ranking responde "quem é meu melhor cliente?"; o mix responde
+  "estou dependente demais de uma frente de receita?". São perguntas distintas (cliente × fonte) — e o
+  mix particiona 100% da renda por categoria, sem o double-count por contato do ranking.
+- **Testes:** 9 testes unitários novos em `finance.test.ts` (vazio/sem receita; ignora despesas e agrupa;
+  "Sem categoria"; ordenação por valor + desempate pt-BR; top3Share/HHI/efetivas; fonte única →
+  concentrada; fonte dominante → concentrada; bem distribuída → diversificada; intermediária → moderada).
+  Total do projeto 420→429.
+- **Alternativas consideradas:** (a) concentração por **contratante** (atribuir o cachê de cada show a um
+  contato) — exigiria uma regra de atribuição quando o show tem vários contatos (ambígua) e se sobreporia
+  ao ranking; categoria é inequívoca e particiona limpo; (b) considerar só receitas **recebidas** — a
+  diversificação é uma propriedade estrutural da carteira de receitas, não do caixa; incluir as a receber
+  evita um retrato enviesado por atraso de recebimento; (c) trazer o alerta de concentração para o Painel —
+  adiável (dashboard já denso); a página dedicada basta por ora.

@@ -522,6 +522,114 @@ export function categoryReport(txs: TxLike[]): CategoryReport {
   };
 }
 
+// ── Mix de receitas (diversificação das fontes de renda) ────────────────────
+// Responde "de onde vem minha renda e quão dependente sou de uma única fonte?".
+// Agrega as receitas (INCOME) por categoria (= fonte de renda: cachê, aulas,
+// streaming, merch, etc.), com a participação de cada uma, a concentração nas
+// maiores e um veredito de diversificação. Complementar ao relatório mensal
+// (que olha um mês) e à rentabilidade (que olha o lucro por show): aqui o foco
+// é a COMPOSIÇÃO da renda no recorte recebido.
+
+export type DiversificationLevel = "concentrated" | "moderate" | "diversified";
+
+export interface IncomeSourceSlice {
+  /** Nome da fonte (categoria; em branco/ausente cai em "Sem categoria"). */
+  category: string;
+  /** Total da fonte no recorte (centavos). */
+  amount: number;
+  /** Participação no total de receitas (0..1). */
+  share: number;
+  /** Nº de transações de receita nessa fonte. */
+  count: number;
+}
+
+export interface IncomeMix {
+  /** Fontes de renda, ordem decrescente por valor (empate por nome, pt-BR). */
+  sources: IncomeSourceSlice[];
+  /** Soma de todas as receitas do recorte (centavos). */
+  total: number;
+  /** Nº de fontes (categorias de receita) distintas. */
+  sourceCount: number;
+  /** Maior fonte, ou null se não há receita. */
+  top: IncomeSourceSlice | null;
+  /** Participação da maior fonte (0..1). */
+  topShare: number;
+  /** Participação acumulada das 3 maiores fontes (0..1). */
+  top3Share: number;
+  /**
+   * Índice de concentração de Herfindahl–Hirschman (HHI): soma dos quadrados
+   * das participações (0..1). 1 = fonte única; quanto menor, mais distribuído.
+   */
+  hhi: number;
+  /**
+   * Número efetivo de fontes (1/HHI, índice de Simpson): "como se" a renda
+   * viesse de N fontes de mesmo tamanho. 0 quando não há receita.
+   */
+  effectiveSources: number;
+  /** Veredito de diversificação (derivado do HHI e do nº de fontes). */
+  level: DiversificationLevel;
+}
+
+/**
+ * Classifica a diversificação a partir do HHI e do nº de fontes. Thresholds
+ * (hipótese de produto, ver D45): uma fonte só, ou HHI ≥ 0,45 (≈ uma fonte
+ * dominante ou só duas relevantes) → concentrada; HHI ≥ 0,25 (≈ até 4 fontes
+ * equivalentes) → moderada; abaixo disso → diversificada.
+ */
+function diversificationLevel(hhi: number, sourceCount: number): DiversificationLevel {
+  if (sourceCount <= 1) return "concentrated";
+  if (hhi >= 0.45) return "concentrated";
+  if (hhi >= 0.25) return "moderate";
+  return "diversified";
+}
+
+/**
+ * Calcula o mix de receitas por fonte (categoria) sobre as transações INCOME do
+ * recorte. Cada fonte recebe seu total, participação (`share`) e contagem; o
+ * relatório traz a concentração nas maiores (topShare/top3Share), o HHI, o
+ * número efetivo de fontes e o veredito de diversificação. Despesas são
+ * ignoradas. Categorias em branco/ausentes caem em "Sem categoria". Pura.
+ */
+export function incomeMix(txs: TxLike[]): IncomeMix {
+  const map = new Map<string, { amount: number; count: number }>();
+  let total = 0;
+
+  for (const t of txs) {
+    if (t.type !== "INCOME") continue;
+    const category = t.category?.trim() || "Sem categoria";
+    const entry = map.get(category) ?? { amount: 0, count: 0 };
+    entry.amount += t.amount;
+    entry.count += 1;
+    map.set(category, entry);
+    total += t.amount;
+  }
+
+  const sources: IncomeSourceSlice[] = Array.from(map.entries())
+    .map(([category, { amount, count }]) => ({
+      category,
+      amount,
+      count,
+      share: total === 0 ? 0 : amount / total,
+    }))
+    .sort((a, b) => b.amount - a.amount || a.category.localeCompare(b.category, "pt-BR"));
+
+  const hhi = sources.reduce((acc, s) => acc + s.share * s.share, 0);
+  const top3Share = sources.slice(0, 3).reduce((acc, s) => acc + s.share, 0);
+  const top = sources[0] ?? null;
+
+  return {
+    sources,
+    total,
+    sourceCount: sources.length,
+    top,
+    topShare: top?.share ?? 0,
+    top3Share,
+    hhi,
+    effectiveSources: hhi === 0 ? 0 : 1 / hhi,
+    level: diversificationLevel(hhi, sources.length),
+  };
+}
+
 export interface MonthlyTotal {
   /** Chave "YYYY-MM". */
   month: string;
