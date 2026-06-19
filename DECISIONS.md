@@ -790,3 +790,24 @@ contexto, decisão, justificativa e alternativas consideradas.
   vez de média — mais robusta a outliers, mas menos intuitiva para o usuário e desnecessária com
   janela curta; (c) uma terceira linha/seção separada em vez de delta por card — descartado, a
   segunda linha rotulada por card é mais compacta e alinha cada métrica à sua variação.
+
+## D36 — Quebra por categoria no Resumo anual (Sessão 45)
+- **Contexto:** o Resumo anual (`/financas/anual`, D16/D34) já mostrava os 12 meses, totais, melhor/
+  pior mês e o comparativo YoY — o "quando" do dinheiro do ano. Faltava o "onde": para onde foi o
+  dinheiro no ano (quais categorias dominaram receita e despesa). O Relatório mensal já respondia isso
+  no nível do mês via `categoryReport` (D21), com o componente visual de cards já pronto.
+- **Decisão:** adicionar a função pura `annualCategoryReport(txs, year)` em `src/lib/finance.ts`, que
+  filtra as transações cujo mês (UTC) cai no ano (mesmo critério de prefixo `"YYYY-"` do
+  `annualSummary`) e **delega ao `categoryReport` existente** — uma só fonte de verdade da agregação
+  por categoria (ordenação por valor, desempate pt-BR, "Sem categoria", `share`). A página computa o
+  relatório sobre o **mesmo** conjunto de transações já carregado (sem consulta extra) e renderiza dois
+  cards (Receitas/Despesas por categoria) reaproveitando o padrão visual do Relatório mensal.
+- **Sem schema, sem dependência, sem server action:** leitura/derivação sobre dados em memória.
+- **Reúso em vez de duplicação:** delegar a `categoryReport` (em vez de reimplementar a agregação por
+  ano) mantém o comportamento idêntico entre o relatório mensal e o anual; só muda o recorte temporal.
+- **Testes:** 3 testes unitários novos (`annualCategoryReport`: filtra só o ano informado; agrega o ano
+  inteiro com `share`; ano sem movimento → zerado). Total do projeto 373→376.
+- **Alternativas consideradas:** (a) reaproveitar `totalsByCategory` (que mistura receita+despesa numa
+  linha por categoria) — descartado: o usuário pensa receita e despesa separadamente, e `categoryReport`
+  já entrega isso com participação; (b) gráfico de pizza — fora do escopo; as barras de participação
+  por categoria (já usadas no relatório mensal) cobrem a leitura "quem pesa mais" com menos peso visual.

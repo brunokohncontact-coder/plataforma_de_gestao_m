@@ -23,6 +23,7 @@ import {
   buildDueAgenda,
   annualSummary,
   compareAnnualSummaries,
+  annualCategoryReport,
   availableYears,
   forecastBookedRevenue,
   reconcileShowFees,
@@ -907,6 +908,46 @@ describe("compareAnnualSummaries", () => {
     const cmp = compareAnnualSummaries(current, previous);
     expect(cmp.totalIncome.pct).toBeNull();
     expect(cmp.totalIncome.current).toBe(100_00);
+  });
+});
+
+describe("annualCategoryReport", () => {
+  it("considera só as transações do ano informado", () => {
+    const r = annualCategoryReport(
+      [
+        tx({ type: "INCOME", amount: 300_00, category: "Cachê", date: "2026-02-10T00:00:00.000Z" }),
+        tx({ type: "EXPENSE", amount: 80_00, category: "Transporte", date: "2026-05-10T00:00:00.000Z" }),
+        // Fora do ano: não deve entrar.
+        tx({ type: "INCOME", amount: 999_00, category: "Cachê", date: "2025-12-31T00:00:00.000Z" }),
+        tx({ type: "EXPENSE", amount: 999_00, category: "Transporte", date: "2027-01-01T00:00:00.000Z" }),
+      ],
+      2026,
+    );
+    expect(r.totalIncome).toBe(300_00);
+    expect(r.totalExpense).toBe(80_00);
+    expect(r.income.map((s) => s.category)).toEqual(["Cachê"]);
+    expect(r.expense.map((s) => s.category)).toEqual(["Transporte"]);
+  });
+
+  it("agrega o ano inteiro por categoria com participação (share)", () => {
+    const r = annualCategoryReport(
+      [
+        tx({ type: "EXPENSE", amount: 75_00, category: "Transporte", date: "2026-01-10T00:00:00.000Z" }),
+        tx({ type: "EXPENSE", amount: 25_00, category: "Equipamento", date: "2026-08-10T00:00:00.000Z" }),
+      ],
+      2026,
+    );
+    expect(r.expense.map((s) => s.category)).toEqual(["Transporte", "Equipamento"]);
+    expect(r.expense[0].share).toBeCloseTo(0.75, 5);
+    expect(r.totalExpense).toBe(100_00);
+  });
+
+  it("ano sem movimento → tudo zerado", () => {
+    const r = annualCategoryReport(
+      [tx({ type: "INCOME", amount: 100_00, date: "2025-06-10T00:00:00.000Z" })],
+      2026,
+    );
+    expect(r).toEqual({ income: [], expense: [], totalIncome: 0, totalExpense: 0 });
   });
 });
 

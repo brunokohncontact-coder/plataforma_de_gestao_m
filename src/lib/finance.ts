@@ -691,6 +691,18 @@ export function compareAnnualSummaries(
   };
 }
 
+/**
+ * Quebra por categoria de um ano: filtra as transações cujo mês (UTC) cai no
+ * `year` e delega ao `categoryReport` (uma só fonte de verdade da agregação por
+ * categoria, já usada no relatório mensal). Responde "para onde foi o dinheiro
+ * no ano?" no fechamento anual. Pura.
+ */
+export function annualCategoryReport(txs: TxLike[], year: number): CategoryReport {
+  const prefix = `${year}-`;
+  const inYear = txs.filter((t) => monthKey(t.date).startsWith(prefix));
+  return categoryReport(inYear);
+}
+
 /** Anos presentes nas transações, em ordem decrescente. */
 export function availableYears(txs: TxLike[]): number[] {
   const set = new Set<number>();
