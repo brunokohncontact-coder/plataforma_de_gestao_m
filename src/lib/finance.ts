@@ -386,6 +386,52 @@ export function compareSummaries(
   };
 }
 
+/**
+ * Média campo a campo de uma lista de resumos financeiros — o "mês típico"
+ * recente. Serve de base para comparar o mês atual contra a **tendência** (a
+ * média dos meses anteriores), e não só contra o mês imediatamente anterior, que
+ * pode ter sido atípico (um show grande, um mês parado).
+ *
+ * Lista vazia → tudo zero. Os componentes (receitas, despesas, recebido, pago e
+ * pendências) são arredondados ao centavo; os saldos (`balance`, `cashBalance`)
+ * são **derivados** desses componentes já arredondados, preservando a invariante
+ * `balance = receitas − despesas` (e `cashBalance = recebido − pago`). Pura.
+ */
+export function averageSummaries(summaries: FinanceSummary[]): FinanceSummary {
+  const n = summaries.length;
+  if (n === 0) {
+    return {
+      totalIncome: 0,
+      totalExpense: 0,
+      balance: 0,
+      receivedIncome: 0,
+      paidExpense: 0,
+      cashBalance: 0,
+      pendingIncome: 0,
+      pendingExpense: 0,
+    };
+  }
+
+  const avg = (pick: (s: FinanceSummary) => number): number =>
+    Math.round(sum(summaries.map(pick)) / n);
+
+  const totalIncome = avg((s) => s.totalIncome);
+  const totalExpense = avg((s) => s.totalExpense);
+  const receivedIncome = avg((s) => s.receivedIncome);
+  const paidExpense = avg((s) => s.paidExpense);
+
+  return {
+    totalIncome,
+    totalExpense,
+    balance: totalIncome - totalExpense,
+    receivedIncome,
+    paidExpense,
+    cashBalance: receivedIncome - paidExpense,
+    pendingIncome: avg((s) => s.pendingIncome),
+    pendingExpense: avg((s) => s.pendingExpense),
+  };
+}
+
 export interface CategoryTotal {
   category: string;
   income: number;

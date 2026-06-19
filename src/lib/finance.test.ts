@@ -33,6 +33,7 @@ import {
   resolveReceivedDate,
   computeDelta,
   compareSummaries,
+  averageSummaries,
   type TxLike,
   type ShowLike,
   type VenueShowLike,
@@ -1409,5 +1410,59 @@ describe("compareSummaries", () => {
     const cmp = compareSummaries(current, previous);
     expect(cmp.totalIncome.pct).toBeNull();
     expect(cmp.totalIncome.current).toBe(100_00);
+  });
+});
+
+describe("averageSummaries", () => {
+  const tx = (over: Partial<TxLike>): TxLike => ({
+    type: "INCOME",
+    amount: 0,
+    category: "",
+    date: "2026-06-01",
+    received: true,
+    ...over,
+  });
+
+  it("lista vazia → resumo todo zerado", () => {
+    const avg = averageSummaries([]);
+    expect(avg).toEqual({
+      totalIncome: 0,
+      totalExpense: 0,
+      balance: 0,
+      receivedIncome: 0,
+      paidExpense: 0,
+      cashBalance: 0,
+      pendingIncome: 0,
+      pendingExpense: 0,
+    });
+  });
+
+  it("um único resumo → igual a ele", () => {
+    const only = summarizeFinances([
+      tx({ type: "INCOME", amount: 300_00, received: true }),
+      tx({ type: "EXPENSE", amount: 100_00, received: false }),
+    ]);
+    expect(averageSummaries([only])).toEqual(only);
+  });
+
+  it("faz a média campo a campo de vários meses", () => {
+    const a = summarizeFinances([tx({ type: "INCOME", amount: 200_00, received: true })]);
+    const b = summarizeFinances([tx({ type: "INCOME", amount: 100_00, received: true })]);
+    const avg = averageSummaries([a, b]);
+    expect(avg.totalIncome).toBe(150_00);
+    expect(avg.receivedIncome).toBe(150_00);
+    expect(avg.cashBalance).toBe(150_00);
+  });
+
+  it("arredonda os componentes ao centavo e deriva os saldos deles", () => {
+    // Três meses de receita: 100, 100, 101 → média 100,3333 → arredonda p/ 10033 centavos.
+    const months = [100_00, 100_00, 101_00].map((amount) =>
+      summarizeFinances([tx({ type: "INCOME", amount, received: true })]),
+    );
+    const avg = averageSummaries(months);
+    expect(avg.totalIncome).toBe(Math.round((100_00 + 100_00 + 101_00) / 3));
+    // balance derivado de componentes arredondados (= receitas − despesas).
+    expect(avg.balance).toBe(avg.totalIncome - avg.totalExpense);
+    expect(avg.cashBalance).toBe(avg.receivedIncome - avg.paidExpense);
   });
 });

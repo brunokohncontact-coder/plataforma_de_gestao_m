@@ -760,3 +760,33 @@ contexto, decisão, justificativa e alternativas consideradas.
   descartado por poluição visual; o selo por mês + os totais cobrem a leitura rápida; (b) gráfico de
   duas séries (este ano vs anterior) — fora do escopo desta sessão, cabe sobre a mesma
   `compareAnnualSummaries` depois.
+
+## D35 — Comparativo com a média móvel no Relatório mensal (Sessão 44)
+- **Contexto:** o Relatório mensal (`/financas/relatorio`) já comparava o mês corrente ao mês
+  imediatamente anterior (D33). Mas o mês anterior pode ser atípico (um show grande, um mês parado),
+  produzindo uma leitura enganosa de "melhor/pior". A própria D33 antecipou o reúso de `computeDelta`
+  para comparar contra a **média dos últimos N meses** — a tendência, que suaviza o ruído de um único mês.
+- **Decisão:** adicionar a função pura `averageSummaries(summaries: FinanceSummary[])` em
+  `src/lib/finance.ts`, que faz a média **campo a campo** de uma lista de `FinanceSummary` (o "mês
+  típico"). A página computa os resumos dos últimos 3 meses (janela `AVERAGE_WINDOW`), descarta os
+  sem movimento, e compara o mês corrente contra a média deles via o já existente `compareSummaries`.
+  Cada card de número passa a exibir DUAS linhas de delta rotuladas: "vs. mês ant." (D33) e
+  "vs. média".
+- **Denominador = meses ativos, exige ≥2:** a média divide só pelos meses **com transações** na
+  janela (não dilui com meses vazios de um histórico curto). O bloco "vs. média" só aparece quando
+  há ≥2 meses ativos — com apenas 1, a média seria idêntica ao mês anterior (redundante com a linha
+  "vs. mês ant."). As duas comparações têm flags independentes (`hasPrevData`/`hasAverageData`).
+- **Componentes arredondados, saldos derivados:** `averageSummaries` arredonda ao centavo os
+  componentes (receitas, despesas, recebido, pago, pendências) e **deriva** `balance`/`cashBalance`
+  deles, preservando a invariante `balance = receitas − despesas` (evita um saldo médio que não bate
+  com seus componentes por causa de arredondamento independente).
+- **Sem schema, sem dependência, sem server action:** leitura/derivação sobre os mesmos dados já
+  carregados (filtra-se o mesmo conjunto em memória, uma consulta a mais NÃO é feita). Reaproveita
+  `compareSummaries`/`computeDelta` (a UI decide bom/ruim via `upIsGood`, lógica pura neutra — D33).
+- **Testes:** 4 testes unitários novos (`averageSummaries`: lista vazia→zeros, único→idêntico, média
+  campo a campo, arredondamento dos componentes + saldos derivados). Total do projeto 369→373.
+- **Alternativas consideradas:** (a) média dos últimos N meses-calendário contando vazios como zero —
+  descartado: diluiria a base de quem tem pouco histórico, distorcendo a "tendência"; (b) mediana em
+  vez de média — mais robusta a outliers, mas menos intuitiva para o usuário e desnecessária com
+  janela curta; (c) uma terceira linha/seção separada em vez de delta por card — descartado, a
+  segunda linha rotulada por card é mais compacta e alinha cada métrica à sua variação.

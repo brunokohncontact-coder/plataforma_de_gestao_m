@@ -6,7 +6,9 @@ import {
   categoryReport,
   filterTransactions,
   compareSummaries,
+  averageSummaries,
   type TxLike,
+  type FinanceSummary,
   type CategorySlice,
   type MetricDelta,
 } from "@/lib/finance";
@@ -19,6 +21,9 @@ import {
 } from "@/lib/calendar";
 
 export const dynamic = "force-dynamic";
+
+/** Janela (em meses) da média móvel comparada ao mês corrente. */
+const AVERAGE_WINDOW = 3;
 
 type SearchParams = { [key: string]: string | string[] | undefined };
 
@@ -66,6 +71,18 @@ export default async function FinanceReportPage({
   const prevSummary = summarizeFinances(prevVisible);
   const comparison = compareSummaries(summary, prevSummary);
   const hasPrevData = prevVisible.length > 0;
+
+  // Comparativo com a média dos últimos meses ("vs minha tendência"): suaviza um
+  // mês anterior atípico. Considera só os meses com movimento na janela (denominador
+  // = meses ativos) e só aparece quando há ≥2 deles — com 1 a média = o mês anterior.
+  const trailingSummaries: FinanceSummary[] = [];
+  for (let i = 1; i <= AVERAGE_WINDOW; i++) {
+    const s = shiftMonth(year, month, -i);
+    const monthTxs = filterTransactions(allTxs, { month: monthKeyOf(s.year, s.month) });
+    if (monthTxs.length > 0) trailingSummaries.push(summarizeFinances(monthTxs));
+  }
+  const averageComparison = compareSummaries(summary, averageSummaries(trailingSummaries));
+  const hasAverageData = trailingSummaries.length >= 2;
 
   const exportHref = `/financas/export?mes=${key}`;
 
@@ -118,40 +135,47 @@ export default async function FinanceReportPage({
         </div>
       ) : (
         <>
-          {/* Resumo do mês (com comparativo ao mês anterior quando houver) */}
+          {/* Resumo do mês (comparado ao mês anterior e à média recente, quando houver) */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Stat
               label="Receitas"
               value={summary.totalIncome}
               tone="emerald"
-              delta={hasPrevData ? comparison.totalIncome : undefined}
               upIsGood
+              monthDelta={hasPrevData ? comparison.totalIncome : undefined}
+              averageDelta={hasAverageData ? averageComparison.totalIncome : undefined}
             />
             <Stat
               label="Despesas"
               value={summary.totalExpense}
               tone="red"
-              delta={hasPrevData ? comparison.totalExpense : undefined}
               upIsGood={false}
+              monthDelta={hasPrevData ? comparison.totalExpense : undefined}
+              averageDelta={hasAverageData ? averageComparison.totalExpense : undefined}
             />
             <Stat
               label="Saldo do mês"
               value={summary.balance}
               tone="brand"
-              delta={hasPrevData ? comparison.balance : undefined}
               upIsGood
+              monthDelta={hasPrevData ? comparison.balance : undefined}
+              averageDelta={hasAverageData ? averageComparison.balance : undefined}
             />
             <Stat
               label="Caixa realizado"
               value={summary.cashBalance}
               tone="gray"
-              delta={hasPrevData ? comparison.cashBalance : undefined}
               upIsGood
+              monthDelta={hasPrevData ? comparison.cashBalance : undefined}
+              averageDelta={hasAverageData ? averageComparison.cashBalance : undefined}
             />
           </div>
-          {hasPrevData && (
+          {(hasPrevData || hasAverageData) && (
             <p className="-mt-2 text-xs text-gray-400">
-              Comparado a {formatMonthTitle(prev.year, prev.month)}.
+              {hasPrevData && <>vs. mês ant. = {formatMonthTitle(prev.year, prev.month)}. </>}
+              {hasAverageData && (
+                <>vs. média = média dos últimos {trailingSummaries.length} meses com movimento.</>
+              )}
             </p>
           )}
 
@@ -244,13 +268,17 @@ function Stat({
   label,
   value,
   tone,
-  delta,
+  monthDelta,
+  averageDelta,
   upIsGood = true,
 }: {
   label: string;
   value: number;
   tone: "emerald" | "red" | "brand" | "gray";
-  delta?: MetricDelta;
+  /** Variação frente ao mês anterior. */
+  monthDelta?: MetricDelta;
+  /** Variação frente à média dos últimos meses (tendência). */
+  averageDelta?: MetricDelta;
   upIsGood?: boolean;
 }) {
   const tones: Record<string, string> = {
@@ -263,15 +291,30 @@ function Stat({
     <div className="card">
       <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
       <p className={"mt-1 text-xl font-bold " + tones[tone]}>{formatMoney(value)}</p>
-      {delta && <DeltaLine delta={delta} upIsGood={upIsGood} />}
+      {monthDelta && <DeltaLine delta={monthDelta} upIsGood={upIsGood} caption="mês ant." />}
+      {averageDelta && <DeltaLine delta={averageDelta} upIsGood={upIsGood} caption="média" />}
     </div>
   );
 }
 
-/** Linha de variação mês a mês: seta + valor absoluto + porcentagem. */
-function DeltaLine({ delta, upIsGood }: { delta: MetricDelta; upIsGood: boolean }) {
+/** Linha de variação: rótulo da base + seta + valor absoluto + porcentagem. */
+function DeltaLine({
+  delta,
+  upIsGood,
+  caption,
+}: {
+  delta: MetricDelta;
+  upIsGood: boolean;
+  caption: string;
+}) {
+  const prefix = <span className="font-normal text-gray-400">vs. {caption}: </span>;
+
   if (delta.direction === "flat") {
-    return <p className="mt-1 text-xs text-gray-400">→ sem variação</p>;
+    return (
+      <p className="mt-1 text-xs text-gray-400">
+        {prefix}→ sem variação
+      </p>
+    );
   }
 
   const isGood = delta.direction === "up" ? upIsGood : !upIsGood;
@@ -282,6 +325,7 @@ function DeltaLine({ delta, upIsGood }: { delta: MetricDelta; upIsGood: boolean 
 
   return (
     <p className={"mt-1 text-xs font-medium " + colorClass}>
+      {prefix}
       {arrow} {formatMoney(Math.abs(delta.delta))} <span className="opacity-70">({pctLabel})</span>
     </p>
   );
