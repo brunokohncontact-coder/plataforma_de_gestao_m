@@ -132,6 +132,12 @@ corrente contra a média dos últimos 3 meses **com movimento** (denominador = m
 quando há ≥2, pois com 1 a média = o mês anterior), exibindo em cada card uma segunda linha de delta
 ("vs. média") sob a já existente "vs. mês ant.", suavizando um mês anterior atípico (ver D35).
 **373 testes** verdes.
+Sessão 45 entregou a **quebra por categoria no Resumo anual** (`/financas/anual`): a função pura
+`annualCategoryReport(txs, year)` (em `src/lib/finance.ts`) filtra as transações do ano e delega ao
+`categoryReport` já existente (uma só fonte de verdade da agregação por categoria), e a página
+renderiza dois cards — Receitas/Despesas por categoria, com valor, participação (%) e barra —
+reaproveitando o padrão visual do relatório mensal (D21), respondendo "para onde foi o dinheiro no
+ano?" sem consulta extra ao banco (ver D36). **376 testes** verdes.
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias, estados de erro
 inline dos server actions) ou evoluções de calendário (arrastar/soltar para remarcar).
 

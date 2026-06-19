@@ -4,9 +4,11 @@ import { prisma } from "@/lib/prisma";
 import {
   annualSummary,
   compareAnnualSummaries,
+  annualCategoryReport,
   type TxLike,
   type AnnualMonth,
   type MetricDelta,
+  type CategorySlice,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 
@@ -62,6 +64,7 @@ export default async function FinanceAnnualPage({
   const summary = annualSummary(allTxs, year);
   const prevSummary = annualSummary(allTxs, year - 1);
   const comparison = compareAnnualSummaries(summary, prevSummary);
+  const categories = annualCategoryReport(allTxs, year);
   const hasActivity = summary.totalIncome > 0 || summary.totalExpense > 0;
   const prevHasActivity =
     prevSummary.totalIncome > 0 || prevSummary.totalExpense > 0;
@@ -235,9 +238,74 @@ export default async function FinanceAnnualPage({
               </tfoot>
             </table>
           </section>
+
+          {/* Quebra por categoria do ano: "para onde foi o dinheiro?" */}
+          <div className="grid gap-6 lg:grid-cols-2">
+            <CategoryCard
+              title="Receitas por categoria"
+              slices={categories.income}
+              total={categories.totalIncome}
+              tone="emerald"
+            />
+            <CategoryCard
+              title="Despesas por categoria"
+              slices={categories.expense}
+              total={categories.totalExpense}
+              tone="red"
+            />
+          </div>
         </>
       )}
     </div>
+  );
+}
+
+function CategoryCard({
+  title,
+  slices,
+  total,
+  tone,
+}: {
+  title: string;
+  slices: CategorySlice[];
+  total: number;
+  tone: "emerald" | "red";
+}) {
+  const barTone = tone === "emerald" ? "bg-emerald-400" : "bg-red-400";
+  const textTone = tone === "emerald" ? "text-emerald-600" : "text-red-600";
+
+  return (
+    <section className="card">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="font-semibold">{title}</h2>
+        <span className={"font-semibold " + textTone}>{formatMoney(total)}</span>
+      </div>
+      {slices.length === 0 ? (
+        <p className="py-4 text-center text-sm text-gray-400">Nada neste ano.</p>
+      ) : (
+        <ul className="space-y-3">
+          {slices.map((s) => (
+            <li key={s.category}>
+              <div className="mb-1 flex items-center justify-between gap-2 text-sm">
+                <span className="truncate">{s.category}</span>
+                <span className="whitespace-nowrap text-gray-500">
+                  {formatMoney(s.amount)}
+                  <span className="ml-1 text-xs text-gray-400">
+                    ({Math.round(s.share * 100)}%)
+                  </span>
+                </span>
+              </div>
+              <div className="h-2 overflow-hidden rounded bg-gray-100">
+                <div
+                  className={"h-full rounded " + barTone}
+                  style={{ width: `${Math.max(2, Math.round(s.share * 100))}%` }}
+                />
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
