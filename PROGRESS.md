@@ -1046,6 +1046,30 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   Saldo ▲ +79% (verde) e Caixa ▼ −171% (vermelho) — verificado. `npm audit` inalterado
   (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova — ver D6/D8).
 
+### Sessão 47 — 2026-06-19 (Fase 1 — exportação CSV do Resumo anual)
+- **Lógica pura** (`src/lib/csv.ts`): nova `annualSummaryToCsv(summary)` que serializa um
+  `AnnualSummary` (D16/D34) em CSV — cabeçalho `Mês;Receitas (R$);Despesas (R$);Resultado (R$)`,
+  os 12 meses (jan→dez, zeros inclusive, rótulo "Mês AAAA") e uma linha "Total do ano (AAAA)",
+  espelhando a tabela "Mês a mês" da página. Mesma convenção pt-BR de `transactionsToCsv`
+  (delimitador `;`, decimal com vírgula via `centsToCsvAmount`). Para os nomes dos meses,
+  `MONTH_NAMES_LONG` passou a ser **exportado** de `src/lib/calendar.ts` (era privado) e
+  reaproveitado aqui — uma só fonte de verdade dos rótulos. **4 testes** novos em `csv.test.ts`
+  (cabeçalho+12 meses+total = 14 linhas; agrega no mês certo e totaliza o ano; resultado negativo
+  preservado; ignora outros anos) — total do projeto **385** (eram 381). Ver **DECISIONS.md D38**.
+- **Route handler** `src/app/(app)/financas/anual/export/route.ts`: GET que lê `?ano=YYYY`
+  (mesma `parseYear` da página, fallback ao ano atual), carrega as transações do usuário,
+  computa `annualSummary` e devolve o CSV com BOM UTF-8, `Content-Type text/csv` e
+  `Content-Disposition` (`financas-anual-AAAA.csv`) — espelha o handler de `/financas/export`.
+- **UI** (`src/app/(app)/financas/anual/page.tsx`): botão **⬇ CSV** na barra de ações (só quando
+  há atividade no ano), apontando para `/financas/anual/export?ano=<year>`.
+- Definition of Done verde: build (**26 rotas**; nova `/financas/anual/export`), typecheck
+  (`tsc --noEmit`) limpo, lint (0), **385 testes** (`vitest run`), smoke test ao vivo
+  (`next start`): `/financas/anual/export` sem sessão → 307, `/financas/anual` → 307, `/login` →
+  200; **e2e autenticado com cookie de sessão real** (seed demo) → download `financas-anual-2026.csv`
+  com `Content-Type text/csv`, BOM e `Total do ano (2026);2000,00;750,00;1250,00` — verificado.
+  `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência
+  nova nem mudança de schema — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)

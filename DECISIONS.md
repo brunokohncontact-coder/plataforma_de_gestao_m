@@ -842,3 +842,32 @@ contexto, decisão, justificativa e alternativas consideradas.
   em D35; (b) mediana em vez de média — mais robusta a outliers, mas menos intuitiva e desnecessária
   com históricos curtos; (c) reaproveitar `annualSummary` por ano e somar — descartado: precisaria
   varrer ano a ano e ainda não daria a contagem de anos-ativos por mês numa passada só.
+
+## D38 — Exportação CSV do Resumo anual (Sessão 47)
+- **Contexto:** o Relatório mensal já exportava CSV do mês (Sessão 21/Sessão 14, `/financas/export`
+  com filtros; o relatório linka o recorte do mês). O Resumo anual (`/financas/anual`, D16/D34/D36)
+  mostrava os 12 meses na tela, mas não dava como **levar o ano inteiro para uma planilha**
+  (contador/IR/prestação de contas) — lacuna de consistência com o resto das Finanças.
+- **Decisão:** adicionar a função pura `annualSummaryToCsv(summary)` em `src/lib/csv.ts`, que
+  serializa um `AnnualSummary` já computado (cabeçalho + 12 meses jan→dez + linha "Total do ano"),
+  e um route handler `GET /financas/anual/export?ano=YYYY` que **espelha** o handler de
+  `/financas/export` (carrega transações do usuário, computa `annualSummary`, devolve CSV com BOM
+  UTF-8 e `Content-Disposition`). Botão "⬇ CSV" na página do resumo anual.
+- **Resumo, não transações brutas:** o CSV exportado é o **agregado mês a mês** (o que a tela do
+  resumo anual mostra), não a lista de lançamentos — quem quer os lançamentos já tem
+  `/financas/export` (filtrável por `?mes=`). Assim cada export responde a uma pergunta distinta
+  (fechamento do ano vs. extrato detalhado) sem duplicar o outro.
+- **Reúso dos rótulos de mês:** `MONTH_NAMES_LONG` (antes privado em `calendar.ts`) virou export e é
+  reaproveitado pelo serializador — uma só fonte de verdade dos nomes pt-BR dos meses, evitando uma
+  segunda cópia da lista em `csv.ts`. Sem ciclo de import (`csv`→`calendar`; `calendar` não importa
+  `csv`/`finance`).
+- **Sem schema, sem dependência, sem server action:** leitura/derivação sobre os dados já
+  carregados; a camada pura (testada) faz a serialização e a camada HTTP só faz I/O.
+- **Testes:** 4 testes unitários novos (14 linhas = cabeçalho+12 meses+total; agrega no mês certo e
+  totaliza o ano; resultado negativo preservado no mês e no total; ignora transações de outros anos).
+  Total do projeto 381→385.
+- **Alternativas consideradas:** (a) incluir a quebra por categoria do ano (D36) no mesmo CSV —
+  descartado: misturaria duas tabelas de formatos diferentes num arquivo só; melhor um export por
+  visão se houver demanda; (b) reaproveitar `/financas/export?mes=` doze vezes — descartado: não dá
+  a consolidação anual numa planilha única, que é o ponto; (c) gerar XLSX em vez de CSV — fora do
+  escopo (exigiria dependência nova); CSV com BOM já abre no Excel/Sheets pt-BR.
