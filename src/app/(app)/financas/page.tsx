@@ -134,6 +134,11 @@ export default async function FinancesPage({
               Ponto de equilíbrio
             </Link>
           )}
+          {transactions.some((t) => t.type === "INCOME") && (
+            <Link href="/financas/reserva-impostos" className="btn-secondary">
+              Reserva p/ impostos
+            </Link>
+          )}
           {transactions.length > 0 && (
             <Link href="/financas/relatorio" className="btn-secondary">
               Relatório

@@ -949,3 +949,36 @@ contexto, decisão, justificativa e alternativas consideradas.
   o cachê bruto médio em vez do net — descartado: ignoraria os custos do próprio show, otimista demais;
   (c) projetar com os shows futuros já agendados (cruzar com `forecastBookedRevenue`) — interessante,
   mas mistura "quanto preciso" com "quanto já tenho", duas perguntas; fica como evolução futura.
+
+## D41 — Reserva para impostos (Sessão 50)
+- **Contexto:** o músico autônomo no Brasil (MEI/Simples/carnê-leão) costuma gastar o que entra e
+  ser pego de surpresa pelo imposto. As Finanças já tinham caixa, custo fixo (D39) e ponto de
+  equilíbrio (D40), mas faltava a pergunta de disciplina financeira mais simples e útil:
+  **"quanto eu deveria estar guardando de cada cachê para o imposto?"**.
+- **Decisão:** função pura `taxReserve(txs, { year, rate })` em `src/lib/finance.ts`, que aplica uma
+  alíquota sobre as **receitas efetivamente recebidas** (caixa de entrada) do ano, mês a mês, e
+  expõe `months[12]` (recebido + reserva por mês), `totalReceivedIncome`, `totalReserve` e a `rate`
+  saneada. Nova página `/financas/reserva-impostos` com seletor de alíquota (atalhos 6/11/15/27,5%),
+  navegação por ano, destaque do total a guardar no ano e tabela mês a mês com link ao relatório
+  mensal. Link na barra de `/financas` quando há receitas.
+- **Base = receita RECEBIDA, não competência nem a receber:** imposto incide sobre faturamento que
+  de fato entrou. Usar `totalIncome` (competência) ou incluir pendências mandaria o músico guardar
+  dinheiro que ainda não tem. Coerente com a semântica de caixa de `summarizeFinances`.
+- **Alíquota é HIPÓTESE, default 6% (`DEFAULT_TAX_RATE`):** aproxima a faixa inicial do Simples
+  Nacional (Anexo III), apenas como ordem de grandeza segura. A página mostra um aviso âmbar quando
+  a alíquota padrão está em uso e a torna ajustável por query (`?aliquota=`, 0–100, com `,`/`.`),
+  sem persistência/schema — o regime real varia muito por perfil e deve ser confirmado com contador.
+  Sinalizado para validação nos bloqueios do PROGRESS.
+- **Arredondamento por mês, total = soma das mensais:** cada `reserve` é `round(recebido × rate)`
+  e o total soma as reservas mensais (não a reserva do total) — diferença de centavos, mas mantém a
+  coluna e o rodapé somando exatamente, como nas demais tabelas (D21/anual).
+- **Sem alíquota progressiva nem dedução de despesas:** modelo de faturamento bruto (Simples/MEI),
+  não lucro presumido/real nem carnê-leão progressivo — manteria o cálculo simples e previsível. O
+  carnê-leão progressivo (27,5% sobre o líquido) fica como evolução futura se a validação pedir.
+- **Testes:** 6 testes unitários novos (`taxReserve`: alíquota padrão; só receitas recebidas;
+  filtro por ano UTC; ano sem receita → 12 meses zerados; arredondamento mensal; saneamento da
+  alíquota para [0,1] incl. NaN). Total do projeto 401→407.
+- **Alternativas consideradas:** (a) persistir a alíquota no `User` (schema) — adiado, query basta
+  para a v1 e evita migração; (b) reserva sobre o lucro (receita − despesa) em vez do faturamento —
+  descartado p/ Simples/MEI, que tributam faturamento; fica como modo futuro junto do carnê-leão;
+  (c) exportação CSV — adiável, o padrão de `/financas/anual/export` (D38) é reaproveitável depois.
