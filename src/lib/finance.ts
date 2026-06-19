@@ -1680,6 +1680,100 @@ export function recurringExpenses(
   };
 }
 
+// ── Ponto de equilíbrio em shows (quantos gigs/mês cobrem o custo fixo) ──────
+//
+// Responde a pergunta de planejamento mais direta do músico: "quantos shows por
+// mês eu preciso fazer só para pagar minhas contas fixas?". Cruza dois números que
+// a plataforma já calcula: o CUSTO FIXO mensal (recurringExpenses, D39) e quanto
+// um show TÍPICO deixa no bolso (a média do P&L dos shows já realizados). Pura.
+
+/** Forma mínima de show para o ponto de equilíbrio (precisa da data p/ "realizado"). */
+export interface BreakEvenShowLike extends ShowLike {
+  date: Date | string;
+}
+
+export interface BreakEvenAnalysis {
+  /** Custo fixo mensal estimado (centavos) — de `recurringExpenses`. */
+  monthlyFixedCost: number;
+  /** Resultado líquido médio por show realizado (centavos, arredondado). 0 se nenhum. */
+  avgNetPerShow: number;
+  /** Nº de shows realizados (PLAYED, ou CONFIRMED com data passada) considerados na média. */
+  showsConsidered: number;
+  /** Média de shows realizados por mês no histórico (0 se sem histórico). */
+  avgShowsPerMonth: number;
+  /**
+   * Shows/mês necessários para cobrir o custo fixo: `ceil(monthlyFixedCost / avgNetPerShow)`.
+   * - `null` quando não há custo fixo a cobrir (`monthlyFixedCost <= 0`): nada a bater.
+   * - `null` quando `avgNetPerShow <= 0`: o show médio não sobra nada (a UI orienta a
+   *   rever cachê/custos, pois nenhum número de shows fecha a conta).
+   */
+  showsNeeded: number | null;
+  /** `avgShowsPerMonth >= showsNeeded` (já cobrindo); `null` quando `showsNeeded` é `null`. */
+  covered: boolean | null;
+}
+
+/**
+ * Estima o ponto de equilíbrio em shows: quantos gigs por mês são necessários para
+ * cobrir o custo fixo mensal, dado quanto um show típico deixa de resultado líquido.
+ *
+ * - "Show realizado" = o mesmo critério de `reconcileShowFees` (`isHappenedGig`):
+ *   PLAYED, ou CONFIRMED com data já passada. Propostos e cancelados ficam de fora
+ *   (não representam o que de fato acontece num mês típico).
+ * - `avgNetPerShow` = média do `computeShowPnL().net` dos shows realizados (cachê +
+ *   receitas extras − despesas vinculadas), arredondada ao centavo.
+ * - `avgShowsPerMonth` = nº de shows realizados ÷ amplitude (meses entre o 1º e o
+ *   último show realizado, inclusive) — o ritmo atual de shows, para comparar com a meta.
+ * - `monthlyFixedCost` vem de `recurringExpenses` (categorias recorrentes ainda ativas).
+ *
+ * Heurística de planejamento (não contabilidade exata): o custo fixo pode conter
+ * despesas que também aparecem vinculadas a shows; aqui tratamos custo fixo e custo
+ * por show como blocos separados. Pura; `now` e as opções de recorrência injetáveis.
+ */
+export function computeBreakEven(
+  shows: BreakEvenShowLike[],
+  txs: TxLike[],
+  options: { now?: Date | string; recurring?: RecurringExpensesOptions } = {},
+): BreakEvenAnalysis {
+  const now = options.now ?? new Date();
+  const todayMs = utcMidnight(now);
+
+  const monthlyFixedCost = recurringExpenses(txs, {
+    now,
+    ...options.recurring,
+  }).estimatedMonthlyFixedCost;
+
+  const realized = shows.filter((s) => isHappenedGig(s, todayMs));
+  const showsConsidered = realized.length;
+
+  const totalNet = sum(realized.map((s) => computeShowPnL(s, txs).net));
+  const avgNetPerShow = showsConsidered > 0 ? Math.round(totalNet / showsConsidered) : 0;
+
+  let avgShowsPerMonth = 0;
+  if (showsConsidered > 0) {
+    const keys = realized.map((s) => monthKey(s.date));
+    const first = keys.reduce((a, b) => (b < a ? b : a));
+    const last = keys.reduce((a, b) => (b > a ? b : a));
+    const span = monthsBetween(first, last) + 1; // inclusivo
+    avgShowsPerMonth = showsConsidered / span;
+  }
+
+  const showsNeeded =
+    monthlyFixedCost > 0 && avgNetPerShow > 0
+      ? Math.ceil(monthlyFixedCost / avgNetPerShow)
+      : null;
+
+  const covered = showsNeeded == null ? null : avgShowsPerMonth >= showsNeeded;
+
+  return {
+    monthlyFixedCost,
+    avgNetPerShow,
+    showsConsidered,
+    avgShowsPerMonth,
+    showsNeeded,
+    covered,
+  };
+}
+
 /** Sequência de `count` meses "YYYY-MM" a partir de `startKey` (inclusive), em UTC. */
 function sequentialMonths(startKey: string, count: number): string[] {
   const [y, m] = startKey.split("-").map(Number);

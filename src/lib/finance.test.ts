@@ -37,10 +37,12 @@ import {
   compareSummaries,
   averageSummaries,
   recurringExpenses,
+  computeBreakEven,
   type TxLike,
   type ShowLike,
   type VenueShowLike,
   type ReceivableShowLike,
+  type BreakEvenShowLike,
 } from "./finance";
 
 const show: ShowLike = { id: "show1", fee: 100_00, status: "CONFIRMED" };
@@ -1698,5 +1700,108 @@ describe("averageSummaries", () => {
     // balance derivado de componentes arredondados (= receitas − despesas).
     expect(avg.balance).toBe(avg.totalIncome - avg.totalExpense);
     expect(avg.cashBalance).toBe(avg.receivedIncome - avg.paidExpense);
+  });
+});
+
+describe("computeBreakEven", () => {
+  const NOW = "2026-06-15T00:00:00.000Z"; // junho/2026
+
+  // Custo fixo de R$ 300/mês: "Sala" em 3 meses distintos (abr/mai/jun).
+  const fixedCostTxs: TxLike[] = [
+    tx({ type: "EXPENSE", amount: 300_00, category: "Sala", date: "2026-04-10T00:00:00.000Z" }),
+    tx({ type: "EXPENSE", amount: 300_00, category: "Sala", date: "2026-05-10T00:00:00.000Z" }),
+    tx({ type: "EXPENSE", amount: 300_00, category: "Sala", date: "2026-06-10T00:00:00.000Z" }),
+  ];
+
+  it("retorna zeros e showsNeeded null quando não há custo fixo nem shows", () => {
+    const r = computeBreakEven([], [], { now: NOW });
+    expect(r.monthlyFixedCost).toBe(0);
+    expect(r.avgNetPerShow).toBe(0);
+    expect(r.showsConsidered).toBe(0);
+    expect(r.avgShowsPerMonth).toBe(0);
+    expect(r.showsNeeded).toBeNull();
+    expect(r.covered).toBeNull();
+  });
+
+  it("calcula shows/mês necessários a partir do custo fixo e do resultado médio por show", () => {
+    // Custo fixo 300; dois shows realizados de cachê 200 cada (net 200) → média 200.
+    // ceil(300 / 200) = 2 shows/mês.
+    const shows: BreakEvenShowLike[] = [
+      { id: "s1", fee: 200_00, status: "PLAYED", date: "2026-05-05T00:00:00.000Z" },
+      { id: "s2", fee: 200_00, status: "PLAYED", date: "2026-06-05T00:00:00.000Z" },
+    ];
+    const r = computeBreakEven(shows, fixedCostTxs, { now: NOW });
+    expect(r.monthlyFixedCost).toBe(300_00);
+    expect(r.avgNetPerShow).toBe(200_00);
+    expect(r.showsConsidered).toBe(2);
+    expect(r.showsNeeded).toBe(2);
+    // 2 shows em 2 meses (mai, jun) → 1 show/mês; meta 2 → não cobre.
+    expect(r.avgShowsPerMonth).toBe(1);
+    expect(r.covered).toBe(false);
+  });
+
+  it("desconta as despesas vinculadas ao show no resultado médio (P&L)", () => {
+    // Cachê 200, despesa vinculada 50 → net 150 por show.
+    const shows: BreakEvenShowLike[] = [
+      { id: "s1", fee: 200_00, status: "PLAYED", date: "2026-06-01T00:00:00.000Z" },
+    ];
+    const txs: TxLike[] = [
+      ...fixedCostTxs,
+      tx({ type: "EXPENSE", amount: 50_00, category: "Transporte", showId: "s1", date: "2026-06-01T00:00:00.000Z" }),
+    ];
+    const r = computeBreakEven(shows, txs, { now: NOW });
+    expect(r.avgNetPerShow).toBe(150_00);
+    expect(r.showsNeeded).toBe(Math.ceil(300_00 / 150_00)); // 2
+  });
+
+  it("só considera shows realizados (PLAYED, ou CONFIRMED com data passada)", () => {
+    const shows: BreakEvenShowLike[] = [
+      { id: "played", fee: 100_00, status: "PLAYED", date: "2026-05-01T00:00:00.000Z" },
+      { id: "confPast", fee: 100_00, status: "CONFIRMED", date: "2026-06-01T00:00:00.000Z" },
+      { id: "confFuture", fee: 999_00, status: "CONFIRMED", date: "2026-12-01T00:00:00.000Z" },
+      { id: "proposed", fee: 999_00, status: "PROPOSED", date: "2026-05-20T00:00:00.000Z" },
+      { id: "cancelled", fee: 999_00, status: "CANCELLED", date: "2026-05-20T00:00:00.000Z" },
+    ];
+    const r = computeBreakEven(shows, fixedCostTxs, { now: NOW });
+    expect(r.showsConsidered).toBe(2); // played + confPast
+    expect(r.avgNetPerShow).toBe(100_00); // futuros/propostos/cancelados não inflam
+  });
+
+  it("retorna showsNeeded null quando o show médio não deixa resultado positivo", () => {
+    // Cachê 100 com despesa vinculada de 150 → net negativo: impossível cobrir custo fixo.
+    const shows: BreakEvenShowLike[] = [
+      { id: "s1", fee: 100_00, status: "PLAYED", date: "2026-06-01T00:00:00.000Z" },
+    ];
+    const txs: TxLike[] = [
+      ...fixedCostTxs,
+      tx({ type: "EXPENSE", amount: 150_00, category: "Transporte", showId: "s1", date: "2026-06-01T00:00:00.000Z" }),
+    ];
+    const r = computeBreakEven(shows, txs, { now: NOW });
+    expect(r.avgNetPerShow).toBeLessThan(0);
+    expect(r.showsNeeded).toBeNull();
+    expect(r.covered).toBeNull();
+  });
+
+  it("retorna showsNeeded null quando não há custo fixo a cobrir", () => {
+    const shows: BreakEvenShowLike[] = [
+      { id: "s1", fee: 200_00, status: "PLAYED", date: "2026-06-01T00:00:00.000Z" },
+    ];
+    const r = computeBreakEven(shows, [], { now: NOW }); // sem despesas → custo fixo 0
+    expect(r.monthlyFixedCost).toBe(0);
+    expect(r.showsNeeded).toBeNull();
+    expect(r.covered).toBeNull();
+  });
+
+  it("marca covered quando o ritmo atual de shows já bate a meta", () => {
+    // Custo fixo 300, net médio 400 → ceil(300/400) = 1 show/mês.
+    // Dois shows no mesmo mês (jun) → 2 shows/mês ≥ 1 → cobre.
+    const shows: BreakEvenShowLike[] = [
+      { id: "s1", fee: 400_00, status: "PLAYED", date: "2026-06-05T00:00:00.000Z" },
+      { id: "s2", fee: 400_00, status: "PLAYED", date: "2026-06-20T00:00:00.000Z" },
+    ];
+    const r = computeBreakEven(shows, fixedCostTxs, { now: NOW });
+    expect(r.showsNeeded).toBe(1);
+    expect(r.avgShowsPerMonth).toBe(2);
+    expect(r.covered).toBe(true);
   });
 });

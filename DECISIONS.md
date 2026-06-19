@@ -914,3 +914,38 @@ contexto, decisão, justificativa e alternativas consideradas.
   declarados pelo usuário (um cadastro) — mais exato, porém pede schema/UI nova e disciplina de
   cadastro; a detecção automática entrega valor imediato sobre os dados que já existem. Pode evoluir
   para um modo declarado depois se houver demanda.
+
+## D40 — Ponto de equilíbrio em shows (Sessão 49)
+- **Contexto:** a D39 entregou o **custo fixo mensal estimado** ("quanto preciso faturar todo mês"),
+  e a rentabilidade por show (F4) já dizia quanto cada gig deixa. Faltava cruzar os dois na pergunta
+  de planejamento mais concreta do músico autônomo: **"quantos shows por mês eu preciso fazer só
+  para cobrir minhas contas fixas?"**. Um número em reais ("preciso de R$ X/mês") é abstrato; um
+  número em shows ("preciso de 2 gigs/mês") é acionável — vira meta de agenda.
+- **Decisão:** função pura `computeBreakEven(shows, txs, options)` em `src/lib/finance.ts`, que
+  compõe duas fontes de verdade já existentes: `recurringExpenses(...).estimatedMonthlyFixedCost`
+  (custo fixo) e a média do `computeShowPnL().net` dos shows **realizados**. Expõe `monthlyFixedCost`,
+  `avgNetPerShow`, `showsConsidered`, `avgShowsPerMonth` (ritmo atual), `showsNeeded`
+  (`ceil(custoFixo / netMédio)`) e `covered`. Nova página `/financas/ponto-de-equilibrio` (destaque
+  da meta de shows/mês + selo verde/âmbar comparando com o ritmo atual + os três números por trás),
+  com link na barra de `/financas` quando há despesas.
+- **"Show realizado" = mesmo critério de `reconcileShowFees`/`isHappenedGig`:** PLAYED, ou CONFIRMED
+  com data já passada. Propostos, cancelados e confirmados futuros **não** entram na média — senão um
+  show grande ainda por acontecer (sem despesas vinculadas lançadas) inflaria o net médio com a ilusão
+  de margem cheia.
+- **`showsNeeded = null` em dois casos honestos:** (a) sem custo fixo a cobrir (`monthlyFixedCost <= 0`)
+  — nada a bater; (b) `avgNetPerShow <= 0` — o show médio não sobra nada, então **nenhum** número de
+  shows fecha a conta; a UI então orienta a rever cachê/custos em vez de mostrar uma meta infinita.
+- **`avgShowsPerMonth` = shows realizados ÷ amplitude (meses entre 1º e último, inclusive):** o ritmo
+  atual, para o selo "já cobre / abaixo da meta". Mesmo princípio de denominador-ativo de D35/D37/D39.
+- **Heurística de planejamento, não contabilidade exata:** custo fixo (todas as categorias recorrentes)
+  e custo por show (despesas vinculadas ao show) são tratados como blocos separados — pode haver leve
+  sobreposição se uma categoria recorrente também aparecer vinculada a shows. A página declara isso
+  no rodapé e aponta para Custos fixos e Rentabilidade por show. Aceitável: o objetivo é uma meta de
+  agenda, não fechamento. Sem schema, sem dependência, sem server action.
+- **Testes:** 7 testes unitários novos (`computeBreakEven`: vazio→nulls; cálculo de shows/mês a partir
+  de custo+netMédio; desconto de despesa vinculada no P&L; só shows realizados; net médio negativo→null;
+  sem custo fixo→null; `covered` quando o ritmo bate a meta). Total do projeto 394→401.
+- **Alternativas consideradas:** (a) meta em reais apenas (já dada por D39) — menos acionável; (b) usar
+  o cachê bruto médio em vez do net — descartado: ignoraria os custos do próprio show, otimista demais;
+  (c) projetar com os shows futuros já agendados (cruzar com `forecastBookedRevenue`) — interessante,
+  mas mistura "quanto preciso" com "quanto já tenho", duas perguntas; fica como evolução futura.
