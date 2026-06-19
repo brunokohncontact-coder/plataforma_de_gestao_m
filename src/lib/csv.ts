@@ -6,7 +6,8 @@
 // para preservar acentuação no Excel.
 
 import { TRANSACTION_TYPE_LABELS, type TransactionType } from "./domain";
-import { dayKey } from "./finance";
+import { dayKey, type AnnualSummary } from "./finance";
+import { MONTH_NAMES_LONG } from "./calendar";
 
 const DEFAULT_DELIMITER = ";";
 
@@ -93,5 +94,40 @@ export function transactionsToCsv(
       t.show?.title ?? "",
     ]);
   }
+  return toCsv(rows, delimiter);
+}
+
+export const ANNUAL_SUMMARY_CSV_HEADERS = [
+  "Mês",
+  "Receitas (R$)",
+  "Despesas (R$)",
+  "Resultado (R$)",
+] as const;
+
+/**
+ * Serializa o resumo anual (12 meses + total) em CSV, pronto para download.
+ * Mesma convenção pt-BR de `transactionsToCsv` (delimitador ";", decimal com
+ * vírgula). Os 12 meses saem sempre (jan→dez, zeros inclusive) seguidos de uma
+ * linha "Total do ano", espelhando a tabela "Mês a mês" da página `/financas/anual`.
+ */
+export function annualSummaryToCsv(
+  summary: AnnualSummary,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const rows: string[][] = [Array.from(ANNUAL_SUMMARY_CSV_HEADERS)];
+  for (const m of summary.months) {
+    rows.push([
+      `${MONTH_NAMES_LONG[m.monthIndex - 1]} ${summary.year}`,
+      centsToCsvAmount(m.income),
+      centsToCsvAmount(m.expense),
+      centsToCsvAmount(m.net),
+    ]);
+  }
+  rows.push([
+    `Total do ano (${summary.year})`,
+    centsToCsvAmount(summary.totalIncome),
+    centsToCsvAmount(summary.totalExpense),
+    centsToCsvAmount(summary.net),
+  ]);
   return toCsv(rows, delimiter);
 }

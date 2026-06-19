@@ -5,9 +5,12 @@ import {
   centsToCsvAmount,
   csvDate,
   transactionsToCsv,
+  annualSummaryToCsv,
   TRANSACTION_CSV_HEADERS,
+  ANNUAL_SUMMARY_CSV_HEADERS,
   type CsvTransaction,
 } from "./csv";
+import { annualSummary } from "./finance";
 
 describe("escapeCsvField", () => {
   it("não envolve em aspas campos simples", () => {
@@ -118,5 +121,52 @@ describe("transactionsToCsv", () => {
   it("gera uma linha por transação além do cabeçalho", () => {
     const csv = transactionsToCsv([base, { ...base, description: "Outra" }]);
     expect(csv.split("\r\n")).toHaveLength(3);
+  });
+});
+
+describe("annualSummaryToCsv", () => {
+  it("emite cabeçalho + 12 meses + linha de total (14 linhas)", () => {
+    const csv = annualSummaryToCsv(annualSummary([], 2026));
+    const lines = csv.split("\r\n");
+    expect(lines).toHaveLength(14);
+    expect(lines[0]).toBe(ANNUAL_SUMMARY_CSV_HEADERS.join(";"));
+    // Sem transações: meses zerados, na ordem jan→dez.
+    expect(lines[1]).toBe("Janeiro 2026;0,00;0,00;0,00");
+    expect(lines[12]).toBe("Dezembro 2026;0,00;0,00;0,00");
+    expect(lines[13]).toBe("Total do ano (2026);0,00;0,00;0,00");
+  });
+
+  it("agrega receitas e despesas no mês certo e totaliza o ano", () => {
+    const txs = [
+      { type: "INCOME" as const, amount: 150000, category: "Cachê", date: "2026-03-10T12:00:00Z", received: true, showId: null },
+      { type: "EXPENSE" as const, amount: 50000, category: "Transporte", date: "2026-03-20T12:00:00Z", received: true, showId: null },
+      { type: "INCOME" as const, amount: 80000, category: "Cachê", date: "2026-07-01T12:00:00Z", received: false, showId: null },
+    ];
+    const csv = annualSummaryToCsv(annualSummary(txs, 2026));
+    const lines = csv.split("\r\n");
+    // Março (linha 3): 1500 receita, 500 despesa, 1000 resultado.
+    expect(lines[3]).toBe("Março 2026;1500,00;500,00;1000,00");
+    // Julho (linha 7): só 800 de receita.
+    expect(lines[7]).toBe("Julho 2026;800,00;0,00;800,00");
+    // Total: 2300 receita, 500 despesa, 1800 resultado.
+    expect(lines[13]).toBe("Total do ano (2026);2300,00;500,00;1800,00");
+  });
+
+  it("preserva resultado negativo no mês e no total", () => {
+    const txs = [
+      { type: "EXPENSE" as const, amount: 30000, category: "Equipamento", date: "2026-01-15T12:00:00Z", received: true, showId: null },
+    ];
+    const csv = annualSummaryToCsv(annualSummary(txs, 2026));
+    const lines = csv.split("\r\n");
+    expect(lines[1]).toBe("Janeiro 2026;0,00;300,00;-300,00");
+    expect(lines[13]).toBe("Total do ano (2026);0,00;300,00;-300,00");
+  });
+
+  it("ignora transações de outros anos", () => {
+    const txs = [
+      { type: "INCOME" as const, amount: 99900, category: "Cachê", date: "2025-12-31T12:00:00Z", received: true, showId: null },
+    ];
+    const csv = annualSummaryToCsv(annualSummary(txs, 2026));
+    expect(csv.split("\r\n")[13]).toBe("Total do ano (2026);0,00;0,00;0,00");
   });
 });

@@ -88,6 +88,15 @@ export default async function FinanceAnnualPage({
           <p className="text-sm text-gray-500">{year}</p>
         </div>
         <div className="flex items-center gap-2">
+          {hasActivity && (
+            <a
+              href={`/financas/anual/export?ano=${year}`}
+              className="btn-secondary text-sm"
+              download
+            >
+              ⬇ CSV
+            </a>
+          )}
           <Link href="/financas" className="text-sm text-gray-500 hover:underline">
             ← Finanças
           </Link>

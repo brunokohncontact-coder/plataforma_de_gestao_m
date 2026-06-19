@@ -2,7 +2,7 @@
 // agenda dos shows. Tudo opera em horário LOCAL (a grade que o usuário vê).
 // Semana começa no domingo (convenção pt-BR). Testado em src/lib/calendar.test.ts.
 
-const MONTH_NAMES_LONG = [
+export const MONTH_NAMES_LONG = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
