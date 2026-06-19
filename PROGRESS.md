@@ -187,6 +187,16 @@ negociação** (`proposedValue`/`proposedCount`, link para `/shows?status=PROPOS
 concretização** (`conversionRate`, "—" sem decididos) — para o sinal de booking aparecer já na
 primeira tela; cabeçalho com link "Ver funil" (ver D43). **413 testes** verdes (mudança de UI,
 reaproveita lógica pura já testada).
+Sessão 53 entregou a **evolução do cachê ao longo do tempo** (`/shows/evolucao-cache`): a função pura
+`feeTrend(shows, { now? })` (em `src/lib/finance.ts`) agrega o **cachê médio por mês** dos shows já
+realizados (mesmo critério `isHappenedGig` — PLAYED ou CONFIRMED com data passada — e só `fee > 0`),
+em ordem cronológica, e deriva cachê médio geral, maior/menor cachê, melhor/pior mês e a **tendência**
+(variação do mês mais recente vs. o primeiro, reaproveitando `computeDelta`) — respondendo "estou
+cobrando mais com o tempo?". É a evolução do **preço** (só `show.fee`), complementar à Rentabilidade
+(que mede o líquido). A página mostra cards de destaque, o card de tendência ("Seu cachê médio
+subiu/caiu") e a tabela mês a mês com barras; link "Evolução do cachê" na barra de `/shows`. Sem
+schema, sem dependência, sem server action (ver D44). **420 testes** verdes (medição real `vitest
+run`; eram 413 na main).
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias, estados de erro
 inline dos server actions) ou evoluções de calendário (arrastar/soltar para remarcar).
 
@@ -1138,6 +1148,32 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   página renderiza "1 show/mês" de meta, ritmo "1,5 shows/mês" e o selo verde "já cobre o custo
   fixo" — verificado. `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical;
   nenhuma dependência nova nem mudança de schema — ver D6/D8).
+
+### Sessão 53 — 2026-06-19 (Fase 1 — evolução do cachê ao longo do tempo)
+- **Lógica pura** (`src/lib/finance.ts`): nova `feeTrend(shows, { now? })` que agrega o cachê médio
+  por mês dos shows **realizados** (`isHappenedGig` — PLAYED, ou CONFIRMED com data passada) e com
+  cachê registrado (`fee > 0`), em ordem cronológica. Retorna `months[]` (com `count`/`totalFee`/
+  `avgFee`/`minFee`/`maxFee`), `totalShows`, `totalFee`, `avgFee`, `highestFee`/`lowestFee`,
+  `bestMonth`/`worstMonth` (empate no melhor → mais recente; no pior → mais antigo) e `trend`
+  (`computeDelta` do mês mais recente vs. o primeiro; `null` com < 2 meses). Mede **preço** (só
+  `show.fee`, sem despesas), complementar à Rentabilidade. Reaproveita `isHappenedGig`/`monthKey`/
+  `computeDelta` (sem duplicar regra). **7 testes** novos em `finance.test.ts` (vazio→zerado/nulo;
+  agrupamento cronológico com média/total/min/max; só realizados; ignora `fee<=0`; tendência último
+  vs primeiro; `null` com 1 mês; desempate melhor/pior). Total do projeto **420** (eram 413). Ver
+  **DECISIONS.md D44**.
+- **Página** (`src/app/(app)/shows/evolucao-cache/page.tsx`): server component que carrega os shows do
+  usuário, chama `feeTrend` e renderiza 4 cards de destaque (cachê médio geral, maior/menor, shows
+  considerados), um card de **tendência** ("Seu cachê médio subiu/caiu ▲/▼ R$ X (Y%)", comparando o
+  primeiro e o último mês) e a tabela "Cachê médio mês a mês" com barras (escala pelo pico) e a faixa
+  min–max por mês. Estado vazio honesto quando não há shows realizados com cachê. Link **Evolução do
+  cachê** na barra de `/shows` (ao lado de Por local). Sem schema, sem dependência, sem server action.
+- Definition of Done verde: build (**28 rotas**; nova `/shows/evolucao-cache`), typecheck
+  (`tsc --noEmit`) limpo, lint (0), **420 testes** (`vitest run`), smoke test ao vivo (`next start`):
+  `/shows/evolucao-cache` sem sessão → 307, `/shows` → 307, `/login` → 200; **e2e autenticado com
+  cookie de sessão real** (seed demo + 2 shows PLAYED inseridos em jan/mar) → página renderiza a
+  tabela Jan/Mar/Jun, o card "Seu cachê médio subiu" e "Comparando Jan 2026 (R$ 800,00) com Jun 2026
+  (R$ 1.500,00)" — verificado. `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1
+  critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
 
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),

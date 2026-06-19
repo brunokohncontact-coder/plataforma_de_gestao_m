@@ -41,6 +41,7 @@ import {
   taxReserve,
   DEFAULT_TAX_RATE,
   showPipeline,
+  feeTrend,
   type TxLike,
   type ShowLike,
   type VenueShowLike,
@@ -1947,5 +1948,126 @@ describe("showPipeline", () => {
     ]);
     expect(p.total).toBe(1);
     expect(p.playedCount).toBe(1);
+  });
+});
+
+describe("feeTrend", () => {
+  const now = new Date("2026-06-15T12:00:00.000Z");
+
+  function gig(partial: Partial<ReceivableShowLike>): ReceivableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-01-10T20:00:00.000Z",
+      ...partial,
+    };
+  }
+
+  it("sem shows realizados retorna tudo zerado/nulo", () => {
+    const t = feeTrend([], { now });
+    expect(t.months).toEqual([]);
+    expect(t.totalShows).toBe(0);
+    expect(t.totalFee).toBe(0);
+    expect(t.avgFee).toBe(0);
+    expect(t.highestFee).toBe(0);
+    expect(t.lowestFee).toBe(0);
+    expect(t.bestMonth).toBeNull();
+    expect(t.worstMonth).toBeNull();
+    expect(t.trend).toBeNull();
+  });
+
+  it("agrupa por mês cronológico com média/total/min/max por mês", () => {
+    const t = feeTrend(
+      [
+        gig({ id: "a", date: "2026-01-05T20:00:00.000Z", fee: 100_00 }),
+        gig({ id: "b", date: "2026-01-20T20:00:00.000Z", fee: 200_00 }),
+        gig({ id: "c", date: "2026-03-02T20:00:00.000Z", fee: 300_00 }),
+      ],
+      { now },
+    );
+    expect(t.months.map((m) => m.month)).toEqual(["2026-01", "2026-03"]);
+    expect(t.months[0]).toMatchObject({
+      count: 2,
+      totalFee: 300_00,
+      avgFee: 150_00,
+      minFee: 100_00,
+      maxFee: 200_00,
+    });
+    expect(t.months[1]).toMatchObject({ count: 1, avgFee: 300_00 });
+    expect(t.totalShows).toBe(3);
+    expect(t.totalFee).toBe(600_00);
+    expect(t.avgFee).toBe(200_00);
+    expect(t.highestFee).toBe(300_00);
+    expect(t.lowestFee).toBe(100_00);
+  });
+
+  it("considera só shows realizados (ignora proposto, cancelado e futuro)", () => {
+    const t = feeTrend(
+      [
+        gig({ id: "played", status: "PLAYED", date: "2026-01-10T20:00:00.000Z" }),
+        gig({ id: "confPast", status: "CONFIRMED", date: "2026-02-10T20:00:00.000Z" }),
+        gig({ id: "confFut", status: "CONFIRMED", date: "2026-09-10T20:00:00.000Z" }),
+        gig({ id: "prop", status: "PROPOSED", date: "2026-01-10T20:00:00.000Z" }),
+        gig({ id: "canc", status: "CANCELLED", date: "2026-01-10T20:00:00.000Z" }),
+      ],
+      { now },
+    );
+    expect(t.totalShows).toBe(2);
+    expect(t.months.map((m) => m.month)).toEqual(["2026-01", "2026-02"]);
+  });
+
+  it("ignora shows sem cachê (fee <= 0)", () => {
+    const t = feeTrend(
+      [
+        gig({ id: "a", fee: 0, date: "2026-01-10T20:00:00.000Z" }),
+        gig({ id: "b", fee: 80_00, date: "2026-02-10T20:00:00.000Z" }),
+      ],
+      { now },
+    );
+    expect(t.totalShows).toBe(1);
+    expect(t.months.map((m) => m.month)).toEqual(["2026-02"]);
+  });
+
+  it("trend compara o cachê médio do mês mais recente com o do primeiro mês", () => {
+    const t = feeTrend(
+      [
+        gig({ id: "a", date: "2026-01-10T20:00:00.000Z", fee: 100_00 }),
+        gig({ id: "b", date: "2026-04-10T20:00:00.000Z", fee: 250_00 }),
+      ],
+      { now },
+    );
+    expect(t.trend).not.toBeNull();
+    expect(t.trend!.current).toBe(250_00);
+    expect(t.trend!.previous).toBe(100_00);
+    expect(t.trend!.delta).toBe(150_00);
+    expect(t.trend!.direction).toBe("up");
+    expect(t.trend!.pct).toBeCloseTo(1.5, 5);
+  });
+
+  it("trend é null com um único mês ativo", () => {
+    const t = feeTrend(
+      [
+        gig({ id: "a", date: "2026-01-05T20:00:00.000Z", fee: 100_00 }),
+        gig({ id: "b", date: "2026-01-25T20:00:00.000Z", fee: 200_00 }),
+      ],
+      { now },
+    );
+    expect(t.months).toHaveLength(1);
+    expect(t.trend).toBeNull();
+  });
+
+  it("melhor mês desempata pelo mais recente; pior pelo mais antigo", () => {
+    const t = feeTrend(
+      [
+        gig({ id: "a", date: "2026-01-10T20:00:00.000Z", fee: 100_00 }),
+        gig({ id: "b", date: "2026-02-10T20:00:00.000Z", fee: 200_00 }),
+        gig({ id: "c", date: "2026-03-10T20:00:00.000Z", fee: 100_00 }),
+      ],
+      { now },
+    );
+    // médias: jan 100, fev 200, mar 100 → melhor=fev; pior empata jan/mar → jan.
+    expect(t.bestMonth?.month).toBe("2026-02");
+    expect(t.worstMonth?.month).toBe("2026-01");
   });
 });

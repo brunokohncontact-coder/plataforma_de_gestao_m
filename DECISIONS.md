@@ -1037,3 +1037,36 @@ contexto, decisão, justificativa e alternativas consideradas.
   perderia a taxa de concretização e a quebra proposto/confirmado, que dão o contexto de booking;
   (b) substituir a página dedicada pelo card — não, a página tem as barras por etapa e os atalhos
   por status que não cabem num resumo. O card é um portal para ela, não um substituto.
+
+## D44 — Evolução do cachê ao longo do tempo (Sessão 53)
+- **Contexto:** a plataforma já mede *rentabilidade* (P&L por show/local) e *projeção* (receita
+  agendada, fluxo de caixa), mas faltava o sinal de **progressão de carreira**: "estou cobrando mais
+  com o tempo?". Para o músico, a evolução do **preço** (cachê) é tão decisória quanto o lucro — é o
+  que diz se o trabalho de booking está aumentando o valor percebido.
+- **Decisão:** nova função pura `feeTrend(shows, { now? })` (em `src/lib/finance.ts`) + página
+  `/shows/evolucao-cache`. Agrega o **cachê médio por mês** dos shows já realizados, em ordem
+  cronológica, e deriva: cachê médio geral, maior/menor cachê, melhor/pior mês e uma **tendência**
+  (variação do cachê médio do mês mais recente vs. o primeiro mês). Responde "meu cachê está subindo?".
+- **Critério de "realizado":** reaproveita o helper privado `isHappenedGig` (PLAYED, ou CONFIRMED
+  com data passada) — mesma régua de `reconcileShowFees`/`computeBreakEven`. Propostos, cancelados e
+  futuros ficam de fora (não são preço efetivamente praticado).
+- **Só shows com cachê (`fee > 0`):** gigs sem cachê registrado (0) distorceriam a média de "quanto
+  cobro" — mesma postura de `reconcileShowFees`, que ignora `fee <= 0`. Documentado na função.
+- **Preço, não lucro:** usa apenas `show.fee` (não desconta despesas vinculadas nem soma receitas
+  extras). É deliberadamente a evolução do **valor cobrado**, complementar — não redundante — à
+  Rentabilidade por show (D-F4), que mede o líquido. Por isso `feeTrend` nem recebe transações.
+- **Tendência via `computeDelta`:** a variação reusa `computeDelta(últimoMês, primeiroMês)` (D33),
+  uma só fonte de verdade do cálculo de delta/%/direção. `null` com menos de 2 meses ativos (sem
+  dois pontos não há tendência).
+- **Sem schema/persistência, sem dependência nova:** tudo deriva de `status`/`fee`/`date` já
+  existentes; zero migração. Link "Evolução do cachê" na barra de `/shows` (ao lado de Rentabilidade
+  e Por local) quando há shows.
+- **Testes:** 7 testes unitários novos em `finance.test.ts` (vazio→zerado/nulo; agrupamento mensal
+  cronológico com média/total/min/max; só realizados; ignora `fee<=0`; tendência último vs primeiro;
+  `null` com um único mês; desempate de melhor/pior mês). Total do projeto 413→420.
+- **Alternativas consideradas:** (a) usar o resultado líquido (P&L) por show em vez do cachê — seria
+  redundante com a Rentabilidade e misturaria preço com custo; o cachê isolado responde melhor à
+  pergunta de progressão; (b) granularidade trimestral/anual em vez de mensal — mensal preserva o
+  detalhe e a UI já lida bem com gaps (só meses com shows aparecem); (c) incluir shows futuros
+  confirmados como "preço contratado" — não, distorceria a *evolução realizada* com expectativa;
+  (d) trazer o indicador para o Painel — adiável (o dashboard já está denso); a página dedicada basta.
