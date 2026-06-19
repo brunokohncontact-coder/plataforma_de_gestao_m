@@ -1962,6 +1962,125 @@ export function showPipeline(shows: ShowLike[]): ShowPipeline {
   };
 }
 
+// ── Evolução do cachê (estou cobrando mais com o tempo?) ────────────────────
+//
+// Responde "meu cachê está subindo?": olha só os shows JÁ REALIZADOS (mesmo
+// critério de `reconcileShowFees` — PLAYED, ou CONFIRMED com data passada) com
+// cachê registrado (> 0) e agrega o cachê médio por mês, em ordem cronológica.
+// É a evolução do PREÇO cobrado, não do lucro (P&L) — por isso usa só o `fee`
+// do show (sem despesas vinculadas). Pura.
+
+export interface FeeTrendMonth {
+  /** Chave "YYYY-MM" do mês. */
+  month: string;
+  /** Nº de shows realizados com cachê no mês. */
+  count: number;
+  /** Soma dos cachês do mês (centavos). */
+  totalFee: number;
+  /** Cachê médio do mês = round(totalFee / count) (centavos). */
+  avgFee: number;
+  /** Menor cachê individual do mês (centavos). */
+  minFee: number;
+  /** Maior cachê individual do mês (centavos). */
+  maxFee: number;
+}
+
+export interface FeeTrend {
+  /** Meses com shows realizados, em ordem cronológica crescente. */
+  months: FeeTrendMonth[];
+  /** Nº total de shows realizados considerados (com cachê > 0). */
+  totalShows: number;
+  /** Soma de todos os cachês considerados (centavos). */
+  totalFee: number;
+  /** Cachê médio geral por show realizado = round(totalFee / totalShows). */
+  avgFee: number;
+  /** Maior cachê individual entre todos os shows considerados (0 se nenhum). */
+  highestFee: number;
+  /** Menor cachê individual entre todos os shows considerados (0 se nenhum). */
+  lowestFee: number;
+  /** Mês com maior média de cachê (empate → o mais recente); null se nenhum. */
+  bestMonth: FeeTrendMonth | null;
+  /** Mês com menor média de cachê (empate → o mais antigo); null se nenhum. */
+  worstMonth: FeeTrendMonth | null;
+  /**
+   * Variação da média de cachê do mês mais recente vs. o primeiro mês com
+   * shows — o "estou cobrando mais?". `null` com menos de 2 meses ativos (sem
+   * dois pontos não há tendência). Reaproveita `computeDelta`.
+   */
+  trend: MetricDelta | null;
+}
+
+/**
+ * Evolução do cachê médio dos shows realizados ao longo do tempo.
+ *
+ * - "Realizado" = `isHappenedGig` (PLAYED, ou CONFIRMED com data já passada);
+ *   propostos, cancelados e shows futuros ficam de fora.
+ * - Só shows com cachê registrado (`fee > 0`) entram: gigs sem cachê (0)
+ *   distorceriam a média de "quanto cobro" (mesma postura de `reconcileShowFees`,
+ *   que ignora `fee <= 0`).
+ * - Agrupa por mês ("YYYY-MM") em ordem cronológica; `trend` compara o mês mais
+ *   recente com o primeiro. Pura; `now` injetável para teste.
+ */
+export function feeTrend(
+  shows: ReceivableShowLike[],
+  opts: { now?: Date | string } = {},
+): FeeTrend {
+  const todayMs = utcMidnight(opts.now ?? new Date());
+
+  const feesByMonth = new Map<string, number[]>();
+  for (const s of shows) {
+    if (!isHappenedGig(s, todayMs)) continue;
+    if (s.fee <= 0) continue;
+    const key = monthKey(s.date);
+    const list = feesByMonth.get(key);
+    if (list) list.push(s.fee);
+    else feesByMonth.set(key, [s.fee]);
+  }
+
+  const months: FeeTrendMonth[] = [...feesByMonth.keys()].sort().map((month) => {
+    const fees = feesByMonth.get(month)!;
+    const totalFee = sum(fees);
+    return {
+      month,
+      count: fees.length,
+      totalFee,
+      avgFee: Math.round(totalFee / fees.length),
+      minFee: Math.min(...fees),
+      maxFee: Math.max(...fees),
+    };
+  });
+
+  const totalShows = months.reduce((acc, m) => acc + m.count, 0);
+  const totalFee = sum(months.map((m) => m.totalFee));
+  const avgFee = totalShows > 0 ? Math.round(totalFee / totalShows) : 0;
+
+  let bestMonth: FeeTrendMonth | null = null;
+  let worstMonth: FeeTrendMonth | null = null;
+  for (const m of months) {
+    // `months` está em ordem crescente: no empate do melhor, `>=` mantém o mais
+    // recente; no pior, `<` mantém o mais antigo.
+    if (bestMonth == null || m.avgFee >= bestMonth.avgFee) bestMonth = m;
+    if (worstMonth == null || m.avgFee < worstMonth.avgFee) worstMonth = m;
+  }
+
+  const trend =
+    months.length >= 2
+      ? computeDelta(months[months.length - 1].avgFee, months[0].avgFee)
+      : null;
+
+  return {
+    months,
+    totalShows,
+    totalFee,
+    avgFee,
+    highestFee: totalShows > 0 ? Math.max(...months.map((m) => m.maxFee)) : 0,
+    lowestFee: totalShows > 0 ? Math.min(...months.map((m) => m.minFee)) : 0,
+    bestMonth,
+    worstMonth,
+    trend,
+  };
+}
+
 /** Sequência de `count` meses "YYYY-MM" a partir de `startKey` (inclusive), em UTC. */
 function sequentialMonths(startKey: string, count: number): string[] {
   const [y, m] = startKey.split("-").map(Number);
