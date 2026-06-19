@@ -180,6 +180,13 @@ na mesa e quantas propostas viram show?". A página mostra cards de destaque, ba
 `SHOW_STATUS_DOT`) e atalhos para a lista filtrada por status; é um **retrato** do estado atual, não
 um histórico de conversão (o schema não registra transições). Link "Funil" na barra de `/shows` (ver
 D42). **413 testes** verdes (medição real `vitest run`; eram 407 na main).
+Sessão 52 trouxe o **funil de propostas para o Painel**: uma seção "Funil de propostas" no
+dashboard (renderizada só quando há shows) com três blocos derivados de `showPipeline` (D42,
+reaproveitada) — **cachê em aberto** (`openValue`/`openCount`, link para `/shows/funil`), **em
+negociação** (`proposedValue`/`proposedCount`, link para `/shows?status=PROPOSED`) e **taxa de
+concretização** (`conversionRate`, "—" sem decididos) — para o sinal de booking aparecer já na
+primeira tela; cabeçalho com link "Ver funil" (ver D43). **413 testes** verdes (mudança de UI,
+reaproveita lógica pura já testada).
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias, estados de erro
 inline dos server actions) ou evoluções de calendário (arrastar/soltar para remarcar).
 
@@ -1140,9 +1147,10 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    Sessão 19; clicar num dia para criar show com a data na Sessão 13; exportação iCalendar
    `.ics` na Sessão 15 — base em `src/lib/calendar.ts` e `src/lib/ics.ts`.)
 2b. **Funil de propostas — evoluções** (entregue na Sessão 51, `/shows/funil` + `showPipeline`,
-   ver D42): hoje é um retrato do estado atual. Próximo possível — registrar **transições de status**
-   (log) para uma taxa de conversão proposta→realizado de verdade e tempo médio em cada etapa; ou
-   trazer o cachê em aberto/funil para um card no Painel.
+   ver D42; **card do funil no Painel** entregue na Sessão 52 — cachê em aberto + taxa de
+   concretização, ver D43): hoje é um retrato do estado atual. Próximo possível — registrar
+   **transições de status** (log) para uma taxa de conversão proposta→realizado de verdade e
+   tempo médio em cada etapa.
 3. **Filtros — evoluções**: persistência do último filtro entregue para Finanças (Sessão 32),
    Shows e Contatos (Sessão 33) — módulo genérico `src/lib/listFilter.ts` + middleware (ver D23/D24).
    Próximo possível: indicador visual de "filtro lembrado" na UI, ou estender a `/shows/calendario`

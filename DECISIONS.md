@@ -1016,3 +1016,24 @@ contexto, decisão, justificativa e alternativas consideradas.
   conversão real e tempo médio em cada etapa — adiado, exige schema e captura nas server actions;
   (b) incluir o funil no Painel — adiável, a página dedicada basta e o dashboard já está denso;
   (c) exportação CSV do funil — desnecessária para uma visão de contagem/valor agregado.
+
+## D43 — Funil de propostas no Painel (Sessão 52)
+- **Contexto:** o funil (`/shows/funil`, D42) é uma página dedicada que o usuário só vê se navegar
+  até ela. O sinal "quanto tenho na mesa?" (cachê em aberto) e "quão bem fecho propostas?" (taxa de
+  concretização) é de visão diária — merece aparecer já na primeira tela, junto dos demais alertas
+  do Painel (pendências, recebíveis, projeção de caixa). A própria D42 deixou isso como evolução (b).
+- **Decisão:** o Painel passa a renderizar uma seção "Funil de propostas" (só quando há shows,
+  `pipeline.total > 0`) com três blocos derivados de `showPipeline` (já existente, D42): **Cachê em
+  aberto** (`openValue`/`openCount`, link para `/shows/funil`), **Em negociação**
+  (`proposedValue`/`proposedCount`, link para `/shows?status=PROPOSED`) e **Taxa de concretização**
+  (`conversionRate`, "—" quando `null`). Cabeçalho com link "Ver funil".
+- **Reaproveitamento, zero lógica nova:** a página só consome a função pura `showPipeline`, já coberta
+  por 6 testes unitários (D42). Não há novo cálculo a testar — espelha a escolha da Sessão 41 (aging
+  no Painel reusando `bucketReceivablesByAge`). Total de testes inalterado (413).
+- **Posição na página:** logo após a Projeção de caixa e antes da grade de duas colunas (próximos
+  shows / fluxo / rentabilidade / categorias), mantendo os alertas de ação (pendências, recebíveis)
+  no topo e as visões analíticas em sequência.
+- **Alternativas consideradas:** (a) um quarto `SummaryCard` no topo só com o cachê em aberto —
+  perderia a taxa de concretização e a quebra proposto/confirmado, que dão o contexto de booking;
+  (b) substituir a página dedicada pelo card — não, a página tem as barras por etapa e os atalhos
+  por status que não cabem num resumo. O card é um portal para ela, não um substituto.

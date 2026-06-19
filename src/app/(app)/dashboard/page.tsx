@@ -10,8 +10,10 @@ import {
   projectCashflow,
   reconcileShowFees,
   bucketReceivablesByAge,
+  showPipeline,
   type TxLike,
   type ReceivableShowLike,
+  type ShowLike,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { formatDate, formatMonthKey } from "@/lib/format";
@@ -47,6 +49,7 @@ export default async function DashboardPage() {
   const categories = totalsByCategory(txs).slice(0, 5);
   const cashflow = projectCashflow(txs, { months: 6 });
   const hasProjection = cashflow.months.some((m) => m.income > 0 || m.expense > 0);
+  const pipeline = showPipeline(shows as ShowLike[]);
   const receivables = reconcileShowFees(shows as ReceivableShowLike[], txs);
   const receivablesAging = bucketReceivablesByAge(receivables);
   // Recebível "encalhado": parado há mais de 90 dias (balde "older" do aging).
@@ -174,6 +177,64 @@ export default async function DashboardPage() {
               ou despesas.
             </p>
           )}
+        </section>
+      )}
+
+      {/* Funil de propostas: cachê em aberto e taxa de concretização */}
+      {pipeline.total > 0 && (
+        <section className="card">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="font-semibold">Funil de propostas</h2>
+            <Link href="/shows/funil" className="text-sm text-brand-700 hover:underline">
+              Ver funil
+            </Link>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Link
+              href="/shows/funil"
+              className="rounded-lg border border-gray-100 bg-gray-50 p-3 transition hover:bg-gray-100"
+            >
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                Cachê em aberto
+              </p>
+              <p className="mt-1 text-xl font-bold text-brand-700">
+                {formatMoney(pipeline.openValue)}
+              </p>
+              <p className="mt-1 text-xs text-gray-400">
+                {pipeline.openCount} {pipeline.openCount === 1 ? "show" : "shows"} (proposto +
+                confirmado)
+              </p>
+            </Link>
+            <Link
+              href="/shows?status=PROPOSED"
+              className="rounded-lg border border-gray-100 bg-gray-50 p-3 transition hover:bg-gray-100"
+            >
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                Em negociação
+              </p>
+              <p className="mt-1 text-xl font-bold text-amber-600">
+                {formatMoney(pipeline.proposedValue)}
+              </p>
+              <p className="mt-1 text-xs text-gray-400">
+                {pipeline.proposedCount} proposto{pipeline.proposedCount === 1 ? "" : "s"}
+              </p>
+            </Link>
+            <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                Taxa de concretização
+              </p>
+              <p className="mt-1 text-xl font-bold text-gray-900">
+                {pipeline.conversionRate == null
+                  ? "—"
+                  : `${(pipeline.conversionRate * 100).toFixed(0)}%`}
+              </p>
+              <p className="mt-1 text-xs text-gray-400">
+                {pipeline.conversionRate == null
+                  ? "sem shows decididos"
+                  : `${pipeline.playedCount} de ${pipeline.decidedCount} decididos`}
+              </p>
+            </div>
+          </div>
         </section>
       )}
 
