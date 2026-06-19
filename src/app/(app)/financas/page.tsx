@@ -120,6 +120,11 @@ export default async function FinancesPage({
             </Link>
           )}
           {transactions.length > 0 && (
+            <Link href="/financas/sazonalidade" className="btn-secondary">
+              Sazonalidade
+            </Link>
+          )}
+          {transactions.length > 0 && (
             <Link href="/financas/relatorio" className="btn-secondary">
               Relatório
             </Link>

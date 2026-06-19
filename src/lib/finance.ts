@@ -552,6 +552,96 @@ export function totalsByMonth(txs: TxLike[]): MonthlyTotal[] {
     .sort((a, b) => a.month.localeCompare(b.month));
 }
 
+// ── Sazonalidade (qual mês do ano costuma render mais?) ─────────────────────
+
+export interface SeasonalMonth {
+  /** Mês 1-12 (janeiro = 1). */
+  monthIndex: number;
+  /** Soma das receitas neste mês do calendário, em TODOS os anos. */
+  totalIncome: number;
+  /** Soma das despesas neste mês do calendário, em TODOS os anos. */
+  totalExpense: number;
+  /** totalIncome − totalExpense. */
+  net: number;
+  /** Nº de anos distintos em que este mês teve movimento (receita ou despesa). */
+  years: number;
+  /** Média por ano-ativo: total / years (0 se years === 0), arredondada ao centavo. */
+  avgIncome: number;
+  avgExpense: number;
+  /** avgIncome − avgExpense (derivado, preserva a invariante). */
+  avgNet: number;
+}
+
+export interface MonthlySeasonality {
+  /** Exatamente 12 meses (janeiro→dezembro). */
+  months: SeasonalMonth[];
+  /** Nº de anos distintos com qualquer transação (amplitude do histórico). */
+  yearsObserved: number;
+  /** Mês do calendário com maior média de resultado entre os ativos; null se nenhum. */
+  best: SeasonalMonth | null;
+  /** Mês do calendário com menor média de resultado entre os ativos; null se nenhum. */
+  worst: SeasonalMonth | null;
+}
+
+/**
+ * Agrega as transações por MÊS DO CALENDÁRIO (janeiro→dezembro), somando todos os
+ * anos do histórico, e calcula a média por ano-ativo de cada mês — o "mês típico".
+ * Responde "qual época do ano costuma render mais?" (temporada de festas, verão
+ * morto…), ajudando a planejar o ano: quando empurrar mais shows, quando guardar.
+ *
+ * Denominador = anos com movimento naquele mês (não a amplitude total do histórico):
+ * um dezembro só conta como ano-ativo se teve receita ou despesa, então a média
+ * mede "um dezembro típico em que houve trabalho", não diluído por dezembros vazios
+ * de um histórico curto (mesmo critério da média móvel, ver D35). Pura; usa UTC.
+ */
+export function monthlySeasonality(txs: TxLike[]): MonthlySeasonality {
+  const income = new Array(12).fill(0);
+  const expense = new Array(12).fill(0);
+  // Anos distintos com movimento por mês (0-based) e o conjunto global de anos.
+  const activeYears: Array<Set<number>> = Array.from({ length: 12 }, () => new Set());
+  const allYears = new Set<number>();
+
+  for (const t of txs) {
+    const key = monthKey(t.date); // "YYYY-MM"
+    const year = Number(key.slice(0, 4));
+    const idx = Number(key.slice(5, 7)) - 1; // 0-based
+    if (idx < 0 || idx > 11) continue;
+    allYears.add(year);
+    if (t.type === "INCOME") income[idx] += t.amount;
+    else expense[idx] += t.amount;
+    if (t.amount > 0) activeYears[idx].add(year);
+  }
+
+  const months: SeasonalMonth[] = income.map((inc, i) => {
+    const exp = expense[i];
+    const years = activeYears[i].size;
+    const avgIncome = years > 0 ? Math.round(inc / years) : 0;
+    const avgExpense = years > 0 ? Math.round(exp / years) : 0;
+    return {
+      monthIndex: i + 1,
+      totalIncome: inc,
+      totalExpense: exp,
+      net: inc - exp,
+      years,
+      avgIncome,
+      avgExpense,
+      avgNet: avgIncome - avgExpense,
+    };
+  });
+
+  // Melhor/pior por média de resultado (mês típico) entre os meses com anos ativos.
+  // Empate pelo mês mais cedo (ordem estável, percorremos jan→dez).
+  const active = months.filter((m) => m.years > 0);
+  let best: SeasonalMonth | null = null;
+  let worst: SeasonalMonth | null = null;
+  for (const m of active) {
+    if (best === null || m.avgNet > best.avgNet) best = m;
+    if (worst === null || m.avgNet < worst.avgNet) worst = m;
+  }
+
+  return { months, yearsObserved: allYears.size, best, worst };
+}
+
 // ── Resumo anual (F3 — visão do ano para prestação de contas) ───────────────
 
 export interface AnnualMonth {

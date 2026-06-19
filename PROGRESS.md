@@ -138,6 +138,13 @@ Sessão 45 entregou a **quebra por categoria no Resumo anual** (`/financas/anual
 renderiza dois cards — Receitas/Despesas por categoria, com valor, participação (%) e barra —
 reaproveitando o padrão visual do relatório mensal (D21), respondendo "para onde foi o dinheiro no
 ano?" sem consulta extra ao banco (ver D36). **376 testes** verdes.
+Sessão 46 entregou a **sazonalidade das Finanças** (`/financas/sazonalidade`): a função pura
+`monthlySeasonality(txs)` (em `src/lib/finance.ts`) agrega as transações por mês do calendário
+(jan→dez) somando todos os anos do histórico e calcula a **média por ano-ativo** de cada mês — o
+"mês típico" —, mais o melhor/pior mês por resultado médio; a página renderiza os cards de destaque
+e a tabela com barras (mesmo padrão do Resumo anual), respondendo "qual época do ano costuma render
+mais?" para planejar o ano. Denominador = anos com movimento naquele mês (não a amplitude do
+histórico), coerente com a média móvel (D35); link na barra de Finanças (ver D37). **381 testes** verdes.
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias, estados de erro
 inline dos server actions) ou evoluções de calendário (arrastar/soltar para remarcar).
 
