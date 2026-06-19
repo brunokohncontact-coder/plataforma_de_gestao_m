@@ -1539,6 +1539,147 @@ function txTime(t: TxLike): number {
   return d.getTime();
 }
 
+// ── Custos fixos recorrentes (despesas que se repetem mês a mês) ─────────────
+
+export interface RecurringExpenseCategory {
+  /** Categoria normalizada (trim); vazia → "Sem categoria". */
+  category: string;
+  /** Soma de todas as despesas dessa categoria no histórico (centavos). */
+  total: number;
+  /** Nº de meses distintos (YYYY-MM) com ao menos uma despesa nessa categoria. */
+  monthsActive: number;
+  /** Janela: nº de meses entre a 1ª e a última ocorrência (inclusive). */
+  monthsSpan: number;
+  /** total / monthsActive arredondado ao centavo — a conta típica quando ela cai. */
+  avgPerActiveMonth: number;
+  /** monthsActive / monthsSpan (0..1): 1 = aparece todo mês dentro da janela. */
+  regularity: number;
+  /** Chave "YYYY-MM" da última ocorrência. */
+  lastMonth: string;
+  /** Ainda em curso: última ocorrência dentro da janela recente (ver `activeWithinMonths`). */
+  active: boolean;
+}
+
+export interface RecurringExpensesReport {
+  /** Categorias recorrentes (`monthsActive >= minMonths`), ordenadas por `avgPerActiveMonth` desc. */
+  categories: RecurringExpenseCategory[];
+  /** Soma de `avgPerActiveMonth` das categorias recorrentes AINDA ATIVAS — o custo fixo mensal estimado. */
+  estimatedMonthlyFixedCost: number;
+  /** Nº de meses distintos com qualquer despesa (amplitude do histórico de despesas). */
+  monthsObserved: number;
+}
+
+export interface RecurringExpensesOptions {
+  /** Mínimo de meses distintos para considerar a categoria recorrente. Default 3. */
+  minMonths?: number;
+  /** "Ainda ativa" se a última ocorrência for nos últimos N meses. Default 2. */
+  activeWithinMonths?: number;
+  /** Momento de referência para decidir o que ainda está ativo. Default `new Date()`. */
+  now?: Date | string;
+}
+
+/** Distância em meses de `aKey` ("YYYY-MM") para `bKey`: (by-ay)*12 + (bm-am). */
+function monthsBetween(aKey: string, bKey: string): number {
+  const ay = Number(aKey.slice(0, 4));
+  const am = Number(aKey.slice(5, 7));
+  const by = Number(bKey.slice(0, 4));
+  const bm = Number(bKey.slice(5, 7));
+  return (by - ay) * 12 + (bm - am);
+}
+
+/**
+ * Identifica os CUSTOS FIXOS recorrentes a partir das despesas: agrupa por categoria
+ * e marca como recorrente toda categoria que aparece em ao menos `minMonths` meses
+ * distintos. Responde "qual é meu custo fixo mensal?" — o piso que o músico precisa
+ * faturar todo mês só para manter as luzes acesas (aluguel de sala de ensaio, streaming,
+ * plano de telefone, mensalidade de software, transporte fixo…).
+ *
+ * Para cada categoria recorrente calcula a conta típica (`avgPerActiveMonth` = total /
+ * meses-ativos) e a `regularity` (em quantos meses da janela ela de fato apareceu). O
+ * **custo fixo mensal estimado** (`estimatedMonthlyFixedCost`) soma a conta típica apenas
+ * das categorias AINDA ATIVAS (última ocorrência nos últimos `activeWithinMonths` meses),
+ * para que um custo que você já cortou não infle a estimativa (ver D39).
+ *
+ * Pura; ignora receitas e despesas de valor zero; usa UTC via `monthKey`.
+ */
+export function recurringExpenses(
+  txs: TxLike[],
+  options: RecurringExpensesOptions = {},
+): RecurringExpensesReport {
+  const minMonths = options.minMonths ?? 3;
+  const activeWithinMonths = options.activeWithinMonths ?? 2;
+  const nowKey = monthKey(options.now ?? new Date());
+
+  // Por categoria: total, meses distintos, 1ª e última chave de mês.
+  interface Acc {
+    total: number;
+    months: Set<string>;
+    firstMonth: string;
+    lastMonth: string;
+  }
+  const byCategory = new Map<string, Acc>();
+  const allMonths = new Set<string>();
+
+  for (const t of txs) {
+    if (t.type !== "EXPENSE" || t.amount <= 0) continue;
+    const category = (t.category ?? "").trim() || "Sem categoria";
+    const mk = monthKey(t.date);
+    allMonths.add(mk);
+    const acc = byCategory.get(category);
+    if (!acc) {
+      byCategory.set(category, {
+        total: t.amount,
+        months: new Set([mk]),
+        firstMonth: mk,
+        lastMonth: mk,
+      });
+    } else {
+      acc.total += t.amount;
+      acc.months.add(mk);
+      if (mk < acc.firstMonth) acc.firstMonth = mk;
+      if (mk > acc.lastMonth) acc.lastMonth = mk;
+    }
+  }
+
+  const categories: RecurringExpenseCategory[] = [];
+  for (const [category, acc] of byCategory) {
+    const monthsActive = acc.months.size;
+    if (monthsActive < minMonths) continue;
+    const monthsSpan = monthsBetween(acc.firstMonth, acc.lastMonth) + 1;
+    const avgPerActiveMonth = Math.round(acc.total / monthsActive);
+    // Negativo (futuro) ou dentro da janela → ainda ativa.
+    const active = monthsBetween(acc.lastMonth, nowKey) <= activeWithinMonths;
+    categories.push({
+      category,
+      total: acc.total,
+      monthsActive,
+      monthsSpan,
+      avgPerActiveMonth,
+      regularity: monthsSpan > 0 ? monthsActive / monthsSpan : 0,
+      lastMonth: acc.lastMonth,
+      active,
+    });
+  }
+
+  // Maior conta típica primeiro; desempate por total e por nome (ordem estável).
+  categories.sort(
+    (a, b) =>
+      b.avgPerActiveMonth - a.avgPerActiveMonth ||
+      b.total - a.total ||
+      a.category.localeCompare(b.category),
+  );
+
+  const estimatedMonthlyFixedCost = categories
+    .filter((c) => c.active)
+    .reduce((sum, c) => sum + c.avgPerActiveMonth, 0);
+
+  return {
+    categories,
+    estimatedMonthlyFixedCost,
+    monthsObserved: allMonths.size,
+  };
+}
+
 /** Sequência de `count` meses "YYYY-MM" a partir de `startKey` (inclusive), em UTC. */
 function sequentialMonths(startKey: string, count: number): string[] {
   const [y, m] = startKey.split("-").map(Number);

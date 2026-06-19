@@ -36,6 +36,7 @@ import {
   computeDelta,
   compareSummaries,
   averageSummaries,
+  recurringExpenses,
   type TxLike,
   type ShowLike,
   type VenueShowLike,
@@ -421,6 +422,125 @@ describe("monthlySeasonality", () => {
     expect(r.worst?.monthIndex).toBe(9);
     expect(r.best?.avgNet).toBe(500_00);
     expect(r.worst?.avgNet).toBe(-200_00);
+  });
+});
+
+describe("recurringExpenses", () => {
+  const NOW = "2026-06-15T00:00:00.000Z"; // junho/2026
+
+  it("retorna vazio e custo zero quando não há despesas", () => {
+    const r = recurringExpenses([], { now: NOW });
+    expect(r.categories).toEqual([]);
+    expect(r.estimatedMonthlyFixedCost).toBe(0);
+    expect(r.monthsObserved).toBe(0);
+  });
+
+  it("ignora receitas e só considera despesas", () => {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 500_00, category: "Cachê", date: "2026-04-01T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 500_00, category: "Cachê", date: "2026-05-01T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 500_00, category: "Cachê", date: "2026-06-01T00:00:00.000Z" }),
+    ];
+    const r = recurringExpenses(txs, { now: NOW });
+    expect(r.categories).toEqual([]);
+    expect(r.monthsObserved).toBe(0);
+  });
+
+  it("só marca como recorrente a categoria com >= minMonths meses distintos", () => {
+    const txs: TxLike[] = [
+      // Aluguel: 3 meses distintos → recorrente (default minMonths=3).
+      tx({ type: "EXPENSE", amount: 80_00, category: "Sala de ensaio", date: "2026-04-10T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 80_00, category: "Sala de ensaio", date: "2026-05-10T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 80_00, category: "Sala de ensaio", date: "2026-06-10T00:00:00.000Z" }),
+      // Conserto pontual: 1 mês → não recorrente.
+      tx({ type: "EXPENSE", amount: 300_00, category: "Equipamento", date: "2026-05-20T00:00:00.000Z" }),
+    ];
+    const r = recurringExpenses(txs, { now: NOW });
+    expect(r.categories.map((c) => c.category)).toEqual(["Sala de ensaio"]);
+    const sala = r.categories[0];
+    expect(sala.monthsActive).toBe(3);
+    expect(sala.total).toBe(240_00);
+    expect(sala.avgPerActiveMonth).toBe(80_00);
+    expect(r.monthsObserved).toBe(3); // abr, mai, jun têm despesas
+  });
+
+  it("conta monthsObserved como o nº de meses distintos com qualquer despesa", () => {
+    const txs: TxLike[] = [
+      tx({ type: "EXPENSE", amount: 10_00, category: "A", date: "2026-04-01T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 10_00, category: "B", date: "2026-04-15T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 10_00, category: "A", date: "2026-05-01T00:00:00.000Z" }),
+    ];
+    const r = recurringExpenses(txs, { now: NOW });
+    expect(r.monthsObserved).toBe(2); // abril e maio
+  });
+
+  it("calcula avgPerActiveMonth pela conta típica (total / meses-ativos) e arredonda", () => {
+    const txs: TxLike[] = [
+      tx({ type: "EXPENSE", amount: 33_33, category: "Streaming", date: "2026-04-01T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 33_33, category: "Streaming", date: "2026-05-01T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 33_34, category: "Streaming", date: "2026-06-01T00:00:00.000Z" }),
+    ];
+    const r = recurringExpenses(txs, { now: NOW });
+    const s = r.categories[0];
+    expect(s.total).toBe(100_00);
+    expect(s.avgPerActiveMonth).toBe(Math.round(100_00 / 3)); // 3333 centavos
+  });
+
+  it("computa regularity como meses-ativos / janela (gaps reduzem a regularidade)", () => {
+    const txs: TxLike[] = [
+      // Apareceu em abr, jun, jul (pulou maio) → janela abr..jul = 4 meses, ativos = 3.
+      tx({ type: "EXPENSE", amount: 50_00, category: "Telefone", date: "2026-04-01T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 50_00, category: "Telefone", date: "2026-06-01T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 50_00, category: "Telefone", date: "2026-07-01T00:00:00.000Z" }),
+    ];
+    const r = recurringExpenses(txs, { now: "2026-07-15T00:00:00.000Z" });
+    const t = r.categories[0];
+    expect(t.monthsActive).toBe(3);
+    expect(t.monthsSpan).toBe(4);
+    expect(t.regularity).toBeCloseTo(3 / 4);
+  });
+
+  it("custo fixo estimado soma só as categorias ainda ativas (recentes)", () => {
+    const txs: TxLike[] = [
+      // Ativa: última ocorrência em junho/2026 (= now).
+      tx({ type: "EXPENSE", amount: 100_00, category: "Sala", date: "2026-04-01T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 100_00, category: "Sala", date: "2026-05-01T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 100_00, category: "Sala", date: "2026-06-01T00:00:00.000Z" }),
+      // Cortada: recorreu, mas a última foi em jan/2026 (> 2 meses atrás).
+      tx({ type: "EXPENSE", amount: 40_00, category: "App antigo", date: "2025-11-01T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 40_00, category: "App antigo", date: "2025-12-01T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 40_00, category: "App antigo", date: "2026-01-01T00:00:00.000Z" }),
+    ];
+    const r = recurringExpenses(txs, { now: NOW });
+    const sala = r.categories.find((c) => c.category === "Sala")!;
+    const app = r.categories.find((c) => c.category === "App antigo")!;
+    expect(sala.active).toBe(true);
+    expect(app.active).toBe(false);
+    expect(r.estimatedMonthlyFixedCost).toBe(100_00); // só a "Sala"
+  });
+
+  it("ordena por conta típica (avgPerActiveMonth) desc", () => {
+    const txs: TxLike[] = [
+      tx({ type: "EXPENSE", amount: 20_00, category: "Pequena", date: "2026-04-01T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 20_00, category: "Pequena", date: "2026-05-01T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 20_00, category: "Pequena", date: "2026-06-01T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 200_00, category: "Grande", date: "2026-04-01T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 200_00, category: "Grande", date: "2026-05-01T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 200_00, category: "Grande", date: "2026-06-01T00:00:00.000Z" }),
+    ];
+    const r = recurringExpenses(txs, { now: NOW });
+    expect(r.categories.map((c) => c.category)).toEqual(["Grande", "Pequena"]);
+  });
+
+  it("agrupa despesas sem categoria sob 'Sem categoria'", () => {
+    const txs: TxLike[] = [
+      tx({ type: "EXPENSE", amount: 10_00, category: "  ", date: "2026-04-01T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 10_00, category: "", date: "2026-05-01T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 10_00, category: "  ", date: "2026-06-01T00:00:00.000Z" }),
+    ];
+    const r = recurringExpenses(txs, { now: NOW });
+    expect(r.categories[0].category).toBe("Sem categoria");
+    expect(r.categories[0].monthsActive).toBe(3);
   });
 });
 
