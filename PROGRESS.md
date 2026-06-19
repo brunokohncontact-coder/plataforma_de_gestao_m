@@ -124,6 +124,14 @@ e a cada mês casado por `monthIndex` ao mesmo mês do ano anterior; a página c
 anterior sobre o mesmo conjunto já carregado (sem consulta extra) e renderiza a linha "▲/▼ R$ X (Y%)"
 sob cada card de total e um selo compacto "▲/▼ Y%" na coluna Resultado do mês a mês — só quando o ano
 anterior teve movimento (ver D34). **369 testes** verdes.
+Sessão 44 entregou o **comparativo com a média móvel no Relatório mensal** (`/financas/relatorio`):
+a função pura `averageSummaries` (em `src/lib/finance.ts`) calcula o "mês típico" — a média campo a
+campo dos resumos dos últimos meses com movimento (componentes arredondados ao centavo, saldos
+derivados deles), reaproveitando `compareSummaries`/`computeDelta`. A página agora compara o mês
+corrente contra a média dos últimos 3 meses **com movimento** (denominador = meses ativos; só aparece
+quando há ≥2, pois com 1 a média = o mês anterior), exibindo em cada card uma segunda linha de delta
+("vs. média") sob a já existente "vs. mês ant.", suavizando um mês anterior atípico (ver D35).
+**373 testes** verdes.
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias, estados de erro
 inline dos server actions) ou evoluções de calendário (arrastar/soltar para remarcar).
 
