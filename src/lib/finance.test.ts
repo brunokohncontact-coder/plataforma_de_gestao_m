@@ -1800,6 +1800,47 @@ describe("paymentLag", () => {
     expect(slow.received).toBe(100_00);
     expect(slow.share).toBeCloseTo(1 / 3, 5);
   });
+
+  it("expõe a mediana ponderada; vazio → 0 e um único show → o próprio prazo", () => {
+    expect(paymentLag([gig({})], []).medianDays).toBe(0);
+    const shows = [gig({ id: "g1", date: "2026-03-01T00:00:00.000Z" })];
+    const txs = [
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "g1", date: "2026-03-11T00:00:00.000Z" }),
+    ];
+    expect(paymentLag(shows, txs).medianDays).toBe(10);
+  });
+
+  it("mediana resiste a um show muito atrasado que infla a média (DSO)", () => {
+    // 3 shows pagos em 10 dias + 1 show pago em 90 dias, todos R$ 100,00.
+    const shows = ["a", "b", "c", "d"].map((id) =>
+      gig({ id, date: "2026-03-01T00:00:00.000Z" }),
+    );
+    const txs = [
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "a", date: "2026-03-11T00:00:00.000Z" }), // 10 d
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "b", date: "2026-03-11T00:00:00.000Z" }), // 10 d
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "c", date: "2026-03-11T00:00:00.000Z" }), // 10 d
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "d", date: "2026-05-30T00:00:00.000Z" }), // 90 d
+    ];
+    const r = paymentLag(shows, txs);
+    // Média ponderada = (10+10+10+90)/4 = 30; mediana fica nos 10 dias típicos.
+    expect(r.avgDays).toBe(30);
+    expect(r.medianDays).toBe(10);
+  });
+
+  it("a mediana é ponderada pelo valor: o recebimento grande puxa o ponto médio", () => {
+    // R$ 300,00 em 10 dias e R$ 100,00 em 50 dias → metade do valor já entrou aos 10 d.
+    const shows = [
+      gig({ id: "grande", date: "2026-03-01T00:00:00.000Z" }),
+      gig({ id: "pequeno", date: "2026-03-01T00:00:00.000Z" }),
+    ];
+    const txs = [
+      tx({ type: "INCOME", amount: 300_00, received: true, showId: "grande", date: "2026-03-11T00:00:00.000Z" }), // 10 d
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "pequeno", date: "2026-04-20T00:00:00.000Z" }), // 50 d
+    ];
+    const r = paymentLag(shows, txs);
+    expect(r.avgDays).toBe(20); // (10*300 + 50*100)/400
+    expect(r.medianDays).toBe(10);
+  });
 });
 
 describe("paymentLagByContact", () => {

@@ -104,7 +104,7 @@ export default async function PaymentLagPage() {
       ) : (
         <>
           {/* Destaques */}
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="card">
               <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
                 Prazo médio (ponderado)
@@ -112,6 +112,15 @@ export default async function PaymentLagPage() {
               <p className="mt-1 text-xl font-bold text-gray-900">{daysLabel(lag.avgDays)}</p>
               <p className="mt-1 text-xs text-gray-400">
                 média de quando cada real entrou após o show
+              </p>
+            </div>
+            <div className="card">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                Prazo mediano (ponderado)
+              </p>
+              <p className="mt-1 text-xl font-bold text-gray-900">{daysLabel(lag.medianDays)}</p>
+              <p className="mt-1 text-xs text-gray-400">
+                metade do faturamento já tinha entrado — resiste a um atraso isolado
               </p>
             </div>
             <div className="card">
@@ -218,7 +227,9 @@ export default async function PaymentLagPage() {
           <p className="text-xs text-gray-400">
             Considera só receitas já recebidas e vinculadas a um show. O prazo de cada
             show pondera os recebimentos pelo valor; o prazo médio geral pondera todo o
-            dinheiro que entrou. Prazo negativo = pago adiantado (antes do show).
+            dinheiro que entrou. O prazo mediano marca o dia em que metade do faturamento
+            já tinha entrado — não se deixa puxar por um único recebimento muito atrasado.
+            Prazo negativo = pago adiantado (antes do show).
           </p>
         </>
       )}
