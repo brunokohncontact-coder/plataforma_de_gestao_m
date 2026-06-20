@@ -67,38 +67,8 @@ export default async function ShowsPage({
         <div className="flex items-center gap-3">
           <ShowsViewToggle active="lista" />
           {shows.length > 0 && (
-            <Link href="/shows/funil" className="btn-secondary">
-              Funil
-            </Link>
-          )}
-          {shows.length > 0 && (
-            <Link href="/shows/rentabilidade" className="btn-secondary">
-              Rentabilidade
-            </Link>
-          )}
-          {shows.length > 0 && (
-            <Link href="/shows/locais" className="btn-secondary">
-              Por local
-            </Link>
-          )}
-          {shows.length > 0 && (
-            <Link href="/shows/cidades" className="btn-secondary">
-              Por cidade
-            </Link>
-          )}
-          {shows.length > 0 && (
-            <Link href="/shows/evolucao-cache" className="btn-secondary">
-              Evolução do cachê
-            </Link>
-          )}
-          {shows.length > 0 && (
-            <Link href="/shows/faixas-de-cache" className="btn-secondary">
-              Faixas de cachê
-            </Link>
-          )}
-          {shows.length > 0 && (
-            <Link href="/shows/dias-semana" className="btn-secondary">
-              Por dia da semana
+            <Link href="/relatorios#shows" className="btn-secondary">
+              Relatórios
             </Link>
           )}
           {conflicts.dayCount > 0 && (
@@ -116,21 +86,6 @@ export default async function ShowsPage({
               <span className="ml-1 rounded-full bg-amber-100 px-1.5 text-xs font-semibold text-amber-800">
                 {conflicts.dayCount}
               </span>
-            </Link>
-          )}
-          {shows.length > 0 && (
-            <Link href="/shows/receita-agendada" className="btn-secondary">
-              Receita agendada
-            </Link>
-          )}
-          {shows.length > 0 && (
-            <Link href="/shows/a-receber" className="btn-secondary">
-              A receber
-            </Link>
-          )}
-          {shows.length > 0 && (
-            <Link href="/shows/prazo-recebimento" className="btn-secondary">
-              Prazo de recebimento
             </Link>
           )}
           {shows.length > 0 && (

@@ -109,44 +109,9 @@ export default async function FinancesPage({
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">Finanças</h1>
         <div className="flex items-center gap-2">
-          {transactions.some((t) => !t.received) && (
-            <Link href="/financas/agenda" className="btn-secondary">
-              A pagar/receber
-            </Link>
-          )}
           {transactions.length > 0 && (
-            <Link href="/financas/anual" className="btn-secondary">
-              Resumo anual
-            </Link>
-          )}
-          {transactions.length > 0 && (
-            <Link href="/financas/sazonalidade" className="btn-secondary">
-              Sazonalidade
-            </Link>
-          )}
-          {transactions.some((t) => t.type === "EXPENSE") && (
-            <Link href="/financas/custos-fixos" className="btn-secondary">
-              Custos fixos
-            </Link>
-          )}
-          {transactions.some((t) => t.type === "EXPENSE") && (
-            <Link href="/financas/ponto-de-equilibrio" className="btn-secondary">
-              Ponto de equilíbrio
-            </Link>
-          )}
-          {transactions.some((t) => t.type === "INCOME") && (
-            <Link href="/financas/fontes-de-renda" className="btn-secondary">
-              Fontes de renda
-            </Link>
-          )}
-          {transactions.some((t) => t.type === "INCOME") && (
-            <Link href="/financas/reserva-impostos" className="btn-secondary">
-              Reserva p/ impostos
-            </Link>
-          )}
-          {transactions.length > 0 && (
-            <Link href="/financas/relatorio" className="btn-secondary">
-              Relatório
+            <Link href="/relatorios#financas" className="btn-secondary">
+              Relatórios
             </Link>
           )}
           {visible.length > 0 && (
