@@ -217,6 +217,16 @@ pura `rankCitiesByProfit` (em `src/lib/finance.ts`) agrega o P&L por cidade — 
 rentabilidade por local (D19), reaproveitando o helper `aggregateShowProfit` extraído de
 `rankVenuesByProfit` —, respondendo "quais cidades valem a turnê?", ver D48. **448 testes** verdes
 (medição real `vitest run`; eram 443 na main).
+Sessão 58 entregou os **conflitos de agenda** (`/shows/conflitos`): a função pura
+`findScheduleConflicts(shows, { now? })` (em `src/lib/shows.ts`) agrupa os shows por dia (`dayKey`,
+UTC) e devolve apenas os dias com **2+ shows não cancelados** (sobreposições na agenda), em ordem
+cronológica, marcando cada dia como `upcoming` (hoje ou no futuro) — respondendo "fechei dois
+compromissos para o mesmo dia sem querer?". A página lista cada dia com os shows envolvidos
+(horário/local/cidade/status, link de detalhe e cachê); o **Painel** mostra um alerta âmbar só
+quando há conflitos acionáveis (`upcomingDayCount > 0`); a lista `/shows` ganhou um selo
+"Conflitos N". É um **sinal**, não um bloqueio (double-header é legítimo); cancelados não conflitam;
+sem schema, sem dependência, sem server action (ver D49). **455 testes** verdes (medição real
+`vitest run`; eram 448 na main).
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias, estados de erro
 inline dos server actions) ou evoluções de calendário (arrastar/soltar para remarcar).
 

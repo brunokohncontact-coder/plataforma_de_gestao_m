@@ -1203,3 +1203,25 @@ contexto, decisão, justificativa e alternativas consideradas.
   estabilidade dos testes existentes; (b) estado/UF em vez de cidade — o schema não tem campo de estado e
   parsear de texto livre é frágil; cidade é o dado confiável que existe; (c) trazer para o Painel —
   adiável (dashboard já denso).
+
+## 2026-06-20 — D49: Conflitos de agenda = dias com 2+ shows não cancelados (sinal, não bloqueio)
+- **Contexto:** a plataforma é uma ferramenta de booking; fechar dois compromissos para o mesmo
+  dia por engano é um erro operacional caro (e constrangedor). Nenhuma tela apontava sobreposições
+  na agenda.
+- **Decisão:** nova função pura `findScheduleConflicts(shows, { now? })` em `src/lib/shows.ts` que
+  agrupa os shows por dia (`dayKey`, UTC) e devolve apenas os dias com **2+ shows não cancelados**,
+  em ordem cronológica, marcando cada dia como `upcoming` (hoje ou no futuro). Página `/shows/conflitos`
+  lista os dias com os shows envolvidos; o Painel mostra um alerta âmbar **só** quando há conflitos
+  `upcoming` (acionáveis); a lista `/shows` ganha um selo "Conflitos N" quando há qualquer conflito.
+- **Justificativa:** é um **sinal**, não um bloqueio — um músico pode legitimamente fazer matinê +
+  show à noite no mesmo dia, então não impedimos o cadastro; apenas destacamos para revisão. O
+  `schema` só tem data (sem hora de término/duração), então "mesmo dia" é a granularidade confiável;
+  não há como detectar sobreposição de horário de forma robusta. Cancelados não conflitam.
+- **Alternativas consideradas:** (a) validar/bloquear no cadastro do show — descartado: invasivo e
+  os double-headers são legítimos; (b) detectar sobreposição por janela de horário/duração —
+  descartado: o schema não tem duração e a hora isolada do `date` é pouco confiável (muitos shows
+  têm 00:00); (c) só na página, sem alerta no Painel — descartado: o valor está em ver o conflito
+  **antes** de acontecer, e o Painel é a primeira tela. Reaproveita o padrão de alerta dos recebíveis
+  (D32) e do funil (D43) trazidos ao dashboard.
+- **`npm audit`:** inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de
+  D6/D8; nenhuma dependência nova foi adicionada nesta sessão.

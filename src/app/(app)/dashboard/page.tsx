@@ -15,6 +15,7 @@ import {
   type ReceivableShowLike,
   type ShowLike,
 } from "@/lib/finance";
+import { findScheduleConflicts } from "@/lib/shows";
 import { formatMoney } from "@/lib/money";
 import { formatDate, formatMonthKey } from "@/lib/format";
 import { SHOW_STATUS_LABELS, SHOW_STATUS_COLORS, type ShowStatus } from "@/lib/domain";
@@ -55,6 +56,9 @@ export default async function DashboardPage() {
   // Recebível "encalhado": parado há mais de 90 dias (balde "older" do aging).
   const staleReceivables = receivablesAging.buckets.find((b) => b.key === "older");
   const hasStaleReceivables = staleReceivables != null && staleReceivables.count > 0;
+
+  // Conflitos de agenda ainda acionáveis (dias com 2+ shows de hoje em diante).
+  const conflicts = findScheduleConflicts(shows);
 
   // Rentabilidade: top shows realizados por resultado
   const playedShows = shows.filter((s) => s.status === "PLAYED");
@@ -119,6 +123,24 @@ export default async function DashboardPage() {
             </span>
           )}
           <span className={hasStaleReceivables ? "text-red-600" : "text-amber-600"}>Ver →</span>
+        </Link>
+      )}
+
+      {/* Aviso de conflitos de agenda futuros (dias com mais de um show). */}
+      {conflicts.upcomingDayCount > 0 && (
+        <Link
+          href="/shows/conflitos"
+          className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 transition hover:bg-amber-100"
+        >
+          <span className="font-semibold">📅 Conflito de agenda</span>
+          <span>
+            <strong>
+              {conflicts.upcomingDayCount}{" "}
+              {conflicts.upcomingDayCount === 1 ? "dia" : "dias"}
+            </strong>{" "}
+            com mais de um show marcado
+          </span>
+          <span className="text-amber-600">Revisar →</span>
         </Link>
       )}
 

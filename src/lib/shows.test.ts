@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
   filterShows,
+  findScheduleConflicts,
   hasActiveShowFilter,
   isValidShowStatus,
+  type ConflictShowLike,
   type ShowLike,
 } from "./shows";
 
@@ -128,5 +130,122 @@ describe("filterShows", () => {
     const input = [...shows];
     filterShows(input, { status: "PLAYED" });
     expect(input).toHaveLength(4);
+  });
+});
+
+describe("findScheduleConflicts", () => {
+  function gig(partial: Partial<ConflictShowLike>): ConflictShowLike {
+    return {
+      id: Math.random().toString(36).slice(2),
+      title: "Show",
+      status: "CONFIRMED",
+      date: "2026-03-10T00:00:00.000Z",
+      venue: null,
+      city: null,
+      ...partial,
+    };
+  }
+
+  const NOW = "2026-03-15T12:00:00.000Z";
+
+  it("não aponta conflito quando há no máximo um show por dia", () => {
+    const r = findScheduleConflicts(
+      [
+        gig({ date: "2026-03-10T00:00:00.000Z" }),
+        gig({ date: "2026-03-11T00:00:00.000Z" }),
+      ],
+      { now: NOW },
+    );
+    expect(r.dayCount).toBe(0);
+    expect(r.days).toEqual([]);
+    expect(r.showCount).toBe(0);
+    expect(r.upcomingDayCount).toBe(0);
+  });
+
+  it("agrupa dois shows no mesmo dia como conflito", () => {
+    const r = findScheduleConflicts(
+      [
+        gig({ id: "a", title: "Bar X", date: "2026-03-20T22:00:00.000Z" }),
+        gig({ id: "b", title: "Casa Y", date: "2026-03-20T18:00:00.000Z" }),
+      ],
+      { now: NOW },
+    );
+    expect(r.dayCount).toBe(1);
+    expect(r.showCount).toBe(2);
+    expect(r.days[0].day).toBe("2026-03-20");
+    expect(r.days[0].count).toBe(2);
+    // ordenado por horário: 18h antes de 22h
+    expect(r.days[0].shows.map((s) => s.id)).toEqual(["b", "a"]);
+  });
+
+  it("ignora shows cancelados ao detectar conflitos", () => {
+    const r = findScheduleConflicts(
+      [
+        gig({ date: "2026-03-20T18:00:00.000Z", status: "CONFIRMED" }),
+        gig({ date: "2026-03-20T22:00:00.000Z", status: "CANCELLED" }),
+      ],
+      { now: NOW },
+    );
+    expect(r.dayCount).toBe(0);
+  });
+
+  it("marca como upcoming o conflito de hoje ou no futuro", () => {
+    const r = findScheduleConflicts(
+      [
+        // passado
+        gig({ date: "2026-03-01T18:00:00.000Z" }),
+        gig({ date: "2026-03-01T22:00:00.000Z" }),
+        // hoje
+        gig({ date: "2026-03-15T10:00:00.000Z" }),
+        gig({ date: "2026-03-15T20:00:00.000Z" }),
+        // futuro
+        gig({ date: "2026-03-25T10:00:00.000Z" }),
+        gig({ date: "2026-03-25T20:00:00.000Z" }),
+      ],
+      { now: NOW },
+    );
+    expect(r.dayCount).toBe(3);
+    expect(r.upcomingDayCount).toBe(2);
+    const byDay = Object.fromEntries(r.days.map((d) => [d.day, d.upcoming]));
+    expect(byDay["2026-03-01"]).toBe(false);
+    expect(byDay["2026-03-15"]).toBe(true);
+    expect(byDay["2026-03-25"]).toBe(true);
+  });
+
+  it("devolve os dias em ordem cronológica crescente", () => {
+    const r = findScheduleConflicts(
+      [
+        gig({ date: "2026-04-10T18:00:00.000Z" }),
+        gig({ date: "2026-04-10T22:00:00.000Z" }),
+        gig({ date: "2026-02-05T18:00:00.000Z" }),
+        gig({ date: "2026-02-05T22:00:00.000Z" }),
+      ],
+      { now: NOW },
+    );
+    expect(r.days.map((d) => d.day)).toEqual(["2026-02-05", "2026-04-10"]);
+  });
+
+  it("conta três shows no mesmo dia", () => {
+    const r = findScheduleConflicts(
+      [
+        gig({ date: "2026-03-20T10:00:00.000Z" }),
+        gig({ date: "2026-03-20T16:00:00.000Z" }),
+        gig({ date: "2026-03-20T22:00:00.000Z" }),
+      ],
+      { now: NOW },
+    );
+    expect(r.dayCount).toBe(1);
+    expect(r.days[0].count).toBe(3);
+    expect(r.showCount).toBe(3);
+  });
+
+  it("não muta o array de entrada", () => {
+    const input = [
+      gig({ date: "2026-03-20T22:00:00.000Z" }),
+      gig({ date: "2026-03-20T18:00:00.000Z" }),
+    ];
+    const before = input.map((s) => s.date);
+    findScheduleConflicts(input, { now: NOW });
+    expect(input.map((s) => s.date)).toEqual(before);
   });
 });

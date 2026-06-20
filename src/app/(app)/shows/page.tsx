@@ -11,6 +11,7 @@ import {
 } from "@/lib/domain";
 import {
   filterShows,
+  findScheduleConflicts,
   hasActiveShowFilter,
   isValidShowStatus,
   type ShowFilter,
@@ -56,6 +57,9 @@ export default async function ShowsPage({
 
   const visible = filterShows(shows, filter);
 
+  // Sinaliza sobreposições na agenda (dias com 2+ shows não cancelados).
+  const conflicts = findScheduleConflicts(shows);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -90,6 +94,23 @@ export default async function ShowsPage({
           {shows.length > 0 && (
             <Link href="/shows/dias-semana" className="btn-secondary">
               Por dia da semana
+            </Link>
+          )}
+          {conflicts.dayCount > 0 && (
+            <Link
+              href="/shows/conflitos"
+              className={
+                "btn-secondary " +
+                (conflicts.upcomingDayCount > 0
+                  ? "!border-amber-300 !text-amber-700"
+                  : "")
+              }
+              title="Dias com mais de um show marcado"
+            >
+              Conflitos
+              <span className="ml-1 rounded-full bg-amber-100 px-1.5 text-xs font-semibold text-amber-800">
+                {conflicts.dayCount}
+              </span>
             </Link>
           )}
           {shows.length > 0 && (
