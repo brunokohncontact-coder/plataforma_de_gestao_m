@@ -1294,6 +1294,33 @@ contexto, decisão, justificativa e alternativas consideradas.
 - **`npm audit`:** inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de
   D6/D8; nenhuma dependência nova foi adicionada nesta sessão.
 
+## D54 — Hub central de Relatórios (Sessão 62)
+- **Contexto:** o app acumulou 24 páginas de análise (rentabilidade, recebíveis, prazo de
+  recebimento, sazonalidade, custos fixos, retenção, concentração…), todas alcançáveis só por
+  **barras de botões** que foram crescendo no topo de `/shows` (12 links) e `/financas`. A navegação
+  principal tinha apenas Painel/Shows/Finanças/Contatos. Resultado: relatórios valiosos ficavam
+  enterrados e dependiam de o usuário lembrar em qual lista o botão morava — um problema real de
+  discoverability, não mais um relatório a somar.
+- **Decisão:** criar um **hub** em `/relatorios` que indexa todo o acervo, e um item **Relatórios**
+  na navegação principal (desktop + mobile). O catálogo é **dado puro** em `src/lib/reports.ts`
+  (`REPORT_GROUPS` por área — Shows/Finanças/Contatos — com título, href, descrição e ícone; helpers
+  `allReports`/`reportCount`), de modo que a página é só renderização e a corretude do catálogo é
+  **testável** por invariantes (hrefs únicos e absolutos, sem título/descrição vazios, cada href no
+  prefixo da sua área, grupos não vazios) — 9 testes novos.
+- **Fonte única:** registrar um relatório passa a ser editar `REPORT_GROUPS` num único lugar; o hub e
+  os testes refletem automaticamente. As barras de botões existentes em `/shows` e `/financas` foram
+  **mantidas** (atalhos contextuais não-quebrados); o hub é aditivo, não uma migração arriscada.
+- **Sem schema/dependência/server action:** a página exige só sessão (`requireUser`), sem consulta ao
+  banco — é navegação pura. Nenhuma dependência nova.
+- **Alternativas consideradas:** (a) gerar o catálogo varrendo o filesystem de rotas — descartado:
+  frágil, sem descrições editoriais e sem controle de ordem; o registro manual é a fonte de verdade;
+  (b) remover as barras de botões e centralizar tudo no hub — descartado nesta sessão: mudança ampla e
+  arriscada em ~15 páginas; o hub aditivo entrega o valor sem regressão (a poda das barras fica como
+  evolução possível); (c) submenu suspenso na navbar — descartado: 24 itens não cabem num dropdown
+  legível; uma página com cards agrupados e descrições é mais navegável e acessível.
+- **`npm audit`:** inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de
+  D6/D8; nenhuma dependência nova foi adicionada nesta sessão.
+
 ## D53 — Distribuição de cachês por faixa de preço (Sessão 61)
 - **Contexto:** a análise de preços tinha só a leitura **temporal** — `feeTrend` (D44) mostra a
   evolução do cachê médio mês a mês ("estou cobrando mais?"). Faltava o **formato** da tabela de

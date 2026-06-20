@@ -227,8 +227,19 @@ quando há conflitos acionáveis (`upcomingDayCount > 0`); a lista `/shows` ganh
 "Conflitos N". É um **sinal**, não um bloqueio (double-header é legítimo); cancelados não conflitam;
 sem schema, sem dependência, sem server action (ver D49). **455 testes** verdes (medição real
 `vitest run`; eram 448 na main).
+Sessões 59–61 entregaram o **prazo de recebimento / DSO** (`/shows/prazo-recebimento`, `paymentLag`,
+D51), o **prazo por contratante** (`/shows/prazo-recebimento/por-contratante`, D52) e a **distribuição
+de cachês por faixa de preço** (`/shows/faixas-de-cache`). Sessão 62 entregou o **hub de Relatórios**
+(`/relatorios`): um índice central dos 24 relatórios/análises do app, antes só alcançáveis por barras
+de botões espalhadas em `/shows` e `/financas`. O catálogo virou dado puro e testável em
+`src/lib/reports.ts` (`REPORT_GROUPS` agrupados por área Shows/Finanças/Contatos + `allReports`/
+`reportCount`), a página renderiza cards com ícone/título/descrição por grupo, e o item **Relatórios**
+entrou na navegação principal (desktop + mobile). Resolve a discoverability do acervo de análises:
+adicionar um relatório novo passa a ser registrá-lo num único lugar (ver D53). **495 testes** verdes
+(medição real `vitest run`; eram 486 na main — 9 testes novos de invariantes do catálogo).
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias, estados de erro
-inline dos server actions) ou evoluções de calendário (arrastar/soltar para remarcar).
+inline dos server actions), evoluções de calendário (arrastar/soltar para remarcar), ou ligar os
+relatórios novos ao hub à medida que surgirem.
 
 ## Modelo de branches (a partir de 2026-06-16)
 O repositório tem um tronco **`main`** (ver DECISIONS.md D7), já definido como **default
@@ -1416,7 +1427,34 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   (HTTP 200). `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma
   dependência nova nem mudança de schema — ver D6/D8).
 
+### Sessão 62 — 2026-06-20 (Fase 1 — hub central de Relatórios / discoverability)
+- **Motivação:** o app já tinha 24 páginas de análise, mas só alcançáveis por barras de botões que
+  cresceram demais no topo de `/shows` (12 links) e `/financas`, com a navbar limitada a
+  Painel/Shows/Finanças/Contatos. O acervo ficava enterrado — um problema de discoverability, não
+  mais um relatório a somar. Sessão escolheu **consolidar a navegação** em vez de abrir o 25º relatório.
+- **Lógica/dados puros** (`src/lib/reports.ts`): `REPORT_GROUPS` — catálogo tipado dos relatórios
+  agrupados por área (Shows / Finanças / Contatos), cada entrada com `title`, `href`, `description` e
+  `icon`; helpers `allReports()` (achata na ordem dos grupos) e `reportCount()`. Fonte única: registrar
+  um relatório novo passa a ser editar só este arquivo. **9 testes** novos de invariantes
+  (`src/lib/reports.test.ts`): hrefs únicos e absolutos, sem título/descrição vazios, cada href no
+  prefixo da sua área, grupos não vazios, `allReports`/`reportCount` coerentes. Total do projeto
+  **495** (medição real `vitest run`; eram 486 na main). Ver **DECISIONS.md D54**.
+- **Página** (`src/app/(app)/relatorios/page.tsx`): server component que exige só sessão
+  (`requireUser`, sem consulta ao banco) e renderiza, por grupo, cards-link com ícone/título/descrição.
+- **Navegação** (`src/app/(app)/layout.tsx`): item **Relatórios** adicionado à navbar desktop e ao
+  menu mobile, ao lado de Contatos. As barras de botões existentes em `/shows` e `/financas` foram
+  mantidas (atalhos contextuais); o hub é aditivo, sem regressão.
+- Definition of Done verde: build (nova rota `/relatorios`), typecheck (`tsc --noEmit`) limpo, lint
+  (0 warnings/erros), **495 testes** (`vitest run`), smoke test ao vivo (`next start`): `/relatorios`
+  sem sessão → 200 (renderiza o login após redirect interno). `npm audit` inalterado (10 advisories:
+  4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
+0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
+   ver D54): catálogo central dos 24 relatórios na navbar. Próximo possível — **podar as barras de
+   botões** de `/shows` e `/financas` (hoje com 12+ links cada) apontando para o hub, e/ou agrupar
+   visualmente os relatórios por subtema dentro de cada área. Ao criar um relatório novo, **registrá-lo
+   em `REPORT_GROUPS`** para aparecer no hub automaticamente.
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)
 2. **Calendário — evoluções**: arrastar/soltar para remarcar; mini-calendário de salto rápido.

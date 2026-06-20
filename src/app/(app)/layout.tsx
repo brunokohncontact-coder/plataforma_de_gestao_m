@@ -23,6 +23,7 @@ export default async function AppLayout({
               <NavLink href="/shows">Shows</NavLink>
               <NavLink href="/financas">Finanças</NavLink>
               <NavLink href="/contatos">Contatos</NavLink>
+              <NavLink href="/relatorios">Relatórios</NavLink>
             </nav>
           </div>
           <div className="flex items-center gap-3">
@@ -45,6 +46,7 @@ export default async function AppLayout({
           <NavLink href="/shows">Shows</NavLink>
           <NavLink href="/financas">Finanças</NavLink>
           <NavLink href="/contatos">Contatos</NavLink>
+          <NavLink href="/relatorios">Relatórios</NavLink>
           <NavLink href="/conta">Conta</NavLink>
         </nav>
       </header>
