@@ -343,3 +343,122 @@ export function findContactsToReengage<C extends ContactRankLike>(
 
   return { rows, count: rows.length, staleDays };
 }
+
+// ── Retenção / fidelização de contratantes (visão de carteira) ──────────────
+// Responde "quanto da minha agenda vem de quem volta a me contratar?": uma
+// métrica de CARTEIRA (não por contato como o ranking, nem dormente como o
+// reativar). Mede quantos contratantes voltaram (≥2 shows não cancelados) e
+// que fatia do faturamento eles representam — o sinal de booking sustentável
+// (cliente fiel) vs. dependência de prospecção constante. Ver DECISIONS.md D47.
+
+export interface RetentionRow<C extends ContactRankLike> {
+  contact: C;
+  /** Shows não cancelados vinculados (qualquer status exceto CANCELLED). */
+  activeShows: number;
+  /** Soma do cachê dos shows não cancelados (centavos). */
+  totalFee: number;
+  /** Data do show não cancelado mais recente, ou null. */
+  lastShowDate: Date | null;
+  /** True quando o contratante voltou (activeShows >= 2). */
+  recurring: boolean;
+}
+
+export interface ClientRetention<C extends ContactRankLike> {
+  /** Todos os contratantes com ≥1 show não cancelado, ordenados. */
+  rows: RetentionRow<C>[];
+  /** Subconjunto recorrente (≥2 shows não cancelados), na mesma ordem. */
+  recurring: RetentionRow<C>[];
+  /** Nº de contratantes com ≥1 show não cancelado. */
+  totalClients: number;
+  /** Nº de contratantes recorrentes (≥2 shows). */
+  recurringClients: number;
+  /** Nº de contratantes de um show só. */
+  oneTimeClients: number;
+  /** recurringClients / totalClients; null sem contratantes. */
+  repeatRate: number | null;
+  /** Soma dos shows não cancelados de todos os contratantes. */
+  totalShows: number;
+  /** Soma do cachê não cancelado de todos os contratantes (centavos). */
+  totalFee: number;
+  /** Soma do cachê dos contratantes recorrentes (centavos). */
+  recurringFee: number;
+  /** recurringFee / totalFee; null sem faturamento. */
+  recurringFeeShare: number | null;
+  /** Média de shows por contratante; 0 sem contratantes. */
+  avgShowsPerClient: number;
+  /** Contratante com mais shows não cancelados (o mais fiel), ou null. */
+  mostLoyal: RetentionRow<C> | null;
+}
+
+/**
+ * Resume a fidelização da carteira de contratantes. Considera só contatos com
+ * ao menos um show NÃO cancelado (quem de fato te contratou); um contatante é
+ * "recorrente" quando tem ≥2 shows não cancelados (voltou a contratar).
+ *
+ * O cachê é por contato (um show com vários contatos conta para cada um), igual
+ * ao ranking (D18). Inclui shows futuros não cancelados: uma re-contratação já
+ * confirmada também é fidelização. Shows CANCELLED são ignorados em tudo.
+ *
+ * Ordena por nº de shows (desc), depois cachê (desc), nome (pt-BR) e id —
+ * estável e determinística. Pura; `now` injetável para `lastShowDate`/testes.
+ */
+export function clientRetention<C extends ContactRankLike>(
+  items: ContactWithShows<C>[],
+  _now: Date = new Date(),
+): ClientRetention<C> {
+  const rows: RetentionRow<C>[] = [];
+
+  for (const { contact, shows } of items) {
+    let activeShows = 0;
+    let totalFee = 0;
+    let lastTime = -Infinity;
+
+    for (const s of shows) {
+      if (s.status === "CANCELLED") continue;
+      const t = toTime(s.date);
+      activeShows += 1;
+      totalFee += s.fee;
+      if (t > lastTime) lastTime = t;
+    }
+
+    if (activeShows === 0) continue;
+
+    rows.push({
+      contact,
+      activeShows,
+      totalFee,
+      lastShowDate: lastTime === -Infinity ? null : new Date(lastTime),
+      recurring: activeShows >= 2,
+    });
+  }
+
+  rows.sort((a, b) => {
+    if (b.activeShows !== a.activeShows) return b.activeShows - a.activeShows;
+    if (b.totalFee !== a.totalFee) return b.totalFee - a.totalFee;
+    const byName = a.contact.name.localeCompare(b.contact.name, "pt-BR");
+    if (byName !== 0) return byName;
+    return a.contact.id.localeCompare(b.contact.id);
+  });
+
+  const recurring = rows.filter((r) => r.recurring);
+  const totalClients = rows.length;
+  const recurringClients = recurring.length;
+  const totalShows = rows.reduce((acc, r) => acc + r.activeShows, 0);
+  const totalFee = rows.reduce((acc, r) => acc + r.totalFee, 0);
+  const recurringFee = recurring.reduce((acc, r) => acc + r.totalFee, 0);
+
+  return {
+    rows,
+    recurring,
+    totalClients,
+    recurringClients,
+    oneTimeClients: totalClients - recurringClients,
+    repeatRate: totalClients > 0 ? recurringClients / totalClients : null,
+    totalShows,
+    totalFee,
+    recurringFee,
+    recurringFeeShare: totalFee > 0 ? recurringFee / totalFee : null,
+    avgShowsPerClient: totalClients > 0 ? totalShows / totalClients : 0,
+    mostLoyal: rows[0] ?? null,
+  };
+}

@@ -208,6 +208,11 @@ cards de destaque (receita total, maior fonte, nº de fontes) e a tabela de comp
 participação; link "Fontes de renda" na barra de `/financas` quando há receitas. Distinta do ranking
 de contatos (cliente × fonte) e dos relatórios mês a mês. Sem schema, sem dependência, sem server
 action (ver D45). **429 testes** verdes (medição real `vitest run`; eram 420 na main).
+Sessão 55 entregou o **desempenho por dia da semana** (`/shows/dias-semana`, `weekdayPerformance`,
+ver D46). Sessão 56 entregou a **fidelização / retenção de contratantes** (`/contatos/retencao`):
+a função pura `clientRetention` (em `src/lib/contacts.ts`) mede a taxa de recompra (contratantes
+com ≥2 shows) e a fatia da receita vinda de quem volta — distinta do ranking (por contato) e do
+reativar (dormentes), ver D47. **443 testes** verdes (medição real `vitest run`; eram 436 na main).
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias, estados de erro
 inline dos server actions) ou evoluções de calendário (arrastar/soltar para remarcar).
 
@@ -1233,6 +1238,31 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   **Sábado** como melhor cachê médio (R$ 500 > sexta R$ 200) com selo "melhor" — verificado. `npm audit`
   inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de
   schema — ver D6/D8).
+
+### Sessão 56 — 2026-06-20 (Fase 1 — fidelização / retenção de contratantes / CRM)
+- **Lógica pura** (`src/lib/contacts.ts`): nova `clientRetention(items, now?)` que mede a fidelização da
+  **carteira** de contratantes (não por contato como o ranking, nem dormente como o reativar). Considera
+  só contatos com ≥1 show **não cancelado** (quem de fato contratou); um contratante é **recorrente**
+  quando tem ≥2 shows não cancelados (voltou a contratar). Retorna `rows`/`recurring` (ordenados por nº de
+  shows desc, depois cachê, nome pt-BR, id), `totalClients`, `recurringClients`, `oneTimeClients`,
+  `repeatRate` (recompra), `totalShows`, `totalFee`, `recurringFee`, `recurringFeeShare` (fatia da receita
+  vinda de quem volta), `avgShowsPerClient` e `mostLoyal`. Cachê por contato (um show com vários contatos
+  conta para cada um, igual ao ranking D18); inclui shows futuros confirmados (re-contratação agendada
+  também é fidelização); shows CANCELLED ignorados. **7 testes** novos em `contacts.test.ts`. Total do
+  projeto **443** (eram 436). Ver **DECISIONS.md D47**.
+- **Página** (`src/app/(app)/contatos/retencao/page.tsx`): server component que carrega os contatos do
+  usuário com seus shows, chama `clientRetention` e renderiza quatro cards de KPI (taxa de recompra,
+  receita de recorrentes %, contratantes únicos, shows por contratante), o card "Mais fiel" e a tabela
+  de contratantes recorrentes (shows, cachê total, último show). Estado vazio honesto; quando ninguém
+  voltou ainda, aponta para `/contatos/reativar`. Links **Fidelização** na barra de `/contatos` e cruzado
+  com o Ranking. Sem schema, sem dependência, sem server action.
+- Definition of Done verde: build (**31 rotas**; nova `/contatos/retencao`), typecheck (`tsc --noEmit`)
+  limpo, lint (0), **443 testes** (`vitest run`), smoke test ao vivo (`next start`): `/contatos/retencao`
+  sem sessão → 307, `/login` → 200; **e2e autenticado com cookie de sessão real** (usuário + 1 contratante
+  com 2 shows PLAYED + 1 contratante com 1 show) → a página renderiza "Fidelização de contratantes",
+  taxa de recompra **50%** (1 de 2), receita de recorrentes **75%**, "Bar Recorrente" como mais fiel —
+  verificado. `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma
+  dependência nova nem mudança de schema — ver D6/D8).
 
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),

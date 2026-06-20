@@ -1135,3 +1135,36 @@ contexto, decisão, justificativa e alternativas consideradas.
   despesas não é vinculada por show; fica como evolução possível; (b) cruzar com a hora do dia — fora de
   escopo (não há campo de horário separado e a granularidade não compensa); (c) incluir shows futuros
   confirmados — não, distorceria o padrão *realizado* com expectativa, mesma postura de `feeTrend` (D44).
+
+## D47 — Fidelização / retenção de contratantes (Sessão 56)
+- **Contexto:** o CRM já tem o **ranking** (quem mais movimenta a agenda, por contato — D18), o
+  **detalhe do contato** (histórico individual — Sessão 20) e o **reativar** (dormentes a recontatar —
+  D21). Faltava a leitura de **carteira**: que fração dos contratantes *volta* a contratar e quanto da
+  receita vem deles. É a diferença entre um negócio que vive de prospecção constante (todo cliente é
+  novo) e um sustentável (base fiel). Pergunta: "minha agenda se sustenta em quem volta?".
+- **Decisão:** nova função pura `clientRetention(items, now?)` (em `src/lib/contacts.ts`) + página
+  `/contatos/retencao`. Métrica de carteira: contratante = contato com ≥1 show **não cancelado**;
+  **recorrente** = ≥2 shows não cancelados. Retorna taxa de recompra (`repeatRate` = recorrentes/total),
+  fatia da receita dos recorrentes (`recurringFeeShare`), nº de únicos, média de shows por contratante,
+  o mais fiel e as linhas (rows/recurring) ordenadas por nº de shows, depois cachê, nome (pt-BR) e id.
+- **"Recorrente" = ≥2 shows não cancelados**, contando shows **futuros confirmados** também: uma
+  re-contratação já agendada é fidelização tanto quanto uma já realizada — o sinal é "o cliente voltou",
+  não "o show aconteceu". Coerente com o ranking (D18), que também conta não cancelados incluindo futuros.
+  Difere de `feeTrend`/`weekdayPerformance` (que olham só realizados) porque ali a pergunta é sobre o
+  *passado de preço/volume*, e aqui sobre o *relacionamento*.
+- **Cachê por contato** (um show com vários contatos conta para cada um), mesma convenção do ranking —
+  documentado na UI. Não tenta atribuir o cachê a um único contratante (regra ambígua, ver D45).
+- **Distinção das telas vizinhas:** ranking é uma lista *por contato* ordenada por valor; retenção é um
+  *KPI de carteira* (taxas/fatias) com a tabela só dos recorrentes; reativar é a lista de *dormentes*.
+  O estado vazio da retenção (ninguém voltou) aponta para o reativar — fechando o ciclo de prospecção.
+- **Zero schema/dependência/server action:** usa `status`/`date`/`fee` dos shows já vinculados via
+  `ContactsOnShows`; nenhuma migração.
+- **Testes:** 7 testes unitários novos em `contacts.test.ts` (vazio; ignora sem show/só cancelado;
+  classifica recorrente vs. único + taxa; cancelado não conta no nº/cachê; fatia da receita dos
+  recorrentes; ordenação por nº de shows com desempate por cachê + mais fiel; lastShowDate pelo mais
+  recente incl. futuro). Total do projeto 436→443.
+- **Alternativas consideradas:** (a) "novos vs. recorrentes por ano" (série temporal de aquisição) —
+  mais rico, mas exige uma definição de "primeiro show" por janela e dobra a complexidade; o retrato de
+  carteira responde a pergunta principal com menos ruído, fica como evolução; (b) trazer a taxa de
+  recompra para o Painel — adiável (dashboard já denso), a página dedicada basta por ora; (c) limiar de
+  recorrência configurável (≥3?) — ≥2 é o limiar natural de "voltou"; sem demanda para parametrizar.
