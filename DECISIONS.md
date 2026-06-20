@@ -1294,6 +1294,39 @@ contexto, decisão, justificativa e alternativas consideradas.
 - **`npm audit`:** inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de
   D6/D8; nenhuma dependência nova foi adicionada nesta sessão.
 
+## D53 — Distribuição de cachês por faixa de preço (Sessão 61)
+- **Contexto:** a análise de preços tinha só a leitura **temporal** — `feeTrend` (D44) mostra a
+  evolução do cachê médio mês a mês ("estou cobrando mais?"). Faltava o **formato** da tabela de
+  cachês num retrato único: em que faixa de preço o músico mais toca e onde está concentrado o
+  faturamento. Média sozinha engana (um show de R$ 8.000 infla a média de uma agenda de bares de
+  R$ 400). Pergunta: "em que faixa eu mais toco e de onde vem o dinheiro?".
+- **Decisão:** nova função pura `feeDistribution(shows)` em `src/lib/finance.ts` + página
+  `/shows/faixas-de-cache`. Distribui os cachês dos shows **já realizados** pelas faixas fixas de
+  `FEE_BANDS`, com count, total, participação no nº de shows (`countShare`) e no faturamento
+  (`feeShare`) por faixa, mais `avgFee`, `medianFee`, `modalBand` (faixa típica) e `topValueBand`
+  (onde está o faturamento). Reusa a mesma noção de "realizado" e `fee > 0` de `feeTrend`/`weekdayPerformance`.
+- **Mediana além da média:** `medianFee` entra como número robusto a outliers (metade cobra acima,
+  metade abaixo) — exatamente o que a evolução da D44 deixou como "adiável" (ver alternativa (a) da
+  D51, mesma lógica). Helper `median()` privado, par → média arredondada dos dois centrais.
+- **Faixas fixas (`FEE_BANDS`) são hipótese de produto:** até R$ 500 / 500–1k / 1k–2k / 2k–3,5k /
+  3,5k–5k / acima de 5k (centavos). Limiares refletem o mercado indie pt-BR e **podem não servir a
+  todo segmento** — sinalizado na UI e aqui; ajustáveis. `min` inclusivo, `max` exclusivo (um cachê
+  no limite cai na faixa de cima). `feeBandKeyFor` exportada para teste de fronteira.
+- **Desempates determinísticos:** `modalBand` = mais shows, empate → maior faturamento, depois faixa
+  mais alta; `topValueBand` = maior faturamento, empate → mais shows, depois faixa mais alta (mesma
+  estratégia `pick(rank, tiebreak)` de `weekdayPerformance`). `bands` sempre traz as 6 faixas (mesmo
+  as zeradas) para o gráfico não pular.
+- **Zero schema/dependência/server action:** usa `date`/`status`/`fee` dos shows existentes; nenhuma
+  migração. Página é server component puro; link "Faixas de cachê" em `/shows`, ao lado de "Evolução
+  do cachê" (D44), com que forma o par tempo×distribuição da análise de preços.
+- **Alternativas consideradas:** (a) faixas dinâmicas (quartis/percentis dos próprios dados) —
+  descartado por ora: faixas fixas em R$ são mais legíveis e comparáveis entre meses; quartis ficam
+  como evolução; (b) trazer a faixa típica para o Painel — adiável (dashboard já denso, mesma postura
+  da D51 alt. (b)); (c) histograma por bin uniforme — descartado: faixas de mercado significativas
+  comunicam melhor que bins aritméticos.
+- **`npm audit`:** inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de
+  D6/D8; nenhuma dependência nova foi adicionada nesta sessão.
+
 ## D52 — Prazo de recebimento por contratante (quem paga rápido x devagar) (Sessão 60)
 - **Contexto:** o prazo de recebimento (D51) responde "em quanto tempo recebo?" no geral e por show,
   mas não diz *quem* paga rápido e quem deixa esperando — informação que o músico usa para negociar

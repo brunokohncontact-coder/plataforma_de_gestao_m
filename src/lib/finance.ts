@@ -2011,6 +2011,19 @@ function sum(nums: number[]): number {
   return nums.reduce((acc, n) => acc + n, 0);
 }
 
+/**
+ * Mediana de uma lista de números (centavos). Vazia → 0; nº par de elementos →
+ * média dos dois centrais, arredondada ao centavo. Não muta a entrada.
+ */
+function median(nums: number[]): number {
+  if (nums.length === 0) return 0;
+  const sorted = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? Math.round((sorted[mid - 1] + sorted[mid]) / 2)
+    : sorted[mid];
+}
+
 const DAY_MS = 86_400_000;
 
 /** Timestamp (ms) da meia-noite UTC do dia da data — para comparar por dia. */
@@ -2564,6 +2577,157 @@ export function feeTrend(
     bestMonth,
     worstMonth,
     trend,
+  };
+}
+
+// ── Distribuição de cachês por faixa de preço (em que faixa eu mais toco?) ───
+
+export type FeeBandKey =
+  | "lt500"
+  | "500to1k"
+  | "1kto2k"
+  | "2kto3_5k"
+  | "3_5kto5k"
+  | "gte5k";
+
+export interface FeeBandDef {
+  key: FeeBandKey;
+  /** Rótulo pt-BR da faixa, ex.: "R$ 1.000 – 2.000". */
+  label: string;
+  /** Limite inferior em centavos (inclusivo). */
+  min: number;
+  /** Limite superior em centavos (exclusivo); null = sem teto. */
+  max: number | null;
+}
+
+/**
+ * Faixas de cachê (centavos), do mais barato ao mais caro. Os limites são uma
+ * referência do mercado indie pt-BR — hipótese de produto, não verdade absoluta
+ * (ver DECISIONS.md D53). `min` inclusivo, `max` exclusivo: um cachê exatamente
+ * no limite cai na faixa de cima (ex.: R$ 1.000 → "R$ 1.000 – 2.000").
+ */
+export const FEE_BANDS: readonly FeeBandDef[] = [
+  { key: "lt500", label: "Até R$ 500", min: 0, max: 50_000 },
+  { key: "500to1k", label: "R$ 500 – 1.000", min: 50_000, max: 100_000 },
+  { key: "1kto2k", label: "R$ 1.000 – 2.000", min: 100_000, max: 200_000 },
+  { key: "2kto3_5k", label: "R$ 2.000 – 3.500", min: 200_000, max: 350_000 },
+  { key: "3_5kto5k", label: "R$ 3.500 – 5.000", min: 350_000, max: 500_000 },
+  { key: "gte5k", label: "Acima de R$ 5.000", min: 500_000, max: null },
+];
+
+/** A faixa (`FeeBandKey`) em que um cachê (centavos) se encaixa. */
+export function feeBandKeyFor(fee: number): FeeBandKey {
+  for (const b of FEE_BANDS) {
+    if (fee >= b.min && (b.max == null || fee < b.max)) return b.key;
+  }
+  // fee < 0 (não deve ocorrer; só cachês > 0 entram na distribuição).
+  return FEE_BANDS[0].key;
+}
+
+export interface FeeBandStat extends FeeBandDef {
+  /** Nº de shows realizados nessa faixa. */
+  count: number;
+  /** Soma dos cachês dessa faixa (centavos). */
+  totalFee: number;
+  /** Participação no nº de shows = count / totalShows (0..1). */
+  countShare: number;
+  /** Participação no faturamento = totalFee / faturamento total (0..1). */
+  feeShare: number;
+}
+
+export interface FeeDistribution {
+  /** Sempre as 6 faixas, na ordem de FEE_BANDS, inclusive as vazias. */
+  bands: FeeBandStat[];
+  /** Nº de shows realizados considerados (com cachê > 0). */
+  totalShows: number;
+  /** Soma de todos os cachês considerados (centavos). */
+  totalFee: number;
+  /** Cachê médio = round(totalFee / totalShows); 0 se nenhum. */
+  avgFee: number;
+  /**
+   * Cachê mediano (centavos): metade dos shows cobra acima, metade abaixo.
+   * Mais robusto que a média a um show fora da curva. 0 se nenhum.
+   */
+  medianFee: number;
+  /** Faixa com mais shows (a "faixa típica"); null se nenhum. */
+  modalBand: FeeBandStat | null;
+  /** Faixa que concentra mais faturamento; null se nenhum. */
+  topValueBand: FeeBandStat | null;
+}
+
+/**
+ * Distribui os cachês dos shows já realizados pelas faixas de preço de
+ * `FEE_BANDS`, respondendo "em que faixa de cachê eu mais toco e onde está o
+ * meu faturamento?". Complementa `feeTrend` (que mede a evolução no tempo) com
+ * o formato da distribuição num retrato único.
+ *
+ * - "Realizado" = `isHappenedGig` (PLAYED, ou CONFIRMED com data passada);
+ *   propostos, cancelados e futuros ficam de fora (mesma postura de `feeTrend`).
+ * - Só shows com cachê registrado (`fee > 0`) entram — gigs sem cachê não têm
+ *   preço a classificar.
+ * - `bands` traz sempre as 6 faixas (mesmo as zeradas) para o gráfico não pular.
+ *   Pura; `now` injetável para teste.
+ */
+export function feeDistribution(
+  shows: ReceivableShowLike[],
+  opts: { now?: Date | string } = {},
+): FeeDistribution {
+  const todayMs = utcMidnight(opts.now ?? new Date());
+
+  const feesByBand = new Map<FeeBandKey, number[]>();
+  for (const b of FEE_BANDS) feesByBand.set(b.key, []);
+
+  const allFees: number[] = [];
+  for (const s of shows) {
+    if (!isHappenedGig(s, todayMs)) continue;
+    if (s.fee <= 0) continue;
+    feesByBand.get(feeBandKeyFor(s.fee))!.push(s.fee);
+    allFees.push(s.fee);
+  }
+
+  const totalShows = allFees.length;
+  const totalFee = sum(allFees);
+
+  const bands: FeeBandStat[] = FEE_BANDS.map((b) => {
+    const fees = feesByBand.get(b.key)!;
+    const bandTotal = sum(fees);
+    return {
+      ...b,
+      count: fees.length,
+      totalFee: bandTotal,
+      countShare: totalShows > 0 ? fees.length / totalShows : 0,
+      feeShare: totalFee > 0 ? bandTotal / totalFee : 0,
+    };
+  });
+
+  // Candidatas: só faixas com shows. `bands` está em ordem crescente de preço;
+  // no empate, `>=` no critério principal faz a faixa mais ALTA prevalecer.
+  const active = bands.filter((b) => b.count > 0);
+  const pick = (
+    rank: (b: FeeBandStat) => number,
+    tiebreak: (b: FeeBandStat) => number,
+  ): FeeBandStat | null => {
+    let best: FeeBandStat | null = null;
+    for (const b of active) {
+      if (
+        best == null ||
+        rank(b) > rank(best) ||
+        (rank(b) === rank(best) && tiebreak(b) >= tiebreak(best))
+      ) {
+        best = b;
+      }
+    }
+    return best;
+  };
+
+  return {
+    bands,
+    totalShows,
+    totalFee,
+    avgFee: totalShows > 0 ? Math.round(totalFee / totalShows) : 0,
+    medianFee: median(allFees),
+    modalBand: pick((b) => b.count, (b) => b.totalFee),
+    topValueBand: pick((b) => b.totalFee, (b) => b.count),
   };
 }
 

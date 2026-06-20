@@ -1389,6 +1389,33 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   rápido/devagar" e o grupo "Sem contratante" — verificado (HTTP 200). `npm audit` inalterado (10
   advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
 
+### Sessão 61 — 2026-06-20 (Fase 1 — distribuição de cachês por faixa de preço)
+- **Consolidação:** ao abrir a sessão, a PR #75 (Sessão 60, prazo de recebimento por contratante)
+  estava aberta com CI verde — foi **mergeada na `main`** antes de iniciar trabalho novo (regra de
+  ouro: um tronco só, sem linha concorrente), e a sessão seguiu a partir da `main` atualizada.
+- **Lógica pura** (`src/lib/finance.ts`): nova `feeDistribution(shows)` que distribui os cachês dos
+  shows **já realizados** (mesmo critério `isHappenedGig` + `fee > 0` de `feeTrend`) pelas faixas
+  fixas de preço de `FEE_BANDS` (até R$ 500 / 500–1k / 1k–2k / 2k–3,5k / 3,5k–5k / acima de 5k, em
+  centavos; `min` inclusivo, `max` exclusivo). Por faixa: count, total, `countShare` e `feeShare`.
+  Deriva `avgFee`, `medianFee` (robusto a outlier — helper `median()`), `modalBand` (faixa típica =
+  mais shows) e `topValueBand` (onde está o faturamento). Complementa `feeTrend` (D44, evolução no
+  tempo) com o **formato** da distribuição. `feeBandKeyFor` exportada para teste de fronteira.
+  **8 testes** novos (1 de `feeBandKeyFor` nas fronteiras + 7 de `feeDistribution`). Total do projeto
+  **486** (medição real `vitest run`; eram 478 após o merge da #75). Ver **DECISIONS.md D53**.
+- **Página** (`src/app/(app)/shows/faixas-de-cache/page.tsx`): server component que carrega os shows,
+  chama `feeDistribution` e renderiza quatro destaques (cachê médio / mediano / faixa típica / onde
+  está o faturamento) e a tabela das 6 faixas com barras por nº de shows, % dos shows, faturamento e
+  % do faturamento, selo "típica" na faixa modal e rodapé de totais. Aviso de que as faixas são uma
+  referência de mercado (hipótese). Estado vazio honesto. Link **Faixas de cachê** na barra de
+  `/shows`, ao lado de "Evolução do cachê". Sem schema, sem dependência, sem server action.
+- Definition of Done verde: build (nova rota `/shows/faixas-de-cache`), typecheck (`tsc --noEmit`)
+  limpo, lint (0), **486 testes** (`vitest run`), smoke test ao vivo (`next start`):
+  `/shows/faixas-de-cache` sem sessão → 307, `/login` → 200; **e2e autenticado com cookie de sessão
+  real** (seed demo) → a página renderiza "Faixas de cachê", os cards "Cachê mediano"/"Faixa típica"
+  e a tabela "Distribuição por faixa de preço"; o link aparece na barra de `/shows` — verificado
+  (HTTP 200). `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma
+  dependência nova nem mudança de schema — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)

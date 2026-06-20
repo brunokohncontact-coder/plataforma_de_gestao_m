@@ -92,6 +92,11 @@ export default async function ShowsPage({
             </Link>
           )}
           {shows.length > 0 && (
+            <Link href="/shows/faixas-de-cache" className="btn-secondary">
+              Faixas de cachê
+            </Link>
+          )}
+          {shows.length > 0 && (
             <Link href="/shows/dias-semana" className="btn-secondary">
               Por dia da semana
             </Link>

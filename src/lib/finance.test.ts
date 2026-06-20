@@ -43,6 +43,9 @@ import {
   DEFAULT_TAX_RATE,
   showPipeline,
   feeTrend,
+  feeDistribution,
+  feeBandKeyFor,
+  FEE_BANDS,
   weekdayPerformance,
   incomeMix,
   paymentLag,
@@ -2466,6 +2469,139 @@ describe("feeTrend", () => {
     // médias: jan 100, fev 200, mar 100 → melhor=fev; pior empata jan/mar → jan.
     expect(t.bestMonth?.month).toBe("2026-02");
     expect(t.worstMonth?.month).toBe("2026-01");
+  });
+});
+
+describe("feeBandKeyFor", () => {
+  it("classifica pelos limites (min inclusivo, max exclusivo)", () => {
+    expect(feeBandKeyFor(0)).toBe("lt500");
+    expect(feeBandKeyFor(499_99)).toBe("lt500");
+    expect(feeBandKeyFor(500_00)).toBe("500to1k"); // limite cai na faixa de cima
+    expect(feeBandKeyFor(999_99)).toBe("500to1k");
+    expect(feeBandKeyFor(1_000_00)).toBe("1kto2k");
+    expect(feeBandKeyFor(2_000_00)).toBe("2kto3_5k");
+    expect(feeBandKeyFor(3_500_00)).toBe("3_5kto5k");
+    expect(feeBandKeyFor(5_000_00)).toBe("gte5k");
+    expect(feeBandKeyFor(50_000_00)).toBe("gte5k"); // sem teto
+  });
+});
+
+describe("feeDistribution", () => {
+  const now = new Date("2026-06-15T12:00:00.000Z");
+
+  function gig(partial: Partial<ReceivableShowLike>): ReceivableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-01-10T20:00:00.000Z",
+      ...partial,
+    };
+  }
+
+  it("sem shows realizados retorna tudo zerado/nulo, mas com as 6 faixas", () => {
+    const d = feeDistribution([], { now });
+    expect(d.bands).toHaveLength(FEE_BANDS.length);
+    expect(d.bands.map((b) => b.key)).toEqual(FEE_BANDS.map((b) => b.key));
+    expect(d.bands.every((b) => b.count === 0 && b.totalFee === 0)).toBe(true);
+    expect(d.totalShows).toBe(0);
+    expect(d.totalFee).toBe(0);
+    expect(d.avgFee).toBe(0);
+    expect(d.medianFee).toBe(0);
+    expect(d.modalBand).toBeNull();
+    expect(d.topValueBand).toBeNull();
+  });
+
+  it("distribui os cachês pelas faixas com count/total e participações", () => {
+    const d = feeDistribution(
+      [
+        gig({ id: "a", fee: 300_00 }), // lt500
+        gig({ id: "b", fee: 400_00 }), // lt500
+        gig({ id: "c", fee: 800_00 }), // 500to1k
+        gig({ id: "d", fee: 1_500_00 }), // 1kto2k
+      ],
+      { now },
+    );
+    expect(d.totalShows).toBe(4);
+    expect(d.totalFee).toBe(3_000_00);
+    const byKey = Object.fromEntries(d.bands.map((b) => [b.key, b]));
+    expect(byKey.lt500.count).toBe(2);
+    expect(byKey.lt500.totalFee).toBe(700_00);
+    expect(byKey.lt500.countShare).toBeCloseTo(0.5, 5);
+    expect(byKey.lt500.feeShare).toBeCloseTo(700_00 / 3_000_00, 5);
+    expect(byKey["500to1k"].count).toBe(1);
+    expect(byKey["1kto2k"].count).toBe(1);
+    expect(byKey.gte5k.count).toBe(0);
+  });
+
+  it("considera só shows realizados com cachê > 0", () => {
+    const d = feeDistribution(
+      [
+        gig({ id: "played", status: "PLAYED", fee: 300_00 }),
+        gig({ id: "confPast", status: "CONFIRMED", date: "2026-02-10T20:00:00.000Z", fee: 400_00 }),
+        gig({ id: "confFut", status: "CONFIRMED", date: "2026-09-10T20:00:00.000Z", fee: 400_00 }),
+        gig({ id: "prop", status: "PROPOSED", fee: 400_00 }),
+        gig({ id: "canc", status: "CANCELLED", fee: 400_00 }),
+        gig({ id: "free", status: "PLAYED", fee: 0 }),
+      ],
+      { now },
+    );
+    expect(d.totalShows).toBe(2);
+    expect(d.totalFee).toBe(700_00);
+  });
+
+  it("avgFee e medianFee (ímpar = central; média sensível a outlier)", () => {
+    const d = feeDistribution(
+      [
+        gig({ id: "a", fee: 100_00 }),
+        gig({ id: "b", fee: 200_00 }),
+        gig({ id: "c", fee: 5_000_00 }), // outlier puxa a média, não a mediana
+      ],
+      { now },
+    );
+    expect(d.medianFee).toBe(200_00);
+    expect(d.avgFee).toBe(Math.round(5_300_00 / 3));
+  });
+
+  it("medianFee com nº par = média arredondada dos dois centrais", () => {
+    const d = feeDistribution(
+      [
+        gig({ id: "a", fee: 100_00 }),
+        gig({ id: "b", fee: 201_00 }),
+        gig({ id: "c", fee: 400_00 }),
+        gig({ id: "d", fee: 900_00 }),
+      ],
+      { now },
+    );
+    // centrais: 201_00 e 400_00 → (60100 + 40000)/2 = 30050.5 → 30051? Não:
+    // (201_00 + 400_00)/2 = (20100 + 40000)/2 = 30050 → R$ 300,50.
+    expect(d.medianFee).toBe(30050);
+  });
+
+  it("modalBand é a faixa com mais shows; topValueBand a de maior faturamento", () => {
+    const d = feeDistribution(
+      [
+        gig({ id: "a", fee: 100_00 }), // lt500
+        gig({ id: "b", fee: 200_00 }), // lt500
+        gig({ id: "c", fee: 300_00 }), // lt500  → 3 shows, R$ 600 total
+        gig({ id: "d", fee: 8_000_00 }), // gte5k → 1 show, R$ 8.000 total
+      ],
+      { now },
+    );
+    expect(d.modalBand?.key).toBe("lt500"); // 3 shows
+    expect(d.topValueBand?.key).toBe("gte5k"); // R$ 8.000 > R$ 600
+  });
+
+  it("empate em modalBand prefere a faixa mais alta", () => {
+    const d = feeDistribution(
+      [
+        gig({ id: "a", fee: 300_00 }), // lt500 (1 show)
+        gig({ id: "b", fee: 1_500_00 }), // 1kto2k (1 show)
+      ],
+      { now },
+    );
+    // ambas com 1 show; desempate → faixa mais alta com maior faturamento.
+    expect(d.modalBand?.key).toBe("1kto2k");
   });
 });
 
