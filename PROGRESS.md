@@ -1211,6 +1211,29 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   de destaque — verificado. `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical;
   nenhuma dependência nova nem mudança de schema — ver D6/D8).
 
+### Sessão 55 — 2026-06-20 (Fase 1 — desempenho por dia da semana)
+- **Lógica pura** (`src/lib/finance.ts`): nova `weekdayPerformance(shows, { now? })` que agrega os shows
+  já realizados com cachê (`isHappenedGig` + `fee > 0`, mesma regra de `feeTrend`) por dia da semana
+  (0=domingo..6=sábado, em UTC). Retorna `days[]` (sempre os 7 dias, mesmo zerados, cada um com
+  `count`/`totalFee`/`avgFee`/`countShare`/`feeShare`), `totalShows`, `totalFee`, `avgFee` e três
+  destaques — `bestByAvg` (maior cachê médio), `bestByVolume` (maior faturamento) e `busiest` (mais
+  shows) — com desempate determinístico via helper interno `pick(rank, tiebreak)` (empate → nº de shows;
+  empate total → dia mais cedo). Também exporta `WEEKDAY_LABELS`/`WEEKDAY_SHORT`. **7 testes** novos em
+  `finance.test.ts`. Total do projeto **436** (eram 429). Ver **DECISIONS.md D46**.
+- **Página** (`src/app/(app)/shows/dias-semana/page.tsx`): server component que carrega os shows do
+  usuário, chama `weekdayPerformance` e renderiza três cards de destaque (melhor cachê médio / mais
+  faturamento / mais shows, cada um com o dia e o valor) e a tabela domingo→sábado com cachê médio
+  (barra proporcional), faturamento (+ participação %), nº de shows e selo "melhor" no dia de maior
+  média; linha de total no rodapé. Dias sem shows aparecem esmaecidos (lacuna da agenda). Estado vazio
+  honesto. Link **Por dia da semana** na barra de `/shows`. Sem schema, sem dependência, sem server action.
+- Definition of Done verde: build (**30 rotas**; nova `/shows/dias-semana`), typecheck (`tsc --noEmit`)
+  limpo, lint (0), **436 testes** (`vitest run`), smoke test ao vivo (`next start`): `/shows/dias-semana`
+  sem sessão → 307, `/shows` → 307, `/login` → 200; **e2e autenticado com cookie de sessão real** (seed
+  demo + 2 shows PLAYED em sábado/sexta de jan) → a página renderiza "Por dia da semana", destaca
+  **Sábado** como melhor cachê médio (R$ 500 > sexta R$ 200) com selo "melhor" — verificado. `npm audit`
+  inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de
+  schema — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)
