@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   pickBillingContact,
+  pickPayerContact,
   reachableBillingContacts,
   buildDunningMessage,
   normalizeWhatsappPhone,
@@ -62,6 +63,34 @@ describe("pickBillingContact", () => {
       contact({ id: "a", name: "Z", role: null, phone: "81999998888" }),
     ]);
     expect(c?.id).toBe("a");
+  });
+});
+
+describe("pickPayerContact", () => {
+  it("retorna null sem contatos", () => {
+    expect(pickPayerContact([])).toBeNull();
+  });
+
+  it("prioriza pelo papel mesmo sem canal de contato", () => {
+    const c = pickPayerContact([
+      contact({ id: "v", name: "Casa", role: "VENUE" }),
+      contact({ id: "b", name: "Booker", role: "BOOKER" }),
+    ]);
+    expect(c?.id).toBe("b");
+  });
+
+  it("escolhe um contato sem e-mail/telefone (diferente de pickBillingContact)", () => {
+    const sem = contact({ id: "a", name: "Sem canal", role: "BOOKER" });
+    expect(pickBillingContact([sem])).toBeNull();
+    expect(pickPayerContact([sem])?.id).toBe("a");
+  });
+
+  it("desempata por nome quando o papel é igual", () => {
+    const c = pickPayerContact([
+      contact({ id: "1", name: "Bruno", role: "VENUE" }),
+      contact({ id: "2", name: "Ana", role: "VENUE" }),
+    ]);
+    expect(c?.id).toBe("2");
   });
 });
 

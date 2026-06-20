@@ -1823,6 +1823,143 @@ export function paymentLag<S extends ReceivableShowLike>(
   };
 }
 
+// ── Prazo de recebimento por contratante (quem paga rápido x devagar) ───────
+//
+// Quebra o prazo de recebimento realizado (paymentLag) por quem paga: agrupa os
+// shows pelo contato responsável pelo pagamento (o "contratante", escolhido fora
+// daqui — ver billing.pickPayerContact) e mede, por contratante, em quanto tempo o
+// dinheiro entrou. Responde "quem me paga rápido e quem me deixa esperando?" — base
+// para negociar prazos e priorizar quem vale a pena.
+
+export interface ContactPaymentLagRow<
+  C,
+  S extends ReceivableShowLike = ReceivableShowLike,
+> {
+  /** Contratante do grupo; `null` agrega os shows sem contato vinculado. */
+  contact: C | null;
+  /** Total recebido atribuído a esse contratante (centavos). */
+  received: number;
+  /** Nº de recebimentos (transações) somados. */
+  paymentCount: number;
+  /** Nº de shows pagos atribuídos a esse contratante. */
+  showCount: number;
+  /** Prazo médio (dias) ponderado pelo valor recebido nos shows do contratante. */
+  avgDays: number;
+  /** Pior prazo (dias) entre os shows do contratante. */
+  lastDays: number;
+  /** Balde de velocidade do contratante, derivado de `avgDays`. */
+  bucket: PaymentSpeedBucketKey;
+  /** Participação no total recebido (0..1). 0 se o total for 0. */
+  share: number;
+  /** Shows do contratante, do mais lento ao mais rápido (reusa PaymentLag). */
+  shows: PaymentLagShowRow<S>[];
+}
+
+export interface PaymentLagByContact<
+  C,
+  S extends ReceivableShowLike = ReceivableShowLike,
+> {
+  /** Grupos por contratante, do prazo médio mais lento ao mais rápido; o grupo
+   * `null` (sem contratante) vai sempre por último. */
+  rows: ContactPaymentLagRow<C, S>[];
+  /** Nº de contratantes identificados (exclui o grupo `null`). */
+  contactCount: number;
+  /** Nº de recebimentos considerados. */
+  paymentCount: number;
+  /** Soma de tudo que entrou (centavos). */
+  totalReceived: number;
+  /** Prazo médio global ponderado pelo valor (o DSO do caixa). */
+  avgDays: number;
+  /** Contratante mais lento (maior `avgDays`), ignorando o grupo `null`. */
+  slowest: ContactPaymentLagRow<C, S> | null;
+  /** Contratante mais rápido (menor `avgDays`), ignorando o grupo `null`. */
+  fastest: ContactPaymentLagRow<C, S> | null;
+}
+
+/**
+ * Agrupa o prazo de recebimento realizado por contratante. Reaproveita `paymentLag`
+ * (a mesma regra de quem entra e o cálculo por show) e só redistribui os shows pelo
+ * pagador, agregando o prazo ponderado pelo valor.
+ *
+ * - `getPayer(show)` escolhe o contratante de cada show (ex.: billing.pickPayerContact);
+ *   `null` cai no grupo "sem contratante". A identidade do contato vem de `id`.
+ * - Grupos ordenados do prazo médio mais lento ao mais rápido; o grupo `null` vai
+ *   sempre por último (não é um contratante de verdade). Os shows de cada grupo
+ *   herdam a ordenação (lento→rápido) de `paymentLag`. Pura.
+ */
+export function paymentLagByContact<
+  C extends { id: string },
+  S extends ReceivableShowLike,
+>(
+  shows: S[],
+  txs: TxLike[],
+  getPayer: (show: S) => C | null,
+): PaymentLagByContact<C, S> {
+  const lag = paymentLag(shows, txs);
+
+  interface Group {
+    contact: C | null;
+    received: number;
+    paymentCount: number;
+    weightedDays: number;
+    lastDays: number;
+    shows: PaymentLagShowRow<S>[];
+  }
+  const NO_CONTACT = " "; // chave reservada para o grupo sem contratante
+  const groups = new Map<string, Group>();
+
+  for (const row of lag.rows) {
+    const contact = getPayer(row.show);
+    const key = contact ? contact.id : NO_CONTACT;
+    const g =
+      groups.get(key) ??
+      ({ contact, received: 0, paymentCount: 0, weightedDays: 0, lastDays: row.lastDays, shows: [] } as Group);
+    g.received += row.received;
+    g.paymentCount += row.paymentCount;
+    g.weightedDays += row.avgDays * row.received;
+    g.lastDays = Math.max(g.lastDays, row.lastDays);
+    g.shows.push(row);
+    groups.set(key, g);
+  }
+
+  const totalReceived = lag.totalReceived;
+  const rows: ContactPaymentLagRow<C, S>[] = [];
+  for (const g of groups.values()) {
+    const avgExact = g.received === 0 ? 0 : g.weightedDays / g.received;
+    rows.push({
+      contact: g.contact,
+      received: g.received,
+      paymentCount: g.paymentCount,
+      showCount: g.shows.length,
+      avgDays: Math.round(avgExact),
+      lastDays: g.lastDays,
+      bucket: paymentSpeedBucket(avgExact),
+      share: totalReceived === 0 ? 0 : g.received / totalReceived,
+      shows: g.shows,
+    });
+  }
+
+  // Mais lento → mais rápido; o grupo sem contratante (contact null) por último.
+  rows.sort((a, b) => {
+    if (!a.contact !== !b.contact) return a.contact ? -1 : 1;
+    return (
+      b.avgDays - a.avgDays ||
+      (a.contact?.id ?? "").localeCompare(b.contact?.id ?? "")
+    );
+  });
+
+  const identified = rows.filter((r) => r.contact);
+  return {
+    rows,
+    contactCount: identified.length,
+    paymentCount: lag.paymentCount,
+    totalReceived,
+    avgDays: lag.avgDays,
+    slowest: identified[0] ?? null,
+    fastest: identified.length ? identified[identified.length - 1] : null,
+  };
+}
+
 /**
  * Decide quanto lançar ao quitar um cachê, dado o valor pedido pelo usuário e o
  * saldo em aberto (recalculado no servidor — a fonte de verdade). Regras:

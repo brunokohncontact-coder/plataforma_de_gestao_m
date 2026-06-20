@@ -46,6 +46,7 @@ import {
   weekdayPerformance,
   incomeMix,
   paymentLag,
+  paymentLagByContact,
   paymentSpeedBucket,
   PAYMENT_SPEED_BUCKET_ORDER,
   type TxLike,
@@ -1795,6 +1796,112 @@ describe("paymentLag", () => {
     const slow = r.buckets.find((b) => b.key === "d60")!;
     expect(slow.received).toBe(100_00);
     expect(slow.share).toBeCloseTo(1 / 3, 5);
+  });
+});
+
+describe("paymentLagByContact", () => {
+  interface Contact {
+    id: string;
+    name: string;
+  }
+  type ShowWithPayer = ReceivableShowLike & { payer: Contact | null };
+  const getPayer = (s: ShowWithPayer) => s.payer;
+
+  function gig(partial: Partial<ShowWithPayer>): ShowWithPayer {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-03-01T00:00:00.000Z",
+      payer: null,
+      ...partial,
+    };
+  }
+
+  it("retorna vazio sem recebimentos", () => {
+    const r = paymentLagByContact([gig({})], [], getPayer);
+    expect(r.rows).toEqual([]);
+    expect(r.contactCount).toBe(0);
+    expect(r.totalReceived).toBe(0);
+    expect(r.avgDays).toBe(0);
+    expect(r.slowest).toBeNull();
+    expect(r.fastest).toBeNull();
+  });
+
+  it("agrupa vários shows do mesmo contratante e pondera o prazo pelo valor", () => {
+    const ze = { id: "ze", name: "Bar do Zé" };
+    const shows = [
+      gig({ id: "a", date: "2026-03-01T00:00:00.000Z", payer: ze }),
+      gig({ id: "b", date: "2026-03-01T00:00:00.000Z", payer: ze }),
+    ];
+    const txs = [
+      // a: 200,00 em 5 dias; b: 100,00 em 35 dias → ponderado (5*200+35*100)/300 = 15.
+      tx({ type: "INCOME", amount: 200_00, received: true, showId: "a", date: "2026-03-06T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "b", date: "2026-04-05T00:00:00.000Z" }),
+    ];
+    const r = paymentLagByContact(shows, txs, getPayer);
+    expect(r.contactCount).toBe(1);
+    expect(r.rows).toHaveLength(1);
+    const row = r.rows[0];
+    expect(row.contact).toBe(ze);
+    expect(row.showCount).toBe(2);
+    expect(row.paymentCount).toBe(2);
+    expect(row.received).toBe(300_00);
+    expect(row.avgDays).toBe(15);
+    expect(row.lastDays).toBe(35);
+    expect(row.bucket).toBe("d30");
+    expect(row.share).toBeCloseTo(1, 5);
+  });
+
+  it("ordena os contratantes do mais lento ao mais rápido com slowest/fastest", () => {
+    const rapido = { id: "r", name: "Paga Rápido" };
+    const lento = { id: "l", name: "Paga Devagar" };
+    const shows = [
+      gig({ id: "a", date: "2026-03-01T00:00:00.000Z", payer: rapido }),
+      gig({ id: "b", date: "2026-03-01T00:00:00.000Z", payer: lento }),
+    ];
+    const txs = [
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "a", date: "2026-03-06T00:00:00.000Z" }), // 5d
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "b", date: "2026-04-10T00:00:00.000Z" }), // 40d
+    ];
+    const r = paymentLagByContact(shows, txs, getPayer);
+    expect(r.rows.map((x) => x.contact?.id)).toEqual(["l", "r"]);
+    expect(r.slowest!.contact!.id).toBe("l");
+    expect(r.fastest!.contact!.id).toBe("r");
+    expect(r.rows[0].share).toBeCloseTo(0.5, 5);
+  });
+
+  it("joga os shows sem contratante para o grupo nulo, sempre por último", () => {
+    const dono = { id: "d", name: "Contratante" };
+    const shows = [
+      // sem payer, prazo bem mais lento — ainda assim vai por último.
+      gig({ id: "orfao", date: "2026-03-01T00:00:00.000Z", payer: null }),
+      gig({ id: "comdono", date: "2026-03-01T00:00:00.000Z", payer: dono }),
+    ];
+    const txs = [
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "orfao", date: "2026-06-01T00:00:00.000Z" }), // ~92d
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "comdono", date: "2026-03-06T00:00:00.000Z" }), // 5d
+    ];
+    const r = paymentLagByContact(shows, txs, getPayer);
+    expect(r.rows.map((x) => x.contact?.id ?? null)).toEqual(["d", null]);
+    expect(r.contactCount).toBe(1); // exclui o grupo nulo
+    // slowest/fastest ignoram o grupo nulo.
+    expect(r.slowest!.contact!.id).toBe("d");
+    expect(r.fastest!.contact!.id).toBe("d");
+  });
+
+  it("preserva a ordenação lento→rápido dos shows dentro do grupo", () => {
+    const ze = { id: "ze", name: "Bar do Zé" };
+    const shows = [
+      gig({ id: "rapido", date: "2026-03-01T00:00:00.000Z", payer: ze }),
+      gig({ id: "lento", date: "2026-03-01T00:00:00.000Z", payer: ze }),
+    ];
+    const txs = [
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "rapido", date: "2026-03-06T00:00:00.000Z" }), // 5d
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "lento", date: "2026-04-10T00:00:00.000Z" }), // 40d
+    ];
+    const r = paymentLagByContact(shows, txs, getPayer);
+    expect(r.rows[0].shows.map((s) => s.show.id)).toEqual(["lento", "rapido"]);
   });
 });
 

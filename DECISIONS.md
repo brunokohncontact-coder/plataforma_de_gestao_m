@@ -1293,3 +1293,39 @@ contexto, decisão, justificativa e alternativas consideradas.
   evolução natural possível reusando os contatos vinculados ao show.
 - **`npm audit`:** inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de
   D6/D8; nenhuma dependência nova foi adicionada nesta sessão.
+
+## D52 — Prazo de recebimento por contratante (quem paga rápido x devagar) (Sessão 60)
+- **Contexto:** o prazo de recebimento (D51) responde "em quanto tempo recebo?" no geral e por show,
+  mas não diz *quem* paga rápido e quem deixa esperando — informação que o músico usa para negociar
+  prazos, dar prioridade e decidir com quem voltar a tocar. Evolução já antecipada na alternativa (d)
+  da D51.
+- **Decisão:** nova função pura `paymentLagByContact(shows, txs, getPayer)` em `src/lib/finance.ts` +
+  página `/shows/prazo-recebimento/por-contratante`. **Reaproveita `paymentLag`** (a mesma regra de
+  quem entra e o cálculo de prazo por show) e só **redistribui os shows pelo pagador**, agregando o
+  prazo ponderado pelo valor por contratante. Sem recomputar nada — DRY total sobre a D51.
+- **Atribuição do pagador:** cada show é atribuído a UM contato responsável pelo pagamento, escolhido
+  por papel via a nova `pickPayerContact(contacts)` em `src/lib/billing.ts` — reusa a ordenação de
+  prioridade de cobrança da D27/D30 (BOOKER/PROMOTER antes de VENUE; desempate por nome pt-BR/id),
+  mas, ao contrário de `pickBillingContact`, **NÃO exige canal** (e-mail/telefone): para *agrupar* por
+  quem paga, o contratante conta mesmo sem dado de contato cadastrado.
+- **Grupo "Sem contratante":** shows pagos sem nenhum contato vinculado caem num grupo de chave nula,
+  que é sempre ordenado **por último** (não é um contratante de verdade) e fica **fora** de
+  `contactCount`/`slowest`/`fastest`. Mantém a página honesta sem inventar atribuição.
+- **Ordenação e métricas:** grupos do prazo médio mais lento ao mais rápido (o problema de caixa no
+  topo); dentro de cada grupo os shows herdam a ordenação lento→rápido de `paymentLag`. O prazo de
+  cada contratante pondera os shows pelo valor recebido (coerente com D31/D51); `slowest`/`fastest`
+  dão os destaques "paga mais devagar/rápido".
+- **`getPayer` como callback (decoupling):** a função pura recebe o seletor de pagador por parâmetro
+  em vez de importar `billing` — mantém `src/lib/finance.ts` sem imports (núcleo puro), com a página
+  injetando `pickPayerContact`. Finance faz a matemática; billing decide quem é o pagador.
+- **Zero schema/dependência/server action:** usa os contatos já vinculados (`ContactsOnShows`) e as
+  transações existentes; nenhuma migração. Página é server component puro, cruza-link com
+  `/contatos/[id]` e com a página geral `/shows/prazo-recebimento` (botão "Por contratante").
+- **Alternativas consideradas:** (a) atribuir o pagamento ao contato cujo papel pagou *de fato* —
+  descartado: não há vínculo transação↔contato no schema, só show↔contato; a escolha por papel é a
+  melhor heurística sem nova modelagem; (b) ratear um show entre vários contatos — descartado:
+  complica sem ganho (o pagador é um só na prática), e o show é a unidade de prazo; (c) exigir canal
+  (reusar `pickBillingContact`) — descartado: excluiria contratantes sem e-mail/telefone do
+  agrupamento, distorcendo a leitura.
+- **`npm audit`:** inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de
+  D6/D8; nenhuma dependência nova foi adicionada nesta sessão.
