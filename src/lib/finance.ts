@@ -1726,6 +1726,12 @@ export interface PaymentLag<S extends ReceivableShowLike = ReceivableShowLike> {
    * média, cada real entrou tantos dias depois do show. 0 se não houve recebimento.
    */
   avgDays: number;
+  /**
+   * Prazo MEDIANO de recebimento ponderado pelo valor: o dia em que metade do
+   * faturamento já tinha entrado. Robusto a outlier — um único recebimento muito
+   * atrasado infla `avgDays`, mas não a mediana. 0 se não houve recebimento.
+   */
+  medianDays: number;
   /** Show de recebimento mais rápido (menor `avgDays`), ou null se vazio. */
   fastest: PaymentLagShowRow<S> | null;
   /** Show de recebimento mais lento (maior `avgDays`), ou null se vazio. */
@@ -1817,6 +1823,9 @@ export function paymentLag<S extends ReceivableShowLike>(
     paymentCount,
     totalReceived,
     avgDays: totalReceived === 0 ? 0 : Math.round(weightedGlobal / totalReceived),
+    // Mediana ponderada pelo valor sobre o prazo de cada show (mesmos insumos do
+    // DSO médio: avgDays do show, peso = recebido) — resiste a um show muito atrasado.
+    medianDays: weightedMedian(rows.map((r) => ({ value: r.avgDays, weight: r.received }))),
     // rows está ordenado do mais lento (avgDays maior) ao mais rápido.
     slowest: rows[0] ?? null,
     fastest: rows.length ? rows[rows.length - 1] : null,
@@ -2022,6 +2031,32 @@ function median(nums: number[]): number {
   return sorted.length % 2 === 0
     ? Math.round((sorted[mid - 1] + sorted[mid]) / 2)
     : sorted[mid];
+}
+
+/**
+ * Mediana ponderada: o menor valor cujo peso acumulado (sobre os itens ordenados
+ * por valor) alcança metade do peso total. Se o acumulado bater exatamente na
+ * metade num item, devolve a média desse valor com o próximo (convenção da mediana
+ * "do meio"). Itens com peso <= 0 são ignorados. Sem itens com peso → 0. Não muta a
+ * entrada; resultado arredondado ao inteiro. É robusta a outlier — um único item de
+ * valor extremo não desloca a mediana como faria com a média.
+ */
+function weightedMedian(items: { value: number; weight: number }[]): number {
+  const sorted = items
+    .filter((it) => it.weight > 0)
+    .sort((a, b) => a.value - b.value);
+  if (sorted.length === 0) return 0;
+  const total = sum(sorted.map((it) => it.weight));
+  const half = total / 2;
+  let cumulative = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    cumulative += sorted[i].weight;
+    if (cumulative === half && i + 1 < sorted.length) {
+      return Math.round((sorted[i].value + sorted[i + 1].value) / 2);
+    }
+    if (cumulative >= half) return Math.round(sorted[i].value);
+  }
+  return Math.round(sorted[sorted.length - 1].value);
 }
 
 const DAY_MS = 86_400_000;

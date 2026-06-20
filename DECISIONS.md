@@ -1438,3 +1438,29 @@ contexto, decisão, justificativa e alternativas consideradas.
   match OR em vez de AND — descartado: AND é mais preciso para refinar conforme se digita.
 - **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5 high
   / 1 critical), mesma postura de D6/D8; nenhuma dependência nova.
+
+## D57 — Prazo MEDIANO de recebimento (mediana ponderada, robusta a outlier) (Sessão 65)
+- **Contexto:** a página `/shows/prazo-recebimento` (D51) destaca o **prazo médio ponderado pelo valor**
+  (o "DSO" do músico). A média é sensível a outlier: um único cachê pago muito atrasado (ex.: 90 dias)
+  infla o número e dá a impressão falsa de que "todo mundo paga devagar", mesmo quando a maioria pagou
+  em dias. Faltava uma leitura **típica**, resistente a esse efeito — o item 5 dos próximos passos já
+  previa "a mediana do prazo (além da média ponderada)".
+- **Decisão:** expor `medianDays` no `PaymentLag` (`src/lib/finance.ts`) — a **mediana ponderada pelo
+  valor** sobre o prazo de cada show: o dia em que metade do faturamento recebido já tinha entrado.
+  Usa os **mesmos insumos do DSO médio** (o `avgDays` de cada show, ponderado pelo `received`), então
+  as duas métricas contam a mesma história com pesos consistentes — uma é a média, a outra a mediana.
+  Helper interno puro `weightedMedian({value, weight}[])`: ordena por valor, acumula peso e devolve o
+  menor valor cujo acumulado alcança metade do peso total (convenção do "meio": se o acumulado bate
+  exatamente na metade num item, média desse valor com o próximo); pesos <= 0 ignorados; vazio → 0.
+- **UI:** novo card "Prazo mediano (ponderado)" ao lado de "Prazo médio (ponderado)" (a grade de
+  destaques passou de 3 para 4 colunas em telas largas), com nota de que ele resiste a um atraso
+  isolado, e o rodapé explicativo atualizado. Não toca a tabela por show nem a distribuição por faixa.
+- **Alternativas consideradas:** (a) mediana sobre os recebimentos individuais (cada transação) em vez
+  de por show — descartado: o DSO médio já agrega por show (avgDays ponderado), então a mediana sobre
+  os mesmos pontos mantém a coerência; medir por transação misturaria duas granularidades. (b) mediana
+  **não** ponderada (cada show conta igual) — descartado: distorceria a leitura de caixa, em que um
+  show de R$ 5.000 pesa mais que um de R$ 200; a ponderação por valor responde "metade do dinheiro
+  entrou até quando". (c) também por contratante (`paymentLagByContact`) — adiável: com poucos shows
+  por contratante a mediana fica ruidosa; a global é a mais útil e fica como leitura primária.
+- **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5 high
+  / 1 critical), mesma postura de D6/D8; nenhuma dependência nova.

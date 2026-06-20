@@ -1498,6 +1498,30 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de
   schema — ver D6/D8).
 
+### Sessão 65 — 2026-06-20 (Fase 1 — prazo MEDIANO de recebimento / DSO robusto a outlier)
+- **Motivação:** o card "Prazo médio (ponderado)" de `/shows/prazo-recebimento` (D51) usa a média, que
+  um único cachê pago muito atrasado infla — dando a impressão falsa de que "todo mundo paga devagar".
+  Faltava a leitura **típica**, resistente a outlier (item 5 dos próximos passos: "a mediana do prazo
+  além da média ponderada"). Sessão escolheu polir o relatório existente em vez de abrir um novo.
+- **Lógica pura** (`src/lib/finance.ts`): novo campo `medianDays` no `PaymentLag` — a **mediana
+  ponderada pelo valor** do prazo de cada show (o dia em que metade do faturamento recebido já tinha
+  entrado), usando os **mesmos insumos do DSO médio** (`avgDays` do show, peso = `received`), para
+  contar a mesma história com pesos consistentes. Helper interno puro `weightedMedian({value,weight}[])`
+  (ordena por valor, acumula peso até a metade do total; convenção do "meio" no empate exato; pesos
+  <= 0 ignorados; vazio → 0). **3 testes** novos em `finance.test.ts` (vazio/único; mediana resiste a
+  show atrasado que infla a média; mediana ponderada pelo valor). Total do projeto **507** (medição real
+  `vitest run`; eram 504 na main). Ver **DECISIONS.md D57**.
+- **UI** (`src/app/(app)/shows/prazo-recebimento/page.tsx`): card "Prazo mediano (ponderado)" ao lado
+  de "Prazo médio (ponderado)" (grade de destaques de 3 → 4 colunas em telas largas), com nota de que
+  resiste a um atraso isolado, e o rodapé explicativo atualizado. Sem schema, sem dependência, sem
+  server action.
+- Definition of Done verde: build (`prisma generate && next build`) OK, typecheck (`tsc --noEmit`)
+  limpo, lint (0 warnings/erros), **507 testes** (`vitest run`), smoke test ao vivo (`next start`):
+  `/login` → 200, `/shows/prazo-recebimento` sem sessão → 307; **e2e autenticado com cookie de sessão
+  real** (seed demo) → `/shows/prazo-recebimento` 200 renderiza os cards "Prazo mediano (ponderado)" e
+  "Prazo médio (ponderado)" — verificado. `npm audit` inalterado (10 advisories: 4 moderate / 5 high /
+  1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
@@ -1534,10 +1558,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    recebíveis** entregue na Sessão 40 — `bucketReceivablesByAge`, ver D31; **prazo de recebimento /
    DSO realizado** entregue na Sessão 59 — `paymentLag` + `/shows/prazo-recebimento`, ver D51):
    **prazo de recebimento por contratante** entregue na Sessão 60 — `paymentLagByContact` +
-   `pickPayerContact` + `/shows/prazo-recebimento/por-contratante`, ver D52):
+   `pickPayerContact` + `/shows/prazo-recebimento/por-contratante`, ver D52; **prazo MEDIANO de
+   recebimento** (mediana ponderada, robusta a outlier) entregue na Sessão 65 — `medianDays` +
+   helper `weightedMedian` em `paymentLag`, card em `/shows/prazo-recebimento`, ver D57):
    próximo possível — lembrar a última escolha de contato por show, registrar a data prometida de
-   pagamento na própria cobrança, trazer o DSO/aging para o Painel, ou a mediana do prazo (além da
-   média ponderada) por contratante.
+   pagamento na própria cobrança, trazer o DSO/aging para o Painel, ou a mediana do prazo por
+   contratante (adiada na D57: com poucos shows por contratante fica ruidosa).
 4. **Sessões/segurança**: invalidação ao trocar a senha entregue na Sessão 26
    (`passwordChangedAt` + `isSessionFresh`, ver D17). Evoluções possíveis: "encerrar sessão
    específica" (lista de sessões revogáveis) e recuperação de senha por e-mail — adiáveis.
