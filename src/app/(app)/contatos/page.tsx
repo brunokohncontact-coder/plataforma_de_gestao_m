@@ -55,6 +55,9 @@ export default async function ContactsPage({
               <Link href="/contatos/reativar" className="btn-secondary">
                 Reativar
               </Link>
+              <Link href="/contatos/retencao" className="btn-secondary">
+                Fidelização
+              </Link>
               <Link href="/contatos/ranking" className="btn-secondary">
                 Ranking
               </Link>

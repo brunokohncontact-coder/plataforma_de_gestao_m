@@ -98,6 +98,7 @@ describe("summarizeContactShows", () => {
 });
 
 import {
+  clientRetention,
   filterContacts,
   findContactsToReengage,
   hasActiveContactFilter,
@@ -373,5 +374,118 @@ describe("findContactsToReengage", () => {
     const items = [item("a", "A", [s({ date: "2026-05-20T20:00:00Z" })])]; // ~28 dias
     expect(findContactsToReengage(items, { now: NOW }).count).toBe(0); // < 60
     expect(findContactsToReengage(items, { now: NOW, staleDays: 14 }).count).toBe(1);
+  });
+});
+
+describe("clientRetention", () => {
+  function s(over: Partial<ContactRankShowLike> = {}): ContactRankShowLike {
+    return { status: "CONFIRMED", date: "2026-05-01T20:00:00Z", fee: 100_00, ...over };
+  }
+  function item(
+    id: string,
+    name: string,
+    shows: ContactRankShowLike[],
+  ): ContactWithShows<ContactRankLike> {
+    return { contact: { id, name }, shows };
+  }
+
+  it("trata lista vazia", () => {
+    const r = clientRetention([], NOW);
+    expect(r.rows).toEqual([]);
+    expect(r.recurring).toEqual([]);
+    expect(r.totalClients).toBe(0);
+    expect(r.recurringClients).toBe(0);
+    expect(r.oneTimeClients).toBe(0);
+    expect(r.repeatRate).toBeNull();
+    expect(r.totalShows).toBe(0);
+    expect(r.totalFee).toBe(0);
+    expect(r.recurringFee).toBe(0);
+    expect(r.recurringFeeShare).toBeNull();
+    expect(r.avgShowsPerClient).toBe(0);
+    expect(r.mostLoyal).toBeNull();
+  });
+
+  it("ignora contatos sem shows não cancelados", () => {
+    const r = clientRetention(
+      [
+        item("sem", "Sem shows", []),
+        item("cancel", "Só cancelado", [s({ status: "CANCELLED" })]),
+        item("ok", "Tocou", [s()]),
+      ],
+      NOW,
+    );
+    expect(r.rows.map((x) => x.contact.id)).toEqual(["ok"]);
+    expect(r.totalClients).toBe(1);
+  });
+
+  it("classifica recorrente (≥2) vs. um show só e calcula a taxa de recompra", () => {
+    const r = clientRetention(
+      [
+        item("a", "Recorrente A", [s(), s()]),
+        item("b", "Recorrente B", [s(), s(), s()]),
+        item("c", "Único C", [s()]),
+        item("d", "Único D", [s()]),
+      ],
+      NOW,
+    );
+    expect(r.totalClients).toBe(4);
+    expect(r.recurringClients).toBe(2);
+    expect(r.oneTimeClients).toBe(2);
+    expect(r.repeatRate).toBe(0.5);
+    expect(r.recurring.map((x) => x.contact.id)).toEqual(["b", "a"]);
+    expect(r.totalShows).toBe(7);
+    expect(r.avgShowsPerClient).toBeCloseTo(7 / 4);
+  });
+
+  it("não conta shows cancelados no nº de shows nem no cachê", () => {
+    const r = clientRetention(
+      [item("a", "A", [s({ fee: 100_00 }), s({ fee: 200_00, status: "CANCELLED" })])],
+      NOW,
+    );
+    // só 1 show válido → não é recorrente
+    expect(r.recurringClients).toBe(0);
+    expect(r.rows[0].activeShows).toBe(1);
+    expect(r.rows[0].totalFee).toBe(100_00);
+    expect(r.rows[0].recurring).toBe(false);
+  });
+
+  it("calcula a fatia do faturamento vinda dos recorrentes", () => {
+    const r = clientRetention(
+      [
+        item("rec", "Recorrente", [s({ fee: 300_00 }), s({ fee: 300_00 })]), // 600
+        item("uni", "Único", [s({ fee: 200_00 })]), // 200
+      ],
+      NOW,
+    );
+    expect(r.totalFee).toBe(800_00);
+    expect(r.recurringFee).toBe(600_00);
+    expect(r.recurringFeeShare).toBeCloseTo(0.75);
+  });
+
+  it("ordena por nº de shows, desempatando por cachê, e aponta o mais fiel", () => {
+    const r = clientRetention(
+      [
+        item("a", "A", [s(), s()]), // 2 shows, 200
+        item("b", "B", [s({ fee: 500_00 }), s({ fee: 500_00 }), s({ fee: 500_00 })]), // 3 shows
+        item("c", "C", [s({ fee: 900_00 }), s({ fee: 900_00 })]), // 2 shows, 1800 (empata em shows com A → cachê maior)
+      ],
+      NOW,
+    );
+    expect(r.rows.map((x) => x.contact.id)).toEqual(["b", "c", "a"]);
+    expect(r.mostLoyal?.contact.id).toBe("b");
+  });
+
+  it("usa o show não cancelado mais recente como lastShowDate", () => {
+    const r = clientRetention(
+      [
+        item("a", "A", [
+          s({ date: "2026-02-01T20:00:00Z" }),
+          s({ date: "2026-09-15T23:00:00Z" }), // futuro confirmado também conta
+        ]),
+      ],
+      NOW,
+    );
+    expect(r.rows[0].lastShowDate?.toISOString()).toBe("2026-09-15T23:00:00.000Z");
+    expect(r.rows[0].recurring).toBe(true);
   });
 });

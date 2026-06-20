@@ -47,9 +47,14 @@ export default async function ContactsRankingPage() {
             Shows cancelados não somam cachê.
           </p>
         </div>
-        <Link href="/contatos" className="btn-secondary">
-          ← Contatos
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/contatos/retencao" className="btn-secondary">
+            Fidelização
+          </Link>
+          <Link href="/contatos" className="btn-secondary">
+            ← Contatos
+          </Link>
+        </div>
       </div>
 
       {ranking.count === 0 ? (
