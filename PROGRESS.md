@@ -1331,6 +1331,33 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   verificado. `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência
   nova nem mudança de schema — ver D6/D8).
 
+### Sessão 59 — 2026-06-20 (Fase 1 — prazo de recebimento / DSO realizado dos cachês)
+- **Lógica pura** (`src/lib/finance.ts`): nova `paymentLag(shows, txs)` que mede, sobre os cachês que
+  **já entraram**, quantos dias depois do show o dinheiro caiu no caixa — leitura **realizada**,
+  complementar ao aging (D31, que olha o que ainda falta). Considera receitas INCOME `received=true`
+  vinculadas a um show (`showId`), valor > 0, shows **não cancelados**; prazo = dias (UTC) entre a data
+  do show e a do pagamento (negativo = pago adiantado). Agrega por show (`avgDays` ponderado pelo valor
+  de cada recebimento; `lastDays` = pior prazo; `bucket`) e retorna o **prazo médio global ponderado
+  pelo valor** (o "DSO" do caixa), `showCount`/`paymentCount`/`totalReceived`, `buckets` (5 faixas de
+  velocidade via `paymentSpeedBucket`: ≤0 / 1–7 / 8–30 / 31–60 / >60 dias, sempre presentes na ordem
+  fixa, com `received`/`share`) e `fastest`/`slowest`. **7 testes** novos em `finance.test.ts` (+1 de
+  `paymentSpeedBucket` nas fronteiras). Total do projeto **469** (medição real `vitest run`; eram 462).
+  Ver **DECISIONS.md D51**.
+- **Página** (`src/app/(app)/shows/prazo-recebimento/page.tsx`): server component que carrega os shows
+  não cancelados + as receitas recebidas vinculadas, chama `paymentLag` e renderiza três destaques
+  (prazo médio ponderado / recebido analisado / recebimento mais lento), a barra de distribuição por
+  faixa de velocidade (quanto do dinheiro entrou em cada prazo, % e valor) e a tabela por show do mais
+  lento ao mais rápido (recebido, nº de recebimentos, prazo médio, pior prazo) com link ao detalhe do
+  show. Estado vazio honesto apontando para `/shows/a-receber`. Link **Prazo de recebimento** na barra
+  de `/shows`. Sem schema, sem dependência, sem server action.
+- Definition of Done verde: build (nova rota `/shows/prazo-recebimento`), typecheck (`tsc --noEmit`)
+  limpo, lint (0), **469 testes** (`vitest run`), smoke test ao vivo (`next start`):
+  `/shows/prazo-recebimento` sem sessão → 307, `/login` → 200; **e2e autenticado com cookie de sessão
+  real** (seed demo: show "Show no Bar do Zé" pago no mesmo dia) → a página renderiza "Prazo de
+  recebimento", os cards "Prazo médio (ponderado)"/"Recebido analisado" e o show pago "no dia" —
+  verificado. `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma
+  dependência nova nem mudança de schema — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)
@@ -1357,9 +1384,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `SettleFeeButton` + `resolveSettlementAmount`, ver D28; **data real do recebimento** entregue na
    Sessão 38 — `resolveReceivedDate` + campo `receivedAt`, ver D29; **seletor de qual contato
    cobrar** entregue na Sessão 39 — `buildShowBillings` + `BillingActions`, ver D30; **aging dos
-   recebíveis** entregue na Sessão 40 — `bucketReceivablesByAge`, ver D31): próximo
-   possível — lembrar a última escolha de contato por show, registrar a data prometida de
-   pagamento na própria cobrança, ou trazer o aging para o Painel (alerta de recebível ≥90 dias).
+   recebíveis** entregue na Sessão 40 — `bucketReceivablesByAge`, ver D31; **prazo de recebimento /
+   DSO realizado** entregue na Sessão 59 — `paymentLag` + `/shows/prazo-recebimento`, ver D51):
+   próximo possível — lembrar a última escolha de contato por show, registrar a data prometida de
+   pagamento na própria cobrança, trazer o DSO/aging para o Painel, ou quebrar o prazo de recebimento
+   por contratante (quem paga rápido x devagar) reusando os contatos vinculados ao show.
 4. **Sessões/segurança**: invalidação ao trocar a senha entregue na Sessão 26
    (`passwordChangedAt` + `isSessionFresh`, ver D17). Evoluções possíveis: "encerrar sessão
    específica" (lista de sessões revogáveis) e recuperação de senha por e-mail — adiáveis.

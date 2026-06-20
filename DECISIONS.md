@@ -1257,3 +1257,39 @@ contexto, decisão, justificativa e alternativas consideradas.
   cruzar com as transações recebidas é uma evolução possível.
 - **`npm audit`:** inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de
   D6/D8; nenhuma dependência nova foi adicionada nesta sessão.
+
+## D51 — Prazo de recebimento (DSO realizado dos cachês) (Sessão 59)
+- **Contexto:** o ciclo de recebíveis já cobria o que **ainda falta** receber — `reconcileShowFees`
+  (D25) lista o saldo em aberto e `bucketReceivablesByAge` (D31) mede há quanto tempo está parado.
+  Faltava a leitura **realizada**: sobre o dinheiro que **já entrou**, quanto tempo depois do show
+  ele caiu no caixa. Sem isso o músico não sabe quanto adiantar/planejar de caixa entre tocar e
+  receber, nem quais contratantes pagam rápido. Pergunta: "depois que toco, em quanto tempo recebo?".
+- **Decisão:** nova função pura `paymentLag(shows, txs)` em `src/lib/finance.ts` + página
+  `/shows/prazo-recebimento`. Mede, sobre receitas **INCOME já recebidas** (`received=true`)
+  vinculadas a um show, o prazo = dias (UTC, por dia) entre a data do show e a data do pagamento.
+  Agrega por show (`avgDays` ponderado pelo valor de cada recebimento; `lastDays` = pior prazo) e
+  expõe o **prazo médio global ponderado pelo valor** (o "DSO" do caixa), além de baldes de
+  velocidade e dos shows mais rápido/mais lento.
+- **Baldes de velocidade** (`paymentSpeedBucket`): no dia ou adiantado (≤0) / até 7 / 8–30 / 31–60 /
+  mais de 60 dias. Limiares são **hipótese de produto** (faixas usuais de prazo de pagamento no
+  Brasil); ajustáveis. Distintos dos baldes de aging (D31, 30/60/90) de propósito: aging prioriza
+  cobrança do que está velho; aqui o foco é o tempo típico até pagar.
+- **Prazo negativo = adiantado:** pagamento antes da data do show (sinal/cachê adiantado) é válido e
+  informativo, então NÃO é zerado — cai no balde "no dia ou adiantado" e aparece como "N d adiantado".
+- **Ponderação pelo valor (não por contagem):** o prazo médio pondera cada real, não cada
+  recebimento — um recebimento grande e lento pesa mais que vários pequenos e rápidos, que é o que
+  importa para o caixa. Coerente com `weightedAvgDays` do aging (D31).
+- **Quem entra:** só shows **não cancelados** (a data do show é a âncora) e recebimentos com valor > 0
+  vinculados (`showId`). Pendentes (`received=false`), despesas e receitas avulsas (sem `showId`)
+  ficam de fora — o universo é "cachê de show que efetivamente foi pago". Difere do `reconcileShowFees`,
+  que olha só PLAYED/CONFIRMED-passado; aqui qualquer show pago conta (até futuro pago adiantado).
+- **Zero schema/dependência/server action:** usa `date`/`status`/`fee` dos shows e `date`/`amount`/
+  `received`/`showId` das transações já existentes; nenhuma migração. Página é server component puro.
+- **Alternativas consideradas:** (a) mediana em vez de média ponderada — adiável; a média ponderada
+  pelo valor é o número de caixa direto e mais fácil de explicar, mediana fica como evolução; (b)
+  trazer o DSO para o Painel — adiável (dashboard já denso), a página dedicada e o link em `/shows`
+  bastam por ora; (c) reaproveitar os baldes de aging (D31) — descartado: prazo realizado e atraso
+  pendente têm faixas e sinais diferentes; (d) quebrar o prazo por contratante (quem paga rápido) —
+  evolução natural possível reusando os contatos vinculados ao show.
+- **`npm audit`:** inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de
+  D6/D8; nenhuma dependência nova foi adicionada nesta sessão.

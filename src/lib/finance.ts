@@ -1646,6 +1646,183 @@ export function bucketReceivablesByAge<S extends ReceivableShowLike>(
   };
 }
 
+// ── Prazo de recebimento (quão rápido o cachê entra depois do show) ─────────
+//
+// Métrica "realizada", complementar ao aging (que mede o que AINDA falta
+// receber): aqui medimos, sobre o dinheiro QUE JÁ ENTROU, quantos dias depois do
+// show ele caiu no caixa. Responde "depois que toco, em quanto tempo recebo?" —
+// base para planejar fluxo de caixa e negociar prazos com contratantes.
+
+export type PaymentSpeedBucketKey = "onTime" | "d7" | "d30" | "d60" | "slow";
+
+/** Ordem de exibição dos baldes de prazo, do mais rápido ao mais lento. */
+export const PAYMENT_SPEED_BUCKET_ORDER: PaymentSpeedBucketKey[] = [
+  "onTime",
+  "d7",
+  "d30",
+  "d60",
+  "slow",
+];
+
+export const PAYMENT_SPEED_BUCKET_LABELS: Record<PaymentSpeedBucketKey, string> = {
+  onTime: "No dia ou adiantado",
+  d7: "Até 7 dias",
+  d30: "8 a 30 dias",
+  d60: "31 a 60 dias",
+  slow: "Mais de 60 dias",
+};
+
+/** Classifica um prazo de recebimento (em dias) num dos baldes de velocidade. */
+export function paymentSpeedBucket(days: number): PaymentSpeedBucketKey {
+  if (days <= 0) return "onTime";
+  if (days <= 7) return "d7";
+  if (days <= 30) return "d30";
+  if (days <= 60) return "d60";
+  return "slow";
+}
+
+export interface PaymentLagShowRow<S extends ReceivableShowLike = ReceivableShowLike> {
+  show: S;
+  /** Total recebido vinculado ao show (INCOME, received=true), em centavos. */
+  received: number;
+  /** Nº de recebimentos (transações) que compõem o total. */
+  paymentCount: number;
+  /**
+   * Prazo médio do show, ponderado pelo valor de cada recebimento: dias entre a
+   * data do show e a data do pagamento. Pode ser negativo (pago adiantado).
+   */
+  avgDays: number;
+  /** Prazo do recebimento mais tardio do show (pior caso do show). */
+  lastDays: number;
+  /** Balde de velocidade do show, derivado de `avgDays`. */
+  bucket: PaymentSpeedBucketKey;
+}
+
+export interface PaymentLagBucket<S extends ReceivableShowLike = ReceivableShowLike> {
+  key: PaymentSpeedBucketKey;
+  label: string;
+  /** Shows do balde, do mais lento ao mais rápido (id desempata). */
+  rows: PaymentLagShowRow<S>[];
+  count: number;
+  /** Soma do recebido nesses shows (centavos). */
+  received: number;
+  /** Participação no total recebido (0..1). 0 se o total for 0. */
+  share: number;
+}
+
+export interface PaymentLag<S extends ReceivableShowLike = ReceivableShowLike> {
+  /** Todos os shows com recebimento, do prazo médio mais lento ao mais rápido. */
+  rows: PaymentLagShowRow<S>[];
+  /** Baldes de velocidade, sempre na ordem de `PAYMENT_SPEED_BUCKET_ORDER`. */
+  buckets: PaymentLagBucket<S>[];
+  /** Nº de shows com algum recebimento vinculado. */
+  showCount: number;
+  /** Nº de recebimentos (transações) considerados. */
+  paymentCount: number;
+  /** Soma de tudo que entrou (centavos). */
+  totalReceived: number;
+  /**
+   * Prazo médio de recebimento ponderado pelo valor (o "DSO" do músico): em
+   * média, cada real entrou tantos dias depois do show. 0 se não houve recebimento.
+   */
+  avgDays: number;
+  /** Show de recebimento mais rápido (menor `avgDays`), ou null se vazio. */
+  fastest: PaymentLagShowRow<S> | null;
+  /** Show de recebimento mais lento (maior `avgDays`), ou null se vazio. */
+  slowest: PaymentLagShowRow<S> | null;
+}
+
+interface PaymentDatum {
+  /** Dias entre a data do show e a do pagamento (pode ser negativo). */
+  days: number;
+  /** Valor do pagamento (centavos). */
+  amount: number;
+}
+
+/**
+ * Mede o prazo de recebimento realizado: sobre os cachês que JÁ entraram, quantos
+ * dias depois do show o dinheiro caiu no caixa. Complementa o aging (que olha o
+ * que ainda falta) com o histórico do que já foi pago.
+ *
+ * - Considera receitas INCOME, `received=true`, vinculadas a um show
+ *   (`showId`), com valor positivo; shows CANCELLED ficam de fora.
+ * - Prazo de um recebimento = dias (UTC, por dia) entre a data do show e a data
+ *   do pagamento. Negativo = pago adiantado (antes do show); 0 = no dia.
+ * - Agrega por show: `avgDays` pondera os recebimentos do show pelo valor;
+ *   `lastDays` é o pagamento mais tardio. O balde do show vem de `avgDays`.
+ * - `avgDays` global pondera TODOS os recebimentos pelo valor (o DSO do caixa).
+ * - `rows` e os baldes vão do mais lento ao mais rápido (id desempata); pura.
+ */
+export function paymentLag<S extends ReceivableShowLike>(
+  shows: S[],
+  txs: TxLike[],
+): PaymentLag<S> {
+  const showById = new Map<string, S>();
+  for (const show of shows) {
+    if (show.status === "CANCELLED") continue;
+    showById.set(show.id, show);
+  }
+
+  // Acumula os recebimentos por show numa só passada.
+  const byShow = new Map<string, { received: number; data: PaymentDatum[] }>();
+  for (const t of txs) {
+    if (t.type !== "INCOME" || !t.received || t.showId == null || t.amount <= 0) continue;
+    const show = showById.get(t.showId);
+    if (!show) continue;
+    const days = Math.round((utcMidnight(t.date) - utcMidnight(show.date)) / DAY_MS);
+    const entry = byShow.get(show.id) ?? { received: 0, data: [] };
+    entry.received += t.amount;
+    entry.data.push({ days, amount: t.amount });
+    byShow.set(show.id, entry);
+  }
+
+  const rows: PaymentLagShowRow<S>[] = [];
+  for (const [showId, { received, data }] of byShow) {
+    const show = showById.get(showId)!;
+    const weightedDays = sum(data.map((d) => d.days * d.amount));
+    rows.push({
+      show,
+      received,
+      paymentCount: data.length,
+      avgDays: received === 0 ? 0 : Math.round(weightedDays / received),
+      lastDays: data.reduce((m, d) => Math.max(m, d.days), data[0].days),
+      bucket: paymentSpeedBucket(received === 0 ? 0 : weightedDays / received),
+    });
+  }
+
+  // Do mais lento ao mais rápido (prazo médio desc; id desempata).
+  rows.sort((a, b) => b.avgDays - a.avgDays || a.show.id.localeCompare(b.show.id));
+
+  const totalReceived = sum(rows.map((r) => r.received));
+  const paymentCount = sum(rows.map((r) => r.paymentCount));
+  const weightedGlobal = sum(rows.map((r) => r.avgDays * r.received));
+
+  const buckets: PaymentLagBucket<S>[] = PAYMENT_SPEED_BUCKET_ORDER.map((key) => {
+    const bucketRows = rows.filter((r) => r.bucket === key);
+    const received = sum(bucketRows.map((r) => r.received));
+    return {
+      key,
+      label: PAYMENT_SPEED_BUCKET_LABELS[key],
+      rows: bucketRows,
+      count: bucketRows.length,
+      received,
+      share: totalReceived === 0 ? 0 : received / totalReceived,
+    };
+  });
+
+  return {
+    rows,
+    buckets,
+    showCount: rows.length,
+    paymentCount,
+    totalReceived,
+    avgDays: totalReceived === 0 ? 0 : Math.round(weightedGlobal / totalReceived),
+    // rows está ordenado do mais lento (avgDays maior) ao mais rápido.
+    slowest: rows[0] ?? null,
+    fastest: rows.length ? rows[rows.length - 1] : null,
+  };
+}
+
 /**
  * Decide quanto lançar ao quitar um cachê, dado o valor pedido pelo usuário e o
  * saldo em aberto (recalculado no servidor — a fonte de verdade). Regras:
