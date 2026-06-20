@@ -1415,3 +1415,26 @@ contexto, decisão, justificativa e alternativas consideradas.
   perderiam o estado/contexto da lista (badge de conflito, recorte filtrado do CSV).
 - **`npm audit`:** inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de
   D6/D8; nenhuma dependência nova foi adicionada nesta sessão.
+
+## D56 — Busca textual no hub de Relatórios (Sessão 64)
+- **Contexto:** o hub `/relatorios` (D54) reúne 24 relatórios em três grupos. Com o acervo passando de
+  duas dezenas, percorrer todos os cards para achar um relatório específico ficou custoso — o item 0
+  dos próximos passos previa "um campo de busca/filtro no hub conforme o acervo cresce".
+- **Decisão:** adicionar um **campo de busca ao vivo** no topo do hub que filtra os cards conforme o
+  texto digitado. A lógica é uma função pura `filterReports(query)` em `src/lib/reports.ts` (fonte
+  única do catálogo): casa insensível a acento/caixa (reusa `normalizeText` de `finance.ts`),
+  **multitermo AND** (cada termo precisa aparecer na mesma entrada) e varre **título + descrição +
+  rótulo do grupo** — assim "shows" traz todos os relatórios da área, e "prazo contratante" só casa o
+  relatório que tem ambos. Grupos sem nenhuma entrada casada são omitidos; consulta vazia devolve tudo
+  (cópia rasa, sem mutar `REPORT_GROUPS`). `countFilteredReports` deriva a contagem para o "N de M".
+- **UI:** o filtro roda no **cliente** (`ReportsBrowser.tsx`, `"use client"`) sobre o catálogo estático
+  — sem ida ao servidor a cada tecla. A página `/relatorios` continua server component (auth + cabeçalho)
+  e delega a lista ao browser. Os `id={group.area}`/`scroll-mt-24` foram preservados, então as âncoras
+  `#shows`/`#financas`/`#contatos` das listas (D55) seguem funcionando. Estado vazio honesto quando
+  nada casa; contador "N de M relatórios" aparece só quando há filtro ativo.
+- **Alternativas consideradas:** (a) filtro no servidor via query string — descartado: o catálogo é
+  estático e pequeno; filtrar no cliente é instantâneo e não exige reload. (b) agrupar por subtema dentro
+  de cada área (outra opção do item 0) — adiável; com busca, achar um relatório já fica direto. (c)
+  match OR em vez de AND — descartado: AND é mais preciso para refinar conforme se digita.
+- **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5 high
+  / 1 critical), mesma postura de D6/D8; nenhuma dependência nova.
