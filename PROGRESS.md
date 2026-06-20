@@ -1449,12 +1449,34 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   sem sessão → 200 (renderiza o login após redirect interno). `npm audit` inalterado (10 advisories:
   4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
 
+### Sessão 63 — 2026-06-20 (Fase 1 — podar as barras de relatórios apontando para o hub)
+- **Motivação:** fechar o item 0 dos próximos passos / alternativa (c) deferida da D54. Após o hub
+  `/relatorios` da Sessão 62, as barras de botões no topo de `/shows` (~10 links de relatório),
+  `/financas` (8) e `/contatos` (4) ficaram redundantes e poluídas, competindo com as ações primárias.
+- **Mudança (UI/navegação pura):** em cada uma das três listas, o bloco de links de relatório virou
+  **um único link "Relatórios"** ancorado na seção da área no hub: `/shows` → `/relatorios#shows`,
+  `/financas` → `/relatorios#financas`, `/contatos` → `/relatorios#contatos`. No hub
+  (`src/app/(app)/relatorios/page.tsx`) cada `<section>` ganhou `id={group.area}` + `scroll-mt-24`
+  para o salto âncora respeitar o cabeçalho.
+- **Mantidos nas barras (não são relatórios):** alternador Lista/Semana/Mês e **Exportar .ics** em
+  `/shows`; **Exportar CSV** (age sobre o recorte filtrado) em `/financas`; **+ Novo show / + Nova
+  transação / + Novo contato**; e o atalho **Conflitos** de `/shows` (alerta com badge de contagem +
+  destaque âmbar — estado vivo que o hub estático não mostra). Ver **DECISIONS.md D55**.
+- **Sem schema/dependência/server action.** Nenhuma rota removida; todos os relatórios seguem
+  acessíveis pelo hub.
+- Definition of Done verde: build (`prisma generate && next build`) OK, typecheck (`tsc --noEmit`)
+  limpo, lint (0 warnings/erros), **495 testes** (`vitest run`, inalterados — mudança só de UI sobre
+  rotas/lógica já testadas), smoke test ao vivo (`next start`): `/login` → 200, `/relatorios` sem
+  sessão → 307 (redireciona ao login). `npm audit` inalterado (10 advisories: 4 moderate / 5 high /
+  1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
-   ver D54): catálogo central dos 24 relatórios na navbar. Próximo possível — **podar as barras de
-   botões** de `/shows` e `/financas` (hoje com 12+ links cada) apontando para o hub, e/ou agrupar
-   visualmente os relatórios por subtema dentro de cada área. Ao criar um relatório novo, **registrá-lo
-   em `REPORT_GROUPS`** para aparecer no hub automaticamente.
+   ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
+   link "Relatórios" ancorado na seção da área, ver D55): catálogo central dos 24 relatórios na navbar.
+   Próximo possível — **agrupar visualmente os relatórios por subtema** dentro de cada área no hub,
+   ou um campo de busca/filtro no hub conforme o acervo cresce. Ao criar um relatório novo,
+   **registrá-lo em `REPORT_GROUPS`** para aparecer no hub automaticamente.
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)
 2. **Calendário — evoluções**: arrastar/soltar para remarcar; mini-calendário de salto rápido.

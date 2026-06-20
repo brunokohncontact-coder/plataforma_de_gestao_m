@@ -1389,3 +1389,29 @@ contexto, decisão, justificativa e alternativas consideradas.
   agrupamento, distorcendo a leitura.
 - **`npm audit`:** inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de
   D6/D8; nenhuma dependência nova foi adicionada nesta sessão.
+
+## D55 — Podar as barras de relatórios apontando para o hub (Sessão 63)
+- **Contexto:** a D54 criou o hub `/relatorios` (catálogo de todos os relatórios) e o item na navbar,
+  mas **manteve as barras de botões** no topo de `/shows`, `/financas` e `/contatos` como atalhos —
+  explicitamente deixando a *poda* das barras como "evolução possível" (alternativa c da D54). Essas
+  barras tinham crescido demais: `/shows` carregava ~10 links de relatório no cabeçalho, `/financas` 8
+  e `/contatos` 4, competindo visualmente com as ações primárias (+ Novo / Exportar) e quebrando linha.
+- **Decisão:** substituir, em cada uma das três listas, o bloco de links de relatório por **um único
+  link "Relatórios"** que aponta para a seção correspondente do hub via âncora (`/relatorios#shows`,
+  `/relatorios#financas`, `/relatorios#contatos`). As seções do hub ganharam `id={group.area}` +
+  `scroll-mt-24` para o salto âncora respeitar o cabeçalho fixo. O hub passa a ser a fonte única de
+  descoberta de relatórios; registrar um relatório novo continua sendo só editar `REPORT_GROUPS`.
+- **O que ficou nas barras (não é relatório):** ações *operacionais* e *contextuais* permanecem —
+  alternador de visões Lista/Semana/Mês e **Exportar .ics** em `/shows`, **Exportar CSV** (age sobre o
+  recorte filtrado) em `/financas`, e os botões primários **+ Novo show / + Nova transação / + Novo
+  contato**. O atalho **Conflitos** de `/shows` foi mantido por ser um *alerta com estado vivo* (badge
+  de contagem + destaque âmbar para conflitos futuros) que o hub estático não consegue sinalizar.
+- **Sem schema/dependência/server action:** mudança puramente de UI/navegação. Nenhuma rota foi
+  removida — todos os relatórios continuam acessíveis (agora pelo hub); as âncoras só melhoram o salto.
+- **Alternativas consideradas:** (a) remover também o link por página, confiando só na navbar global —
+  descartado: o link contextual ancorado leva direto à seção da área onde o usuário está, com menos
+  cliques; (b) manter as barras — descartado: era exatamente o problema de poluição que a D54 sinalizou
+  para resolver depois; (c) mover Conflitos/Exportar para o hub — descartado: não são relatórios e
+  perderiam o estado/contexto da lista (badge de conflito, recorte filtrado do CSV).
+- **`npm audit`:** inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de
+  D6/D8; nenhuma dependência nova foi adicionada nesta sessão.

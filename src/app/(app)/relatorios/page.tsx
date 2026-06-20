@@ -21,7 +21,7 @@ export default async function ReportsHubPage() {
       </div>
 
       {REPORT_GROUPS.map((group) => (
-        <section key={group.area} className="space-y-3">
+        <section key={group.area} id={group.area} className="scroll-mt-24 space-y-3">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
             {group.label}
           </h2>
