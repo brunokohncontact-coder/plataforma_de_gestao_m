@@ -3,6 +3,7 @@ import {
   computeShowPnL,
   rankShowsByProfit,
   rankVenuesByProfit,
+  rankCitiesByProfit,
   summarizeFinances,
   totalsByCategory,
   categoryReport,
@@ -285,6 +286,71 @@ describe("rankVenuesByProfit", () => {
     // cancelado não soma cachê nem conta como show
     expect(bar!.showCount).toBe(2);
     expect(bar!.totalNet).toBe(260_00);
+  });
+});
+
+describe("rankCitiesByProfit", () => {
+  const shows: VenueShowLike[] = [
+    { id: "a", fee: 100_00, status: "PLAYED", venue: "Bar do Zé", city: "Recife" },
+    { id: "b", fee: 200_00, status: "CONFIRMED", venue: "Café Acústico", city: "recife" }, // mesma cidade, outra casa
+    { id: "c", fee: 50_00, status: "CONFIRMED", venue: "Teatro", city: "Olinda" },
+    { id: "d", fee: 10_00, status: "CONFIRMED", venue: "Estúdio", city: "" }, // sem cidade
+  ];
+  const txs: TxLike[] = [
+    tx({ type: "EXPENSE", amount: 40_00, showId: "a" }), // Recife: -40
+    tx({ type: "INCOME", amount: 25_00, showId: "c" }), // Olinda: +25 extra
+  ];
+
+  it("retorna estrutura vazia quando não há shows", () => {
+    const r = rankCitiesByProfit([], txs);
+    expect(r.count).toBe(0);
+    expect(r.rows).toEqual([]);
+    expect(r.totalNet).toBe(0);
+    expect(r.best).toBeNull();
+    expect(r.worst).toBeNull();
+  });
+
+  it("agrupa casas diferentes da mesma cidade (rollup acima do local)", () => {
+    const r = rankCitiesByProfit(shows, txs);
+    const recife = r.rows.find((row) => row.key === "recife");
+    expect(recife).toBeDefined();
+    // duas casas distintas (Bar do Zé + Café Acústico) somam na cidade
+    expect(recife!.showCount).toBe(2);
+    expect(recife!.totalFee).toBe(300_00);
+    expect(recife!.totalExpenses).toBe(40_00);
+    expect(recife!.totalNet).toBe(260_00);
+    expect(recife!.avgNet).toBe(130_00);
+    // grafia exibida: a mais frequente; empate 1x1 -> primeira aparição ("Recife")
+    expect(recife!.name).toBe("Recife");
+  });
+
+  it("agrupa shows sem cidade em 'Sem cidade'", () => {
+    const r = rankCitiesByProfit(shows, txs);
+    const sem = r.rows.find((row) => row.key === "");
+    expect(sem).toBeDefined();
+    expect(sem!.name).toBe("Sem cidade");
+    expect(sem!.totalNet).toBe(10_00);
+  });
+
+  it("ordena por resultado total desc e aponta o melhor/pior", () => {
+    const r = rankCitiesByProfit(shows, txs);
+    // nets: Recife=260, Olinda=75 (50+25), Sem cidade=10
+    expect(r.rows.map((row) => row.key)).toEqual(["recife", "olinda", ""]);
+    expect(r.best?.key).toBe("recife");
+    expect(r.worst?.key).toBe("");
+    expect(r.totalNet).toBe(345_00);
+    expect(r.count).toBe(3);
+  });
+
+  it("exclui shows cancelados por padrão", () => {
+    const withCancelled: VenueShowLike[] = [
+      ...shows,
+      { id: "x", fee: 999_00, status: "CANCELLED", venue: "Outra Casa", city: "Recife" },
+    ];
+    const r = rankCitiesByProfit(withCancelled, txs);
+    const recife = r.rows.find((row) => row.key === "recife");
+    expect(recife!.showCount).toBe(2);
+    expect(recife!.totalNet).toBe(260_00);
   });
 });
 

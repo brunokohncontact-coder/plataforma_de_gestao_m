@@ -1168,3 +1168,38 @@ contexto, decisão, justificativa e alternativas consideradas.
   carteira responde a pergunta principal com menos ruído, fica como evolução; (b) trazer a taxa de
   recompra para o Painel — adiável (dashboard já denso), a página dedicada basta por ora; (c) limiar de
   recorrência configurável (≥3?) — ≥2 é o limiar natural de "voltou"; sem demanda para parametrizar.
+
+## D48 — Atuação por cidade / rollup geográfico (Sessão 57)
+- **Contexto:** a Rentabilidade por local (`/shows/locais`, D19) agrega o P&L por **casa/venue**
+  (caindo para a cidade só quando não há venue). Faltava a leitura **geográfica** de um nível acima:
+  uma cidade reúne várias casas, e a decisão de turnê/deslocamento é por cidade ("vale ir a São Paulo?",
+  não "vale o Bar do Zé?"). Pergunta: "quais cidades valem a turnê?".
+- **Decisão:** nova função pura `rankCitiesByProfit(shows, txs, opts?)` (em `src/lib/finance.ts`) +
+  página `/shows/cidades`. Agrupa **estritamente por `city`** (normalizado sem acento/caixa via
+  `normalizeText`); shows sem cidade caem em "Sem cidade" (chave ""). Mesma forma de retorno da
+  rentabilidade por local — `CityProfitRow`/`CitiesProfitability` são **type aliases** de
+  `VenueProfitRow`/`VenuesProfitability` (a forma é idêntica; aliases dão clareza semântica sem
+  duplicar tipos).
+- **DRY — agregador compartilhado:** o corpo de `rankVenuesByProfit` foi extraído para o helper privado
+  `aggregateShowProfit(shows, txs, keyer, emptyLabel, opts)`, parametrizado pela função `keyer`
+  (`show → { key, rawLabel }`) e pelo rótulo do grupo vazio. `rankVenuesByProfit` (keyer = venue||city,
+  "Sem local") e `rankCitiesByProfit` (keyer = city, "Sem cidade") são fachadas finas. `pickLabel` passou
+  a receber o `emptyLabel`. Uma só fonte de verdade da agregação/ordenação/desempate, reaproveitando
+  `computeShowPnL`. Os 6 testes de `rankVenuesByProfit` seguem verdes sem alteração (refactor puro).
+- **Exibição:** mesma convenção de local — nome = grafia original mais frequente da cidade (preserva
+  acento/caixa do usuário). A página acrescenta uma **barra de participação** por linha (resultado/maior
+  resultado positivo) que a tela de locais não tinha, e cruza-links com `/shows/locais` para descer ao
+  detalhe por casa.
+- **Critérios herdados:** exclui `CANCELLED` por padrão (configurável via `opts.excludeStatuses`); inclui
+  PROPOSED/CONFIRMED futuros (é um retrato de onde a agenda rende, não só do realizado — coerente com
+  D19). Cachê + receitas/despesas extras vinculadas via `computeShowPnL`.
+- **Zero schema/dependência/server action:** usa `city`/`venue`/`fee`/`status` já existentes; nenhuma
+  migração.
+- **Testes:** 5 testes unitários novos em `finance.test.ts` (vazio; agrupa casas distintas da mesma
+  cidade — o rollup; "Sem cidade"; ordenação desc + melhor/pior; exclui cancelados). Total do projeto
+  443→448.
+- **Alternativas consideradas:** (a) generalizar para um parâmetro `groupBy: "venue" | "city"` numa única
+  função pública — escolhi duas funções nomeadas + helper privado, por legibilidade nas páginas e
+  estabilidade dos testes existentes; (b) estado/UF em vez de cidade — o schema não tem campo de estado e
+  parsear de texto livre é frágil; cidade é o dado confiável que existe; (c) trazer para o Painel —
+  adiável (dashboard já denso).

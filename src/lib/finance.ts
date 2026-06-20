@@ -180,6 +180,70 @@ export function rankVenuesByProfit(
   txs: TxLike[],
   opts: { excludeStatuses?: string[] } = {},
 ): VenuesProfitability {
+  return aggregateShowProfit(
+    shows,
+    txs,
+    (show) => {
+      const rawVenue = (show.venue ?? "").trim();
+      const rawCity = (show.city ?? "").trim();
+      // grafia original preferida: o local; caindo para a cidade
+      return { rawLabel: rawVenue || rawCity, key: normalizeText(rawVenue) || normalizeText(rawCity) };
+    },
+    "Sem local",
+    opts,
+  );
+}
+
+// ── Rentabilidade por cidade (rollup geográfico, acima do local) ─────────────
+
+/** Resultado por cidade tem a mesma forma de uma linha de local. */
+export type CityProfitRow = VenueProfitRow;
+/** Agregado por cidade tem a mesma forma do agregado por local. */
+export type CitiesProfitability = VenuesProfitability;
+
+/**
+ * Agrega a rentabilidade (P&L) dos shows por **cidade** — respondendo
+ * "quais cidades valem a turnê?". É um rollup acima de `rankVenuesByProfit`:
+ * uma cidade reúne todas as casas/venues nela, somando os shows.
+ *
+ * - Agrupa só por `city` (normalizado: sem acento, minúsculo, trim); shows sem
+ *   cidade caem no grupo "Sem cidade" (chave "").
+ * - O nome exibido é a grafia original mais frequente da cidade (preserva
+ *   acentos/caixa do usuário).
+ * - Reaproveita `computeShowPnL` e o mesmo agregador de `rankVenuesByProfit`.
+ * - Por padrão exclui shows `CANCELLED`; `opts.excludeStatuses` customiza.
+ * - Ordena por `totalNet` desc; empate por nº de shows, nome (pt-BR) e chave.
+ */
+export function rankCitiesByProfit(
+  shows: VenueShowLike[],
+  txs: TxLike[],
+  opts: { excludeStatuses?: string[] } = {},
+): CitiesProfitability {
+  return aggregateShowProfit(
+    shows,
+    txs,
+    (show) => {
+      const rawCity = (show.city ?? "").trim();
+      return { rawLabel: rawCity, key: normalizeText(rawCity) };
+    },
+    "Sem cidade",
+    opts,
+  );
+}
+
+/**
+ * Agregador genérico do P&L dos shows por um grupo arbitrário (local, cidade…).
+ * `keyer` extrai a chave de agrupamento (normalizada) e a grafia original do
+ * grupo; `emptyLabel` é o nome do grupo "vazio" (chave ""). Fonte única da
+ * lógica compartilhada por `rankVenuesByProfit`/`rankCitiesByProfit`.
+ */
+function aggregateShowProfit(
+  shows: VenueShowLike[],
+  txs: TxLike[],
+  keyer: (show: VenueShowLike) => { key: string; rawLabel: string },
+  emptyLabel: string,
+  opts: { excludeStatuses?: string[] } = {},
+): VenuesProfitability {
   const excluded = new Set(opts.excludeStatuses ?? ["CANCELLED"]);
 
   interface Acc {
@@ -201,10 +265,7 @@ export function rankVenuesByProfit(
   for (const show of shows) {
     if (show.status != null && excluded.has(show.status)) continue;
 
-    const rawVenue = (show.venue ?? "").trim();
-    const rawCity = (show.city ?? "").trim();
-    const rawLabel = rawVenue || rawCity; // grafia original preferida
-    const key = normalizeText(rawVenue) || normalizeText(rawCity); // "" = sem local
+    const { key, rawLabel } = keyer(show);
 
     let acc = groups.get(key);
     if (!acc) {
@@ -236,7 +297,7 @@ export function rankVenuesByProfit(
   }
 
   const rows: VenueProfitRow[] = [...groups.values()].map((acc) => {
-    const name = acc.key === "" ? "Sem local" : pickLabel(acc.labels);
+    const name = acc.key === "" ? emptyLabel : pickLabel(acc.labels, emptyLabel);
     const gross = acc.totalFee + acc.totalExtra;
     return {
       key: acc.key,
@@ -269,14 +330,17 @@ export function rankVenuesByProfit(
 }
 
 /** Escolhe a grafia mais usada (desempate pela primeira aparição). */
-function pickLabel(labels: Map<string, { count: number; order: number }>): string {
+function pickLabel(
+  labels: Map<string, { count: number; order: number }>,
+  emptyLabel: string,
+): string {
   let best: { label: string; count: number; order: number } | null = null;
   for (const [label, { count, order }] of labels) {
     if (!best || count > best.count || (count === best.count && order < best.order)) {
       best = { label, count, order };
     }
   }
-  return best?.label ?? "Sem local";
+  return best?.label ?? emptyLabel;
 }
 
 // ── Agregações financeiras (F3 — dashboard) ─────────────────────────────────
