@@ -45,6 +45,9 @@ import {
   feeTrend,
   weekdayPerformance,
   incomeMix,
+  paymentLag,
+  paymentSpeedBucket,
+  PAYMENT_SPEED_BUCKET_ORDER,
   type TxLike,
   type ShowLike,
   type VenueShowLike,
@@ -1672,6 +1675,126 @@ describe("receivableAgeBucket", () => {
     expect(receivableAgeBucket(61)).toBe("d90");
     expect(receivableAgeBucket(90)).toBe("d90");
     expect(receivableAgeBucket(91)).toBe("older");
+  });
+});
+
+describe("paymentSpeedBucket", () => {
+  it("mapeia as fronteiras dos baldes (0/7/30/60)", () => {
+    expect(paymentSpeedBucket(-5)).toBe("onTime");
+    expect(paymentSpeedBucket(0)).toBe("onTime");
+    expect(paymentSpeedBucket(1)).toBe("d7");
+    expect(paymentSpeedBucket(7)).toBe("d7");
+    expect(paymentSpeedBucket(8)).toBe("d30");
+    expect(paymentSpeedBucket(30)).toBe("d30");
+    expect(paymentSpeedBucket(31)).toBe("d60");
+    expect(paymentSpeedBucket(60)).toBe("d60");
+    expect(paymentSpeedBucket(61)).toBe("slow");
+  });
+});
+
+describe("paymentLag", () => {
+  function gig(partial: Partial<ReceivableShowLike>): ReceivableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-03-01T20:00:00.000Z",
+      ...partial,
+    };
+  }
+
+  it("retorna vazio sem recebimentos vinculados", () => {
+    const r = paymentLag([gig({})], []);
+    expect(r.showCount).toBe(0);
+    expect(r.paymentCount).toBe(0);
+    expect(r.totalReceived).toBe(0);
+    expect(r.avgDays).toBe(0);
+    expect(r.fastest).toBeNull();
+    expect(r.slowest).toBeNull();
+    expect(r.buckets.map((b) => b.key)).toEqual(PAYMENT_SPEED_BUCKET_ORDER);
+    expect(r.buckets.every((b) => b.count === 0 && b.share === 0)).toBe(true);
+  });
+
+  it("calcula o prazo de um show: dias entre o show e o pagamento", () => {
+    const shows = [gig({ id: "g1", date: "2026-03-01T20:00:00.000Z" })];
+    const txs = [
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "g1", date: "2026-03-11T09:00:00.000Z" }),
+    ];
+    const r = paymentLag(shows, txs);
+    expect(r.showCount).toBe(1);
+    expect(r.paymentCount).toBe(1);
+    expect(r.totalReceived).toBe(100_00);
+    expect(r.rows[0].avgDays).toBe(10);
+    expect(r.rows[0].lastDays).toBe(10);
+    expect(r.rows[0].bucket).toBe("d30");
+    expect(r.avgDays).toBe(10);
+  });
+
+  it("pondera o prazo do show pelo valor de cada recebimento (média ponderada)", () => {
+    // 80% pago em 5 dias, 20% pago em 55 dias → média ponderada = 15 dias.
+    const shows = [gig({ id: "g1", date: "2026-03-01T00:00:00.000Z" })];
+    const txs = [
+      tx({ type: "INCOME", amount: 80_00, received: true, showId: "g1", date: "2026-03-06T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 20_00, received: true, showId: "g1", date: "2026-04-25T00:00:00.000Z" }),
+    ];
+    const r = paymentLag(shows, txs);
+    expect(r.rows[0].paymentCount).toBe(2);
+    expect(r.rows[0].received).toBe(100_00);
+    expect(r.rows[0].avgDays).toBe(15);
+    expect(r.rows[0].lastDays).toBe(55);
+    expect(r.rows[0].bucket).toBe("d30");
+  });
+
+  it("trata pagamento adiantado como prazo negativo (balde 'no dia ou adiantado')", () => {
+    const shows = [gig({ id: "g1", date: "2026-03-10T00:00:00.000Z" })];
+    const txs = [
+      tx({ type: "INCOME", amount: 50_00, received: true, showId: "g1", date: "2026-03-04T00:00:00.000Z" }),
+    ];
+    const r = paymentLag(shows, txs);
+    expect(r.rows[0].avgDays).toBe(-6);
+    expect(r.rows[0].bucket).toBe("onTime");
+    expect(r.buckets.find((b) => b.key === "onTime")!.count).toBe(1);
+  });
+
+  it("ignora pendente, despesa, sem showId e show cancelado", () => {
+    const shows = [
+      gig({ id: "ok", date: "2026-03-01T00:00:00.000Z" }),
+      gig({ id: "cancel", status: "CANCELLED", date: "2026-03-01T00:00:00.000Z" }),
+    ];
+    const txs = [
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "ok", date: "2026-03-06T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 100_00, received: false, showId: "ok", date: "2026-03-06T00:00:00.000Z" }), // pendente
+      tx({ type: "EXPENSE", amount: 30_00, received: true, showId: "ok", date: "2026-03-06T00:00:00.000Z" }), // despesa
+      tx({ type: "INCOME", amount: 90_00, received: true, showId: null, date: "2026-03-06T00:00:00.000Z" }), // sem show
+      tx({ type: "INCOME", amount: 70_00, received: true, showId: "cancel", date: "2026-03-06T00:00:00.000Z" }), // cancelado
+    ];
+    const r = paymentLag(shows, txs);
+    expect(r.showCount).toBe(1);
+    expect(r.paymentCount).toBe(1);
+    expect(r.totalReceived).toBe(100_00);
+    expect(r.rows[0].show.id).toBe("ok");
+  });
+
+  it("ordena do mais lento ao mais rápido e expõe fastest/slowest e o DSO global ponderado", () => {
+    const shows = [
+      gig({ id: "rapido", date: "2026-03-01T00:00:00.000Z" }),
+      gig({ id: "lento", date: "2026-03-01T00:00:00.000Z" }),
+    ];
+    const txs = [
+      // rápido: 200,00 em 5 dias; lento: 100,00 em 35 dias.
+      tx({ type: "INCOME", amount: 200_00, received: true, showId: "rapido", date: "2026-03-06T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "lento", date: "2026-04-05T00:00:00.000Z" }),
+    ];
+    const r = paymentLag(shows, txs);
+    expect(r.rows.map((x) => x.show.id)).toEqual(["lento", "rapido"]);
+    expect(r.slowest!.show.id).toBe("lento");
+    expect(r.fastest!.show.id).toBe("rapido");
+    // DSO ponderado: (35*100 + 5*200) / 300 = 4500/300 = 15.
+    expect(r.avgDays).toBe(15);
+    // Participação por valor: rápido 200/300, lento 100/300.
+    const slow = r.buckets.find((b) => b.key === "d60")!;
+    expect(slow.received).toBe(100_00);
+    expect(slow.share).toBeCloseTo(1 / 3, 5);
   });
 });
 
