@@ -212,7 +212,11 @@ Sessão 55 entregou o **desempenho por dia da semana** (`/shows/dias-semana`, `w
 ver D46). Sessão 56 entregou a **fidelização / retenção de contratantes** (`/contatos/retencao`):
 a função pura `clientRetention` (em `src/lib/contacts.ts`) mede a taxa de recompra (contratantes
 com ≥2 shows) e a fatia da receita vinda de quem volta — distinta do ranking (por contato) e do
-reativar (dormentes), ver D47. **443 testes** verdes (medição real `vitest run`; eram 436 na main).
+reativar (dormentes), ver D47. Sessão 57 entregou a **atuação por cidade** (`/shows/cidades`): a função
+pura `rankCitiesByProfit` (em `src/lib/finance.ts`) agrega o P&L por cidade — rollup acima da
+rentabilidade por local (D19), reaproveitando o helper `aggregateShowProfit` extraído de
+`rankVenuesByProfit` —, respondendo "quais cidades valem a turnê?", ver D48. **448 testes** verdes
+(medição real `vitest run`; eram 443 na main).
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias, estados de erro
 inline dos server actions) ou evoluções de calendário (arrastar/soltar para remarcar).
 
@@ -1263,6 +1267,32 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   taxa de recompra **50%** (1 de 2), receita de recorrentes **75%**, "Bar Recorrente" como mais fiel —
   verificado. `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma
   dependência nova nem mudança de schema — ver D6/D8).
+
+### Sessão 57 — 2026-06-20 (Fase 1 — atuação por cidade / rollup geográfico)
+- **Lógica pura** (`src/lib/finance.ts`): nova `rankCitiesByProfit(shows, txs, opts?)` que agrega o P&L
+  dos shows por **cidade** (rollup acima de `rankVenuesByProfit`/D19: uma cidade reúne todas as casas
+  nela). Agrupa estritamente por `city` (normalizado sem acento/caixa); shows sem cidade caem em "Sem
+  cidade" (chave ""). Mesma forma de retorno da rentabilidade por local — `CityProfitRow`/
+  `CitiesProfitability` são type aliases de `VenueProfitRow`/`VenuesProfitability`. **DRY:** o corpo de
+  `rankVenuesByProfit` virou o helper privado `aggregateShowProfit(shows, txs, keyer, emptyLabel, opts)`
+  e ambas as funções públicas são fachadas finas (keyer/rótulo diferentes) — uma só fonte da agregação,
+  reaproveitando `computeShowPnL`. Exclui `CANCELLED` por padrão. **5 testes** novos em `finance.test.ts`
+  (vazio; agrupa casas distintas da mesma cidade; "Sem cidade"; ordenação + melhor/pior; exclui
+  cancelados); os 6 testes de `rankVenuesByProfit` seguem verdes (refactor puro). Total do projeto **448**
+  (eram 443). Ver **DECISIONS.md D48**.
+- **Página** (`src/app/(app)/shows/cidades/page.tsx`): server component que carrega os shows + transações
+  vinculadas, chama `rankCitiesByProfit` e renderiza três cards de destaque (cidades analisadas /
+  resultado líquido total / cidade mais rentável), os destaques mais/menos rentável e a tabela por cidade
+  (shows, cachê, extras, despesas, resultado, média/show) com uma **barra de participação** por linha;
+  cruza-link com `/shows/locais` para o detalhe por casa. Estado vazio honesto. Link **Por cidade** na
+  barra de `/shows`. Sem schema, sem dependência, sem server action.
+- Definition of Done verde: build (**35 páginas**; nova `/shows/cidades`), typecheck (`tsc --noEmit`)
+  limpo, lint (0), **448 testes** (`vitest run`), smoke test ao vivo (`next start`): `/shows/cidades`
+  sem sessão → 307, `/login` → 200; **e2e autenticado com cookie de sessão real** (seed demo: shows em
+  São Paulo, Belo Horizonte e Campinas) → a página renderiza "Atuação por cidade", os cards "Cidades
+  analisadas"/"Cidade mais rentável" e as cidades São Paulo/Belo Horizonte — verificado. `npm audit`
+  inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de
+  schema — ver D6/D8).
 
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),

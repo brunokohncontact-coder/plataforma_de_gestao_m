@@ -78,6 +78,11 @@ export default async function ShowsPage({
             </Link>
           )}
           {shows.length > 0 && (
+            <Link href="/shows/cidades" className="btn-secondary">
+              Por cidade
+            </Link>
+          )}
+          {shows.length > 0 && (
             <Link href="/shows/evolucao-cache" className="btn-secondary">
               Evolução do cachê
             </Link>
