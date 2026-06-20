@@ -1470,13 +1470,42 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   sessão → 307 (redireciona ao login). `npm audit` inalterado (10 advisories: 4 moderate / 5 high /
   1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
 
+### Sessão 64 — 2026-06-20 (Fase 1 — busca textual no hub de Relatórios)
+- **Motivação:** fechar o item 0 dos próximos passos ("um campo de busca/filtro no hub conforme o
+  acervo cresce"). O hub `/relatorios` (D54) já reúne 24 relatórios em 3 grupos; percorrer todos os
+  cards para achar um específico ficou custoso. Sessão escolheu evoluir o hub em vez de abrir o 25º
+  relatório.
+- **Lógica pura** (`src/lib/reports.ts`, fonte única do catálogo): nova `filterReports(query)` que
+  filtra os grupos pelo texto — casamento insensível a acento/caixa (reusa `normalizeText` de
+  `finance.ts`), **multitermo AND** (cada termo precisa aparecer na mesma entrada) varrendo
+  **título + descrição + rótulo do grupo** (assim "shows" traz a área inteira, "prazo contratante" só
+  casa o relatório com ambos). Grupos sem entrada casada são omitidos; consulta vazia devolve tudo
+  (cópia rasa, sem mutar `REPORT_GROUPS`). `countFilteredReports(query)` deriva o "N de M". **9 testes**
+  novos em `src/lib/reports.test.ts` (vazio = tudo, sem-mutação, casa por título/descrição/rótulo,
+  AND, omissão de grupo vazio, sem-casamento, coerência da contagem). Total do projeto **504**
+  (medição real `vitest run`; eram 495 na main). Ver **DECISIONS.md D56**.
+- **UI** (`src/app/(app)/relatorios/ReportsBrowser.tsx`, novo client component): campo de busca ao
+  vivo no topo do hub que filtra os cards no cliente (catálogo estático — sem ida ao servidor a cada
+  tecla), via `filterReports`. Contador "N de M relatórios" só quando há filtro; estado vazio honesto
+  quando nada casa. A página `/relatorios` segue server component (auth + cabeçalho) e delega a lista
+  ao browser; `id={group.area}`/`scroll-mt-24` preservados → âncoras `#shows`/`#financas`/`#contatos`
+  das listas (D55) seguem funcionando. Sem schema, sem dependência, sem server action.
+- Definition of Done verde: build (`prisma generate && next build`) OK — `/relatorios` 2,62 kB;
+  typecheck (`tsc --noEmit`) limpo, lint (0 warnings/erros), **504 testes** (`vitest run`), smoke test
+  ao vivo (`next start`): `/relatorios` sem sessão → 307 (→ login), `/login` → 200; **e2e autenticado
+  com cookie de sessão real** (seed demo) → `/relatorios` 200 renderiza o campo "Buscar relatório"
+  (`#report-search`) e os cards (ex.: "Faixas de cachê", "Prazo por contratante"). `npm audit`
+  inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de
+  schema — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
-   link "Relatórios" ancorado na seção da área, ver D55): catálogo central dos 24 relatórios na navbar.
-   Próximo possível — **agrupar visualmente os relatórios por subtema** dentro de cada área no hub,
-   ou um campo de busca/filtro no hub conforme o acervo cresce. Ao criar um relatório novo,
-   **registrá-lo em `REPORT_GROUPS`** para aparecer no hub automaticamente.
+   link "Relatórios" ancorado na seção da área, ver D55; **busca textual no hub** entregue na
+   Sessão 64 — `filterReports`/`countFilteredReports` + `ReportsBrowser.tsx`, ver D56): catálogo
+   central dos 24 relatórios na navbar, agora com campo de busca ao vivo. Próximo possível —
+   **agrupar visualmente os relatórios por subtema** dentro de cada área no hub. Ao criar um relatório
+   novo, **registrá-lo em `REPORT_GROUPS`** para aparecer no hub (e na busca) automaticamente.
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)
 2. **Calendário — evoluções**: arrastar/soltar para remarcar; mini-calendário de salto rápido.

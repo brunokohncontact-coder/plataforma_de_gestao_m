@@ -10,6 +10,8 @@
 // Ao adicionar um novo relatório, registre-o aqui (e só aqui) para que ele
 // apareça no hub automaticamente. Ver DECISIONS.md (D53).
 
+import { normalizeText } from "./finance";
+
 export type ReportArea = "shows" | "financas" | "contatos";
 
 export interface ReportEntry {
@@ -206,4 +208,35 @@ export function allReports(): ReportEntry[] {
 /** Total de relatórios catalogados. */
 export function reportCount(): number {
   return REPORT_GROUPS.reduce((n, g) => n + g.entries.length, 0);
+}
+
+// Busca textual sobre o acervo: conforme o catálogo cresce (já passou de duas
+// dezenas), o hub ganha um campo que filtra os relatórios pelo texto digitado.
+// Lógica pura (sem React) para ser testável e reutilizável no client component.
+
+/**
+ * Filtra os grupos de relatórios por um texto livre. O casamento é
+ * insensível a acento/caixa (via `normalizeText`) e por termo (AND): "cachê
+ * prazo" só casa entradas que contenham ambos os termos. A consulta varre o
+ * título, a descrição e o rótulo do grupo da entrada — assim "shows" traz
+ * todos os relatórios da área. Consulta vazia devolve todos os grupos.
+ * Grupos que ficam sem nenhuma entrada são omitidos do resultado.
+ */
+export function filterReports(query: string): ReportGroup[] {
+  const terms = normalizeText(query).split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return REPORT_GROUPS.map((g) => ({ ...g, entries: [...g.entries] }));
+
+  return REPORT_GROUPS.map((group) => {
+    const label = normalizeText(group.label);
+    const entries = group.entries.filter((entry) => {
+      const haystack = `${normalizeText(entry.title)} ${normalizeText(entry.description)} ${label}`;
+      return terms.every((term) => haystack.includes(term));
+    });
+    return { ...group, entries };
+  }).filter((group) => group.entries.length > 0);
+}
+
+/** Quantos relatórios casam com a consulta (achatado entre os grupos). */
+export function countFilteredReports(query: string): number {
+  return filterReports(query).reduce((n, g) => n + g.entries.length, 0);
 }
