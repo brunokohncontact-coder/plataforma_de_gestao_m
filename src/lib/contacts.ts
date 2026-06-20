@@ -462,3 +462,123 @@ export function clientRetention<C extends ContactRankLike>(
     mostLoyal: rows[0] ?? null,
   };
 }
+
+// ── Concentração de receita por contratante (risco de dependência) ──────────
+// Responde "quão dependente a minha receita é de poucos contratantes?": uma
+// leitura de RISCO (não de volume como o ranking, nem de recompra como a
+// retenção). Mede quanto do cachê vem do maior contratante e se a carteira é
+// concentrada — o equivalente do mix de receitas (incomeMix/D45) no eixo de
+// contratantes. Perder um cliente que responde por 70% do faturamento é um
+// risco operacional que nenhuma tela apontava. Ver DECISIONS.md D50.
+
+export type ClientConcentrationLevel = "concentrated" | "moderate" | "diversified";
+
+export interface ClientShareRow<C extends ContactRankLike> {
+  contact: C;
+  /** Soma do cachê dos shows não cancelados (centavos). */
+  totalFee: number;
+  /** Nº de shows não cancelados que trouxe. */
+  activeShows: number;
+  /** Participação no cachê total da carteira (0..1). */
+  share: number;
+}
+
+export interface ClientConcentration<C extends ContactRankLike> {
+  /** Contratantes com cachê > 0, ordem decrescente por cachê. */
+  rows: ClientShareRow<C>[];
+  /** Nº de contratantes com faturamento (cachê > 0). */
+  clientCount: number;
+  /** Soma do cachê não cancelado de todos os contratantes (centavos). */
+  totalFee: number;
+  /** Maior contratante por cachê, ou null se não há faturamento. */
+  top: ClientShareRow<C> | null;
+  /** Participação do maior contratante (0..1). */
+  topShare: number;
+  /** Participação acumulada dos 3 maiores (0..1). */
+  top3Share: number;
+  /**
+   * Índice de Herfindahl–Hirschman (HHI): soma dos quadrados das participações
+   * (0..1). 1 = um único contratante; quanto menor, mais distribuído.
+   */
+  hhi: number;
+  /**
+   * Nº efetivo de contratantes (1/HHI, índice de Simpson): "como se" a receita
+   * viesse de N contratantes de mesmo tamanho. 0 quando não há faturamento.
+   */
+  effectiveClients: number;
+  /** Veredito de concentração (derivado do HHI e do nº de contratantes). */
+  level: ClientConcentrationLevel;
+}
+
+/**
+ * Classifica a concentração a partir do HHI e do nº de contratantes. Mesmos
+ * limiares do mix de receitas (incomeMix/D45), por consistência: um cliente só,
+ * ou HHI ≥ 0,45 → concentrada; HHI ≥ 0,25 → moderada; abaixo → diversificada.
+ */
+function concentrationLevel(hhi: number, clientCount: number): ClientConcentrationLevel {
+  if (clientCount <= 1) return "concentrated";
+  if (hhi >= 0.45) return "concentrated";
+  if (hhi >= 0.25) return "moderate";
+  return "diversified";
+}
+
+/**
+ * Mede a concentração da receita entre os contratantes: quanto do cachê total
+ * vem do maior cliente (`topShare`), dos três maiores (`top3Share`), o HHI, o
+ * nº efetivo de contratantes e um veredito de dependência.
+ *
+ * O cachê é por contato (um show com vários contatos conta para cada um, igual
+ * ao ranking D18); o denominador é a soma desses cachês, então as participações
+ * sempre somam 1. Considera só shows NÃO cancelados; contatos sem faturamento
+ * (cachê total 0) ficam de fora (não há dependência de quem não traz dinheiro).
+ * Pura e determinística; ordena por cachê (desc), nome (pt-BR) e id.
+ */
+export function clientConcentration<C extends ContactRankLike>(
+  items: ContactWithShows<C>[],
+): ClientConcentration<C> {
+  const tally: { contact: C; totalFee: number; activeShows: number }[] = [];
+  let totalFee = 0;
+
+  for (const { contact, shows } of items) {
+    let fee = 0;
+    let activeShows = 0;
+    for (const s of shows) {
+      if (s.status === "CANCELLED") continue;
+      fee += s.fee;
+      activeShows += 1;
+    }
+    if (fee <= 0) continue; // sem faturamento → não entra na concentração
+    tally.push({ contact, totalFee: fee, activeShows });
+    totalFee += fee;
+  }
+
+  const rows: ClientShareRow<C>[] = tally
+    .map(({ contact, totalFee: fee, activeShows }) => ({
+      contact,
+      totalFee: fee,
+      activeShows,
+      share: totalFee === 0 ? 0 : fee / totalFee,
+    }))
+    .sort(
+      (a, b) =>
+        b.totalFee - a.totalFee ||
+        a.contact.name.localeCompare(b.contact.name, "pt-BR") ||
+        a.contact.id.localeCompare(b.contact.id),
+    );
+
+  const hhi = rows.reduce((acc, r) => acc + r.share * r.share, 0);
+  const top3Share = rows.slice(0, 3).reduce((acc, r) => acc + r.share, 0);
+  const top = rows[0] ?? null;
+
+  return {
+    rows,
+    clientCount: rows.length,
+    totalFee,
+    top,
+    topShare: top?.share ?? 0,
+    top3Share,
+    hhi,
+    effectiveClients: hhi === 0 ? 0 : 1 / hhi,
+    level: concentrationLevel(hhi, rows.length),
+  };
+}

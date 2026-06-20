@@ -58,6 +58,9 @@ export default async function ContactsPage({
               <Link href="/contatos/retencao" className="btn-secondary">
                 Fidelização
               </Link>
+              <Link href="/contatos/concentracao" className="btn-secondary">
+                Concentração
+              </Link>
               <Link href="/contatos/ranking" className="btn-secondary">
                 Ranking
               </Link>
