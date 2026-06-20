@@ -78,9 +78,14 @@ export default async function PaymentLagPage() {
             que já caiu — complementa os <Link href="/shows/a-receber" className="text-brand-700 hover:underline">cachês a receber</Link>.
           </p>
         </div>
-        <Link href="/shows" className="btn-secondary">
-          ← Shows
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/shows/prazo-recebimento/por-contratante" className="btn-secondary">
+            Por contratante
+          </Link>
+          <Link href="/shows" className="btn-secondary">
+            ← Shows
+          </Link>
+        </div>
       </div>
 
       {lag.showCount === 0 ? (

@@ -96,6 +96,20 @@ export function pickBillingContact(
   return reachableBillingContacts(contacts)[0] ?? null;
 }
 
+/**
+ * Escolhe o contato responsável pelo PAGAMENTO do show (o "contratante"): prioriza
+ * pelo papel (contratante/promoter antes da casa), desempatando por nome (pt-BR) e
+ * id. Diferente de `pickBillingContact`, NÃO exige canal de contato — serve para
+ * atribuir/agrupar shows por quem paga, mesmo sem e-mail/telefone cadastrado.
+ * `null` se o show não tem nenhum contato vinculado.
+ */
+export function pickPayerContact<C extends BillingContactLike>(
+  contacts: C[],
+): C | null {
+  if (contacts.length === 0) return null;
+  return [...contacts].sort(compareBillingContacts)[0];
+}
+
 /** "YYYY-MM-DD"/Date → "DD/MM/AAAA" em UTC (sem depender de locale/timezone). */
 function billingDate(date: Date | string): string {
   const d = typeof date === "string" ? new Date(date) : date;

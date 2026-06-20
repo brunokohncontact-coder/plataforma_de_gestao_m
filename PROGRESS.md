@@ -1358,6 +1358,37 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   verificado. `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma
   dependência nova nem mudança de schema — ver D6/D8).
 
+### Sessão 60 — 2026-06-20 (Fase 1 — prazo de recebimento por contratante / quem paga rápido x devagar)
+- **Lógica pura** (`src/lib/finance.ts`): nova `paymentLagByContact(shows, txs, getPayer)` que **quebra
+  o prazo de recebimento (D51) por quem paga**. Reaproveita `paymentLag` (mesma regra de quem entra e o
+  cálculo por show) e só redistribui os shows pelo pagador, agregando o prazo ponderado pelo valor por
+  contratante. Retorna `rows` (grupos do prazo médio mais lento ao mais rápido; cada grupo com `contact`,
+  `received`, `paymentCount`, `showCount`, `avgDays` ponderado, `lastDays`, `bucket`, `share` e os
+  `shows` do grupo), `contactCount`/`paymentCount`/`totalReceived`, `avgDays` global e `slowest`/`fastest`
+  (ignorando o grupo "Sem contratante"). O grupo de pagador nulo (shows sem contato vinculado) vai
+  sempre por último e fica fora de `contactCount`/`slowest`/`fastest`. O seletor de pagador entra por
+  **callback** (`getPayer`), mantendo `finance.ts` sem imports. **5 testes** novos em `finance.test.ts`.
+  Ver **DECISIONS.md D52**.
+- **Seletor de pagador** (`src/lib/billing.ts`): nova `pickPayerContact(contacts)` que escolhe o contato
+  responsável pelo pagamento por papel (reusa a prioridade BOOKER/PROMOTER antes de VENUE da D27/D30),
+  mas — diferente de `pickBillingContact` — **NÃO exige canal** (e-mail/telefone): para agrupar por quem
+  paga, o contratante conta mesmo sem dado de contato. **4 testes** novos em `billing.test.ts`. Total do
+  projeto **478** (medição real `vitest run`; eram 469).
+- **Página** (`src/app/(app)/shows/prazo-recebimento/por-contratante/page.tsx`): server component que
+  carrega os shows não cancelados com seus contatos vinculados + as receitas recebidas, injeta
+  `pickPayerContact`, chama `paymentLagByContact` e renderiza três destaques (prazo médio ponderado /
+  paga mais rápido / paga mais devagar), a tabela por contratante (recebido, nº de shows, prazo médio
+  com selo de cor por velocidade, pior prazo, % do recebido) e o detalhe dos shows de cada contratante
+  (lento→rápido). Cruza-link com `/contatos/[id]` e com a página geral `/shows/prazo-recebimento`
+  (que ganhou o botão **Por contratante**). Estado vazio honesto apontando para `/shows/a-receber`.
+  Sem schema, sem dependência, sem server action.
+- Definition of Done verde: build (nova rota `/shows/prazo-recebimento/por-contratante`), typecheck
+  (`tsc --noEmit`) limpo, lint (0), **478 testes** (`vitest run`), smoke test ao vivo (`next start`):
+  `/shows/prazo-recebimento/por-contratante` sem sessão → 307; **e2e autenticado com cookie de sessão
+  real** (seed demo) → a página renderiza "Prazo de recebimento por contratante", os cards "Paga mais
+  rápido/devagar" e o grupo "Sem contratante" — verificado (HTTP 200). `npm audit` inalterado (10
+  advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)
@@ -1386,9 +1417,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    cobrar** entregue na Sessão 39 — `buildShowBillings` + `BillingActions`, ver D30; **aging dos
    recebíveis** entregue na Sessão 40 — `bucketReceivablesByAge`, ver D31; **prazo de recebimento /
    DSO realizado** entregue na Sessão 59 — `paymentLag` + `/shows/prazo-recebimento`, ver D51):
+   **prazo de recebimento por contratante** entregue na Sessão 60 — `paymentLagByContact` +
+   `pickPayerContact` + `/shows/prazo-recebimento/por-contratante`, ver D52):
    próximo possível — lembrar a última escolha de contato por show, registrar a data prometida de
-   pagamento na própria cobrança, trazer o DSO/aging para o Painel, ou quebrar o prazo de recebimento
-   por contratante (quem paga rápido x devagar) reusando os contatos vinculados ao show.
+   pagamento na própria cobrança, trazer o DSO/aging para o Painel, ou a mediana do prazo (além da
+   média ponderada) por contratante.
 4. **Sessões/segurança**: invalidação ao trocar a senha entregue na Sessão 26
    (`passwordChangedAt` + `isSessionFresh`, ver D17). Evoluções possíveis: "encerrar sessão
    específica" (lista de sessões revogáveis) e recuperação de senha por e-mail — adiáveis.
