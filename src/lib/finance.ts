@@ -2189,6 +2189,139 @@ export function feeTrend(
   };
 }
 
+// ── Desempenho por dia da semana (quais dias valem mais a pena?) ─────────────
+
+/** Rótulos longos dos dias da semana, índice 0 = domingo .. 6 = sábado. */
+export const WEEKDAY_LABELS: readonly string[] = [
+  "Domingo",
+  "Segunda",
+  "Terça",
+  "Quarta",
+  "Quinta",
+  "Sexta",
+  "Sábado",
+];
+
+/** Rótulos curtos dos dias da semana, índice 0 = domingo .. 6 = sábado. */
+export const WEEKDAY_SHORT: readonly string[] = [
+  "Dom",
+  "Seg",
+  "Ter",
+  "Qua",
+  "Qui",
+  "Sex",
+  "Sáb",
+];
+
+export interface WeekdayStat {
+  /** Dia da semana: 0 = domingo .. 6 = sábado (UTC). */
+  weekday: number;
+  /** Rótulo longo ("Domingo", "Segunda"…). */
+  label: string;
+  /** Nº de shows realizados nesse dia da semana. */
+  count: number;
+  /** Soma dos cachês nesse dia (centavos). */
+  totalFee: number;
+  /** Cachê médio nesse dia = round(totalFee / count); 0 se não houver shows. */
+  avgFee: number;
+  /** Participação no nº de shows = count / totalShows (0..1). */
+  countShare: number;
+  /** Participação no faturamento = totalFee / faturamento total (0..1). */
+  feeShare: number;
+}
+
+export interface WeekdayPerformance {
+  /** Sempre 7 entradas, de domingo (0) a sábado (6), inclusive dias sem shows. */
+  days: WeekdayStat[];
+  /** Nº total de shows realizados considerados (com cachê > 0). */
+  totalShows: number;
+  /** Soma de todos os cachês considerados (centavos). */
+  totalFee: number;
+  /** Cachê médio geral por show = round(totalFee / totalShows); 0 se nenhum. */
+  avgFee: number;
+  /** Dia com maior cachê médio (empate → maior nº de shows, depois dia mais cedo); null se nenhum. */
+  bestByAvg: WeekdayStat | null;
+  /** Dia com maior faturamento total (empate → maior nº de shows, depois dia mais cedo); null se nenhum. */
+  bestByVolume: WeekdayStat | null;
+  /** Dia com mais shows (empate → maior faturamento, depois dia mais cedo); null se nenhum. */
+  busiest: WeekdayStat | null;
+}
+
+/**
+ * Agrega os shows já realizados por dia da semana, respondendo
+ * "quais dias valem mais a pena?" — onde o cachê médio é maior e onde
+ * o faturamento se concentra.
+ *
+ * - "Realizado" = `isHappenedGig` (PLAYED, ou CONFIRMED com data já passada):
+ *   propostos, cancelados e futuros ficam de fora (mesma postura de `feeTrend`).
+ * - Só shows com cachê registrado (`fee > 0`) entram — gigs sem cachê
+ *   distorceriam a média.
+ * - O dia da semana é extraído em UTC (`getUTCDay`) para estabilidade nos testes.
+ * - `days` traz sempre os 7 dias (domingo→sábado), mesmo os zerados, para o
+ *   gráfico não "pular" dias. Pura; `now` injetável para teste.
+ */
+export function weekdayPerformance(
+  shows: ReceivableShowLike[],
+  opts: { now?: Date | string } = {},
+): WeekdayPerformance {
+  const todayMs = utcMidnight(opts.now ?? new Date());
+
+  const feesByDay: number[][] = [[], [], [], [], [], [], []];
+  for (const s of shows) {
+    if (!isHappenedGig(s, todayMs)) continue;
+    if (s.fee <= 0) continue;
+    const d = typeof s.date === "string" ? new Date(s.date) : s.date;
+    feesByDay[d.getUTCDay()].push(s.fee);
+  }
+
+  const totalShows = feesByDay.reduce((acc, fees) => acc + fees.length, 0);
+  const totalFee = feesByDay.reduce((acc, fees) => acc + sum(fees), 0);
+
+  const days: WeekdayStat[] = feesByDay.map((fees, weekday) => {
+    const dayTotal = sum(fees);
+    return {
+      weekday,
+      label: WEEKDAY_LABELS[weekday],
+      count: fees.length,
+      totalFee: dayTotal,
+      avgFee: fees.length > 0 ? Math.round(dayTotal / fees.length) : 0,
+      countShare: totalShows > 0 ? fees.length / totalShows : 0,
+      feeShare: totalFee > 0 ? dayTotal / totalFee : 0,
+    };
+  });
+
+  // Candidatos a "melhor": apenas dias que de fato tiveram shows.
+  const active = days.filter((d) => d.count > 0);
+
+  // Empates resolvidos de forma determinística por `pick(rank, tiebreak)`.
+  const pick = (
+    rank: (d: WeekdayStat) => number,
+    tiebreak: (d: WeekdayStat) => number,
+  ): WeekdayStat | null => {
+    let best: WeekdayStat | null = null;
+    for (const d of active) {
+      if (
+        best == null ||
+        rank(d) > rank(best) ||
+        (rank(d) === rank(best) && tiebreak(d) > tiebreak(best))
+      ) {
+        best = d;
+      }
+    }
+    return best;
+  };
+
+  return {
+    days,
+    totalShows,
+    totalFee,
+    avgFee: totalShows > 0 ? Math.round(totalFee / totalShows) : 0,
+    bestByAvg: pick((d) => d.avgFee, (d) => d.count),
+    bestByVolume: pick((d) => d.totalFee, (d) => d.count),
+    busiest: pick((d) => d.count, (d) => d.totalFee),
+  };
+}
+
 /** Sequência de `count` meses "YYYY-MM" a partir de `startKey` (inclusive), em UTC. */
 function sequentialMonths(startKey: string, count: number): string[] {
   const [y, m] = startKey.split("-").map(Number);

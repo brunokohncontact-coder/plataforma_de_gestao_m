@@ -1107,3 +1107,31 @@ contexto, decisão, justificativa e alternativas consideradas.
   diversificação é uma propriedade estrutural da carteira de receitas, não do caixa; incluir as a receber
   evita um retrato enviesado por atraso de recebimento; (c) trazer o alerta de concentração para o Painel —
   adiável (dashboard já denso); a página dedicada basta por ora.
+
+## D46 — Desempenho por dia da semana (Sessão 55)
+- **Contexto:** os relatórios temporais de shows olham *quando* no calendário (sazonalidade por mês,
+  evolução do cachê mês a mês) ou *onde* (rentabilidade por local). Faltava o eixo **dia da semana**:
+  o músico de casa noturna/bar vive de fins de semana, e saber *quais dias da semana pagam melhor e
+  concentram a agenda* ajuda a decidir quais convites aceitar e onde está a ociosidade (terça vazia?).
+- **Decisão:** nova função pura `weekdayPerformance(shows)` (em `src/lib/finance.ts`) + página
+  `/shows/dias-semana`. Agrega os shows **já realizados com cachê** por dia da semana (0=domingo..6=sábado),
+  com nº de shows, faturamento total, **cachê médio** e participações (no nº e no faturamento) por dia,
+  além de três destaques: melhor cachê médio, maior faturamento e dia mais movimentado.
+- **Critério de "realizado" reusa `isHappenedGig`** (PLAYED, ou CONFIRMED com data passada) e ignora
+  `fee <= 0` — exatamente como `feeTrend`/`reconcileShowFees`, para que "cachê médio" não seja diluído por
+  gigs sem cachê e propostos/cancelados/futuros não entrem. Consistência com o resto do módulo.
+- **Sempre os 7 dias no resultado** (mesmo zerados): a UI mostra as lacunas da agenda (dias em que o
+  músico não toca) em vez de "pular" dias — a ociosidade é informação, não ausência. Dia da semana
+  extraído em **UTC** (`getUTCDay`) para estabilidade nos testes, igual a `monthKey`/`dayKey`.
+- **Desempate determinístico dos destaques:** helper interno `pick(rank, tiebreak)` — empate na métrica
+  principal cai no nº de shows (mais amostras = sinal mais confiável); empate total resolve pelo **dia
+  mais cedo da semana** (a iteração já está em ordem domingo→sábado). Documentado e coberto por teste.
+- **Zero schema/dependência:** usa `date`/`status`/`fee` já existentes no `Show`; nenhuma migração.
+- **Testes:** 7 testes unitários novos em `finance.test.ts` (vazio → 7 dias zerados e destaques nulos;
+  agregação com média/total/participações; só realizados; ignora fee<=0; destaques por média/volume/
+  movimento; empate total → dia mais cedo; empate de média → mais shows). Total do projeto 429→436.
+- **Alternativas consideradas:** (a) usar P&L líquido por dia (cachê − despesas vinculadas) em vez do
+  cachê bruto — descartado por ora: o cachê é o sinal direto de "quanto esse dia paga" e a maioria das
+  despesas não é vinculada por show; fica como evolução possível; (b) cruzar com a hora do dia — fora de
+  escopo (não há campo de horário separado e a granularidade não compensa); (c) incluir shows futuros
+  confirmados — não, distorceria o padrão *realizado* com expectativa, mesma postura de `feeTrend` (D44).

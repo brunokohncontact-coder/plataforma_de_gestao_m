@@ -42,6 +42,7 @@ import {
   DEFAULT_TAX_RATE,
   showPipeline,
   feeTrend,
+  weekdayPerformance,
   incomeMix,
   type TxLike,
   type ShowLike,
@@ -2169,5 +2170,132 @@ describe("feeTrend", () => {
     // médias: jan 100, fev 200, mar 100 → melhor=fev; pior empata jan/mar → jan.
     expect(t.bestMonth?.month).toBe("2026-02");
     expect(t.worstMonth?.month).toBe("2026-01");
+  });
+});
+
+describe("weekdayPerformance", () => {
+  const now = new Date("2026-06-15T12:00:00.000Z");
+
+  // Datas-âncora em 2026 (UTC): Jan 1 = quinta.
+  // Sexta = Jan 2/9 ; Sábado = Jan 3/10/17 ; Domingo = Jan 4/11 ;
+  // Segunda = Jan 5/12 ; Terça = Jan 6.
+  function gig(partial: Partial<ReceivableShowLike>): ReceivableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-01-10T20:00:00.000Z", // sábado
+      ...partial,
+    };
+  }
+
+  it("sem shows realizados retorna 7 dias zerados e destaques nulos", () => {
+    const w = weekdayPerformance([], { now });
+    expect(w.days).toHaveLength(7);
+    expect(w.days.map((d) => d.weekday)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(w.days.every((d) => d.count === 0 && d.totalFee === 0)).toBe(true);
+    expect(w.totalShows).toBe(0);
+    expect(w.totalFee).toBe(0);
+    expect(w.avgFee).toBe(0);
+    expect(w.bestByAvg).toBeNull();
+    expect(w.bestByVolume).toBeNull();
+    expect(w.busiest).toBeNull();
+  });
+
+  it("agrega por dia da semana com média, total e participações", () => {
+    const w = weekdayPerformance(
+      [
+        gig({ id: "sat1", date: "2026-01-03T20:00:00.000Z", fee: 300_00 }),
+        gig({ id: "sat2", date: "2026-01-10T20:00:00.000Z", fee: 500_00 }),
+        gig({ id: "fri1", date: "2026-01-02T20:00:00.000Z", fee: 200_00 }),
+      ],
+      { now },
+    );
+    const sat = w.days[6];
+    const fri = w.days[5];
+    expect(sat).toMatchObject({ count: 2, totalFee: 800_00, avgFee: 400_00 });
+    expect(fri).toMatchObject({ count: 1, totalFee: 200_00, avgFee: 200_00 });
+    expect(sat.countShare).toBeCloseTo(2 / 3, 5);
+    expect(sat.feeShare).toBeCloseTo(0.8, 5);
+    expect(w.totalShows).toBe(3);
+    expect(w.totalFee).toBe(1000_00);
+    expect(w.avgFee).toBe(Math.round(1000_00 / 3));
+    // Dias sem shows seguem zerados.
+    expect(w.days[0].count).toBe(0);
+  });
+
+  it("considera só shows realizados (ignora proposto, cancelado e futuro)", () => {
+    const w = weekdayPerformance(
+      [
+        gig({ id: "played", status: "PLAYED", date: "2026-01-10T20:00:00.000Z" }),
+        gig({ id: "confPast", status: "CONFIRMED", date: "2026-01-03T20:00:00.000Z" }),
+        gig({ id: "confFut", status: "CONFIRMED", date: "2026-09-12T20:00:00.000Z" }),
+        gig({ id: "prop", status: "PROPOSED", date: "2026-01-04T20:00:00.000Z" }),
+        gig({ id: "canc", status: "CANCELLED", date: "2026-01-05T20:00:00.000Z" }),
+      ],
+      { now },
+    );
+    expect(w.totalShows).toBe(2); // só os dois sábados
+    expect(w.days[6].count).toBe(2);
+  });
+
+  it("ignora shows sem cachê (fee <= 0)", () => {
+    const w = weekdayPerformance(
+      [
+        gig({ id: "a", fee: 0, date: "2026-01-10T20:00:00.000Z" }),
+        gig({ id: "b", fee: 80_00, date: "2026-01-02T20:00:00.000Z" }),
+      ],
+      { now },
+    );
+    expect(w.totalShows).toBe(1);
+    expect(w.days[5].count).toBe(1); // sexta
+    expect(w.days[6].count).toBe(0); // sábado (fee 0 ignorado)
+  });
+
+  it("destaca melhor por média, por volume e mais movimentado", () => {
+    const w = weekdayPerformance(
+      [
+        // Domingo: 1 show de 100 → avg 100, total 100
+        gig({ id: "sun", date: "2026-01-04T20:00:00.000Z", fee: 100_00 }),
+        // Sexta: 2 shows de 150 → avg 150, total 300
+        gig({ id: "fri1", date: "2026-01-02T20:00:00.000Z", fee: 150_00 }),
+        gig({ id: "fri2", date: "2026-01-09T20:00:00.000Z", fee: 150_00 }),
+        // Sábado: 1 show de 600 → avg 600, total 600
+        gig({ id: "sat", date: "2026-01-10T20:00:00.000Z", fee: 600_00 }),
+      ],
+      { now },
+    );
+    expect(w.bestByAvg?.weekday).toBe(6); // sábado (600)
+    expect(w.bestByVolume?.weekday).toBe(6); // sábado (600 total)
+    expect(w.busiest?.weekday).toBe(5); // sexta (2 shows)
+  });
+
+  it("empate total de destaque resolve pelo dia mais cedo da semana", () => {
+    const w = weekdayPerformance(
+      [
+        gig({ id: "mon", date: "2026-01-05T20:00:00.000Z", fee: 100_00 }),
+        gig({ id: "sun", date: "2026-01-04T20:00:00.000Z", fee: 100_00 }),
+      ],
+      { now },
+    );
+    // Domingo (0) e segunda (1) idênticos → escolhe domingo.
+    expect(w.bestByAvg?.weekday).toBe(0);
+    expect(w.bestByVolume?.weekday).toBe(0);
+    expect(w.busiest?.weekday).toBe(0);
+  });
+
+  it("empate de média desempata pelo dia com mais shows", () => {
+    const w = weekdayPerformance(
+      [
+        // Terça: 2 shows de 100 → avg 100, count 2
+        gig({ id: "tue1", date: "2026-01-06T20:00:00.000Z", fee: 100_00 }),
+        gig({ id: "tue2", date: "2026-01-13T20:00:00.000Z", fee: 100_00 }),
+        // Domingo: 1 show de 100 → avg 100, count 1
+        gig({ id: "sun", date: "2026-01-04T20:00:00.000Z", fee: 100_00 }),
+      ],
+      { now },
+    );
+    // Mesma média (100), terça tem mais shows → vence o desempate.
+    expect(w.bestByAvg?.weekday).toBe(2);
   });
 });

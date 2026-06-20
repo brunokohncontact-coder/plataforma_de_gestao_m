@@ -83,6 +83,11 @@ export default async function ShowsPage({
             </Link>
           )}
           {shows.length > 0 && (
+            <Link href="/shows/dias-semana" className="btn-secondary">
+              Por dia da semana
+            </Link>
+          )}
+          {shows.length > 0 && (
             <Link href="/shows/receita-agendada" className="btn-secondary">
               Receita agendada
             </Link>
