@@ -1304,6 +1304,33 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de
   schema — ver D6/D8).
 
+### Sessão 58 — 2026-06-20 (Fase 1 — concentração de receita por contratante / risco)
+- **Lógica pura** (`src/lib/contacts.ts`): nova `clientConcentration(items)` que mede a **dependência**
+  da receita em relação aos contratantes (leitura de RISCO — distinta do ranking, que ordena por volume,
+  e da retenção, que mede recompra). É o equivalente do mix de receitas (`incomeMix`/D45) no eixo de
+  contratantes. Soma o cachê por contato sobre shows **não cancelados** (um show com vários contatos conta
+  para cada um, mesma convenção do ranking D18); contatos sem faturamento (cachê 0 ou só cancelados) ficam
+  de fora. Retorna `rows` (ordenadas por cachê desc, nome pt-BR, id) com `share` de cada um, `clientCount`,
+  `totalFee`, `top`/`topShare`, `top3Share`, `hhi` (Herfindahl), `effectiveClients` (1/HHI) e `level`
+  (`concentrated`/`moderate`/`diversified`) com os mesmos limiares de HHI da D45 (≥0,45 concentrada;
+  ≥0,25 moderada). **7 testes** novos em `contacts.test.ts` (vazio; ignora sem faturamento; cliente único
+  = 100%; ordenação + participações + HHI; soma por contato em vários shows; carteira equilibrada →
+  diversificada; faixa intermediária → moderada). Total do projeto **462** (medição real `vitest run`).
+  Ver **DECISIONS.md D50**.
+- **Página** (`src/app/(app)/contatos/concentracao/page.tsx`): server component que carrega os contatos com
+  seus shows, chama `clientConcentration` e renderiza o veredito de concentração (faixa colorida com texto
+  específico por nível), três destaques (cachê total da carteira / maior contratante com % e valor / nº de
+  contratantes + top-3) e a tabela por contratante com **barra de participação**. Estado vazio honesto;
+  cruza-link com `/contatos/${id}` e `/contatos/retencao`. Link **Concentração** na barra de `/contatos`.
+  Sem schema, sem dependência, sem server action.
+- Definition of Done verde: build (nova rota `/contatos/concentracao`), typecheck (`tsc --noEmit`) limpo,
+  lint (0), **462 testes** (`vitest run`), smoke test ao vivo (`next start`): `/contatos/concentracao`
+  sem sessão → 307, `/login` → 200; **e2e autenticado com cookie de sessão real** (1 contratante "Festival
+  Gigante" com show de R$ 8.000 + 1 "Bar Pequeno" com R$ 1.000) → a página renderiza "Concentração de
+  contratantes", veredito **"Carteira concentrada"** e o Festival como maior contratante com **89%** —
+  verificado. `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência
+  nova nem mudança de schema — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)

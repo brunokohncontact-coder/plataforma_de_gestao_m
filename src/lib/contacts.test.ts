@@ -98,6 +98,7 @@ describe("summarizeContactShows", () => {
 });
 
 import {
+  clientConcentration,
   clientRetention,
   filterContacts,
   findContactsToReengage,
@@ -487,5 +488,101 @@ describe("clientRetention", () => {
     );
     expect(r.rows[0].lastShowDate?.toISOString()).toBe("2026-09-15T23:00:00.000Z");
     expect(r.rows[0].recurring).toBe(true);
+  });
+});
+
+describe("clientConcentration", () => {
+  function s(over: Partial<ContactRankShowLike> = {}): ContactRankShowLike {
+    return { status: "CONFIRMED", date: "2026-05-01T20:00:00Z", fee: 100_00, ...over };
+  }
+  function item(
+    id: string,
+    name: string,
+    shows: ContactRankShowLike[],
+  ): ContactWithShows<ContactRankLike> {
+    return { contact: { id, name }, shows };
+  }
+
+  it("trata lista vazia", () => {
+    const r = clientConcentration([]);
+    expect(r.rows).toEqual([]);
+    expect(r.clientCount).toBe(0);
+    expect(r.totalFee).toBe(0);
+    expect(r.top).toBeNull();
+    expect(r.topShare).toBe(0);
+    expect(r.top3Share).toBe(0);
+    expect(r.hhi).toBe(0);
+    expect(r.effectiveClients).toBe(0);
+    expect(r.level).toBe("concentrated");
+  });
+
+  it("ignora contratantes sem faturamento (cachê 0 ou só cancelados)", () => {
+    const r = clientConcentration([
+      item("pago", "Paga", [s({ fee: 500_00 })]),
+      item("zero", "Sem cachê", [s({ fee: 0 })]),
+      item("cancel", "Só cancelado", [s({ fee: 900_00, status: "CANCELLED" })]),
+    ]);
+    expect(r.rows.map((x) => x.contact.id)).toEqual(["pago"]);
+    expect(r.clientCount).toBe(1);
+    expect(r.totalFee).toBe(500_00);
+  });
+
+  it("um único contratante → 100% concentrado", () => {
+    const r = clientConcentration([item("a", "A", [s({ fee: 700_00 })])]);
+    expect(r.topShare).toBe(1);
+    expect(r.top3Share).toBe(1);
+    expect(r.hhi).toBe(1);
+    expect(r.effectiveClients).toBe(1);
+    expect(r.level).toBe("concentrated");
+  });
+
+  it("ordena por cachê e calcula participações e o top", () => {
+    const r = clientConcentration([
+      item("a", "A", [s({ fee: 100_00 })]),
+      item("b", "B", [s({ fee: 700_00 })]),
+      item("c", "C", [s({ fee: 200_00 })]),
+    ]);
+    // total 1000; b=700, c=200, a=100
+    expect(r.rows.map((x) => x.contact.id)).toEqual(["b", "c", "a"]);
+    expect(r.totalFee).toBe(1000_00);
+    expect(r.top?.contact.id).toBe("b");
+    expect(r.topShare).toBeCloseTo(0.7);
+    expect(r.top3Share).toBeCloseTo(1);
+    // HHI = 0.49 + 0.04 + 0.01 = 0.54 → concentrada
+    expect(r.hhi).toBeCloseTo(0.54);
+    expect(r.effectiveClients).toBeCloseTo(1 / 0.54);
+    expect(r.level).toBe("concentrated");
+  });
+
+  it("soma o cachê por contato sobre vários shows não cancelados", () => {
+    const r = clientConcentration([
+      item("a", "A", [s({ fee: 300_00 }), s({ fee: 200_00 }), s({ fee: 100_00, status: "CANCELLED" })]),
+    ]);
+    expect(r.rows[0].totalFee).toBe(500_00);
+    expect(r.rows[0].activeShows).toBe(2);
+  });
+
+  it("carteira equilibrada → diversificada", () => {
+    // 5 contratantes de R$ 200 cada: HHI = 5 * 0.04 = 0.20 < 0.25
+    const r = clientConcentration(
+      ["a", "b", "c", "d", "e"].map((id) => item(id, id.toUpperCase(), [s({ fee: 200_00 })])),
+    );
+    expect(r.clientCount).toBe(5);
+    expect(r.hhi).toBeCloseTo(0.2);
+    expect(r.effectiveClients).toBeCloseTo(5);
+    expect(r.level).toBe("diversified");
+  });
+
+  it("uma fonte dominante e várias pequenas → moderada na faixa intermediária", () => {
+    // a=500, b..e=125 cada (total 1000): HHI = 0.25 + 4*0.015625 = 0.3125
+    const r = clientConcentration([
+      item("a", "A", [s({ fee: 500_00 })]),
+      item("b", "B", [s({ fee: 125_00 })]),
+      item("c", "C", [s({ fee: 125_00 })]),
+      item("d", "D", [s({ fee: 125_00 })]),
+      item("e", "E", [s({ fee: 125_00 })]),
+    ]);
+    expect(r.hhi).toBeCloseTo(0.3125);
+    expect(r.level).toBe("moderate");
   });
 });

@@ -1225,3 +1225,35 @@ contexto, decisão, justificativa e alternativas consideradas.
   (D32) e do funil (D43) trazidos ao dashboard.
 - **`npm audit`:** inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de
   D6/D8; nenhuma dependência nova foi adicionada nesta sessão.
+
+## D50 — Concentração de receita por contratante / risco de dependência (Sessão 58)
+- **Contexto:** o CRM já tem três leituras de contatos — ranking por volume (D18), reativação de
+  dormentes (D21) e fidelização/recompra (D47). Faltava a leitura de **risco**: quanto da receita
+  depende de poucos contratantes. Perder um cliente que responde por 70% do cachê é um buraco grande
+  na agenda, e nenhuma tela apontava essa exposição. Pergunta: "quão dependente sou de um único
+  contratante?".
+- **Decisão:** nova função pura `clientConcentration(items)` em `src/lib/contacts.ts` + página
+  `/contatos/concentracao`. É o equivalente do mix de receitas (`incomeMix`/D45) no eixo de
+  contratantes: soma o cachê por contato (shows não cancelados), calcula a participação de cada um,
+  o HHI (Herfindahl), o nº efetivo de contratantes (1/HHI) e um veredito `concentrated`/`moderate`/
+  `diversified`.
+- **Consistência de limiares:** reusa os mesmos cortes de HHI da D45 (uma fonte só, ou HHI ≥ 0,45 →
+  concentrada; ≥ 0,25 → moderada; abaixo → diversificada). Mantido um classificador local em
+  `contacts.ts` (4 linhas) em vez de exportar o privado de `finance.ts`, para não acoplar os módulos
+  por um detalhe trivial; o comentário aponta a D45 como fonte do critério.
+- **Convenção de cachê por contato:** um show com vários contatos conta o cachê para **cada** contato
+  (idêntico ao ranking D18 e à retenção D47), então o denominador é a soma desses cachês e as
+  participações somam 1. É coerente com as outras telas de contato; mede dependência de contratantes
+  como *fontes de booking*, não a receita bruta contábil.
+- **Quem entra:** só contatos com cachê > 0 (shows não cancelados). Contatos sem faturamento não geram
+  dependência e ficam de fora do universo (não inflam o nº de contratantes nem diluem o HHI).
+- **Zero schema/dependência/server action:** usa `status`/`fee` dos shows já vinculados; nenhuma
+  migração.
+- **Alternativas consideradas:** (a) reaproveitar literalmente o tipo `IncomeMix` — descartado: os
+  campos (categoria/transação) não casam com contratante/shows; tipos próprios são mais claros; (b)
+  trazer o indicador para o Painel — adiável (dashboard já denso), a página dedicada e o link em
+  `/contatos` bastam por ora; (c) ponderar pela receita realizada (transações recebidas) em vez do
+  cachê acordado — descartado por ora: o cachê acordado é o dado direto da relação com o contratante;
+  cruzar com as transações recebidas é uma evolução possível.
+- **`npm audit`:** inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de
+  D6/D8; nenhuma dependência nova foi adicionada nesta sessão.
