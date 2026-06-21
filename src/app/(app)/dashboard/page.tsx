@@ -13,6 +13,7 @@ import {
   showPipeline,
   projectYearEnd,
   projectYearEndWithFixedCosts,
+  projectYearEndPessimistic,
   applyYearEndScenario,
   compareYearEndToPrevious,
   recurringExpenses,
@@ -89,6 +90,18 @@ export default async function DashboardPage() {
   // quando há cachê tentativo a descartar (caso contrário coincide com o cru).
   const conservative = applyYearEndScenario(forecast, "conservative");
   const hasConservativeFloor = forecast.scheduledTentative > 0;
+  // Pior caso: cruza os dois eixos conservadores num só piso — receita só de shows
+  // confirmados (D66) E despesa somando o custo fixo recorrente futuro (D62), ver
+  // D68. Só vira linha quando AMBOS os eixos mordem; sem um deles, o pior caso
+  // coincide com a linha "Só confirmados" ou "Com custos fixos" já mostrada acima.
+  const pessimistic = projectYearEndPessimistic(
+    forecast,
+    txs,
+    recurringExpenses(txs).estimatedMonthlyFixedCost,
+  );
+  const hasPessimisticFloor =
+    pessimistic.droppedTentative > 0 &&
+    pessimistic.estimatedRemainingFixedCost > 0;
   const pipeline = showPipeline(shows as ShowLike[]);
   const receivables = reconcileShowFees(shows as ReceivableShowLike[], txs);
   const receivablesAging = bucketReceivablesByAge(receivables);
@@ -297,6 +310,27 @@ export default async function DashboardPage() {
                     ? "mês ainda sem despesa lançada"
                     : "meses ainda sem despesa lançada"}
                   .
+                </span>
+              </p>
+            )}
+            {hasPessimisticFloor && (
+              <p className="mt-2 border-t border-gray-200 pt-2 text-xs text-rose-700">
+                <span className="font-medium">Pior caso:</span>{" "}
+                <span
+                  className={
+                    "font-semibold " +
+                    (pessimistic.projectedResult < 0
+                      ? "text-red-600"
+                      : "text-emerald-600")
+                  }
+                >
+                  {formatMoney(pessimistic.projectedResult)}
+                </span>{" "}
+                <span className="text-gray-500">
+                  cruzando os dois cenários cautelosos — só {formatMoney(pessimistic.projectedIncome)}{" "}
+                  de receita (sem os {formatMoney(pessimistic.droppedTentative)} a confirmar) e{" "}
+                  {formatMoney(pessimistic.projectedExpense)} de despesa (+
+                  {formatMoney(pessimistic.estimatedRemainingFixedCost)} de custo fixo).
                 </span>
               </p>
             )}
