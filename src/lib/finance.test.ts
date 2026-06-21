@@ -28,6 +28,7 @@ import {
   annualCategoryReport,
   availableYears,
   projectYearEnd,
+  projectYearEndWithFixedCosts,
   forecastBookedRevenue,
   reconcileShowFees,
   bucketReceivablesByAge,
@@ -1443,6 +1444,66 @@ describe("projectYearEnd", () => {
     expect(f.projectedIncome).toBe(200_00);
     expect(f.projectedExpense).toBe(50_00);
     expect(f.projectedResult).toBe(150_00);
+  });
+});
+
+describe("projectYearEndWithFixedCosts", () => {
+  const now = "2026-06-15T12:00:00.000Z"; // hoje = 2026-06-15 (UTC), mês atual = junho
+
+  it("aplica o custo fixo aos meses futuros do ano sem despesa lançada", () => {
+    // Sem nenhuma despesa lançada → jul..dez (6 meses) recebem o custo fixo.
+    const f = projectYearEnd([], [], 2026, { now });
+    const s = projectYearEndWithFixedCosts(f, [], 1_000_00, { now });
+    expect(s.applicable).toBe(true);
+    expect(s.monthlyFixedCost).toBe(1_000_00);
+    expect(s.monthsEstimated).toBe(6); // jul, ago, set, out, nov, dez
+    expect(s.estimatedRemainingFixedCost).toBe(6_000_00);
+    expect(s.projectedExpenseWithFixed).toBe(6_000_00); // forecast tinha 0
+    expect(s.projectedResultWithFixed).toBe(-6_000_00);
+  });
+
+  it("não conta meses futuros que já têm despesa lançada (sem dupla contagem)", () => {
+    const txs: TxLike[] = [
+      // Despesa já lançada (pendente) em setembro → setembro não recebe o custo fixo.
+      tx({ type: "EXPENSE", amount: 333_00, received: false, date: "2026-09-10T00:00:00.000Z" }),
+    ];
+    const f = projectYearEnd(txs, [], 2026, { now });
+    const s = projectYearEndWithFixedCosts(f, txs, 1_000_00, { now });
+    expect(s.monthsEstimated).toBe(5); // jul, ago, out, nov, dez (set fora)
+    expect(s.estimatedRemainingFixedCost).toBe(5_000_00);
+    // projectedExpense (333 do pendente) + 5.000 estimados.
+    expect(s.projectedExpenseWithFixed).toBe(333_00 + 5_000_00);
+  });
+
+  it("ignora o mês corrente (parcialmente realizado)", () => {
+    // Junho (mês atual) sem despesa: ainda assim não entra na estimativa.
+    const f = projectYearEnd([], [], 2026, { now });
+    const s = projectYearEndWithFixedCosts(f, [], 500_00, { now });
+    expect(s.monthsEstimated).toBe(6); // só jul..dez, junho fora
+  });
+
+  it("custo fixo zero ou negativo zera a estimativa", () => {
+    const f = projectYearEnd([], [], 2026, { now });
+    expect(projectYearEndWithFixedCosts(f, [], 0, { now }).applicable).toBe(false);
+    expect(projectYearEndWithFixedCosts(f, [], -100, { now }).estimatedRemainingFixedCost).toBe(0);
+  });
+
+  it("ano que não é o corrente: não estima (degrada para o forecast cru)", () => {
+    const f = projectYearEnd([], [], 2025, { now });
+    const s = projectYearEndWithFixedCosts(f, [], 1_000_00, { now });
+    expect(s.applicable).toBe(false);
+    expect(s.monthsEstimated).toBe(0);
+    expect(s.estimatedRemainingFixedCost).toBe(0);
+    expect(s.projectedExpenseWithFixed).toBe(f.projectedExpense);
+    expect(s.projectedResultWithFixed).toBe(f.projectedResult);
+  });
+
+  it("em dezembro não há meses futuros no ano", () => {
+    const dec = "2026-12-10T12:00:00.000Z";
+    const f = projectYearEnd([], [], 2026, { now: dec });
+    const s = projectYearEndWithFixedCosts(f, [], 1_000_00, { now: dec });
+    expect(s.monthsEstimated).toBe(0);
+    expect(s.estimatedRemainingFixedCost).toBe(0);
   });
 });
 

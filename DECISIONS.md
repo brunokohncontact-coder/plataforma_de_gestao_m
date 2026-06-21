@@ -1571,3 +1571,35 @@ contexto, decisão, justificativa e alternativas consideradas.
   índice automaticamente.
 - **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5
   high / 1 critical), mesma postura de D6/D8; nenhuma dependência nova.
+
+## D62 — Cenário "com custos fixos" na projeção de fechamento do ano (Sessão 70)
+- **Contexto:** `projectYearEnd` (D60) deliberadamente NÃO inventa despesas futuras — só conta o
+  realizado + o pendente já lançado. Isso deixa o **resultado projetado otimista**: os custos fixos
+  recorrentes (aluguel de sala, streaming, telefone…) que ainda vão se repetir até dezembro não
+  entram. A plataforma já estima esse custo (`recurringExpenses.estimatedMonthlyFixedCost`, D39), então
+  dava para oferecer uma leitura mais conservadora sem reintroduzir a assimetria no número principal.
+- **Decisão:** função pura nova `projectYearEndWithFixedCosts(forecast, txs, monthlyFixedCost, {now})`
+  (em `src/lib/finance.ts`) que **camada por cima** do `YearEndForecast`, somando o custo fixo típico
+  aos meses futuros do ano. Card opcional "Cenário com custos fixos" em `/financas/projecao-ano`,
+  mostrado abaixo do resultado projetado cru (que segue como número principal, preservando o default
+  da D60).
+- **Modelo (evitar dupla contagem / não superestimar):**
+  - Só vale para o **ano corrente** (`forecast.isCurrentYear`); ano passado/futuro degrada para o
+    forecast cru (`monthsEstimated = 0`).
+  - Aplica o custo fixo só aos meses **estritamente posteriores** ao mês de `now` — o mês corrente já
+    está parcialmente realizado, então fica de fora para não superestimar.
+  - Um mês futuro que **já tenha qualquer despesa lançada** (recebida ou pendente) é considerado
+    coberto e não recebe o custo fixo, evitando contagem dupla com o pendente já projetado.
+  - `monthlyFixedCost ≤ 0` zera a estimativa (`applicable = false`).
+- **Justificativa:** responde "e se eu contar as contas fixas que ainda vão cair?" sem mexer no número
+  conservador-por-design da D60. O músico vê os dois lados: o piso (projeção crua, sem despesa futura
+  inventada) e o teto pessimista (com o custo fixo recorrente projetado).
+- **Alternativas consideradas:** (a) embutir o custo fixo direto em `projectYearEnd` — descartado:
+  violaria a decisão explícita da D60 de não projetar despesas e quebraria os testes/contrato
+  existentes; layer separado e opt-in é mais honesto. (b) incluir o mês corrente na estimativa —
+  descartado: superestimaria, pois parte do mês já está realizada e contabilizada. (c) ratear o custo
+  fixo proporcionalmente em meses que já têm alguma despesa não-fixa — descartado por complexidade e
+  baixa precisão; tratar "mês com despesa lançada" como coberto é a aproximação simples e defensável.
+- **Sem schema/dependência/server action.** Lógica pura testada (6 casos novos em `finance.test.ts`).
+  `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
+  nenhuma dependência nova.

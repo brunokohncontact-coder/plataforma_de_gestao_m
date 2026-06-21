@@ -1125,6 +1125,92 @@ export function projectYearEnd(
   };
 }
 
+// ── Cenário "com custos fixos" sobre a projeção do ano ──────────────────────
+//
+// `projectYearEnd` deliberadamente NÃO inventa despesas futuras (D60): só conta o
+// realizado + o pendente já lançado. Isso deixa o resultado projetado otimista,
+// porque os custos fixos que ainda vão se repetir até dezembro não aparecem. Este
+// cenário opcional preenche essa lacuna: pega o custo fixo mensal típico
+// (`estimatedMonthlyFixedCost` de `recurringExpenses`, D39) e o aplica aos meses
+// FUTUROS do ano que ainda não têm nenhuma despesa lançada — sem dupla contagem
+// com o que já está pendente. Resultado: uma leitura mais realista/conservadora
+// do fechamento. Layer separado, opt-in, para preservar o default da D60.
+
+export interface FixedCostScenario {
+  /** Ano de referência (espelha o forecast). */
+  year: number;
+  /** True se o cenário é aplicável (ano corrente; só aí há meses futuros). */
+  applicable: boolean;
+  /** Custo fixo mensal típico usado (centavos) — entrada `estimatedMonthlyFixedCost`. */
+  monthlyFixedCost: number;
+  /** Nº de meses futuros do ano (após o mês atual) sem despesa já lançada. */
+  monthsEstimated: number;
+  /** monthlyFixedCost × monthsEstimated — despesa fixa futura ainda não lançada. */
+  estimatedRemainingFixedCost: number;
+  /** projectedExpense do forecast + estimatedRemainingFixedCost. */
+  projectedExpenseWithFixed: number;
+  /** projectedIncome do forecast − projectedExpenseWithFixed. */
+  projectedResultWithFixed: number;
+}
+
+/**
+ * Estima o fechamento do ano somando aos custos já projetados (`forecast`) o custo
+ * fixo recorrente que ainda deve se repetir até dezembro.
+ *
+ * - Só vale para o ano corrente (`forecast.isCurrentYear`); para anos passados ou
+ *   futuros não há "meses futuros do ano" e o cenário degrada para o forecast cru.
+ * - Considera apenas os meses ESTRITAMENTE posteriores ao mês de `now` (o mês
+ *   corrente já está parcialmente realizado, então é deixado de fora para não
+ *   superestimar nem contar duas vezes).
+ * - Um mês futuro que JÁ tenha qualquer despesa lançada (pendente) é considerado
+ *   coberto e não recebe o custo fixo, evitando dupla contagem com o pendente.
+ * - `monthlyFixedCost` ≤ 0 zera a estimativa.
+ *
+ * Pura; `now` injetável para testes. Usa UTC via `monthKey`.
+ */
+export function projectYearEndWithFixedCosts(
+  forecast: YearEndForecast,
+  txs: TxLike[],
+  monthlyFixedCost: number,
+  opts: { now?: Date | string } = {},
+): FixedCostScenario {
+  const year = forecast.year;
+  const now = opts.now ?? new Date();
+  const fixed = Math.max(0, Math.round(monthlyFixedCost));
+  const applicable = forecast.isCurrentYear && fixed > 0;
+
+  let monthsEstimated = 0;
+  if (applicable) {
+    const currentMonth = Number(monthKey(now).slice(5, 7)); // 1..12
+    // Meses do ano que já têm alguma despesa lançada (recebida ou pendente).
+    const expenseMonths = new Set<string>();
+    const prefix = `${year}-`;
+    for (const t of txs) {
+      if (t.type !== "EXPENSE" || t.amount <= 0) continue;
+      const mk = monthKey(t.date);
+      if (mk.startsWith(prefix)) expenseMonths.add(mk);
+    }
+    for (let m = currentMonth + 1; m <= 12; m++) {
+      const mk = `${year}-${String(m).padStart(2, "0")}`;
+      if (!expenseMonths.has(mk)) monthsEstimated += 1;
+    }
+  }
+
+  const estimatedRemainingFixedCost = fixed * monthsEstimated;
+  const projectedExpenseWithFixed =
+    forecast.projectedExpense + estimatedRemainingFixedCost;
+
+  return {
+    year,
+    applicable,
+    monthlyFixedCost: fixed,
+    monthsEstimated,
+    estimatedRemainingFixedCost,
+    projectedExpenseWithFixed,
+    projectedResultWithFixed: forecast.projectedIncome - projectedExpenseWithFixed,
+  };
+}
+
 // ── Vencimento de pendências (F3 — gestão de fluxo de caixa) ────────────────
 
 /** Situação de uma pendência em relação à data de referência (comparada por dia, UTC). */
