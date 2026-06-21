@@ -12,10 +12,12 @@ import {
   bucketReceivablesByAge,
   showPipeline,
   projectYearEnd,
+  compareYearEndToPrevious,
   type TxLike,
   type ReceivableShowLike,
   type ShowLike,
   type YearEndShowLike,
+  type MetricDelta,
 } from "@/lib/finance";
 import { findScheduleConflicts } from "@/lib/shows";
 import { formatMoney } from "@/lib/money";
@@ -62,6 +64,13 @@ export default async function DashboardPage() {
     forecast.scheduledIncome > 0 ||
     forecast.pendingIncome > 0 ||
     forecast.pendingExpense > 0;
+  // "Estou indo melhor que ano passado?": compara a projeção do ano com o
+  // fechamento do anterior (D63). Os shows do ano anterior já vêm na mesma
+  // consulta `shows`, então não há I/O extra; só vira badge quando há base.
+  const yoy = compareYearEndToPrevious(
+    forecast,
+    projectYearEnd(txs, shows as YearEndShowLike[], currentYear - 1),
+  );
   const pipeline = showPipeline(shows as ShowLike[]);
   const receivables = reconcileShowFees(shows as ReceivableShowLike[], txs);
   const receivablesAging = bucketReceivablesByAge(receivables);
@@ -186,14 +195,19 @@ export default async function DashboardPage() {
             <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
               Resultado projetado do ano
             </p>
-            <p
-              className={
-                "mt-1 text-2xl font-bold " +
-                (forecast.projectedResult < 0 ? "text-red-600" : "text-emerald-600")
-              }
-            >
-              {formatMoney(forecast.projectedResult)}
-            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <p
+                className={
+                  "text-2xl font-bold " +
+                  (forecast.projectedResult < 0 ? "text-red-600" : "text-emerald-600")
+                }
+              >
+                {formatMoney(forecast.projectedResult)}
+              </p>
+              {yoy.hasPreviousData && (
+                <YoYBadge delta={yoy.result} previousYear={yoy.previousYear} />
+              )}
+            </div>
             <p className="mt-1 text-xs text-gray-500">
               {formatMoney(forecast.projectedIncome)} em receitas −{" "}
               {formatMoney(forecast.projectedExpense)} em despesas.
@@ -494,4 +508,33 @@ function SummaryCard({
 
 function EmptyHint({ children }: { children: React.ReactNode }) {
   return <p className="py-4 text-center text-sm text-gray-400">{children}</p>;
+}
+
+/**
+ * Pílula compacta "▲/▼ X% vs. {ano-1}" para o card de projeção do Painel.
+ * Resultado subindo é bom (verde); descendo é ruim (vermelho); empate neutro.
+ * Mostra o sinal só pelo valor — quem chama garante `hasPreviousData`.
+ */
+function YoYBadge({ delta, previousYear }: { delta: MetricDelta; previousYear: number }) {
+  const up = delta.delta > 0;
+  const flat = delta.delta === 0;
+  const tone = flat
+    ? "bg-gray-100 text-gray-600"
+    : up
+      ? "bg-emerald-100 text-emerald-700"
+      : "bg-red-100 text-red-700";
+  const pct =
+    delta.pct === null
+      ? ""
+      : ` ${up ? "+" : "−"}${Math.round(Math.abs(delta.pct) * 100)}%`;
+  const arrow = flat ? "→" : up ? "▲" : "▼";
+  return (
+    <span
+      className={"rounded-full px-2 py-0.5 text-xs font-medium " + tone}
+      title={`Fechamento de ${previousYear}: ${formatMoney(delta.previous)}`}
+    >
+      {arrow}
+      {pct} vs. {previousYear}
+    </span>
+  );
 }

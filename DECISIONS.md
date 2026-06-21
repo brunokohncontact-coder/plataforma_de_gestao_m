@@ -1638,3 +1638,27 @@ contexto, decisão, justificativa e alternativas consideradas.
 - **Sem schema/dependência/server action.** Lógica pura testada (2 casos novos em `finance.test.ts`).
   `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
   nenhuma dependência nova.
+
+## D64 — Comparação vs. ano anterior no card de projeção do Painel (Sessão 72)
+- **Contexto:** a Sessão 71 (D63) entregou a comparação "vs. {ano anterior}" no relatório
+  `/financas/projecao-ano`, mas o card "Projeção de {ano}" do Painel (D61) mostrava só o número absoluto
+  projetado. Faltava a leitura de planejamento — "estou indo melhor que ano passado?" — já na primeira
+  tela, sem exigir abrir o relatório. É a pergunta que decide se dá para relaxar ou correr atrás de show.
+- **Decisão:** reaproveitar 100% a função pura `compareYearEndToPrevious` (D63) no dashboard. O Painel já
+  carrega **todos** os shows e transações do usuário, então basta um segundo `projectYearEnd` para
+  `currentYear - 1` sobre os mesmos dados (zero consulta extra) e passá-lo, junto do forecast do ano
+  corrente, a `compareYearEndToPrevious`. Renderiza uma pílula compacta `YoYBadge` ("▲/▼ X% vs. {ano-1}")
+  ao lado do resultado projetado, só quando `comparison.hasPreviousData`.
+- **Modelo/UI:** a pílula é deliberadamente mais enxuta que o card do relatório (que tem frase de salto +
+  mini-cards de receita/despesa) — no Painel cabe só o sinal sobre o **resultado** projetado (verde sobe /
+  vermelho desce / neutro empata), com o fechamento do ano-1 no `title` (hover). Quem quer o detalhe
+  segue o link "Ver detalhe" já existente para `/financas/projecao-ano`.
+- **Justificativa:** transforma o número absoluto do card numa leitura com referencial, reusando lógica
+  pura já testada (`finance.test.ts`, D63) — zero schema, zero dependência, zero server action, zero novo
+  teste (mudança de UI, mesma postura das Sessões 69/71).
+- **Alternativas consideradas:** (a) trazer também os mini-cards de receita/despesa para o Painel —
+  descartado: polui o card do dashboard, que deve ser um resumo escaneável; o detalhe vive no relatório.
+  (b) comparar o caixa realizado em vez do projetado — descartado pela mesma razão da D63 (maçã com
+  laranja); projetado-contra-fechado é a comparação honesta.
+- **Sem schema/dependência/server action/teste novo.** `npm audit` inalterado (10 advisories — 4 moderate
+  / 5 high / 1 critical), mesma postura de D6/D8; nenhuma dependência nova.
