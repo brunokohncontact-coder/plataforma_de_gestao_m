@@ -3,6 +3,8 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   projectYearEnd,
+  projectYearEndWithFixedCosts,
+  recurringExpenses,
   type TxLike,
   type YearEndShowLike,
 } from "@/lib/finance";
@@ -68,6 +70,13 @@ export default async function YearEndForecastPage({
   }));
 
   const f = projectYearEnd(txs, shows as YearEndShowLike[], year);
+
+  // Cenário "com custos fixos": estima o custo fixo recorrente que ainda deve
+  // se repetir até dezembro (D39) e o soma às despesas projetadas, dando uma
+  // leitura mais conservadora do fechamento (ver D62). Opt-in: a projeção crua
+  // segue como número principal.
+  const fixedCost = recurringExpenses(txs).estimatedMonthlyFixedCost;
+  const scenario = projectYearEndWithFixedCosts(f, txs, fixedCost);
 
   const hasAnything =
     f.realizedIncome > 0 ||
@@ -159,6 +168,42 @@ export default async function YearEndForecastPage({
               )}
             </p>
           </section>
+
+          {/* Cenário com custos fixos (D62): mais conservador que a projeção crua */}
+          {scenario.applicable && scenario.estimatedRemainingFixedCost > 0 && (
+            <section className="card border-l-4 border-amber-400">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                Cenário com custos fixos
+              </p>
+              <p
+                className={
+                  "mt-1 text-2xl font-bold " +
+                  (scenario.projectedResultWithFixed < 0
+                    ? "text-red-600"
+                    : "text-emerald-600")
+                }
+              >
+                {formatMoney(scenario.projectedResultWithFixed)}
+              </p>
+              <p className="mt-2 text-sm text-gray-500">
+                A projeção crua não inventa despesas futuras. Somando o custo fixo
+                típico de {formatMoney(scenario.monthlyFixedCost)}/mês a{" "}
+                {scenario.monthsEstimated}{" "}
+                {scenario.monthsEstimated === 1
+                  ? "mês ainda sem despesa lançada"
+                  : "meses ainda sem despesa lançada"}{" "}
+                (+{formatMoney(scenario.estimatedRemainingFixedCost)} em despesas),
+                o ano deve fechar mais perto disto. Ajuste o custo fixo em{" "}
+                <Link
+                  href="/financas/custos-fixos"
+                  className="text-brand-700 hover:underline"
+                >
+                  Custos fixos
+                </Link>
+                .
+              </p>
+            </section>
+          )}
 
           <div className="grid gap-6 lg:grid-cols-2">
             {/* Receitas projetadas: realizado + pendente + agendado */}
