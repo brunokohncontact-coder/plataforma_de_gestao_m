@@ -1662,3 +1662,30 @@ contexto, decisão, justificativa e alternativas consideradas.
   laranja); projetado-contra-fechado é a comparação honesta.
 - **Sem schema/dependência/server action/teste novo.** `npm audit` inalterado (10 advisories — 4 moderate
   / 5 high / 1 critical), mesma postura de D6/D8; nenhuma dependência nova.
+
+## D65 — Cenário "com custos fixos" no card de projeção do Painel (Sessão 73)
+- **Contexto:** a Sessão 70 (D62) entregou o cenário conservador `projectYearEndWithFixedCosts` num
+  **card próprio** em `/financas/projecao-ano`, fechando a assimetria deliberada da projeção crua (D60),
+  que projeta a receita futura mas não inventa despesa. O card "Projeção de {ano}" do Painel (D61/D64)
+  mostrava só o número crú — e é justamente esse número otimista-por-design que o músico vê primeiro,
+  podendo superestimar o quanto vai sobrar. Faltava o sinal conservador já na primeira tela.
+- **Decisão:** reaproveitar 100% a lógica pura `projectYearEndWithFixedCosts` + `recurringExpenses` (D62/D39)
+  no dashboard. O Painel já carrega todas as transações/shows do usuário, então é zero consulta extra:
+  estima-se o custo fixo mensal típico (`recurringExpenses(txs).estimatedMonthlyFixedCost`) e passa-se ao
+  cenário sobre o forecast já computado. Renderiza-se uma **linha compacta** "Com custos fixos: {resultado}"
+  abaixo da composição do card, só quando `fixedScenario.applicable && estimatedRemainingFixedCost > 0`.
+- **Modelo/UI:** no Painel é uma linha (não um card, como no relatório de detalhe) para não inflar a
+  primeira tela — o número crú segue como principal e em destaque; a linha conservadora aparece discreta,
+  com o resultado verde/vermelho e o texto detalhando custo/mês × nº de meses estimados. Quem quer o
+  detalhe (com link para ajustar os custos fixos) segue "Ver detalhe" para `/financas/projecao-ano`.
+- **Justificativa:** dá ao card a leitura honesta de "e se eu somar o que vou gastar todo mês?", sem
+  duplicar regra (a estimativa de custo fixo e a montagem do cenário vivem na lógica pura testada de
+  `finance.ts`) e sem custo de I/O. Mesma postura das Sessões 69/71/72: mudança de UI que reusa lógica
+  pura já coberta por `finance.test.ts`.
+- **Alternativas consideradas:** (a) replicar o card inteiro do relatório no Painel — descartado: polui
+  o dashboard, que deve ser escaneável; o detalhe (com link para custos fixos) vive no relatório.
+  (b) mostrar a linha sempre, mesmo com custo fixo zero — descartado: sem custo a estimar a linha não
+  agrega e só repetiria o número crú. (c) substituir o número crú pelo conservador — descartado: o crú é
+  o número de planejamento padrão; o conservador é opt-in/complementar, coerente com D62.
+- **Sem schema/dependência/server action/teste novo.** `npm audit` inalterado (10 advisories — 4 moderate
+  / 5 high / 1 critical), mesma postura de D6/D8; nenhuma dependência nova.

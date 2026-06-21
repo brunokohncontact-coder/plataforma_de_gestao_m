@@ -12,7 +12,9 @@ import {
   bucketReceivablesByAge,
   showPipeline,
   projectYearEnd,
+  projectYearEndWithFixedCosts,
   compareYearEndToPrevious,
+  recurringExpenses,
   type TxLike,
   type ReceivableShowLike,
   type ShowLike,
@@ -71,6 +73,16 @@ export default async function DashboardPage() {
     forecast,
     projectYearEnd(txs, shows as YearEndShowLike[], currentYear - 1),
   );
+  // Cenário conservador "com custos fixos": soma o custo fixo recorrente típico
+  // (D39) aos meses futuros do ano sem despesa lançada, fechando a assimetria da
+  // projeção crua (D60/D62). Opt-in: só vira linha quando há custo fixo a estimar.
+  const fixedScenario = projectYearEndWithFixedCosts(
+    forecast,
+    txs,
+    recurringExpenses(txs).estimatedMonthlyFixedCost,
+  );
+  const hasFixedScenario =
+    fixedScenario.applicable && fixedScenario.estimatedRemainingFixedCost > 0;
   const pipeline = showPipeline(shows as ShowLike[]);
   const receivables = reconcileShowFees(shows as ReceivableShowLike[], txs);
   const receivablesAging = bucketReceivablesByAge(receivables);
@@ -234,6 +246,29 @@ export default async function DashboardPage() {
                 {forecast.scheduledShowCount === 1 ? "show" : "shows"} futuro
                 {forecast.scheduledShowCount === 1 ? "" : "s"} ainda não lançado
                 {forecast.scheduledShowCount === 1 ? "" : "s"}.
+              </p>
+            )}
+            {hasFixedScenario && (
+              <p className="mt-2 border-t border-gray-200 pt-2 text-xs text-amber-700">
+                <span className="font-medium">Com custos fixos:</span>{" "}
+                <span
+                  className={
+                    "font-semibold " +
+                    (fixedScenario.projectedResultWithFixed < 0
+                      ? "text-red-600"
+                      : "text-emerald-600")
+                  }
+                >
+                  {formatMoney(fixedScenario.projectedResultWithFixed)}
+                </span>{" "}
+                <span className="text-gray-500">
+                  somando {formatMoney(fixedScenario.monthlyFixedCost)}/mês em{" "}
+                  {fixedScenario.monthsEstimated}{" "}
+                  {fixedScenario.monthsEstimated === 1
+                    ? "mês ainda sem despesa lançada"
+                    : "meses ainda sem despesa lançada"}
+                  .
+                </span>
               </p>
             )}
           </Link>

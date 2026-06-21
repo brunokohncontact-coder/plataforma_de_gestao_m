@@ -1666,6 +1666,25 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   `/login` → 200, `/dashboard` sem sessão → 307 (→ `/login`). `npm audit` inalterado (10 advisories:
   4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
 
+### Sessão 73 — Cenário "com custos fixos" no card de projeção do Painel (D65)
+- **UI** (`src/app/(app)/dashboard/page.tsx`): o card "Projeção de {ano}" ganhou uma **linha
+  conservadora "Com custos fixos: {resultado}"** abaixo da composição, trazendo o cenário pessimista
+  da Sessão 70 (D62) para a primeira tela — o número crú projeta a receita futura mas não inventa
+  despesa; esta linha soma o custo fixo recorrente típico (D39) aos meses futuros do ano ainda sem
+  despesa lançada. Reaproveita 100% a lógica pura `projectYearEndWithFixedCosts` + `recurringExpenses`
+  (D62/D39) sobre os mesmos `txs`/`shows` já carregados pelo dashboard (zero consulta extra). A linha
+  só aparece quando `fixedScenario.applicable && estimatedRemainingFixedCost > 0` (ano corrente, há
+  custo fixo a estimar e meses futuros sem despesa lançada); o valor fica verde/vermelho conforme o
+  resultado e o texto detalha o custo/mês × nº de meses estimados. Diferente da página de detalhe
+  (`/financas/projecao-ano`), que mostra o cenário num card próprio — no Painel é uma linha compacta
+  dentro do card de projeção, evitando inflar a primeira tela.
+- Sem schema, sem dependência, sem server action, **sem novos testes** (mudança de UI que reusa lógica
+  pura já coberta por `finance.test.ts`; mesma postura das Sessões 69/71/72). Ver **DECISIONS.md D65**.
+- Definition of Done verde: build (`prisma generate && next build`) OK, typecheck (`tsc --noEmit`)
+  limpo, lint (0 warnings/erros), **535 testes** (`vitest run`), smoke test ao vivo (`next start`):
+  `/login` → 200, `/dashboard` sem sessão → 307 (→ `/login`). `npm audit` inalterado (10 advisories:
+  4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
@@ -1724,12 +1743,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    **projeção vs. ano anterior** entregue na Sessão 71 — `compareYearEndToPrevious` + card "vs. {ano-1}"
    em `/financas/projecao-ano`, reaproveitando `computeDelta`, ver D63; **comparação vs. ano anterior
    no card do Painel** entregue na Sessão 72 — pílula "▲/▼ X% vs. {ano-1}" no card "Projeção de {ano}"
-   reaproveitando `compareYearEndToPrevious`, ver D64):
+   reaproveitando `compareYearEndToPrevious`, ver D64; **cenário com custos fixos no card do Painel**
+   entregue na Sessão 73 — linha "Com custos fixos: {resultado}" no card "Projeção de {ano}"
+   reaproveitando `projectYearEndWithFixedCosts`, ver D65):
    a projeção crua segue sem inventar despesas (número conservador-por-design); o cenário pessimista é
    opt-in; a comparação anual ancora o número no fechamento do ano passado. Próximo possível — comparar
-   contra uma **meta** definida pelo usuário (exigiria schema/CRUD de metas), um seletor de cenário
-   (otimista = inclui tentativos × conservador = só confirmados), ou trazer o cenário com custos fixos
-   também para o card do Painel.
+   contra uma **meta** definida pelo usuário (exigiria schema/CRUD de metas) ou um seletor de cenário
+   (otimista = inclui tentativos × conservador = só confirmados).
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)
