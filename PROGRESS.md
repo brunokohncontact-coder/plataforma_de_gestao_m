@@ -130,6 +130,13 @@ agenda é compromisso firme) mas **não inventa despesas futuras** (só realizad
 custos recorrentes não lançados ficam de fora — ver Custos fixos). Página com navegação por ano,
 hero do resultado projetado e a composição de receitas/despesas em barras (ver D60). Registrado no
 hub de Relatórios (Finanças → Fechamentos). **527 testes** verdes.
+Sessão 69 trouxe a **projeção de fechamento do ano para o Painel** (`dashboard/page.tsx`): um card
+"Projeção de {ano}" que chama `projectYearEnd` com as transações e shows já carregados pelo dashboard
+(zero consulta extra) e mostra o **resultado projetado do ano** com a composição (receitas − despesas,
+caixa realizado hoje, e o destaque do cachê agendado de shows futuros), linkando para
+`/financas/projecao-ano`. Só aparece quando há um componente futuro que muda o caixa realizado
+(`scheduledIncome > 0 || pendingIncome > 0 || pendingExpense > 0`), evitando redundância com os cards
+de resumo (ver D61). **527 testes** verdes (mudança de UI, reaproveita lógica pura já testada).
 Sessão 43 entregou o **comparativo ano a ano (YoY) no Resumo anual** (`/financas/anual`): a função
 pura `compareAnnualSummaries` (em `src/lib/finance.ts`) aplica `computeDelta` aos três totais do ano
 e a cada mês casado por `monthIndex` ao mesmo mês do ano anterior; a página computa o resumo do ano
@@ -1662,11 +1669,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    (`passwordChangedAt` + `isSessionFresh`, ver D17). Evoluções possíveis: "encerrar sessão
    específica" (lista de sessões revogáveis) e recuperação de senha por e-mail — adiáveis.
 6. **Planejamento / projeção — evoluções** (projeção de fechamento do ano entregue na Sessão 68,
-   `/financas/projecao-ano` + `projectYearEnd`, ver D60): hoje a projeção não estima custos futuros não
-   lançados (assimetria deliberada). Próximo possível — trazer o resultado projetado para o Painel,
-   estimar o custo recorrente restante do ano a partir de `recurringExpenses` (cenário "com custos
-   fixos") como linha opcional, comparar a projeção com a meta/ano anterior, ou um seletor de cenário
-   (otimista = inclui tentativos × conservador = só confirmados).
+   `/financas/projecao-ano` + `projectYearEnd`, ver D60; **resultado projetado no Painel** entregue na
+   Sessão 69 — card "Projeção de {ano}" em `dashboard/page.tsx`, ver D61): hoje a projeção não estima
+   custos futuros não lançados (assimetria deliberada). Próximo possível — estimar o custo recorrente
+   restante do ano a partir de `recurringExpenses` (cenário "com custos fixos") como linha opcional,
+   comparar a projeção com a meta/ano anterior, ou um seletor de cenário (otimista = inclui tentativos ×
+   conservador = só confirmados).
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

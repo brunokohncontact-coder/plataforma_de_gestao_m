@@ -11,9 +11,11 @@ import {
   reconcileShowFees,
   bucketReceivablesByAge,
   showPipeline,
+  projectYearEnd,
   type TxLike,
   type ReceivableShowLike,
   type ShowLike,
+  type YearEndShowLike,
 } from "@/lib/finance";
 import { findScheduleConflicts } from "@/lib/shows";
 import { formatMoney } from "@/lib/money";
@@ -50,6 +52,16 @@ export default async function DashboardPage() {
   const categories = totalsByCategory(txs).slice(0, 5);
   const cashflow = projectCashflow(txs, { months: 6 });
   const hasProjection = cashflow.months.some((m) => m.income > 0 || m.expense > 0);
+
+  // Projeção de fechamento do ano corrente (reaproveita os shows/transações já
+  // carregados; sem consulta extra). Só vale a pena mostrar quando há um
+  // componente futuro (pendência ou cachê agendado) que muda o caixa realizado.
+  const currentYear = new Date().getFullYear();
+  const forecast = projectYearEnd(txs, shows as YearEndShowLike[], currentYear);
+  const hasForecast =
+    forecast.scheduledIncome > 0 ||
+    forecast.pendingIncome > 0 ||
+    forecast.pendingExpense > 0;
   const pipeline = showPipeline(shows as ShowLike[]);
   const receivables = reconcileShowFees(shows as ReceivableShowLike[], txs);
   const receivablesAging = bucketReceivablesByAge(receivables);
@@ -151,6 +163,68 @@ export default async function DashboardPage() {
         <SummaryCard label="A receber" value={summary.pendingIncome} tone="amber" />
         <SummaryCard label="A pagar" value={summary.pendingExpense} tone="red" />
       </div>
+
+      {/* Projeção de fechamento do ano corrente */}
+      {hasForecast && (
+        <section className="card">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-semibold">Projeção de {currentYear}</h2>
+            <Link
+              href="/financas/projecao-ano"
+              className="text-sm text-brand-700 hover:underline"
+            >
+              Ver detalhe
+            </Link>
+          </div>
+          <Link
+            href="/financas/projecao-ano"
+            className={
+              "block rounded-lg border-l-4 bg-gray-50 px-4 py-3 transition hover:bg-gray-100 " +
+              (forecast.projectedResult < 0 ? "border-red-400" : "border-emerald-400")
+            }
+          >
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+              Resultado projetado do ano
+            </p>
+            <p
+              className={
+                "mt-1 text-2xl font-bold " +
+                (forecast.projectedResult < 0 ? "text-red-600" : "text-emerald-600")
+              }
+            >
+              {formatMoney(forecast.projectedResult)}
+            </p>
+            <p className="mt-1 text-xs text-gray-500">
+              {formatMoney(forecast.projectedIncome)} em receitas −{" "}
+              {formatMoney(forecast.projectedExpense)} em despesas.
+              {forecast.realizedResult !== forecast.projectedResult && (
+                <>
+                  {" "}
+                  Caixa realizado hoje:{" "}
+                  <span
+                    className={
+                      "font-medium " +
+                      (forecast.realizedResult < 0 ? "text-red-600" : "text-gray-700")
+                    }
+                  >
+                    {formatMoney(forecast.realizedResult)}
+                  </span>
+                  .
+                </>
+              )}
+            </p>
+            {forecast.scheduledIncome > 0 && (
+              <p className="mt-1 text-xs text-sky-700">
+                Inclui {formatMoney(forecast.scheduledIncome)} de{" "}
+                {forecast.scheduledShowCount}{" "}
+                {forecast.scheduledShowCount === 1 ? "show" : "shows"} futuro
+                {forecast.scheduledShowCount === 1 ? "" : "s"} ainda não lançado
+                {forecast.scheduledShowCount === 1 ? "" : "s"}.
+              </p>
+            )}
+          </Link>
+        </section>
+      )}
 
       {/* Projeção de caixa */}
       {hasProjection && (
