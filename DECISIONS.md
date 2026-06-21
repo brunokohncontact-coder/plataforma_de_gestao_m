@@ -1603,3 +1603,38 @@ contexto, decisão, justificativa e alternativas consideradas.
 - **Sem schema/dependência/server action.** Lógica pura testada (6 casos novos em `finance.test.ts`).
   `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
   nenhuma dependência nova.
+
+## D63 — Projeção do ano vs. fechamento do ano anterior (Sessão 71)
+- **Contexto:** a projeção de fechamento (D60) e seus derivados (cenário com custos fixos, D62; card no
+  Painel, D61) respondem "como fecho ESTE ano?", mas sozinhos não dizem se isso é bom ou ruim. Faltava a
+  leitura de planejamento que ancora o número num referencial: "estou no caminho de fechar **melhor que
+  o ano passado**?". É a pergunta que decide se dá para relaxar, segurar custo ou correr atrás de show.
+- **Decisão:** função pura nova `compareYearEndToPrevious(current, previous)` → `YearEndComparison`
+  (em `src/lib/finance.ts`), que opera sobre **dois `YearEndForecast` já calculados** e reusa
+  `computeDelta` (D — comparativos) para resultado, receita e despesa projetados. Card "vs. {ano
+  anterior}" em `/financas/projecao-ano`, logo abaixo do resultado projetado, com a frase de salto
+  ("deve fechar X acima/abaixo de {ano-1}") e dois mini-cards (Receitas/Despesas) com variação %.
+- **Modelo:**
+  - Compara os campos **projetados** (`projectedResult/Income/Expense`). Para o ano corrente é a
+    projeção; para um ano **já encerrado**, `projectYearEnd` degrada esses campos para o resultado de
+    competência lançado (sem shows futuros) — que é o fechamento real do ano, a base natural de
+    comparação. Não foi preciso uma função especial de "ano fechado".
+  - `direction` de cada `MetricDelta` reflete só o **sinal**; a UI decide o que é bom (resultado/receita
+    subir = verde) vs. ruim (despesa subir = vermelho), via prop `goodWhenUp`.
+  - `hasPreviousData = false` quando o ano anterior não teve receita nem despesa → a UI **omite** o card
+    (comparar contra zero não informa; `pct` já é `null` nesse caso, herdado de `computeDelta`).
+  - A página passou a carregar shows de `year-1..year` (antes só `year`) para que a projeção do ano
+    anterior fique correta mesmo ao navegar para um ano futuro; os shows passados não geram receita
+    agendada, então o custo é só de I/O.
+- **Justificativa:** transforma um número absoluto ("R$ X") num número com significado ("R$ X, +25% vs.
+  o ano passado"), reaproveitando 100% da lógica existente (dois `projectYearEnd` + `computeDelta`).
+  Zero schema, zero dependência, zero server action.
+- **Alternativas consideradas:** (a) comparar contra uma **meta** definida pelo usuário — descartado por
+  ora: exigiria schema/CRUD de metas; o ano anterior é uma régua que já existe nos dados, sem fricção.
+  (b) comparar o **caixa realizado** (`realizedResult`) em vez do projetado — descartado: o realizado de
+  meio de ano contra o fechamento cheio do ano anterior é maçã-com-laranja; projetado-contra-fechado é a
+  comparação honesta de "vou terminar melhor?". (c) comparar mês-a-mês acumulado (run-rate) — adiável,
+  mais ruidoso; o agregado anual é a leitura de planejamento pedida.
+- **Sem schema/dependência/server action.** Lógica pura testada (2 casos novos em `finance.test.ts`).
+  `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
+  nenhuma dependência nova.

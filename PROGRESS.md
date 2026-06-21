@@ -1626,6 +1626,30 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   `/` → 200, `/financas/projecao-ano` sem sessão → 307 (→ `/login`). `npm audit` inalterado (10
   advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
 
+### Sessão 71 — 2026-06-21 (Fase 1 — projeção do ano vs. ano anterior)
+- **Motivação:** a projeção de fechamento (Sessão 68/D60) e seus derivados respondem "como fecho ESTE
+  ano?", mas sozinhos não dizem se é bom ou ruim. Faltava a leitura de planejamento que ancora o número:
+  "estou no caminho de fechar **melhor que o ano passado**?" — o "próximo possível" do item 6. Sessão
+  escolheu polir o relatório de projeção existente reaproveitando a lógica pura, sem schema novo.
+- **Lógica pura** (`src/lib/finance.ts`): nova `compareYearEndToPrevious(current, previous)` →
+  `YearEndComparison`. Opera sobre **dois `YearEndForecast` já calculados** e reusa `computeDelta` para
+  resultado, receita e despesa **projetados**. Para um ano já encerrado, `projectYearEnd` degrada esses
+  campos para o resultado de competência lançado (o fechamento real), então não precisou de função
+  especial. `hasPreviousData=false` quando o ano anterior não teve movimento → a UI omite o card.
+  **2 testes** novos em `finance.test.ts` (compara result/income/expense com delta+pct+direction;
+  ano anterior vazio → hasPreviousData false e pct nulo). Total do projeto **535** (medição real
+  `vitest run`; eram 533 na main). Ver **DECISIONS.md D63**.
+- **UI** (`src/app/(app)/financas/projecao-ano/page.tsx`): card "vs. {ano anterior}" logo abaixo do
+  resultado projetado, com frase de salto ("deve fechar X acima/abaixo de {ano-1}") e dois mini-cards
+  (Receitas/Despesas) com variação % colorida por bom×ruim (`goodWhenUp`). Helpers `DeltaBadge`,
+  `CompareRow` e `formatPct` locais à página. A query de shows passou a cobrir `year-1..year` (antes só
+  `year`) para a projeção do ano anterior ficar correta ao navegar para anos futuros. Sem schema, sem
+  dependência, sem server action.
+- Definition of Done verde: build (`prisma generate && next build`) OK, typecheck (`tsc --noEmit`)
+  limpo, lint (0 warnings/erros), **535 testes** (`vitest run`), smoke test ao vivo (`next start`):
+  `/login` → 200, `/financas/projecao-ano` sem sessão → 307 (→ `/login`). `npm audit` inalterado (10
+  advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
@@ -1680,11 +1704,14 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `/financas/projecao-ano` + `projectYearEnd`, ver D60; **resultado projetado no Painel** entregue na
    Sessão 69 — card "Projeção de {ano}" em `dashboard/page.tsx`, ver D61; **cenário "com custos fixos"**
    entregue na Sessão 70 — `projectYearEndWithFixedCosts` soma o custo fixo recorrente (D39) aos meses
-   futuros do ano sem despesa lançada, fechando a assimetria da D60 num card opcional, ver D62):
+   futuros do ano sem despesa lançada, fechando a assimetria da D60 num card opcional, ver D62;
+   **projeção vs. ano anterior** entregue na Sessão 71 — `compareYearEndToPrevious` + card "vs. {ano-1}"
+   em `/financas/projecao-ano`, reaproveitando `computeDelta`, ver D63):
    a projeção crua segue sem inventar despesas (número conservador-por-design); o cenário pessimista é
-   opt-in. Próximo possível — comparar a projeção com a meta/ano anterior, um seletor de cenário
-   (otimista = inclui tentativos × conservador = só confirmados), ou trazer o cenário com custos fixos
-   também para o card do Painel.
+   opt-in; a comparação anual ancora o número no fechamento do ano passado. Próximo possível — comparar
+   contra uma **meta** definida pelo usuário (exigiria schema/CRUD de metas), um seletor de cenário
+   (otimista = inclui tentativos × conservador = só confirmados), trazer o cenário com custos fixos
+   também para o card do Painel, ou levar a comparação vs. ano anterior para o card do Painel.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

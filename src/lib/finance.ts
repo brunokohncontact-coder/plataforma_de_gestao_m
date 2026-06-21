@@ -1211,6 +1211,61 @@ export function projectYearEndWithFixedCosts(
   };
 }
 
+// ── Projeção do ano vs. ano anterior ────────────────────────────────────────
+//
+// A projeção crua (`projectYearEnd`) responde "como fecho ESTE ano?", mas sozinha
+// não diz se isso é bom ou ruim. A leitura de planejamento que falta é a
+// comparação: "estou no caminho de fechar melhor que o ano passado?". Para um ano
+// já encerrado, `projectYearEnd` degrada para o resultado de competência lançado
+// (sem shows futuros), que é o fechamento real daquele ano — a base natural de
+// comparação. Layer puro sobre dois forecasts, reaproveitando `computeDelta`.
+
+export interface YearEndComparison {
+  /** Ano da projeção corrente (`current.year`). */
+  year: number;
+  /** Ano-base de comparação (`previous.year`). */
+  previousYear: number;
+  /** Resultado projetado do ano vs. fechamento do ano anterior (subir é bom). */
+  result: MetricDelta;
+  /** Receita projetada do ano vs. receita do ano anterior (subir é bom). */
+  income: MetricDelta;
+  /** Despesa projetada do ano vs. despesa do ano anterior (subir é ruim). */
+  expense: MetricDelta;
+  /**
+   * True quando o ano anterior teve algum movimento (receita ou despesa); senão a
+   * comparação não tem base e a UI deve omiti-la.
+   */
+  hasPreviousData: boolean;
+}
+
+/**
+ * Compara a projeção de fechamento do ano corrente com o fechamento do ano
+ * anterior, respondendo "estou indo melhor que ano passado?".
+ *
+ * - Compara os números PROJETADOS (`projectedResult/Income/Expense`): para o ano
+ *   corrente é a projeção; para um ano passado, `projectYearEnd` já degrada esses
+ *   campos para o resultado de competência lançado — o fechamento real do ano.
+ * - `direction` de cada `MetricDelta` reflete só o sinal; a UI decide o que é bom
+ *   (receita/resultado subir) vs. ruim (despesa subir).
+ * - `hasPreviousData = false` quando o ano anterior não teve receita nem despesa.
+ *
+ * Pura: opera só sobre os dois forecasts já calculados.
+ */
+export function compareYearEndToPrevious(
+  current: YearEndForecast,
+  previous: YearEndForecast,
+): YearEndComparison {
+  return {
+    year: current.year,
+    previousYear: previous.year,
+    result: computeDelta(current.projectedResult, previous.projectedResult),
+    income: computeDelta(current.projectedIncome, previous.projectedIncome),
+    expense: computeDelta(current.projectedExpense, previous.projectedExpense),
+    hasPreviousData:
+      previous.projectedIncome !== 0 || previous.projectedExpense !== 0,
+  };
+}
+
 // ── Vencimento de pendências (F3 — gestão de fluxo de caixa) ────────────────
 
 /** Situação de uma pendência em relação à data de referência (comparada por dia, UTC). */
