@@ -1493,3 +1493,30 @@ contexto, decisão, justificativa e alternativas consideradas.
   já a define.
 - **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5
   high / 1 critical), mesma postura de D6/D8; nenhuma dependência nova.
+
+## D59 — Sumário de salto rápido por subtema no hub de Relatórios (Sessão 67)
+- **Contexto:** com 24 relatórios distribuídos em 8 subtemas (D58), o hub `/relatorios` virou uma
+  página longa. As âncoras de área `#shows`/`#financas`/`#contatos` (D55) já existiam, mas não havia
+  como pular direto a um subtema (ex.: "Recebíveis") sem rolar e procurar o subcabeçalho. Era o
+  "próximo possível" do item 0: "âncoras/salto por subtema, ou um índice de subtemas no topo".
+- **Decisão:** gerar âncoras de subtema e um índice navegável a partir do catálogo (fonte única
+  `REPORT_GROUPS`), e renderizar um `<nav>` "Ir para um tema" no topo do hub. Cada subtema vira uma
+  pílula-âncora com a contagem de relatórios; clicar leva à subseção correspondente.
+- **Lógica pura** (`src/lib/reports.ts`): `subtopicSlug(area, subtopic)` deriva um id de âncora
+  estável `<area>-<subtema-kebab>` (via `normalizeText`, sem acento/caixa) — **prefixado pela área**
+  para que subtemas homônimos de áreas diferentes não colidam. `reportsNavIndex()` devolve, na ordem
+  do hub, cada área (rótulo + âncora + contagem) com seus subtemas (subtema + âncora + contagem),
+  reusando `subgroupEntries`. Ambas testáveis fora do React; testes garantem formato do slug,
+  determinismo, não-colisão entre áreas, soma das contagens e unicidade das âncoras.
+- **UI** (`ReportsBrowser.tsx`): o `<nav>` lê `reportsNavIndex()` e **some durante a busca** (quando
+  a lista já está recortada pelo filtro — manter o índice cheio confundiria). Cada subseção de subtema
+  recebeu `id={subtopicSlug(...)}` + `scroll-mt-24` (mesma classe das âncoras de área) para o salto
+  parar abaixo do cabeçalho fixo.
+- **Alternativas consideradas:** (a) scroll-spy destacando a seção visível — descartado por ora:
+  exige JS de observação no client e ganho marginal para o tamanho atual; fica como próximo passo.
+  (b) índice só de áreas (sem subtemas) — descartado: as áreas já têm âncora desde D55; o valor novo é
+  justamente saltar ao subtema. (c) duplicar a lista de subtemas à mão no componente — descartado:
+  violaria a fonte única; `reportsNavIndex` deriva tudo do catálogo, então novos relatórios entram no
+  índice automaticamente.
+- **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5
+  high / 1 critical), mesma postura de D6/D8; nenhuma dependência nova.

@@ -269,6 +269,62 @@ export function subgroupEntries(entries: readonly ReportEntry[]): ReportSubgroup
   return order.map((subtopic) => ({ subtopic, entries: byTopic.get(subtopic)! }));
 }
 
+// Índice de salto rápido: com mais de duas dezenas de relatórios, o hub ganha
+// um sumário no topo que leva direto a cada subtema (âncoras). A lógica pura
+// abaixo gera os ids de âncora e o índice navegável (área → subtemas), para ser
+// testável e compartilhada entre a renderização das seções e a do sumário.
+
+/**
+ * Id de âncora estável para um subtema dentro de uma área, no formato
+ * `<area>-<subtema-em-kebab>` (sem acento/caixa). Prefixar com a área evita
+ * colisão entre subtemas homônimos de áreas diferentes. Determinístico: a mesma
+ * (área, subtema) sempre gera o mesmo id, para casar o link do sumário com o
+ * `id` da seção renderizada.
+ */
+export function subtopicSlug(area: ReportArea, subtopic: string): string {
+  const kebab = normalizeText(subtopic)
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `${area}-${kebab}`;
+}
+
+export interface ReportNavSubtopic {
+  subtopic: string;
+  /** Id de âncora (igual ao `id` da subseção no hub). */
+  anchor: string;
+  /** Quantos relatórios há neste subtema. */
+  count: number;
+}
+
+export interface ReportNavArea {
+  area: ReportArea;
+  label: string;
+  /** Id de âncora da área (igual ao `id` da seção no hub). */
+  anchor: string;
+  /** Total de relatórios da área. */
+  count: number;
+  subtopics: ReportNavSubtopic[];
+}
+
+/**
+ * Índice navegável do acervo (área → subtemas), na ordem de exibição do hub,
+ * com contagem por subtema e por área e os ids de âncora correspondentes. Serve
+ * de fonte para o sumário de salto rápido no topo do hub.
+ */
+export function reportsNavIndex(): ReportNavArea[] {
+  return REPORT_GROUPS.map((group) => ({
+    area: group.area,
+    label: group.label,
+    anchor: group.area,
+    count: group.entries.length,
+    subtopics: subgroupEntries(group.entries).map((sub) => ({
+      subtopic: sub.subtopic,
+      anchor: subtopicSlug(group.area, sub.subtopic),
+      count: sub.entries.length,
+    })),
+  }));
+}
+
 // Busca textual sobre o acervo: conforme o catálogo cresce (já passou de duas
 // dezenas), o hub ganha um campo que filtra os relatórios pelo texto digitado.
 // Lógica pura (sem React) para ser testável e reutilizável no client component.

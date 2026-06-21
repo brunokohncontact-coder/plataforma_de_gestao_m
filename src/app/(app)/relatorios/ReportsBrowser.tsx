@@ -2,7 +2,13 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { filterReports, reportCount, subgroupEntries } from "@/lib/reports";
+import {
+  filterReports,
+  reportCount,
+  reportsNavIndex,
+  subgroupEntries,
+  subtopicSlug,
+} from "@/lib/reports";
 
 // Hub de relatórios com busca textual ao vivo. A lista é estática (catálogo
 // de `reports.ts`); o filtro roda no cliente sobre a lógica pura `filterReports`
@@ -10,6 +16,7 @@ import { filterReports, reportCount, subgroupEntries } from "@/lib/reports";
 export default function ReportsBrowser() {
   const [query, setQuery] = useState("");
   const total = reportCount();
+  const navIndex = reportsNavIndex();
 
   const groups = useMemo(() => filterReports(query), [query]);
   const matched = useMemo(
@@ -41,6 +48,33 @@ export default function ReportsBrowser() {
         )}
       </div>
 
+      {/* Sumário de salto rápido por subtema — atalho para o acervo crescente.
+          Some durante a busca, quando a lista já está recortada. */}
+      {!filtering && (
+        <nav aria-label="Ir para um tema" className="card space-y-3">
+          {navIndex.map((area) => (
+            <div key={area.area} className="flex flex-wrap items-baseline gap-x-2 gap-y-1.5">
+              <a
+                href={`#${area.anchor}`}
+                className="text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-brand-700"
+              >
+                {area.label}
+              </a>
+              {area.subtopics.map((sub) => (
+                <a
+                  key={sub.anchor}
+                  href={`#${sub.anchor}`}
+                  className="rounded-full border border-gray-200 px-2.5 py-0.5 text-xs text-gray-600 transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700"
+                >
+                  {sub.subtopic}
+                  <span className="ml-1 text-gray-400">{sub.count}</span>
+                </a>
+              ))}
+            </div>
+          ))}
+        </nav>
+      )}
+
       {groups.length === 0 ? (
         <div className="card text-center text-sm text-gray-500">
           Nenhum relatório casa com{" "}
@@ -53,7 +87,11 @@ export default function ReportsBrowser() {
               {group.label}
             </h2>
             {subgroupEntries(group.entries).map((sub) => (
-              <div key={sub.subtopic} className="space-y-2">
+              <div
+                key={sub.subtopic}
+                id={subtopicSlug(group.area, sub.subtopic)}
+                className="scroll-mt-24 space-y-2"
+              >
                 <h3 className="text-xs font-medium uppercase tracking-wide text-gray-400">
                   {sub.subtopic}
                 </h3>
