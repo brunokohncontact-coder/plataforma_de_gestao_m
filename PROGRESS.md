@@ -1650,6 +1650,22 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   `/login` → 200, `/financas/projecao-ano` sem sessão → 307 (→ `/login`). `npm audit` inalterado (10
   advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
 
+### Sessão 72 — Comparação vs. ano anterior no card de projeção do Painel (D64)
+- **UI** (`src/app/(app)/dashboard/page.tsx`): o card "Projeção de {ano}" ganhou uma **pílula compacta
+  "▲/▼ X% vs. {ano-1}"** ao lado do resultado projetado, levando a leitura de planejamento da Sessão 71
+  (D63) para a primeira tela — "estou indo melhor que ano passado?" sem precisar abrir o relatório.
+  Reaproveita 100% a lógica pura `compareYearEndToPrevious` (D63): chama `projectYearEnd` também para
+  `currentYear - 1` sobre os mesmos `shows`/`txs` já carregados pelo dashboard (zero consulta extra,
+  pois a query do Painel já traz todos os shows do usuário). A pílula só aparece quando
+  `comparison.hasPreviousData` (o ano anterior teve movimento); o `title` mostra o fechamento do ano-1.
+  Helper local `YoYBadge` (verde quando o resultado sobe, vermelho quando desce, neutro no empate).
+- Sem schema, sem dependência, sem server action, **sem novos testes** (mudança de UI que reusa lógica
+  pura já coberta por `finance.test.ts`; mesma postura das Sessões 69/71). Ver **DECISIONS.md D64**.
+- Definition of Done verde: build (`prisma generate && next build`) OK, typecheck (`tsc --noEmit`)
+  limpo, lint (0 warnings/erros), **535 testes** (`vitest run`), smoke test ao vivo (`next start`):
+  `/login` → 200, `/dashboard` sem sessão → 307 (→ `/login`). `npm audit` inalterado (10 advisories:
+  4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
@@ -1706,12 +1722,14 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    entregue na Sessão 70 — `projectYearEndWithFixedCosts` soma o custo fixo recorrente (D39) aos meses
    futuros do ano sem despesa lançada, fechando a assimetria da D60 num card opcional, ver D62;
    **projeção vs. ano anterior** entregue na Sessão 71 — `compareYearEndToPrevious` + card "vs. {ano-1}"
-   em `/financas/projecao-ano`, reaproveitando `computeDelta`, ver D63):
+   em `/financas/projecao-ano`, reaproveitando `computeDelta`, ver D63; **comparação vs. ano anterior
+   no card do Painel** entregue na Sessão 72 — pílula "▲/▼ X% vs. {ano-1}" no card "Projeção de {ano}"
+   reaproveitando `compareYearEndToPrevious`, ver D64):
    a projeção crua segue sem inventar despesas (número conservador-por-design); o cenário pessimista é
    opt-in; a comparação anual ancora o número no fechamento do ano passado. Próximo possível — comparar
    contra uma **meta** definida pelo usuário (exigiria schema/CRUD de metas), um seletor de cenário
-   (otimista = inclui tentativos × conservador = só confirmados), trazer o cenário com custos fixos
-   também para o card do Painel, ou levar a comparação vs. ano anterior para o card do Painel.
+   (otimista = inclui tentativos × conservador = só confirmados), ou trazer o cenário com custos fixos
+   também para o card do Painel.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)
