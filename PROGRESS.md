@@ -117,7 +117,10 @@ as funções puras `computeDelta` e `compareSummaries` (em `src/lib/finance.ts`)
 variação (absoluta + %, com sentido up/down/flat) das quatro métricas do mês frente ao mês
 anterior, e cada card de número ganha uma linha "▲/▼ R$ X (Y%)" colorida por bom/ruim
 (receita/saldo/caixa subindo = verde; despesa subindo = vermelho), respondendo "estou melhor
-que o mês passado?" (ver D33). **366 testes** verdes.
+que o mês passado?" (ver D33). **366 testes** verdes. Sessão 67 entregou o **sumário de salto
+rápido por subtema** no hub de Relatórios (`/relatorios`): `subtopicSlug` + `reportsNavIndex`
+em `src/lib/reports.ts` geram âncoras estáveis e o índice navegável, e o `<nav>` "Ir para um tema"
+no topo lista cada subtema como pílula-âncora com contagem (ver D59). **521 testes** verdes.
 Sessão 43 entregou o **comparativo ano a ano (YoY) no Resumo anual** (`/financas/anual`): a função
 pura `compareAnnualSummaries` (em `src/lib/finance.ts`) aplica `computeDelta` aos três totais do ano
 e a cada mês casado por `monthIndex` ao mesmo mês do ano anterior; a página computa o resumo do ano
@@ -1549,17 +1552,42 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   "Fechamentos") — verificado. `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical;
   nenhuma dependência nova nem mudança de schema — ver D6/D8).
 
+### Sessão 67 — 2026-06-21 (Fase 1 — sumário de salto rápido por subtema no hub)
+- **Motivação:** fechar o "próximo possível" do item 0 ("âncoras/salto por subtema, ou um índice de
+  subtemas no topo de cada área conforme o acervo cresça"). Com 24 relatórios em 8 subtemas, o hub
+  `/relatorios` virou uma página longa; faltava um atalho para pular direto ao tema desejado sem rolar.
+  Sessão escolheu polir o hub existente em vez de abrir o 25º relatório.
+- **Lógica pura** (`src/lib/reports.ts`): nova `subtopicSlug(area, subtopic)` gera um id de âncora
+  estável `<area>-<subtema-kebab>` (sem acento/caixa, prefixado pela área para não colidir entre áreas
+  homônimas) e `reportsNavIndex()` devolve o índice navegável (área → subtemas) com contagem por
+  subtema/área e os ids de âncora. **8 testes** novos em `reports.test.ts` (subtopicSlug: formato kebab,
+  determinismo, não-colisão entre áreas, sem hífen nas pontas; reportsNavIndex: ordem/rótulo/âncora da
+  área, soma das contagens, casamento com `subgroupEntries`, âncoras únicas via subtopicSlug). Total do
+  projeto **521** (medição real `vitest run`; eram 513 na main). Ver **DECISIONS.md D59**.
+- **UI** (`src/app/(app)/relatorios/ReportsBrowser.tsx`): novo `<nav>` "Ir para um tema" no topo,
+  renderizado a partir de `reportsNavIndex()`, com a área como rótulo e cada subtema como uma "pílula"
+  clicável (`<a href="#âncora">`) que mostra a contagem; **some durante a busca** (quando a lista já está
+  recortada). Cada subseção de subtema ganhou `id={subtopicSlug(...)}` + `scroll-mt-24` para receber o
+  salto. As âncoras de área `#shows`/`#financas`/`#contatos` (D55) seguem intactas. Sem schema, sem
+  dependência, sem server action.
+- Definition of Done verde: build (`prisma generate && next build`) OK, typecheck (`tsc --noEmit`)
+  limpo, lint (0 warnings/erros), **521 testes** (`vitest run`), smoke test ao vivo (`next start`):
+  `/login` → 200, `/relatorios` sem sessão → 307. `npm audit` inalterado (10 advisories: 4 moderate /
+  5 high / 1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
    link "Relatórios" ancorado na seção da área, ver D55; **busca textual no hub** entregue na
    Sessão 64 — `filterReports`/`countFilteredReports` + `ReportsBrowser.tsx`, ver D56;
    **agrupamento por subtema** dentro de cada área entregue na Sessão 66 — `subtopic` +
-   `subgroupEntries` em `reports.ts` + subcabeçalhos `<h3>` em `ReportsBrowser.tsx`, ver D58):
-   catálogo central dos 24 relatórios na navbar, com busca ao vivo e cards agrupados por subtema.
-   Ao criar um relatório novo, **registrá-lo em `REPORT_GROUPS`** (com `subtopic`) para aparecer no
-   hub (e na busca) automaticamente. Próximo possível — âncoras/salto por subtema, ou um índice de
-   subtemas no topo de cada área conforme o acervo cresça.
+   `subgroupEntries` em `reports.ts` + subcabeçalhos `<h3>` em `ReportsBrowser.tsx`, ver D58;
+   **sumário de salto rápido por subtema** entregue na Sessão 67 — `subtopicSlug` + `reportsNavIndex`
+   em `reports.ts` + `<nav>` "Ir para um tema" com pílulas-âncora em `ReportsBrowser.tsx`, ver D59):
+   catálogo central dos 24 relatórios na navbar, com busca ao vivo, cards agrupados por subtema e
+   índice de salto rápido no topo. Ao criar um relatório novo, **registrá-lo em `REPORT_GROUPS`**
+   (com `subtopic`) para aparecer no hub, na busca e no índice automaticamente. Próximo possível —
+   destacar a área/subtema visível ao rolar (scroll-spy) ou um contador de "novos" relatórios.
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)
 2. **Calendário — evoluções**: arrastar/soltar para remarcar; mini-calendário de salto rápido.

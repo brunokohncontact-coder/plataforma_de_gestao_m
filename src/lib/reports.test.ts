@@ -6,6 +6,8 @@ import {
   filterReports,
   countFilteredReports,
   subgroupEntries,
+  subtopicSlug,
+  reportsNavIndex,
   type ReportEntry,
 } from "./reports";
 
@@ -130,6 +132,72 @@ describe("subgroupEntries", () => {
       const flat = subs.flatMap((s) => s.entries);
       expect(flat).toEqual([...g.entries]);
     }
+  });
+});
+
+describe("subtopicSlug", () => {
+  it("gera id kebab com prefixo da área, sem acento/caixa", () => {
+    expect(subtopicSlug("shows", "Rentabilidade & preço")).toBe(
+      "shows-rentabilidade-preco",
+    );
+    expect(subtopicSlug("financas", "Custos & metas")).toBe("financas-custos-metas");
+    expect(subtopicSlug("contatos", "Quem move a carreira")).toBe(
+      "contatos-quem-move-a-carreira",
+    );
+  });
+
+  it("é determinístico para a mesma (área, subtema)", () => {
+    expect(subtopicSlug("shows", "Recebíveis")).toBe(subtopicSlug("shows", "Recebíveis"));
+  });
+
+  it("prefixa com a área, então o mesmo subtema em áreas distintas não colide", () => {
+    expect(subtopicSlug("shows", "Mesmo")).not.toBe(subtopicSlug("financas", "Mesmo"));
+  });
+
+  it("não deixa hífen sobrando nas pontas", () => {
+    const slug = subtopicSlug("shows", "  & Recebíveis! ");
+    expect(slug).toBe("shows-recebiveis");
+    expect(slug.endsWith("-")).toBe(false);
+  });
+});
+
+describe("reportsNavIndex", () => {
+  it("segue a ordem dos grupos e casa rótulo/âncora da área", () => {
+    const index = reportsNavIndex();
+    expect(index.map((a) => a.area)).toEqual(REPORT_GROUPS.map((g) => g.area));
+    for (const area of index) {
+      const group = REPORT_GROUPS.find((g) => g.area === area.area)!;
+      expect(area.label).toBe(group.label);
+      expect(area.anchor).toBe(group.area);
+      expect(area.count).toBe(group.entries.length);
+    }
+  });
+
+  it("a contagem da área é a soma das contagens dos seus subtemas", () => {
+    for (const area of reportsNavIndex()) {
+      const sum = area.subtopics.reduce((n, s) => n + s.count, 0);
+      expect(sum).toBe(area.count);
+    }
+  });
+
+  it("os subtemas e contagens batem com subgroupEntries de cada grupo", () => {
+    for (const area of reportsNavIndex()) {
+      const group = REPORT_GROUPS.find((g) => g.area === area.area)!;
+      const subs = subgroupEntries(group.entries);
+      expect(area.subtopics.map((s) => s.subtopic)).toEqual(subs.map((s) => s.subtopic));
+      expect(area.subtopics.map((s) => s.count)).toEqual(subs.map((s) => s.entries.length));
+    }
+  });
+
+  it("toda âncora de subtema usa subtopicSlug e é única no acervo", () => {
+    const anchors: string[] = [];
+    for (const area of reportsNavIndex()) {
+      for (const sub of area.subtopics) {
+        expect(sub.anchor).toBe(subtopicSlug(area.area, sub.subtopic));
+        anchors.push(sub.anchor);
+      }
+    }
+    expect(new Set(anchors).size).toBe(anchors.length);
   });
 });
 
