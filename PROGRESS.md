@@ -121,6 +121,15 @@ que o mês passado?" (ver D33). **366 testes** verdes. Sessão 67 entregou o **s
 rápido por subtema** no hub de Relatórios (`/relatorios`): `subtopicSlug` + `reportsNavIndex`
 em `src/lib/reports.ts` geram âncoras estáveis e o índice navegável, e o `<nav>` "Ir para um tema"
 no topo lista cada subtema como pílula-âncora com contagem (ver D59). **521 testes** verdes.
+Sessão 68 entregou a **projeção de fechamento do ano** (`/financas/projecao-ano`): a função pura
+`projectYearEnd` (em `src/lib/finance.ts`) soma o **caixa realizado** do ano, as **pendências já
+lançadas** e os **cachês de shows futuros do ano ainda não lançados** nas finanças — abatendo de cada
+cachê a receita já vinculada ao show, para não contar duas vezes — projetando o resultado do ano
+inteiro ("vou fechar no azul?"). De propósito a projeção é assimétrica: projeta a receita futura (a
+agenda é compromisso firme) mas **não inventa despesas futuras** (só realizado + pendência lançada;
+custos recorrentes não lançados ficam de fora — ver Custos fixos). Página com navegação por ano,
+hero do resultado projetado e a composição de receitas/despesas em barras (ver D60). Registrado no
+hub de Relatórios (Finanças → Fechamentos). **527 testes** verdes.
 Sessão 43 entregou o **comparativo ano a ano (YoY) no Resumo anual** (`/financas/anual`): a função
 pura `compareAnnualSummaries` (em `src/lib/finance.ts`) aplica `computeDelta` aos três totais do ano
 e a cada mês casado por `monthIndex` ao mesmo mês do ano anterior; a página computa o resumo do ano
@@ -1575,6 +1584,33 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   `/login` → 200, `/relatorios` sem sessão → 307. `npm audit` inalterado (10 advisories: 4 moderate /
   5 high / 1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
 
+### Sessão 68 — 2026-06-21 (Fase 1 — projeção de fechamento do ano)
+- **Motivação:** os relatórios financeiros até aqui olham para trás (Resumo anual, Sazonalidade) ou só
+  para frente em peças isoladas (Receita agendada = só cachês futuros; Projeção de caixa = saldo mês a
+  mês). Faltava a leitura que junta tudo numa frase: "se nada mudar, como fecho o ANO?". É a pergunta de
+  planejamento que decide investir, segurar custo ou correr atrás de show. Sessão escolheu um relatório
+  financeiro novo de alto valor, reaproveitando a lógica pura existente.
+- **Lógica pura** (`src/lib/finance.ts`): nova `projectYearEnd(txs, shows, year, {now})` → `YearEndForecast`.
+  Soma três componentes do ano: (1) **realizado** = transações `received=true` (receita recebida /
+  despesa paga); (2) **pendente lançado** = transações `received=false`; (3) **cachê agendado** = shows
+  futuros do ano (data ≥ hoje, não CANCELLED, fee>0) com o saldo `max(0, fee − receita já vinculada ao
+  show)` — abatendo de QUALQUER período para não contar duas vezes (reusa `isConfirmedBooking` p/
+  separar confirmado×tentativo). `projectedIncome = realizado+pendente+agendado`; `projectedExpense =
+  realizado+pendente` (assimetria deliberada: não inventa custo futuro). **6 testes** novos em
+  `finance.test.ts` (soma das 3 partes; abatimento sem dupla contagem; ignora passado/cancelado/sem-fee;
+  show de hoje conta; recorte por ano; ano passado degrada p/ resultado lançado). Total do projeto
+  **527** (medição real `vitest run`; eram 521 na main). Ver **DECISIONS.md D60**.
+- **UI** (`src/app/(app)/financas/projecao-ano/page.tsx`): navegação por ano (←/Ano atual/→), hero do
+  resultado projetado (borda/cor verde×vermelho) com o caixa realizado de hoje como referência, e dois
+  cards de composição (Receitas: já recebido + a receber lançado + cachês agendados; Despesas: já pago +
+  a pagar lançado) em barras com %, mais nota explicando a assimetria e link para Custos fixos. Carrega
+  todas as transações (as do ano somam; as de show abatem) + shows do ano, em `Promise.all`. Registrado
+  no hub (`reports.ts`, Finanças → Fechamentos, ícone 🔭). Sem schema, sem dependência, sem server action.
+- Definition of Done verde: build (`prisma generate && next build`) OK, typecheck (`tsc --noEmit`)
+  limpo, lint (0 warnings/erros), **527 testes** (`vitest run`), smoke test ao vivo (`next start`):
+  `/` → 200, `/financas/projecao-ano` sem sessão → 307 (→ `/login`). `npm audit` inalterado (10
+  advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
@@ -1625,6 +1661,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
 4. **Sessões/segurança**: invalidação ao trocar a senha entregue na Sessão 26
    (`passwordChangedAt` + `isSessionFresh`, ver D17). Evoluções possíveis: "encerrar sessão
    específica" (lista de sessões revogáveis) e recuperação de senha por e-mail — adiáveis.
+6. **Planejamento / projeção — evoluções** (projeção de fechamento do ano entregue na Sessão 68,
+   `/financas/projecao-ano` + `projectYearEnd`, ver D60): hoje a projeção não estima custos futuros não
+   lançados (assimetria deliberada). Próximo possível — trazer o resultado projetado para o Painel,
+   estimar o custo recorrente restante do ano a partir de `recurringExpenses` (cenário "com custos
+   fixos") como linha opcional, comparar a projeção com a meta/ano anterior, ou um seletor de cenário
+   (otimista = inclui tentativos × conservador = só confirmados).
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

@@ -972,6 +972,159 @@ export function availableYears(txs: TxLike[]): number[] {
   return Array.from(set).sort((a, b) => b - a);
 }
 
+// ── Projeção de fechamento do ano (vou fechar no azul?) ─────────────────────
+//
+// Junta três peças que hoje vivem isoladas — o caixa já realizado, as pendências
+// já lançadas e os cachês de shows futuros que ainda NÃO viraram receita nas
+// finanças — numa projeção do resultado do ano inteiro. Responde "se nada mudar,
+// como fecho o ano?".
+//
+// Por honestidade, a projeção é assimétrica de propósito: ela projeta a RECEITA
+// futura (a agenda é um compromisso firme de dinheiro a entrar), mas NÃO inventa
+// despesas futuras — as despesas projetadas são só as já realizadas + as
+// pendências já lançadas. Custos recorrentes futuros ainda não lançados ficam de
+// fora (veja o relatório de Custos fixos para estimá-los). Ver D60. Pura.
+
+/** Forma mínima de show para a projeção de fechamento do ano. */
+export interface YearEndShowLike {
+  id: string;
+  fee: number; // cachê acordado, centavos
+  status?: string;
+  date: Date | string;
+}
+
+export interface YearEndForecast {
+  /** Ano de referência. */
+  year: number;
+  /** True se `year` é o ano corrente de `now` (a projeção de futuro só vale aí). */
+  isCurrentYear: boolean;
+
+  // ── Receitas ──
+  /** Receita já recebida no ano (INCOME, received=true) — o que entrou no caixa. */
+  realizedIncome: number;
+  /** Receita lançada e ainda pendente no ano (INCOME, received=false). */
+  pendingIncome: number;
+  /**
+   * Cachês de shows futuros do ano ainda NÃO lançados nas finanças (o que a
+   * agenda promete além do que já está nas finanças). Abatido por show da
+   * receita já lançada para o show, para não contar duas vezes.
+   */
+  scheduledIncome: number;
+  /** Parte de `scheduledIncome` de shows confirmados/realizados (CONFIRMED/PLAYED). */
+  scheduledConfirmed: number;
+  /** Parte de `scheduledIncome` de shows ainda tentativos (PROPOSED/sem status). */
+  scheduledTentative: number;
+  /** realizedIncome + pendingIncome + scheduledIncome. */
+  projectedIncome: number;
+
+  // ── Despesas (não projeta custos futuros não lançados) ──
+  /** Despesa já paga no ano (EXPENSE, received=true). */
+  realizedExpense: number;
+  /** Despesa lançada e ainda pendente no ano (EXPENSE, received=false). */
+  pendingExpense: number;
+  /** realizedExpense + pendingExpense. */
+  projectedExpense: number;
+
+  // ── Resultados ──
+  /** Caixa já realizado no ano (realizedIncome − realizedExpense). */
+  realizedResult: number;
+  /** projectedIncome − projectedExpense — o fechamento projetado do ano. */
+  projectedResult: number;
+
+  /** Nº de shows futuros do ano que entraram com cachê ainda não lançado. */
+  scheduledShowCount: number;
+}
+
+/**
+ * Projeta o fechamento financeiro de um ano somando o realizado, o pendente já
+ * lançado e os cachês de shows futuros ainda não lançados nas finanças.
+ *
+ * - Transações/shows do ano = aqueles cujo mês (UTC) cai em `year`, mesma
+ *   convenção de `annualSummary`.
+ * - "Show futuro" = dia do show `>= hoje` (UTC), não CANCELLED e com cachê > 0.
+ * - Para não contar duas vezes, o cachê agendado de cada show é abatido da
+ *   receita (INCOME) já vinculada a ele em QUALQUER período (recebida ou
+ *   pendente): só o saldo `max(0, fee − lançado)` entra como `scheduledIncome`.
+ * - Despesas NÃO são projetadas para o futuro (só realizado + pendente lançado).
+ * - Para um ano passado não há shows futuros, então a projeção degrada para o
+ *   resultado de competência já lançado do ano. `now` injetável para testes.
+ */
+export function projectYearEnd(
+  txs: TxLike[],
+  shows: YearEndShowLike[],
+  year: number,
+  opts: { now?: Date | string } = {},
+): YearEndForecast {
+  const now = opts.now ?? new Date();
+  const todayMs = utcMidnight(now);
+  const isCurrentYear = Number(monthKey(now).slice(0, 4)) === year;
+  const prefix = `${year}-`;
+
+  let realizedIncome = 0;
+  let pendingIncome = 0;
+  let realizedExpense = 0;
+  let pendingExpense = 0;
+
+  // Receita (INCOME) já lançada por show em qualquer período — recebida ou
+  // pendente — para abater do cachê agendado e evitar contagem dupla.
+  const bookedIncomeByShow = new Map<string, number>();
+
+  for (const t of txs) {
+    if (t.type === "INCOME" && t.showId != null) {
+      bookedIncomeByShow.set(
+        t.showId,
+        (bookedIncomeByShow.get(t.showId) ?? 0) + t.amount,
+      );
+    }
+    if (!monthKey(t.date).startsWith(prefix)) continue;
+    if (t.type === "INCOME") {
+      if (t.received) realizedIncome += t.amount;
+      else pendingIncome += t.amount;
+    } else {
+      if (t.received) realizedExpense += t.amount;
+      else pendingExpense += t.amount;
+    }
+  }
+
+  let scheduledIncome = 0;
+  let scheduledConfirmed = 0;
+  let scheduledTentative = 0;
+  let scheduledShowCount = 0;
+  for (const s of shows) {
+    if (s.status === "CANCELLED") continue;
+    if (s.fee <= 0) continue;
+    if (!monthKey(s.date).startsWith(prefix)) continue; // do ano
+    if (utcMidnight(s.date) < todayMs) continue; // futuro (>= hoje)
+    const booked = bookedIncomeByShow.get(s.id) ?? 0;
+    const remaining = Math.max(0, s.fee - booked);
+    if (remaining <= 0) continue;
+    scheduledIncome += remaining;
+    if (isConfirmedBooking(s.status)) scheduledConfirmed += remaining;
+    else scheduledTentative += remaining;
+    scheduledShowCount += 1;
+  }
+
+  const projectedIncome = realizedIncome + pendingIncome + scheduledIncome;
+  const projectedExpense = realizedExpense + pendingExpense;
+
+  return {
+    year,
+    isCurrentYear,
+    realizedIncome,
+    pendingIncome,
+    scheduledIncome,
+    scheduledConfirmed,
+    scheduledTentative,
+    projectedIncome,
+    realizedExpense,
+    pendingExpense,
+    projectedExpense,
+    realizedResult: realizedIncome - realizedExpense,
+    projectedResult: projectedIncome - projectedExpense,
+    scheduledShowCount,
+  };
+}
+
 // ── Vencimento de pendências (F3 — gestão de fluxo de caixa) ────────────────
 
 /** Situação de uma pendência em relação à data de referência (comparada por dia, UTC). */
