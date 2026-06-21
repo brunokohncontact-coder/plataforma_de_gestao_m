@@ -29,6 +29,7 @@ import {
   availableYears,
   projectYearEnd,
   projectYearEndWithFixedCosts,
+  compareYearEndToPrevious,
   forecastBookedRevenue,
   reconcileShowFees,
   bucketReceivablesByAge,
@@ -1504,6 +1505,57 @@ describe("projectYearEndWithFixedCosts", () => {
     const s = projectYearEndWithFixedCosts(f, [], 1_000_00, { now: dec });
     expect(s.monthsEstimated).toBe(0);
     expect(s.estimatedRemainingFixedCost).toBe(0);
+  });
+});
+
+describe("compareYearEndToPrevious", () => {
+  const now = "2026-06-15T12:00:00.000Z"; // hoje = 2026-06-15 (UTC)
+
+  it("compara resultado/receita/despesa projetados do ano com o ano anterior", () => {
+    const txs: TxLike[] = [
+      // Ano anterior (2025), já encerrado: fechou em 400 (receita) − 100 (despesa).
+      tx({ type: "INCOME", amount: 400_00, received: true, date: "2025-03-10T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 100_00, received: true, date: "2025-04-10T00:00:00.000Z" }),
+      // Ano corrente (2026): 300 recebido + 200 agendado = 500 receita; 80 despesa.
+      tx({ type: "INCOME", amount: 300_00, received: true, date: "2026-02-10T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 80_00, received: true, date: "2026-03-10T00:00:00.000Z" }),
+    ];
+    const showsCurrent = [
+      { id: "s1", fee: 200_00, status: "CONFIRMED", date: "2026-09-01T00:00:00.000Z" },
+    ];
+    const current = projectYearEnd(txs, showsCurrent, 2026, { now });
+    const previous = projectYearEnd(txs, [], 2025, { now });
+
+    const c = compareYearEndToPrevious(current, previous);
+    expect(c.year).toBe(2026);
+    expect(c.previousYear).toBe(2025);
+    expect(c.hasPreviousData).toBe(true);
+
+    // Resultado: 2026 projetado = 500 − 80 = 420; 2025 fechado = 400 − 100 = 300.
+    expect(c.result.current).toBe(420_00);
+    expect(c.result.previous).toBe(300_00);
+    expect(c.result.delta).toBe(120_00);
+    expect(c.result.direction).toBe("up");
+    expect(c.result.pct).toBeCloseTo(0.4, 5); // 120/300
+
+    // Receita: 500 vs 400.
+    expect(c.income.delta).toBe(100_00);
+    // Despesa: 80 vs 100 → caiu (bom, mas direction é só o sinal).
+    expect(c.expense.delta).toBe(-20_00);
+    expect(c.expense.direction).toBe("down");
+  });
+
+  it("sem movimento no ano anterior: hasPreviousData false e pct nulo", () => {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 100_00, received: true, date: "2026-02-10T00:00:00.000Z" }),
+    ];
+    const current = projectYearEnd(txs, [], 2026, { now });
+    const previous = projectYearEnd(txs, [], 2025, { now });
+
+    const c = compareYearEndToPrevious(current, previous);
+    expect(c.hasPreviousData).toBe(false);
+    expect(c.result.previous).toBe(0);
+    expect(c.result.pct).toBeNull(); // sem base anterior
   });
 });
 

@@ -4,7 +4,9 @@ import { prisma } from "@/lib/prisma";
 import {
   projectYearEnd,
   projectYearEndWithFixedCosts,
+  compareYearEndToPrevious,
   recurringExpenses,
+  type MetricDelta,
   type TxLike,
   type YearEndShowLike,
 } from "@/lib/finance";
@@ -42,7 +44,8 @@ export default async function YearEndForecastPage({
 
   // Todas as transações entram: as do ano alimentam os totais, e as vinculadas
   // a shows (de qualquer período) abatem o cachê agendado para não contar duas
-  // vezes. Os shows do ano fornecem a receita futura ainda não lançada.
+  // vezes. Os shows do ano (e do ano anterior, p/ a comparação) fornecem a
+  // receita futura ainda não lançada.
   const [transactions, shows] = await Promise.all([
     prisma.transaction.findMany({
       where: { userId: user.id },
@@ -52,7 +55,7 @@ export default async function YearEndForecastPage({
       where: {
         userId: user.id,
         date: {
-          gte: new Date(Date.UTC(year, 0, 1)),
+          gte: new Date(Date.UTC(year - 1, 0, 1)),
           lt: new Date(Date.UTC(year + 1, 0, 1)),
         },
       },
@@ -70,6 +73,12 @@ export default async function YearEndForecastPage({
   }));
 
   const f = projectYearEnd(txs, shows as YearEndShowLike[], year);
+
+  // Comparação com o fechamento do ano anterior: "estou indo melhor que ano
+  // passado?". Para um ano já encerrado, projectYearEnd degrada para o resultado
+  // de competência lançado (sem shows futuros) — o fechamento real (ver D63).
+  const prev = projectYearEnd(txs, shows as YearEndShowLike[], year - 1);
+  const comparison = compareYearEndToPrevious(f, prev);
 
   // Cenário "com custos fixos": estima o custo fixo recorrente que ainda deve
   // se repetir até dezembro (D39) e o soma às despesas projetadas, dando uma
@@ -168,6 +177,54 @@ export default async function YearEndForecastPage({
               )}
             </p>
           </section>
+
+          {/* Comparação com o fechamento do ano anterior (D63) */}
+          {comparison.hasPreviousData && (
+            <section className="card">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h2 className="font-semibold">vs. {comparison.previousYear}</h2>
+                <DeltaBadge delta={comparison.result} goodWhenUp />
+              </div>
+              <p className="text-sm text-gray-600">
+                {comparison.result.delta === 0 ? (
+                  <>
+                    A projeção de {year} ({formatMoney(f.projectedResult)}) está em
+                    linha com o fechamento de {comparison.previousYear} (
+                    {formatMoney(comparison.result.previous)}).
+                  </>
+                ) : (
+                  <>
+                    Se nada mudar, {year} deve fechar{" "}
+                    <span
+                      className={
+                        "font-medium " +
+                        (comparison.result.delta > 0
+                          ? "text-emerald-600"
+                          : "text-red-600")
+                      }
+                    >
+                      {formatMoney(Math.abs(comparison.result.delta))}{" "}
+                      {comparison.result.delta > 0 ? "acima" : "abaixo"}
+                    </span>{" "}
+                    do fechamento de {comparison.previousYear} (
+                    {formatMoney(comparison.result.previous)}).
+                  </>
+                )}
+              </p>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <CompareRow
+                  label="Receitas"
+                  delta={comparison.income}
+                  goodWhenUp
+                />
+                <CompareRow
+                  label="Despesas"
+                  delta={comparison.expense}
+                  goodWhenUp={false}
+                />
+              </div>
+            </section>
+          )}
 
           {/* Cenário com custos fixos (D62): mais conservador que a projeção crua */}
           {scenario.applicable && scenario.estimatedRemainingFixedCost > 0 && (
@@ -300,6 +357,60 @@ export default async function YearEndForecastPage({
           </p>
         </>
       )}
+    </div>
+  );
+}
+
+/** Formata a variação relativa de um MetricDelta como "+25%", "−10%" ou "novo". */
+function formatPct(delta: MetricDelta): string {
+  if (delta.pct === null) return "novo";
+  if (delta.delta === 0) return "0%";
+  const sign = delta.delta > 0 ? "+" : "−";
+  return `${sign}${Math.round(Math.abs(delta.pct) * 100)}%`;
+}
+
+/** Pílula com a variação % do delta, colorida conforme bom/ruim para a métrica. */
+function DeltaBadge({
+  delta,
+  goodWhenUp,
+}: {
+  delta: MetricDelta;
+  goodWhenUp: boolean;
+}) {
+  const good = delta.delta === 0 ? null : delta.delta > 0 === goodWhenUp;
+  const tone =
+    good === null
+      ? "bg-gray-100 text-gray-600"
+      : good
+        ? "bg-emerald-100 text-emerald-700"
+        : "bg-red-100 text-red-700";
+  return (
+    <span className={"rounded-full px-2 py-0.5 text-xs font-medium " + tone}>
+      {formatPct(delta)}
+    </span>
+  );
+}
+
+/** Linha de uma métrica na comparação: rótulo, valor atual e variação vs. anterior. */
+function CompareRow({
+  label,
+  delta,
+  goodWhenUp,
+}: {
+  label: string;
+  delta: MetricDelta;
+  goodWhenUp: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-gray-100 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm text-gray-600">{label}</span>
+        <DeltaBadge delta={delta} goodWhenUp={goodWhenUp} />
+      </div>
+      <p className="mt-1 font-semibold">{formatMoney(delta.current)}</p>
+      <p className="text-xs text-gray-400">
+        ano anterior: {formatMoney(delta.previous)}
+      </p>
     </div>
   );
 }
