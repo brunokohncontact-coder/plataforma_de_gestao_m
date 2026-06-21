@@ -1741,6 +1741,22 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   `/financas/projecao-ano` e `?cenario=conservador` sem sessão → 307 (→ `/login`). `npm audit` inalterado
   (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
 
+### Sessão 77 — Piso "pior caso" no card de projeção do Painel (D69)
+- **UI** (`src/app/(app)/dashboard/page.tsx`): o card "Projeção de {ano}" ganhou uma **linha compacta**
+  "Pior caso: {resultado}" abaixo das linhas "Só confirmados" (D67) e "Com custos fixos" (D65),
+  reaproveitando `projectYearEndPessimistic(forecast, txs, recurringExpenses(txs).estimatedMonthlyFixedCost)`
+  (D68) sobre o forecast já computado — zero consulta extra. Aparece só quando AMBOS os eixos conservadores
+  mordem (`pessimistic.droppedTentative > 0 && pessimistic.estimatedRemainingFixedCost > 0`); sem um deles
+  o pior caso coincidiria com uma das duas linhas acima. Linha rose-700 (mais forte que o âmbar dos custos
+  fixos e o cinza do "só confirmados"), espelhando a borda rose-500 do card de detalhe em
+  `/financas/projecao-ano`. Detalha receita (sem o cachê a confirmar) e despesa (+custo fixo somado). O
+  card segue server-side (`<Link>` único). Sem schema, dependência, server action nem teste novo (a lógica
+  pura `projectYearEndPessimistic` já é coberta por `finance.test.ts` — 4 testes da D68).
+- Definition of Done verde: build (`prisma generate && next build`) OK, typecheck (`tsc --noEmit`) limpo,
+  lint (0 warnings/erros), **543 testes** (`vitest run`), smoke test ao vivo (`next start`): `/login` → 200,
+  `/dashboard` sem sessão → 307 (→ `/login`). `npm audit` inalterado (10 advisories: 4 moderate / 5 high /
+  1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8). Ver **DECISIONS.md D69**.
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
@@ -1807,13 +1823,15 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    entregue na Sessão 75 — linha "Só confirmados: {resultado}" no card "Projeção de {ano}" reaproveitando
    `applyYearEndScenario`, ver D67; **cenário "pior caso"** entregue na Sessão 76 —
    `projectYearEndPessimistic` cruza conservador (só confirmados) + custos fixos num único piso, card
-   "Pior caso" em `/financas/projecao-ano`, ver D68):
+   "Pior caso" em `/financas/projecao-ano`, ver D68; **piso "pior caso" no card do Painel** entregue na
+   Sessão 77 — linha "Pior caso: {resultado}" no card "Projeção de {ano}" reaproveitando
+   `projectYearEndPessimistic`, só quando ambos os eixos mordem, ver D69):
    a projeção crua segue sem inventar despesas (número conservador-por-design); o cenário pessimista é
    opt-in; a comparação anual ancora o número no fechamento do ano passado; o seletor de cenário dá o
    piso "só confirmados" — agora também visível no Painel; e o card "Pior caso" cruza os dois eixos
-   conservadores num só número. Próximo possível — comparar contra uma **meta** definida pelo usuário
-   (exigiria schema/CRUD de metas), levar o piso "pior caso" ao card do Painel, ou tornar o seletor de
-   cenário um terceiro botão (Otimista / Conservador / Pior caso) na própria página.
+   conservadores num só número — agora também visível no Painel (D69). Próximo possível — comparar contra
+   uma **meta** definida pelo usuário (exigiria schema/CRUD de metas), ou tornar o seletor de cenário um
+   terceiro botão (Otimista / Conservador / Pior caso) na própria página.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

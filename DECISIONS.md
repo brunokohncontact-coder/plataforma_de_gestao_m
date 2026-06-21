@@ -1783,3 +1783,35 @@ contexto, decisão, justificativa e alternativas consideradas.
   acima (duplicaria o card de custos fixos em modo conservador, ou repetiria o número crú sem um dos eixos).
 - **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5 high /
   1 critical), mesma postura de D6/D8; nenhuma dependência nova.
+
+## D69 — Piso "pior caso" no card de projeção do Painel (Sessão 77)
+- **Contexto:** a Sessão 76 (D68) entregou `projectYearEndPessimistic` e o card "Pior caso" na página de
+  detalhe `/financas/projecao-ano`, cruzando os dois eixos conservadores (receita só de confirmados D66 +
+  despesa com custos fixos futuros D62) num único piso honesto. O card "Projeção de {ano}" do Painel já
+  trazia o número crú (D61), a comparação YoY (D64), a linha "Com custos fixos" (D65) e o piso "Só
+  confirmados" (D67) — mas não o pior caso, o chão absoluto que o músico cauteloso quer ver na primeira
+  tela quando AMBOS os riscos coexistem (propostas a confirmar inflando a receita E custo fixo a estimar).
+  Era o "levar o piso 'pior caso' ao card do Painel" do item 6 do PROGRESS.
+- **Decisão:** reaproveitar 100% a lógica pura `projectYearEndPessimistic(forecast, txs, monthlyFixedCost)`
+  (D68) no dashboard, sobre o forecast já computado e o custo fixo recorrente típico (`recurringExpenses`
+  D39) — zero consulta extra. Renderiza-se uma **linha compacta** "Pior caso: {resultado}" abaixo das
+  linhas "Só confirmados" e "Com custos fixos", só quando AMBOS os eixos mordem
+  (`droppedTentative > 0 && estimatedRemainingFixedCost > 0`).
+- **Modelo/UI:** a condição "ambos os eixos" espelha a do card da página (D68) e é a única em que o
+  cruzamento mostra algo que as duas linhas acima já não mostram: sem o eixo da receita o pior caso = "Com
+  custos fixos"; sem o eixo da despesa = "Só confirmados". Linha (não card nem pílula) para não inflar o
+  Painel nem tornar o `<Link>` envolvente um componente cliente — mesma postura de D65/D67. Cor rose-700
+  (mais forte que o âmbar dos custos fixos e o cinza do "só confirmados"), espelhando a borda rose-500 do
+  card de detalhe — sinaliza que é o cenário mais cauteloso. O número crú segue principal; o pior caso é
+  leitura complementar/opt-in visual.
+- **Justificativa:** entrega o chão na primeira tela reusando lógica pura já testada (`finance.test.ts`),
+  sem schema, dependência, server action nem teste novo — mesma postura das Sessões 69/72/73/75. Mantém o
+  card escaneável e server-side.
+- **Alternativas consideradas:** (a) mostrar a linha sempre que `pessimistic.applicable` — descartado:
+  com só um eixo mordendo, o número repetiria uma das duas linhas acima (redundância idêntica à da D68).
+  (b) substituir o número crú pelo pior caso — descartado: o crú é o número de planejamento padrão; o
+  piso é complementar. (c) escalar a borda do card inteiro para rose quando o pior caso é negativo —
+  adiável: a borda hoje reflete `forecast.projectedResult` (o número principal); mudá-la pelo cenário
+  opt-in confundiria a leitura primária.
+- **Sem schema/dependência/server action/teste novo.** `npm audit` inalterado (10 advisories — 4 moderate
+  / 5 high / 1 critical), mesma postura de D6/D8; nenhuma dependência nova.
