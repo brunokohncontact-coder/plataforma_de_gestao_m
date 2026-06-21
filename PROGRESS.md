@@ -1706,6 +1706,19 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem
   mudança de schema — ver D6/D8).
 
+### Sessão 75 — piso conservador ("só confirmados") no card de projeção do Painel
+- **UI** (`src/app/(app)/dashboard/page.tsx`): o card "Projeção de {ano}" ganhou uma **linha compacta**
+  "Só confirmados: {resultado}" reaproveitando `applyYearEndScenario(forecast, "conservative")` (D66) sobre
+  o forecast já computado — zero consulta extra. Aparece só quando há cachê tentativo a descartar
+  (`forecast.scheduledTentative > 0`), detalhando o montante e o nº de shows a confirmar deixados de fora.
+  Linha discreta em cinza (vs. âmbar dos "custos fixos" da D65); o número crú segue principal. O card
+  continua server-side (um `<Link>` único para `/financas/projecao-ano`, onde vivem as pílulas interativas
+  da D66). Sem schema, dependência, server action nem teste novo (lógica pura já coberta em `finance.test.ts`).
+- Definition of Done verde: build (`prisma generate && next build`) OK, typecheck (`tsc --noEmit`) limpo,
+  lint (0 warnings/erros), **539 testes** (`vitest run`), smoke test ao vivo (`next start`): `/login` → 200.
+  `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem
+  mudança de schema — ver D6/D8). Ver **DECISIONS.md D67**.
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
@@ -1768,11 +1781,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    entregue na Sessão 73 — linha "Com custos fixos: {resultado}" no card "Projeção de {ano}"
    reaproveitando `projectYearEndWithFixedCosts`, ver D65; **seletor de cenário otimista × conservador**
    entregue na Sessão 74 — `applyYearEndScenario` remove os cachês de shows a confirmar da projeção, com
-   pílulas Otimista/Conservador em `/financas/projecao-ano`, ver D66):
+   pílulas Otimista/Conservador em `/financas/projecao-ano`, ver D66; **piso conservador no card do Painel**
+   entregue na Sessão 75 — linha "Só confirmados: {resultado}" no card "Projeção de {ano}" reaproveitando
+   `applyYearEndScenario`, ver D67):
    a projeção crua segue sem inventar despesas (número conservador-por-design); o cenário pessimista é
    opt-in; a comparação anual ancora o número no fechamento do ano passado; o seletor de cenário dá o
-   piso "só confirmados". Próximo possível — comparar contra uma **meta** definida pelo usuário (exigiria
-   schema/CRUD de metas), levar o seletor de cenário ao card do Painel, ou cruzar conservador + custos
+   piso "só confirmados" — agora também visível no Painel. Próximo possível — comparar contra uma **meta**
+   definida pelo usuário (exigiria schema/CRUD de metas), ou cruzar conservador + custos
    fixos num cenário "pessimista" único.
 
 ## Bloqueios / dúvidas (para validação humana)
