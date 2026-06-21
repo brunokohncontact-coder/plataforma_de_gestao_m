@@ -152,6 +152,14 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "📆",
       },
       {
+        title: "Projeção de fechamento",
+        href: "/financas/projecao-ano",
+        description:
+          "Como o ano deve fechar: caixa realizado + pendências + cachês de shows futuros ainda não lançados.",
+        subtopic: "Fechamentos",
+        icon: "🔭",
+      },
+      {
         title: "Sazonalidade",
         href: "/financas/sazonalidade",
         description: "Qual época do ano costuma render mais, somando todos os anos do histórico.",

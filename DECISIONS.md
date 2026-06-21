@@ -1494,6 +1494,35 @@ contexto, decisão, justificativa e alternativas consideradas.
 - **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5
   high / 1 critical), mesma postura de D6/D8; nenhuma dependência nova.
 
+## D60 — Projeção de fechamento do ano (Sessão 68)
+- **Contexto:** os relatórios financeiros olhavam para trás (Resumo anual, Sazonalidade, Relatório
+  mensal) ou para frente em peças isoladas: **Receita agendada** projeta só cachês de shows futuros,
+  e **Projeção de caixa** (D-cashflow) projeta o saldo de caixa mês a mês. Faltava juntar tudo na
+  pergunta de planejamento que decide investir/segurar custo: "se nada mudar, como fecho o ANO inteiro?".
+- **Decisão:** novo relatório `/financas/projecao-ano` com a função pura `projectYearEnd(txs, shows,
+  year, {now})`. A receita projetada soma três fontes: (1) **realizado** (transações do ano com
+  `received=true`), (2) **pendente lançado** (`received=false`) e (3) **cachê agendado** dos shows
+  futuros do ano (data ≥ hoje, não CANCELLED, fee>0). A despesa projetada soma só (1)+(2).
+- **Anti-dupla-contagem:** o cachê agendado de cada show entra como `max(0, fee − receita INCOME já
+  vinculada ao show em QUALQUER período)` — assim um sinal/depósito já lançado para o show não é
+  contado de novo via agenda. Reusa `isConfirmedBooking` para separar `scheduledConfirmed` (CONFIRMED/
+  PLAYED) de `scheduledTentative` (PROPOSED/sem status), e `utcMidnight`/`monthKey` para o recorte.
+- **Assimetria deliberada (receita futura sim, despesa futura não):** a agenda é um compromisso firme
+  de dinheiro a entrar, então projetar cachê futuro é honesto; já "adivinhar" despesas recorrentes
+  futuras seria especulativo e duplicaria o relatório de **Custos fixos**. A projeção é portanto
+  **conservadora no resultado** (despesa só do que já está lançado), e a UI explicita isso com nota +
+  link para Custos fixos. Risco: pode parecer otimista demais; mitigado pela transparência da
+  composição (cada parcela aparece separada) e anotado como hipótese de UX a validar.
+- **Alternativas consideradas:** (a) incluir uma estimativa de custo recorrente futuro (via
+  `recurringExpenses`) — adiada: vira um cenário "com custos fixos" opcional (ver próximos passos),
+  não o default, para não misturar fato com estimativa. (b) basear a receita futura em pendências de
+  finanças em vez da agenda — descartado: a agenda (cachê do show) é a fonte mais completa do que está
+  por vir; pendências lançadas já entram separadas. (c) projetar por mês (curva) em vez de total do ano
+  — adiado: o total responde a pergunta principal; a curva já existe na Projeção de caixa.
+- **Sem schema/dependência/server action.** Página só de leitura, carrega transações + shows do ano em
+  `Promise.all`. `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma
+  postura de D6/D8; nenhuma dependência nova.
+
 ## D59 — Sumário de salto rápido por subtema no hub de Relatórios (Sessão 67)
 - **Contexto:** com 24 relatórios distribuídos em 8 subtemas (D58), o hub `/relatorios` virou uma
   página longa. As âncoras de área `#shows`/`#financas`/`#contatos` (D55) já existiam, mas não havia

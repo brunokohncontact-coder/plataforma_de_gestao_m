@@ -27,6 +27,7 @@ import {
   compareAnnualSummaries,
   annualCategoryReport,
   availableYears,
+  projectYearEnd,
   forecastBookedRevenue,
   reconcileShowFees,
   bucketReceivablesByAge,
@@ -1337,6 +1338,111 @@ describe("availableYears", () => {
 
   it("lista vazia → []", () => {
     expect(availableYears([])).toEqual([]);
+  });
+});
+
+describe("projectYearEnd", () => {
+  const now = "2026-06-15T12:00:00.000Z"; // hoje = 2026-06-15 (UTC)
+
+  it("soma realizado, pendente lançado e cachês futuros não lançados", () => {
+    const txs: TxLike[] = [
+      // Receita já recebida no ano.
+      tx({ type: "INCOME", amount: 300_00, received: true, date: "2026-02-10T00:00:00.000Z" }),
+      // Receita lançada e pendente no ano.
+      tx({ type: "INCOME", amount: 100_00, received: false, date: "2026-05-10T00:00:00.000Z" }),
+      // Despesa paga e despesa pendente no ano.
+      tx({ type: "EXPENSE", amount: 80_00, received: true, date: "2026-03-10T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 20_00, received: false, date: "2026-04-10T00:00:00.000Z" }),
+    ];
+    const shows = [
+      // Show futuro confirmado, sem receita lançada → entra inteiro como agendado.
+      { id: "s1", fee: 500_00, status: "CONFIRMED", date: "2026-09-01T00:00:00.000Z" },
+    ];
+
+    const f = projectYearEnd(txs, shows, 2026, { now });
+    expect(f.isCurrentYear).toBe(true);
+    expect(f.realizedIncome).toBe(300_00);
+    expect(f.pendingIncome).toBe(100_00);
+    expect(f.scheduledIncome).toBe(500_00);
+    expect(f.scheduledConfirmed).toBe(500_00);
+    expect(f.scheduledTentative).toBe(0);
+    expect(f.scheduledShowCount).toBe(1);
+    expect(f.projectedIncome).toBe(900_00);
+
+    expect(f.realizedExpense).toBe(80_00);
+    expect(f.pendingExpense).toBe(20_00);
+    expect(f.projectedExpense).toBe(100_00);
+
+    expect(f.realizedResult).toBe(220_00); // 300 − 80
+    expect(f.projectedResult).toBe(800_00); // 900 − 100
+  });
+
+  it("abate do cachê agendado a receita já lançada para o show (sem dupla contagem)", () => {
+    const txs: TxLike[] = [
+      // Sinal de 200 já recebido para o show futuro s1 (qualquer período).
+      tx({ type: "INCOME", amount: 200_00, received: true, showId: "s1", date: "2026-04-01T00:00:00.000Z" }),
+    ];
+    const shows = [
+      { id: "s1", fee: 500_00, status: "CONFIRMED", date: "2026-09-01T00:00:00.000Z" },
+    ];
+
+    const f = projectYearEnd(txs, shows, 2026, { now });
+    // Já recebido 200 do cachê de 500 → só faltam 300 agendados.
+    expect(f.realizedIncome).toBe(200_00);
+    expect(f.scheduledIncome).toBe(300_00);
+    expect(f.projectedIncome).toBe(500_00);
+    expect(f.scheduledShowCount).toBe(1);
+  });
+
+  it("ignora shows passados, cancelados e sem cachê na parte agendada", () => {
+    const shows = [
+      { id: "passado", fee: 400_00, status: "PLAYED", date: "2026-01-10T00:00:00.000Z" }, // já passou
+      { id: "cancel", fee: 400_00, status: "CANCELLED", date: "2026-09-10T00:00:00.000Z" },
+      { id: "semfee", fee: 0, status: "CONFIRMED", date: "2026-09-10T00:00:00.000Z" },
+      { id: "ok", fee: 400_00, status: "PROPOSED", date: "2026-09-10T00:00:00.000Z" }, // tentativo
+    ];
+    const f = projectYearEnd([], shows, 2026, { now });
+    expect(f.scheduledShowCount).toBe(1);
+    expect(f.scheduledIncome).toBe(400_00);
+    expect(f.scheduledTentative).toBe(400_00);
+    expect(f.scheduledConfirmed).toBe(0);
+  });
+
+  it("um show de hoje ainda conta como futuro (>= hoje)", () => {
+    const shows = [
+      { id: "hoje", fee: 250_00, status: "CONFIRMED", date: "2026-06-15T00:00:00.000Z" },
+    ];
+    const f = projectYearEnd([], shows, 2026, { now });
+    expect(f.scheduledIncome).toBe(250_00);
+  });
+
+  it("considera só transações e shows do ano informado", () => {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 100_00, received: true, date: "2025-12-31T00:00:00.000Z" }), // outro ano
+      tx({ type: "INCOME", amount: 50_00, received: true, date: "2026-03-01T00:00:00.000Z" }),
+    ];
+    const shows = [
+      { id: "outro", fee: 999_00, status: "CONFIRMED", date: "2027-01-01T00:00:00.000Z" }, // outro ano
+    ];
+    const f = projectYearEnd(txs, shows, 2026, { now });
+    expect(f.realizedIncome).toBe(50_00);
+    expect(f.scheduledIncome).toBe(0);
+  });
+
+  it("ano passado: sem shows futuros, projeção = resultado lançado do ano", () => {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 200_00, received: true, date: "2025-02-10T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 50_00, received: false, date: "2025-05-10T00:00:00.000Z" }),
+    ];
+    const shows = [
+      { id: "s1", fee: 500_00, status: "CONFIRMED", date: "2025-09-01T00:00:00.000Z" },
+    ];
+    const f = projectYearEnd(txs, shows, 2025, { now });
+    expect(f.isCurrentYear).toBe(false);
+    expect(f.scheduledIncome).toBe(0); // show de 2025 já passou frente a 2026-06
+    expect(f.projectedIncome).toBe(200_00);
+    expect(f.projectedExpense).toBe(50_00);
+    expect(f.projectedResult).toBe(150_00);
   });
 });
 
