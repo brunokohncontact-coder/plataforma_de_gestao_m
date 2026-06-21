@@ -1494,6 +1494,28 @@ contexto, decisão, justificativa e alternativas consideradas.
 - **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5
   high / 1 critical), mesma postura de D6/D8; nenhuma dependência nova.
 
+## D61 — Projeção de fechamento do ano no Painel (Sessão 69)
+- **Contexto:** a projeção de fechamento do ano (D60, `/financas/projecao-ano`) responde à pergunta de
+  planejamento "como fecho o ano?", mas vivia só num relatório que exige navegar até as Finanças. O
+  Painel já é a primeira tela e carrega **todas** as transações e shows do usuário — então o número
+  mais importante do planejamento podia aparecer ali sem custo de consulta.
+- **Decisão:** card "Projeção de {ano}" no Painel (`dashboard/page.tsx`) que chama `projectYearEnd(txs,
+  shows, anoCorrente)` com os dados já em memória (zero consulta extra) e mostra o **resultado projetado
+  do ano** com a composição em uma linha (receitas − despesas, caixa realizado hoje, e o destaque do
+  cachê agendado de shows futuros). O card inteiro é um link para `/financas/projecao-ano` (detalhe).
+- **Quando aparece:** só quando há um componente **futuro** que muda o caixa realizado —
+  `scheduledIncome > 0 || pendingIncome > 0 || pendingExpense > 0`. Se tudo do ano já foi realizado, o
+  projetado == realizado e o card seria redundante com os cards de resumo; nesse caso fica oculto.
+- **Posição:** logo após os cards de resumo e antes da Projeção de caixa — o ano inteiro (visão macro)
+  antes do mês-a-mês de caixa (visão de curto prazo), seguindo a ordem do raciocínio de planejamento.
+- **Alternativas consideradas:** (a) um quinto card de resumo no grid — descartado: o resultado
+  projetado precisa de contexto (composição, agendado) que não cabe no formato compacto do
+  `SummaryCard`. (b) sempre exibir — descartado pela redundância acima. (c) permitir trocar de ano no
+  Painel — desnecessário: o Painel é "agora", a navegação por ano vive no relatório.
+- **Sem schema/dependência/server action nem lógica nova** — reaproveita a função pura `projectYearEnd`
+  (já testada em `finance.test.ts`), só UI. `npm audit` inalterado (10 advisories — 4 moderate / 5 high
+  / 1 critical), mesma postura de D6/D8/D60.
+
 ## D60 — Projeção de fechamento do ano (Sessão 68)
 - **Contexto:** os relatórios financeiros olhavam para trás (Resumo anual, Sazonalidade, Relatório
   mensal) ou para frente em peças isoladas: **Receita agendada** projeta só cachês de shows futuros,
