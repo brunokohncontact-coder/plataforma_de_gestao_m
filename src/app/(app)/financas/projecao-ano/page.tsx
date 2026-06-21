@@ -3,11 +3,13 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   projectYearEnd,
+  applyYearEndScenario,
   projectYearEndWithFixedCosts,
   compareYearEndToPrevious,
   recurringExpenses,
   type MetricDelta,
   type TxLike,
+  type YearEndScenarioMode,
   type YearEndShowLike,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
@@ -41,6 +43,14 @@ export default async function YearEndForecastPage({
   const user = await requireUser();
   const params = searchParams ?? {};
   const year = parseYear(readParam(params, "ano"));
+  const mode: YearEndScenarioMode =
+    readParam(params, "cenario") === "conservador" ? "conservative" : "optimistic";
+
+  /** Preserva o ano ao trocar de cenário (e omite ?cenario no modo otimista). */
+  const scenarioHref = (m: YearEndScenarioMode) =>
+    "/financas/projecao-ano?ano=" +
+    year +
+    (m === "conservative" ? "&cenario=conservador" : "");
 
   // Todas as transações entram: as do ano alimentam os totais, e as vinculadas
   // a shows (de qualquer período) abatem o cachê agendado para não contar duas
@@ -72,12 +82,23 @@ export default async function YearEndForecastPage({
     showId: t.showId,
   }));
 
-  const f = projectYearEnd(txs, shows as YearEndShowLike[], year);
+  const fRaw = projectYearEnd(txs, shows as YearEndShowLike[], year);
+  // Cenário otimista (default) × conservador: o conservador descarta os cachês de
+  // shows ainda a confirmar da receita projetada, dando o piso "e se só os
+  // confirmados se pagarem?" (ver D66). Otimista = forecast cru. O seletor só
+  // aparece quando há cachê tentativo a descartar.
+  const f = applyYearEndScenario(fRaw, mode);
+  const hasTentative = fRaw.scheduledTentative > 0;
 
   // Comparação com o fechamento do ano anterior: "estou indo melhor que ano
   // passado?". Para um ano já encerrado, projectYearEnd degrada para o resultado
-  // de competência lançado (sem shows futuros) — o fechamento real (ver D63).
-  const prev = projectYearEnd(txs, shows as YearEndShowLike[], year - 1);
+  // de competência lançado (sem shows futuros) — o fechamento real (ver D63). O
+  // cenário também se aplica ao ano anterior por consistência (sem efeito quando
+  // já encerrado, pois não há shows futuros tentativos).
+  const prev = applyYearEndScenario(
+    projectYearEnd(txs, shows as YearEndShowLike[], year - 1),
+    mode,
+  );
   const comparison = compareYearEndToPrevious(f, prev);
 
   // Cenário "com custos fixos": estima o custo fixo recorrente que ainda deve
@@ -132,6 +153,47 @@ export default async function YearEndForecastPage({
           →
         </Link>
       </div>
+
+      {/* Seletor de cenário: otimista (inclui shows a confirmar) × conservador
+          (só confirmados). Só aparece quando há cachê tentativo a descartar. */}
+      {hasTentative && (
+        <div
+          className="flex flex-wrap items-center gap-2"
+          role="group"
+          aria-label="Cenário da projeção"
+        >
+          <span className="text-sm text-gray-500">Cenário:</span>
+          <Link
+            href={scenarioHref("optimistic")}
+            aria-pressed={mode === "optimistic"}
+            className={
+              "rounded-full px-3 py-1 text-sm font-medium " +
+              (mode === "optimistic"
+                ? "bg-brand-600 text-white"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200")
+            }
+          >
+            Otimista
+          </Link>
+          <Link
+            href={scenarioHref("conservative")}
+            aria-pressed={mode === "conservative"}
+            className={
+              "rounded-full px-3 py-1 text-sm font-medium " +
+              (mode === "conservative"
+                ? "bg-brand-600 text-white"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200")
+            }
+          >
+            Conservador
+          </Link>
+          <span className="text-xs text-gray-400">
+            {mode === "conservative"
+              ? "considerando só os shows confirmados"
+              : "incluindo shows ainda a confirmar"}
+          </span>
+        </div>
+      )}
 
       {!hasAnything ? (
         <div className="card text-center text-gray-500">
@@ -302,12 +364,20 @@ export default async function YearEndForecastPage({
                   tone="sky"
                 />
               </ul>
-              {f.scheduledIncome > 0 && (
+              {mode === "conservative" && fRaw.scheduledTentative > 0 ? (
                 <p className="mt-3 text-xs text-gray-500">
-                  Dos cachês agendados, {formatMoney(f.scheduledConfirmed)} são de
-                  shows confirmados e {formatMoney(f.scheduledTentative)} ainda a
-                  confirmar.
+                  Cenário conservador: {formatMoney(fRaw.scheduledTentative)} em
+                  cachês de shows ainda a confirmar ficaram de fora da projeção.
                 </p>
+              ) : (
+                f.scheduledIncome > 0 &&
+                f.scheduledTentative > 0 && (
+                  <p className="mt-3 text-xs text-gray-500">
+                    Dos cachês agendados, {formatMoney(f.scheduledConfirmed)} são de
+                    shows confirmados e {formatMoney(f.scheduledTentative)} ainda a
+                    confirmar.
+                  </p>
+                )
               )}
             </section>
 

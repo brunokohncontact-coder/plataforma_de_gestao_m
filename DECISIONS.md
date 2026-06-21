@@ -1689,3 +1689,34 @@ contexto, decisão, justificativa e alternativas consideradas.
   o número de planejamento padrão; o conservador é opt-in/complementar, coerente com D62.
 - **Sem schema/dependência/server action/teste novo.** `npm audit` inalterado (10 advisories — 4 moderate
   / 5 high / 1 critical), mesma postura de D6/D8; nenhuma dependência nova.
+
+## D66 — Seletor de cenário (otimista × conservador) na projeção do ano (Sessão 74)
+- **Contexto:** `projectYearEnd` (D60) soma TODOS os cachês de shows futuros do ano — confirmados E ainda
+  a confirmar (PROPOSED/sem status) — como receita agendada. É uma leitura otimista da agenda: assume que
+  toda proposta vira dinheiro. Quem planeja com cautela quer também o **piso**: "e se só os shows JÁ
+  confirmados se pagarem?". O forecast já separava `scheduledConfirmed`/`scheduledTentative` (montantes),
+  mas não havia como ler a projeção sem a parte tentativa. É o "seletor de cenário" do item 6 do PROGRESS.
+- **Decisão:** adicionar uma camada PURA `applyYearEndScenario(forecast, mode)` (`mode`: `"optimistic"`
+  default × `"conservative"`) que, no modo conservador, remove `scheduledTentative` da receita agendada e
+  reprojeta `projectedIncome`/`projectedResult` e as contagens. Otimista devolve o forecast inalterado
+  (mesma referência). Para a contagem correta de shows por cenário, `YearEndForecast` ganhou
+  `scheduledConfirmedCount`/`scheduledTentativeCount` (populados em `projectYearEnd`). A página
+  `/financas/projecao-ano` ganhou um seletor de pílulas Otimista/Conservador (via `?cenario=conservador`,
+  preservando `?ano`), que só aparece quando há cachê tentativo a descartar (`scheduledTentative > 0`).
+- **Modelo/UI:** o cenário se aplica ao forecast do ano E ao do ano anterior (consistência na comparação
+  D63; sem efeito no ano encerrado, que não tem shows futuros). As despesas NÃO mudam por cenário — a
+  projeção já não inventa despesa futura (D60); o cenário "com custos fixos" (D62) segue como camada
+  ortogonal sobre a despesa. O seletor é stateless (query string), sem cookie/persistência — segue o
+  padrão dos demais filtros por URL da plataforma.
+- **Justificativa:** dá a leitura conservadora pedida no item 6 do PROGRESS reaproveitando dados que o
+  forecast já calculava, sem schema, sem dependência e sem server action. A pureza permitiu testes diretos
+  (`applyYearEndScenario`: otimista intacto, conservador remove tentativo e reprojeta, sem-tentativo
+  coincide) + cobertura das novas contagens em `projectYearEnd`. Total 539 testes (eram 535).
+- **Alternativas consideradas:** (a) recomputar tudo a partir das transações/shows com uma flag em
+  `projectYearEnd` — descartado: duplicaria a varredura; derivar do forecast já pronto é mais barato e
+  testável isoladamente. (b) persistir a escolha de cenário num cookie — descartado por ora: o default
+  otimista é o número de planejamento padrão e a URL já é compartilhável; persistir pode esconder do
+  usuário qual cenário ele vê. (c) um terceiro cenário "pessimista" combinando conservador + custos fixos
+  — adiável: as duas camadas são ortogonais e podem ser cruzadas depois sem retrabalho.
+- **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5 high /
+  1 critical), mesma postura de D6/D8; nenhuma dependência nova.

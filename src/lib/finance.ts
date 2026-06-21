@@ -1033,6 +1033,10 @@ export interface YearEndForecast {
 
   /** Nº de shows futuros do ano que entraram com cachê ainda não lançado. */
   scheduledShowCount: number;
+  /** Parte de `scheduledShowCount` de shows confirmados/realizados (CONFIRMED/PLAYED). */
+  scheduledConfirmedCount: number;
+  /** Parte de `scheduledShowCount` de shows ainda tentativos (PROPOSED/sem status). */
+  scheduledTentativeCount: number;
 }
 
 /**
@@ -1090,6 +1094,8 @@ export function projectYearEnd(
   let scheduledConfirmed = 0;
   let scheduledTentative = 0;
   let scheduledShowCount = 0;
+  let scheduledConfirmedCount = 0;
+  let scheduledTentativeCount = 0;
   for (const s of shows) {
     if (s.status === "CANCELLED") continue;
     if (s.fee <= 0) continue;
@@ -1099,8 +1105,13 @@ export function projectYearEnd(
     const remaining = Math.max(0, s.fee - booked);
     if (remaining <= 0) continue;
     scheduledIncome += remaining;
-    if (isConfirmedBooking(s.status)) scheduledConfirmed += remaining;
-    else scheduledTentative += remaining;
+    if (isConfirmedBooking(s.status)) {
+      scheduledConfirmed += remaining;
+      scheduledConfirmedCount += 1;
+    } else {
+      scheduledTentative += remaining;
+      scheduledTentativeCount += 1;
+    }
     scheduledShowCount += 1;
   }
 
@@ -1122,6 +1133,52 @@ export function projectYearEnd(
     realizedResult: realizedIncome - realizedExpense,
     projectedResult: projectedIncome - projectedExpense,
     scheduledShowCount,
+    scheduledConfirmedCount,
+    scheduledTentativeCount,
+  };
+}
+
+// ── Cenário otimista × conservador sobre a projeção do ano ───────────────────
+//
+// `projectYearEnd` soma TODOS os cachês de shows futuros (confirmados E ainda a
+// confirmar) como receita agendada — uma leitura otimista da agenda. Quem
+// planeja com cautela quer também o piso: "e se só os shows JÁ confirmados se
+// pagarem?". Como o forecast já separa `scheduledConfirmed`/`scheduledTentative`
+// (e agora suas contagens), o cenário conservador é puramente derivável: basta
+// remover a parte tentativa da receita agendada e reprojetar. Pura.
+
+export type YearEndScenarioMode = "optimistic" | "conservative";
+
+/**
+ * Reprojeta um `YearEndForecast` sob um cenário.
+ *
+ * - "optimistic" (default da `projectYearEnd`): devolve o forecast inalterado —
+ *   conta confirmados + tentativos como receita agendada.
+ * - "conservative": remove os cachês de shows ainda a confirmar
+ *   (`scheduledTentative`) da receita agendada/projetada e reprojeta o resultado
+ *   e as contagens. As despesas não mudam (já não projetam futuro — ver D60).
+ *
+ * Sem tentativos a remover, devolve o forecast original (cenários coincidem).
+ * Pura: opera só sobre o forecast já calculado.
+ */
+export function applyYearEndScenario(
+  forecast: YearEndForecast,
+  mode: YearEndScenarioMode,
+): YearEndForecast {
+  if (mode !== "conservative" || forecast.scheduledTentative <= 0) {
+    return forecast;
+  }
+  const scheduledIncome = forecast.scheduledIncome - forecast.scheduledTentative;
+  const projectedIncome =
+    forecast.realizedIncome + forecast.pendingIncome + scheduledIncome;
+  return {
+    ...forecast,
+    scheduledIncome,
+    scheduledTentative: 0,
+    scheduledShowCount: forecast.scheduledConfirmedCount,
+    scheduledTentativeCount: 0,
+    projectedIncome,
+    projectedResult: projectedIncome - forecast.projectedExpense,
   };
 }
 
