@@ -1268,6 +1268,84 @@ export function projectYearEndWithFixedCosts(
   };
 }
 
+// ── Cenário pessimista: conservador + custos fixos (pior caso) ───────────────
+//
+// As duas camadas conservadoras da projeção do ano são ORTOGONAIS: o cenário
+// conservador (D66) ataca a RECEITA (descarta os cachês de shows ainda a
+// confirmar) e o cenário com custos fixos (D62) ataca a DESPESA (soma o custo
+// fixo recorrente que ainda deve se repetir até dezembro). Cada uma sozinha dá
+// um piso parcial. Cruzá-las dá o "pior caso" honesto numa só leitura — "e se só
+// os shows JÁ confirmados se pagarem E eu continuar pagando meus custos fixos?".
+// Pura: compõe as duas camadas já testadas (sem revarrer transações/shows).
+
+export interface PessimisticYearEndScenario {
+  /** Ano de referência (espelha o forecast). */
+  year: number;
+  /**
+   * True quando o pior caso difere da projeção crua: há cachê tentativo a
+   * descartar (receita) OU custo fixo futuro a somar (despesa). Senão coincide
+   * com o forecast otimista e a UI pode omiti-lo.
+   */
+  applicable: boolean;
+  /** Receita projetada só com shows confirmados (descarta os a confirmar — D66). */
+  projectedIncome: number;
+  /** Despesa projetada incluindo o custo fixo recorrente futuro estimado (D62). */
+  projectedExpense: number;
+  /** projectedIncome − projectedExpense — o piso/pior caso do fechamento do ano. */
+  projectedResult: number;
+  /** Cachê de shows a confirmar removido da receita (vs. otimista). */
+  droppedTentative: number;
+  /** Nº de shows a confirmar deixados de fora. */
+  droppedTentativeCount: number;
+  /** Custo fixo futuro estimado somado às despesas. */
+  estimatedRemainingFixedCost: number;
+  /** Cenário de custos fixos por trás (custo/mês, meses estimados — D62). */
+  fixedCost: FixedCostScenario;
+}
+
+/**
+ * Cruza os dois cenários conservadores da projeção do ano num único "pior caso":
+ * receita só de shows confirmados (D66) e despesa somando o custo fixo recorrente
+ * futuro (D62). Recebe sempre o forecast CRU/otimista (`projectYearEnd`), aplica
+ * o piso de receita e, sobre ele, o teto de despesa.
+ *
+ * - Independe do seletor otimista×conservador da página: é o piso absoluto.
+ * - `applicable` é true quando ao menos um dos eixos morde (tentativo a descartar
+ *   ou custo fixo futuro a somar); sem nenhum dos dois, o pior caso = o forecast
+ *   cru e não há o que mostrar.
+ * - As despesas seguem o critério da D62 (só meses futuros sem despesa lançada).
+ *
+ * Pura; `now` injetável para testes (repassado ao componente de custos fixos).
+ */
+export function projectYearEndPessimistic(
+  forecast: YearEndForecast,
+  txs: TxLike[],
+  monthlyFixedCost: number,
+  opts: { now?: Date | string } = {},
+): PessimisticYearEndScenario {
+  const conservative = applyYearEndScenario(forecast, "conservative");
+  const fixedCost = projectYearEndWithFixedCosts(
+    conservative,
+    txs,
+    monthlyFixedCost,
+    opts,
+  );
+  const droppedTentative = forecast.scheduledTentative;
+  const droppedTentativeCount = forecast.scheduledTentativeCount;
+  return {
+    year: forecast.year,
+    applicable:
+      droppedTentative > 0 || fixedCost.estimatedRemainingFixedCost > 0,
+    projectedIncome: conservative.projectedIncome,
+    projectedExpense: fixedCost.projectedExpenseWithFixed,
+    projectedResult: fixedCost.projectedResultWithFixed,
+    droppedTentative,
+    droppedTentativeCount,
+    estimatedRemainingFixedCost: fixedCost.estimatedRemainingFixedCost,
+    fixedCost,
+  };
+}
+
 // ── Projeção do ano vs. ano anterior ────────────────────────────────────────
 //
 // A projeção crua (`projectYearEnd`) responde "como fecho ESTE ano?", mas sozinha

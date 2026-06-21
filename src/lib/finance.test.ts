@@ -30,6 +30,7 @@ import {
   projectYearEnd,
   applyYearEndScenario,
   projectYearEndWithFixedCosts,
+  projectYearEndPessimistic,
   compareYearEndToPrevious,
   forecastBookedRevenue,
   reconcileShowFees,
@@ -1571,6 +1572,80 @@ describe("projectYearEndWithFixedCosts", () => {
     const s = projectYearEndWithFixedCosts(f, [], 1_000_00, { now: dec });
     expect(s.monthsEstimated).toBe(0);
     expect(s.estimatedRemainingFixedCost).toBe(0);
+  });
+});
+
+describe("projectYearEndPessimistic", () => {
+  const now = "2026-06-15T12:00:00.000Z"; // hoje = 2026-06-15 (UTC), mês atual = junho
+
+  function forecastWithTentative() {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 300_00, received: true, date: "2026-02-10T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 100_00, received: true, date: "2026-03-10T00:00:00.000Z" }),
+    ];
+    const shows = [
+      { id: "c1", fee: 500_00, status: "CONFIRMED", date: "2026-09-01T00:00:00.000Z" },
+      { id: "t1", fee: 200_00, status: "PROPOSED", date: "2026-10-01T00:00:00.000Z" },
+    ];
+    return { f: projectYearEnd(txs, shows, 2026, { now }), txs };
+  }
+
+  it("cruza o piso de receita (só confirmados) com o teto de despesa (custos fixos)", () => {
+    const { f, txs } = forecastWithTentative();
+    // Otimista: 300 recebido + 500 confirmado + 200 tentativo = 1000 receita; 100 despesa.
+    expect(f.projectedIncome).toBe(1_000_00);
+    expect(f.projectedResult).toBe(900_00);
+
+    const p = projectYearEndPessimistic(f, txs, 1_000_00, { now });
+    expect(p.applicable).toBe(true);
+    // Receita conservadora: descarta os 200 a confirmar → 800.
+    expect(p.projectedIncome).toBe(800_00);
+    expect(p.droppedTentative).toBe(200_00);
+    expect(p.droppedTentativeCount).toBe(1);
+    // Despesa: 100 lançada + custo fixo de 1.000/mês × jul..dez (6 meses) = 6.100.
+    expect(p.estimatedRemainingFixedCost).toBe(6_000_00);
+    expect(p.projectedExpense).toBe(100_00 + 6_000_00);
+    // Piso: 800 − 6.100 = −5.300.
+    expect(p.projectedResult).toBe(800_00 - 6_100_00);
+    expect(p.fixedCost.monthsEstimated).toBe(6);
+  });
+
+  it("sem tentativo nem custo fixo, não é aplicável (coincide com o cru)", () => {
+    const shows = [
+      { id: "c1", fee: 500_00, status: "CONFIRMED", date: "2026-09-01T00:00:00.000Z" },
+    ];
+    const f = projectYearEnd([], shows, 2026, { now });
+    const p = projectYearEndPessimistic(f, [], 0, { now });
+    expect(p.applicable).toBe(false);
+    expect(p.droppedTentative).toBe(0);
+    expect(p.estimatedRemainingFixedCost).toBe(0);
+    expect(p.projectedResult).toBe(f.projectedResult);
+  });
+
+  it("aplicável só pelo eixo da receita (sem custo fixo)", () => {
+    const { f, txs } = forecastWithTentative();
+    const p = projectYearEndPessimistic(f, txs, 0, { now });
+    expect(p.applicable).toBe(true);
+    expect(p.estimatedRemainingFixedCost).toBe(0);
+    expect(p.projectedIncome).toBe(800_00); // só descartou o tentativo
+    expect(p.projectedExpense).toBe(100_00);
+    expect(p.projectedResult).toBe(700_00);
+  });
+
+  it("aplicável só pelo eixo da despesa (sem cachê a confirmar)", () => {
+    const shows = [
+      { id: "c1", fee: 500_00, status: "CONFIRMED", date: "2026-09-01T00:00:00.000Z" },
+    ];
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 300_00, received: true, date: "2026-02-10T00:00:00.000Z" }),
+    ];
+    const f = projectYearEnd(txs, shows, 2026, { now });
+    const p = projectYearEndPessimistic(f, txs, 1_000_00, { now });
+    expect(p.applicable).toBe(true);
+    expect(p.droppedTentative).toBe(0);
+    expect(p.projectedIncome).toBe(f.projectedIncome); // nada a descartar
+    expect(p.estimatedRemainingFixedCost).toBe(6_000_00);
+    expect(p.projectedExpense).toBe(6_000_00); // forecast sem despesa lançada
   });
 });
 

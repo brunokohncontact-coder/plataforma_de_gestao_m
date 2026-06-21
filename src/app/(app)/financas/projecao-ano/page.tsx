@@ -5,6 +5,7 @@ import {
   projectYearEnd,
   applyYearEndScenario,
   projectYearEndWithFixedCosts,
+  projectYearEndPessimistic,
   compareYearEndToPrevious,
   recurringExpenses,
   type MetricDelta,
@@ -107,6 +108,18 @@ export default async function YearEndForecastPage({
   // segue como número principal.
   const fixedCost = recurringExpenses(txs).estimatedMonthlyFixedCost;
   const scenario = projectYearEndWithFixedCosts(f, txs, fixedCost);
+
+  // Pior caso: cruza os dois cenários conservadores num só número — receita só de
+  // shows confirmados (D66) E despesa somando o custo fixo recorrente futuro (D62)
+  // —, independente do seletor. Só vale a pena mostrar quando AMBOS os eixos
+  // mordem (há cachê tentativo a descartar E custo fixo futuro a somar) e estamos
+  // no modo otimista; em conservador o card de custos fixos acima já é o piso, e
+  // sem um dos eixos o pior caso coincide com algo já visível (ver D68).
+  const pessimistic = projectYearEndPessimistic(fRaw, txs, fixedCost);
+  const showPessimistic =
+    mode === "optimistic" &&
+    pessimistic.droppedTentative > 0 &&
+    pessimistic.estimatedRemainingFixedCost > 0;
 
   const hasAnything =
     f.realizedIncome > 0 ||
@@ -320,6 +333,43 @@ export default async function YearEndForecastPage({
                   Custos fixos
                 </Link>
                 .
+              </p>
+            </section>
+          )}
+
+          {/* Pior caso (D68): cruza o piso de receita (só confirmados) com o teto
+              de despesa (custos fixos) num único número — o chão honesto. */}
+          {showPessimistic && (
+            <section className="card border-l-4 border-rose-500">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                Pior caso
+              </p>
+              <p
+                className={
+                  "mt-1 text-2xl font-bold " +
+                  (pessimistic.projectedResult < 0
+                    ? "text-red-600"
+                    : "text-emerald-600")
+                }
+              >
+                {formatMoney(pessimistic.projectedResult)}
+              </p>
+              <p className="mt-2 text-sm text-gray-500">
+                Cruzando os dois cenários mais cautelosos: contando só os cachês de
+                shows confirmados (
+                {formatMoney(pessimistic.droppedTentative)} de{" "}
+                {pessimistic.droppedTentativeCount}{" "}
+                {pessimistic.droppedTentativeCount === 1
+                  ? "show a confirmar fica"
+                  : "shows a confirmar ficam"}{" "}
+                de fora) e somando o custo fixo de{" "}
+                {formatMoney(pessimistic.fixedCost.monthlyFixedCost)}/mês a{" "}
+                {pessimistic.fixedCost.monthsEstimated}{" "}
+                {pessimistic.fixedCost.monthsEstimated === 1 ? "mês" : "meses"} (+
+                {formatMoney(pessimistic.estimatedRemainingFixedCost)} em despesas),
+                o ano não deve fechar abaixo disto:{" "}
+                {formatMoney(pessimistic.projectedIncome)} de receita −{" "}
+                {formatMoney(pessimistic.projectedExpense)} de despesa.
               </p>
             </section>
           )}

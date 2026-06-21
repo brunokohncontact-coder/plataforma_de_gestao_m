@@ -1746,3 +1746,40 @@ contexto, decisão, justificativa e alternativas consideradas.
   sempre — descartado: sem cachê tentativo o piso coincide com o crú e só repetiria o número.
 - **Sem schema/dependência/server action/teste novo.** `npm audit` inalterado (10 advisories — 4 moderate
   / 5 high / 1 critical), mesma postura de D6/D8; nenhuma dependência nova.
+
+## D68 — Cenário "pior caso" (conservador + custos fixos) na projeção do ano (Sessão 76)
+- **Contexto:** a projeção do ano (`/financas/projecao-ano`) já tinha DUAS camadas conservadoras
+  **ortogonais**: o cenário conservador (D66, `applyYearEndScenario`) ataca a RECEITA — descarta os
+  cachês de shows ainda a confirmar — e o cenário com custos fixos (D62, `projectYearEndWithFixedCosts`)
+  ataca a DESPESA — soma o custo fixo recorrente que ainda deve se repetir até dezembro. Cada uma sozinha
+  dá um piso parcial; nenhuma respondia o pior caso honesto: "e se só os shows JÁ confirmados se pagarem E
+  eu continuar pagando meus custos fixos?". A alternativa (c) da D66 ("um terceiro cenário pessimista
+  combinando conservador + custos fixos") foi adiada lá justamente porque as camadas eram ortogonais e
+  podiam ser cruzadas depois sem retrabalho — é o que esta sessão faz.
+- **Decisão:** adicionar uma camada PURA `projectYearEndPessimistic(forecast, txs, monthlyFixedCost, opts)`
+  → `PessimisticYearEndScenario` que COMPÕE as duas funções já testadas (DRY, sem revarrer dados): aplica
+  `applyYearEndScenario(forecast, "conservative")` ao forecast cru e, sobre o resultado, chama
+  `projectYearEndWithFixedCosts`. Recebe sempre o forecast **cru/otimista**, então o piso independe do
+  seletor de cenário da página. Devolve resultado/receita/despesa do piso + os componentes de cada eixo
+  (`droppedTentative`/`droppedTentativeCount`, `estimatedRemainingFixedCost`, `fixedCost`) e `applicable`
+  (true quando ao menos um eixo morde). A página ganhou um card "Pior caso" (borda rose-500).
+- **Modelo/UI:** o card só é renderizado quando AMBOS os eixos mordem
+  (`droppedTentative > 0 && estimatedRemainingFixedCost > 0`) E no modo otimista. Essa é a única situação
+  em que o cruzamento mostra algo que nenhum outro card/pílula da view já mostra: em modo conservador o
+  card de custos fixos (que usa o forecast já conservador) JÁ é o piso; e sem um dos eixos o pior caso
+  coincide com o número crú, com a pílula conservadora, ou com o card de custos fixos. A borda rose-500
+  (mais forte que o âmbar dos custos fixos) sinaliza que é o cenário mais cauteloso. O número crú segue
+  como principal; o pior caso é leitura complementar/opt-in (coerente com D62/D66/D67).
+- **Justificativa:** entrega o pior caso pedido na D66(c) reaproveitando 100% lógica pura já coberta por
+  `finance.test.ts`, sem schema, dependência ou server action. A pureza permitiu testar o cruzamento e
+  cada eixo isoladamente (cruza os dois; não-aplicável sem nenhum; aplicável só pela receita; só pela
+  despesa). Total 543 testes (eram 539).
+- **Alternativas consideradas:** (a) um terceiro botão "Pior caso" no seletor de pílulas — adiável: o
+  seletor hoje é binário otimista×conservador (eixo da receita); um terceiro estado misturaria os dois
+  eixos no mesmo controle e exigiria repensar a semântica das pílulas e a comparação YoY por cenário.
+  O card sempre-visível (quando aplicável) entrega o número sem essa complexidade. (b) recomputar tudo a
+  partir das transações/shows — descartado: duplicaria a varredura; compor as duas camadas já prontas é
+  mais barato e testável. (c) mostrar o card em qualquer modo/sempre — descartado pela redundância descrita
+  acima (duplicaria o card de custos fixos em modo conservador, ou repetiria o número crú sem um dos eixos).
+- **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5 high /
+  1 critical), mesma postura de D6/D8; nenhuma dependência nova.
