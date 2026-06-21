@@ -1522,14 +1522,44 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   "Prazo médio (ponderado)" — verificado. `npm audit` inalterado (10 advisories: 4 moderate / 5 high /
   1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
 
+### Sessão 66 — 2026-06-21 (Fase 1 — agrupar os relatórios por subtema no hub)
+- **Motivação:** fechar o item 0 dos próximos passos ("agrupar visualmente os relatórios por subtema
+  dentro de cada área no hub"). A área Shows do hub `/relatorios` tinha 12 cards num bloco único, em que
+  agenda, preço e recebíveis se misturavam numa grade longa e indiferenciada. Sessão escolheu polir o
+  hub existente em vez de abrir o 25º relatório.
+- **Lógica pura** (`src/lib/reports.ts`, fonte única do catálogo): novo campo **`subtopic` (obrigatório)**
+  em `ReportEntry`; as entradas de `REPORT_GROUPS` foram **reordenadas para ficarem contíguas por
+  subtema** (sem mudar hrefs nem remover relatórios). Subtemas: Shows → *Agenda & pipeline* /
+  *Rentabilidade & preço* / *Recebíveis*; Finanças → *Fechamentos* / *Receitas & pendências* /
+  *Custos & metas*; Contatos → *Quem move a carreira* / *Relacionamento*. Nova `subgroupEntries(entries)`
+  agrupa por subtema preservando a ordem de primeira aparição (sem mutar), e `filterReports` passou a
+  varrer também o `subtopic` (buscar "recebíveis" traz o subtema inteiro). **6 testes** novos em
+  `reports.test.ts` (subgroupEntries: ordem/junção não-contígua/vazio/preservação; subtema preenchido +
+  contíguo; busca por subtema). Total do projeto **513** (medição real `vitest run`; eram 507 na main).
+  Ver **DECISIONS.md D58**.
+- **UI** (`src/app/(app)/relatorios/ReportsBrowser.tsx`): cada `<section>` de área agora itera
+  `subgroupEntries(group.entries)`, com um subcabeçalho `<h3>` discreto por subtema acima da grade de
+  cards. As âncoras `#shows`/`#financas`/`#contatos` (D55) seguem na `<section>` da área — intactas. Sem
+  schema, sem dependência, sem server action.
+- Definition of Done verde: build (`prisma generate && next build`) OK, typecheck (`tsc --noEmit`)
+  limpo, lint (0 warnings/erros), **513 testes** (`vitest run`), smoke test ao vivo (`next start`):
+  `/login` → 200, `/relatorios` sem sessão → 307; **e2e autenticado com cookie de sessão real** (seed
+  demo) → `/relatorios` 200 renderiza o campo "Buscar relatório" e os subcabeçalhos de subtema
+  ("Agenda & pipeline", "Recebíveis", "Custos & metas", "Quem move a carreira", "Relacionamento",
+  "Fechamentos") — verificado. `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical;
+  nenhuma dependência nova nem mudança de schema — ver D6/D8).
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
    link "Relatórios" ancorado na seção da área, ver D55; **busca textual no hub** entregue na
-   Sessão 64 — `filterReports`/`countFilteredReports` + `ReportsBrowser.tsx`, ver D56): catálogo
-   central dos 24 relatórios na navbar, agora com campo de busca ao vivo. Próximo possível —
-   **agrupar visualmente os relatórios por subtema** dentro de cada área no hub. Ao criar um relatório
-   novo, **registrá-lo em `REPORT_GROUPS`** para aparecer no hub (e na busca) automaticamente.
+   Sessão 64 — `filterReports`/`countFilteredReports` + `ReportsBrowser.tsx`, ver D56;
+   **agrupamento por subtema** dentro de cada área entregue na Sessão 66 — `subtopic` +
+   `subgroupEntries` em `reports.ts` + subcabeçalhos `<h3>` em `ReportsBrowser.tsx`, ver D58):
+   catálogo central dos 24 relatórios na navbar, com busca ao vivo e cards agrupados por subtema.
+   Ao criar um relatório novo, **registrá-lo em `REPORT_GROUPS`** (com `subtopic`) para aparecer no
+   hub (e na busca) automaticamente. Próximo possível — âncoras/salto por subtema, ou um índice de
+   subtemas no topo de cada área conforme o acervo cresça.
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)
 2. **Calendário — evoluções**: arrastar/soltar para remarcar; mini-calendário de salto rápido.

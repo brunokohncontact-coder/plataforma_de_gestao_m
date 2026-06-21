@@ -1464,3 +1464,32 @@ contexto, decisão, justificativa e alternativas consideradas.
   por contratante a mediana fica ruidosa; a global é a mais útil e fica como leitura primária.
 - **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5 high
   / 1 critical), mesma postura de D6/D8; nenhuma dependência nova.
+
+## D58 — Agrupar os relatórios por subtema dentro de cada área no hub (Sessão 66)
+- **Contexto:** o hub `/relatorios` (D54) já reúne 24 relatórios em 3 grandes áreas (Shows/Finanças/
+  Contatos) com busca textual (D56). Mas a área **Shows** sozinha tem 12 cards num bloco único — uma
+  grade longa e indiferenciada onde "Funil de propostas", "Rentabilidade por show", "Cachês a receber"
+  e "Prazo de recebimento" se misturam, embora respondam a perguntas de naturezas distintas (agenda,
+  preço, dinheiro a entrar). Era o item 0 dos próximos passos: "agrupar visualmente os relatórios por
+  subtema dentro de cada área".
+- **Decisão:** adicionar um campo **`subtopic` (obrigatório)** a cada `ReportEntry` em
+  `src/lib/reports.ts` e renderizar cada área como subseções por subtema. Os subtemas escolhidos:
+  Shows → *Agenda & pipeline*, *Rentabilidade & preço*, *Recebíveis*; Finanças → *Fechamentos*,
+  *Receitas & pendências*, *Custos & metas*; Contatos → *Quem move a carreira*, *Relacionamento*. As
+  entradas de `REPORT_GROUPS` foram **reordenadas para ficarem contíguas por subtema** (sem mudar
+  hrefs nem remover relatórios), e um teste de invariante garante que continuem contíguas.
+- **Lógica pura:** nova `subgroupEntries(entries)` agrupa por subtema preservando a ordem de primeira
+  aparição do subtema e a ordem das entradas dentro dele (sem mutar) — testável e reutilizável fora do
+  React. A busca `filterReports` passou a varrer também o `subtopic` no haystack: buscar "recebíveis"
+  agora traz o subtema inteiro, do mesmo modo que buscar a área traz todos os seus relatórios.
+- **UI:** `ReportsBrowser.tsx` passou a iterar `subgroupEntries(group.entries)` dentro de cada
+  `<section>`, com um subcabeçalho `<h3>` discreto (uppercase, menor que o `<h2>` da área) por
+  subtema. As âncoras `#shows`/`#financas`/`#contatos` (D55) seguem na `<section>` da área — intactas.
+- **Alternativas consideradas:** (a) deixar o `subtopic` opcional e cair num bloco "sem subtema" —
+  descartado: com só 24 entradas vale a pena classificar todas e manter o tipo estrito; (b) criar um
+  3º nível de navegação/âncoras por subtema — descartado: excesso para o tamanho atual, os
+  subcabeçalhos visuais já bastam; (c) ordenar os subtemas alfabeticamente — descartado: a ordem
+  editorial (do mais decisivo ao mais específico) comunica melhor, e a contiguidade em `REPORT_GROUPS`
+  já a define.
+- **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5
+  high / 1 critical), mesma postura de D6/D8; nenhuma dependência nova.

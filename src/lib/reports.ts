@@ -21,6 +21,12 @@ export interface ReportEntry {
   href: string;
   /** Uma frase respondendo "que pergunta este relatório responde?". */
   description: string;
+  /**
+   * Subtema dentro da área, usado para agrupar visualmente os relatórios no
+   * hub (ex.: "Recebíveis", "Custos & metas"). Entradas com o mesmo subtema
+   * aparecem juntas; a ordem dos subtemas segue a primeira aparição.
+   */
+  subtopic: string;
   /** Emoji decorativo para o card (opcional). */
   icon?: string;
 }
@@ -32,8 +38,9 @@ export interface ReportGroup {
   entries: ReportEntry[];
 }
 
-// Ordem dos grupos = ordem de exibição no hub. Dentro de cada grupo, a ordem
-// segue do mais usado/decisivo para o mais específico.
+// Ordem dos grupos = ordem de exibição no hub. Dentro de cada grupo, as
+// entradas ficam contíguas por subtema, e a ordem segue do mais usado/decisivo
+// para o mais específico.
 export const REPORT_GROUPS: readonly ReportGroup[] = [
   {
     area: "shows",
@@ -44,72 +51,84 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         href: "/shows/funil",
         description:
           "Quanto cachê está na mesa por etapa e quantas propostas viram show (taxa de concretização).",
+        subtopic: "Agenda & pipeline",
         icon: "🪜",
-      },
-      {
-        title: "Rentabilidade por show",
-        href: "/shows/rentabilidade",
-        description: "O resultado líquido (cachê − despesas) de cada show realizado, do mais ao menos rentável.",
-        icon: "💸",
-      },
-      {
-        title: "Rentabilidade por local",
-        href: "/shows/locais",
-        description: "Quais casas/venues valem a pena, somando o P&L dos shows por local.",
-        icon: "🏠",
-      },
-      {
-        title: "Atuação por cidade",
-        href: "/shows/cidades",
-        description: "Onde você toca e fatura mais, agregando shows e resultado por cidade.",
-        icon: "🗺️",
-      },
-      {
-        title: "Evolução do cachê",
-        href: "/shows/evolucao-cache",
-        description: "Se o seu preço médio por show sobe com o tempo, mês a mês.",
-        icon: "📈",
-      },
-      {
-        title: "Faixas de cachê",
-        href: "/shows/faixas-de-cache",
-        description: "Como os cachês se distribuem por faixa de preço.",
-        icon: "📊",
       },
       {
         title: "Por dia da semana",
         href: "/shows/dias-semana",
         description: "Quais dias da semana rendem mais shows e mais dinheiro.",
+        subtopic: "Agenda & pipeline",
         icon: "📅",
       },
       {
         title: "Conflitos de agenda",
         href: "/shows/conflitos",
         description: "Dias com dois ou mais shows marcados, para resolver choques de agenda.",
+        subtopic: "Agenda & pipeline",
         icon: "⚠️",
       },
       {
         title: "Receita agendada",
         href: "/shows/receita-agendada",
         description: "Os cachês dos shows futuros projetados por mês (confirmado x a confirmar).",
+        subtopic: "Agenda & pipeline",
         icon: "🔮",
+      },
+      {
+        title: "Rentabilidade por show",
+        href: "/shows/rentabilidade",
+        description: "O resultado líquido (cachê − despesas) de cada show realizado, do mais ao menos rentável.",
+        subtopic: "Rentabilidade & preço",
+        icon: "💸",
+      },
+      {
+        title: "Rentabilidade por local",
+        href: "/shows/locais",
+        description: "Quais casas/venues valem a pena, somando o P&L dos shows por local.",
+        subtopic: "Rentabilidade & preço",
+        icon: "🏠",
+      },
+      {
+        title: "Atuação por cidade",
+        href: "/shows/cidades",
+        description: "Onde você toca e fatura mais, agregando shows e resultado por cidade.",
+        subtopic: "Rentabilidade & preço",
+        icon: "🗺️",
+      },
+      {
+        title: "Evolução do cachê",
+        href: "/shows/evolucao-cache",
+        description: "Se o seu preço médio por show sobe com o tempo, mês a mês.",
+        subtopic: "Rentabilidade & preço",
+        icon: "📈",
+      },
+      {
+        title: "Faixas de cachê",
+        href: "/shows/faixas-de-cache",
+        description: "Como os cachês se distribuem por faixa de preço.",
+        subtopic: "Rentabilidade & preço",
+        icon: "📊",
       },
       {
         title: "Cachês a receber",
         href: "/shows/a-receber",
         description: "O dinheiro esquecido: shows já realizados cujo cachê ainda não entrou no caixa.",
+        subtopic: "Recebíveis",
         icon: "🎤",
       },
       {
         title: "Prazo de recebimento",
         href: "/shows/prazo-recebimento",
         description: "Quantos dias, em média, o cachê leva para cair na conta depois do show (DSO).",
+        subtopic: "Recebíveis",
         icon: "⏱️",
       },
       {
         title: "Prazo por contratante",
         href: "/shows/prazo-recebimento/por-contratante",
         description: "Quem paga rápido e quem paga devagar, com o prazo médio por contratante.",
+        subtopic: "Recebíveis",
         icon: "🐢",
       },
     ],
@@ -122,48 +141,56 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         title: "Relatório mensal",
         href: "/financas/relatorio",
         description: "O fechamento de um mês com receitas, despesas, saldo e quebra por categoria.",
+        subtopic: "Fechamentos",
         icon: "🗓️",
       },
       {
         title: "Resumo anual",
         href: "/financas/anual",
         description: "Os 12 meses do ano lado a lado, com totais e o melhor/pior mês.",
+        subtopic: "Fechamentos",
         icon: "📆",
-      },
-      {
-        title: "A pagar e receber",
-        href: "/financas/agenda",
-        description: "As pendências distribuídas por janela de vencimento, das vencidas às futuras.",
-        icon: "📥",
       },
       {
         title: "Sazonalidade",
         href: "/financas/sazonalidade",
         description: "Qual época do ano costuma render mais, somando todos os anos do histórico.",
+        subtopic: "Fechamentos",
         icon: "🌦️",
       },
       {
         title: "Fontes de renda",
         href: "/financas/fontes-de-renda",
         description: "De onde vem o seu dinheiro: o mix de receitas por categoria.",
+        subtopic: "Receitas & pendências",
         icon: "🧩",
+      },
+      {
+        title: "A pagar e receber",
+        href: "/financas/agenda",
+        description: "As pendências distribuídas por janela de vencimento, das vencidas às futuras.",
+        subtopic: "Receitas & pendências",
+        icon: "📥",
       },
       {
         title: "Custos fixos",
         href: "/financas/custos-fixos",
         description: "Quanto você precisa faturar todo mês só para se manter (despesas recorrentes).",
+        subtopic: "Custos & metas",
         icon: "🔁",
       },
       {
         title: "Ponto de equilíbrio",
         href: "/financas/ponto-de-equilibrio",
         description: "Quantos shows por mês cobrem os seus custos fixos.",
+        subtopic: "Custos & metas",
         icon: "⚖️",
       },
       {
         title: "Reserva para impostos",
         href: "/financas/reserva-impostos",
         description: "Quanto guardar de cada cachê recebido para o imposto, mês a mês.",
+        subtopic: "Custos & metas",
         icon: "🧾",
       },
     ],
@@ -176,24 +203,28 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         title: "Ranking de contatos",
         href: "/contatos/ranking",
         description: "Quem mais te movimenta, ordenado por cachê total e número de shows.",
+        subtopic: "Quem move a carreira",
         icon: "🏆",
       },
       {
         title: "Concentração de contratantes",
         href: "/contatos/concentracao",
         description: "O quanto a sua renda depende de poucos contratantes (risco de dependência).",
+        subtopic: "Quem move a carreira",
         icon: "🎯",
       },
       {
         title: "Fidelização de contratantes",
         href: "/contatos/retencao",
         description: "Quem repete contratação e quem chamou uma vez só.",
+        subtopic: "Relacionamento",
         icon: "🤝",
       },
       {
         title: "Contatos para reativar",
         href: "/contatos/reativar",
         description: "Contratantes dormentes que já tocaram mas sumiram — follow-up de prospecção.",
+        subtopic: "Relacionamento",
         icon: "📨",
       },
     ],
@@ -210,6 +241,34 @@ export function reportCount(): number {
   return REPORT_GROUPS.reduce((n, g) => n + g.entries.length, 0);
 }
 
+export interface ReportSubgroup {
+  /** Nome do subtema (ex.: "Recebíveis"). */
+  subtopic: string;
+  entries: ReportEntry[];
+}
+
+/**
+ * Agrupa as entradas de um grupo por subtema, para a renderização em
+ * subseções no hub. A ordem dos subtemas segue a **primeira aparição** de cada
+ * um na lista de entradas (que já é mantida contígua em `REPORT_GROUPS`), e a
+ * ordem das entradas dentro de cada subtema é preservada. Não muta as entradas.
+ */
+export function subgroupEntries(entries: readonly ReportEntry[]): ReportSubgroup[] {
+  const order: string[] = [];
+  const byTopic = new Map<string, ReportEntry[]>();
+  for (const entry of entries) {
+    const key = entry.subtopic;
+    let bucket = byTopic.get(key);
+    if (!bucket) {
+      bucket = [];
+      byTopic.set(key, bucket);
+      order.push(key);
+    }
+    bucket.push(entry);
+  }
+  return order.map((subtopic) => ({ subtopic, entries: byTopic.get(subtopic)! }));
+}
+
 // Busca textual sobre o acervo: conforme o catálogo cresce (já passou de duas
 // dezenas), o hub ganha um campo que filtra os relatórios pelo texto digitado.
 // Lógica pura (sem React) para ser testável e reutilizável no client component.
@@ -218,9 +277,10 @@ export function reportCount(): number {
  * Filtra os grupos de relatórios por um texto livre. O casamento é
  * insensível a acento/caixa (via `normalizeText`) e por termo (AND): "cachê
  * prazo" só casa entradas que contenham ambos os termos. A consulta varre o
- * título, a descrição e o rótulo do grupo da entrada — assim "shows" traz
- * todos os relatórios da área. Consulta vazia devolve todos os grupos.
- * Grupos que ficam sem nenhuma entrada são omitidos do resultado.
+ * título, a descrição, o subtema e o rótulo do grupo da entrada — assim
+ * "shows" traz todos os relatórios da área e "recebíveis" traz o subtema.
+ * Consulta vazia devolve todos os grupos. Grupos que ficam sem nenhuma
+ * entrada são omitidos do resultado.
  */
 export function filterReports(query: string): ReportGroup[] {
   const terms = normalizeText(query).split(/\s+/).filter(Boolean);
@@ -229,7 +289,7 @@ export function filterReports(query: string): ReportGroup[] {
   return REPORT_GROUPS.map((group) => {
     const label = normalizeText(group.label);
     const entries = group.entries.filter((entry) => {
-      const haystack = `${normalizeText(entry.title)} ${normalizeText(entry.description)} ${label}`;
+      const haystack = `${normalizeText(entry.title)} ${normalizeText(entry.description)} ${normalizeText(entry.subtopic)} ${label}`;
       return terms.every((term) => haystack.includes(term));
     });
     return { ...group, entries };
