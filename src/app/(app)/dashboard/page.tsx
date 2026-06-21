@@ -13,6 +13,7 @@ import {
   showPipeline,
   projectYearEnd,
   projectYearEndWithFixedCosts,
+  applyYearEndScenario,
   compareYearEndToPrevious,
   recurringExpenses,
   type TxLike,
@@ -83,6 +84,11 @@ export default async function DashboardPage() {
   );
   const hasFixedScenario =
     fixedScenario.applicable && fixedScenario.estimatedRemainingFixedCost > 0;
+  // Piso conservador: "e se só os shows JÁ confirmados se pagarem?" (D66). Remove
+  // os cachês de shows ainda a confirmar da receita projetada. Só vira linha
+  // quando há cachê tentativo a descartar (caso contrário coincide com o cru).
+  const conservative = applyYearEndScenario(forecast, "conservative");
+  const hasConservativeFloor = forecast.scheduledTentative > 0;
   const pipeline = showPipeline(shows as ShowLike[]);
   const receivables = reconcileShowFees(shows as ReceivableShowLike[], txs);
   const receivablesAging = bucketReceivablesByAge(receivables);
@@ -246,6 +252,29 @@ export default async function DashboardPage() {
                 {forecast.scheduledShowCount === 1 ? "show" : "shows"} futuro
                 {forecast.scheduledShowCount === 1 ? "" : "s"} ainda não lançado
                 {forecast.scheduledShowCount === 1 ? "" : "s"}.
+              </p>
+            )}
+            {hasConservativeFloor && (
+              <p className="mt-2 border-t border-gray-200 pt-2 text-xs text-gray-600">
+                <span className="font-medium">Só confirmados:</span>{" "}
+                <span
+                  className={
+                    "font-semibold " +
+                    (conservative.projectedResult < 0
+                      ? "text-red-600"
+                      : "text-emerald-600")
+                  }
+                >
+                  {formatMoney(conservative.projectedResult)}
+                </span>{" "}
+                <span className="text-gray-500">
+                  deixando de fora {formatMoney(forecast.scheduledTentative)} de{" "}
+                  {forecast.scheduledTentativeCount}{" "}
+                  {forecast.scheduledTentativeCount === 1
+                    ? "show ainda a confirmar"
+                    : "shows ainda a confirmar"}
+                  .
+                </span>
               </p>
             )}
             {hasFixedScenario && (

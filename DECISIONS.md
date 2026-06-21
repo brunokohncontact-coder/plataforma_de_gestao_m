@@ -1720,3 +1720,29 @@ contexto, decisão, justificativa e alternativas consideradas.
   — adiável: as duas camadas são ortogonais e podem ser cruzadas depois sem retrabalho.
 - **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5 high /
   1 critical), mesma postura de D6/D8; nenhuma dependência nova.
+
+## D67 — Piso conservador ("só confirmados") no card de projeção do Painel (Sessão 75)
+- **Contexto:** a Sessão 74 (D66) entregou o seletor otimista × conservador `applyYearEndScenario` na
+  página de detalhe `/financas/projecao-ano`, dando o piso "e se só os shows JÁ confirmados se pagarem?".
+  O card "Projeção de {ano}" do Painel (D61/D64/D65) já trazia o número crú (otimista-por-design, soma
+  cachês a confirmar) e a linha "Com custos fixos" (D65), mas não a leitura conservadora — justamente o
+  piso que o músico cauteloso quer ver na primeira tela quando há propostas ainda não fechadas inflando
+  a projeção. Era o "levar o seletor de cenário ao card do Painel" do item 6 do PROGRESS.
+- **Decisão:** reaproveitar 100% a lógica pura `applyYearEndScenario(forecast, "conservative")` (D66) no
+  dashboard, sobre o forecast já computado — zero consulta extra. Renderiza-se uma **linha compacta**
+  "Só confirmados: {resultado}" abaixo da composição do card, só quando há cachê tentativo a descartar
+  (`forecast.scheduledTentative > 0`), detalhando o montante e o nº de shows a confirmar deixados de fora.
+- **Modelo/UI:** linha (não card, nem pílulas interativas) para não inflar o Painel nem transformar o
+  card — que é um `<Link>` único para o detalhe — num componente cliente. O número crú segue principal/em
+  destaque; o piso aparece discreto em cinza (neutro, vs. âmbar dos custos fixos), com resultado
+  verde/vermelho. Quem quer alternar cenário interativamente segue "Ver detalhe" (pílulas da D66).
+- **Justificativa:** entrega o piso conservador na primeira tela reusando lógica pura já testada
+  (`finance.test.ts`), sem schema, dependência, server action nem teste novo — mesma postura das
+  Sessões 69/72/73. Mantém o card escaneável e server-side (sem interatividade), coerente com D65.
+- **Alternativas consideradas:** (a) pílulas interativas Otimista/Conservador no card — descartado:
+  exigiria tornar o card cliente e quebraria o `<Link>` envolvente; o detalhe (D66) já oferece a
+  alternância. (b) substituir o número crú pelo conservador — descartado: o crú é o número de
+  planejamento padrão (coerente com D65/D66); o piso é complementar/opt-in visual. (c) mostrar a linha
+  sempre — descartado: sem cachê tentativo o piso coincide com o crú e só repetiria o número.
+- **Sem schema/dependência/server action/teste novo.** `npm audit` inalterado (10 advisories — 4 moderate
+  / 5 high / 1 critical), mesma postura de D6/D8; nenhuma dependência nova.
