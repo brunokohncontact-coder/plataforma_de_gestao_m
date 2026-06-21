@@ -5,6 +5,7 @@ import {
   reportCount,
   filterReports,
   countFilteredReports,
+  subgroupEntries,
   type ReportEntry,
 } from "./reports";
 
@@ -24,10 +25,27 @@ describe("REPORT_GROUPS", () => {
     }
   });
 
-  it("toda entrada tem título e descrição preenchidos", () => {
+  it("toda entrada tem título, descrição e subtema preenchidos", () => {
     for (const entry of allReports()) {
       expect(entry.title.trim().length).toBeGreaterThan(0);
       expect(entry.description.trim().length).toBeGreaterThan(0);
+      expect(entry.subtopic.trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  it("as entradas de cada grupo já vêm contíguas por subtema", () => {
+    // O hub confia nisso para que as subseções não se fragmentem.
+    for (const g of REPORT_GROUPS) {
+      const seen = new Set<string>();
+      let prev: string | null = null;
+      for (const entry of g.entries) {
+        if (entry.subtopic !== prev) {
+          // toda vez que o subtema muda, ele não pode ter aparecido antes
+          expect(seen.has(entry.subtopic)).toBe(false);
+          seen.add(entry.subtopic);
+          prev = entry.subtopic;
+        }
+      }
     }
   });
 
@@ -73,6 +91,48 @@ describe("allReports / reportCount", () => {
   });
 });
 
+describe("subgroupEntries", () => {
+  const entry = (title: string, subtopic: string): ReportEntry => ({
+    title,
+    href: `/x/${title}`,
+    description: `desc ${title}`,
+    subtopic,
+  });
+
+  it("agrupa por subtema preservando a ordem de aparição dos subtemas", () => {
+    const subs = subgroupEntries([
+      entry("a", "Um"),
+      entry("b", "Um"),
+      entry("c", "Dois"),
+    ]);
+    expect(subs.map((s) => s.subtopic)).toEqual(["Um", "Dois"]);
+    expect(subs[0].entries.map((e) => e.title)).toEqual(["a", "b"]);
+    expect(subs[1].entries.map((e) => e.title)).toEqual(["c"]);
+  });
+
+  it("junta subtemas repetidos não-contíguos num único bloco (na 1ª aparição)", () => {
+    const subs = subgroupEntries([
+      entry("a", "Um"),
+      entry("b", "Dois"),
+      entry("c", "Um"),
+    ]);
+    expect(subs.map((s) => s.subtopic)).toEqual(["Um", "Dois"]);
+    expect(subs[0].entries.map((e) => e.title)).toEqual(["a", "c"]);
+  });
+
+  it("lista vazia devolve nenhum subgrupo", () => {
+    expect(subgroupEntries([])).toEqual([]);
+  });
+
+  it("preserva todas as entradas de cada grupo real sem perder nem duplicar", () => {
+    for (const g of REPORT_GROUPS) {
+      const subs = subgroupEntries(g.entries);
+      const flat = subs.flatMap((s) => s.entries);
+      expect(flat).toEqual([...g.entries]);
+    }
+  });
+});
+
 describe("filterReports / countFilteredReports", () => {
   it("consulta vazia (ou só espaços) devolve todos os grupos e todas as entradas", () => {
     for (const q of ["", "   ", "\t"]) {
@@ -89,6 +149,7 @@ describe("filterReports / countFilteredReports", () => {
       title: "x",
       href: "/x",
       description: "y",
+      subtopic: "z",
     });
     expect(reportCount()).toBe(before);
   });
@@ -112,6 +173,17 @@ describe("filterReports / countFilteredReports", () => {
     expect(groups[0].area).toBe("contatos");
     const contatos = REPORT_GROUPS.find((g) => g.area === "contatos")!;
     expect(groups[0].entries).toHaveLength(contatos.entries.length);
+  });
+
+  it("casa pelo subtema — buscar 'recebíveis' traz o subtema inteiro", () => {
+    const groups = filterReports("recebiveis");
+    expect(groups.map((g) => g.area)).toEqual(["shows"]);
+    const hrefs = groups[0].entries.map((e) => e.href);
+    expect(hrefs).toEqual([
+      "/shows/a-receber",
+      "/shows/prazo-recebimento",
+      "/shows/prazo-recebimento/por-contratante",
+    ]);
   });
 
   it("multitermo é AND: exige todos os termos na mesma entrada", () => {
