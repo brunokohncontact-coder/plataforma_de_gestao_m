@@ -28,6 +28,7 @@ import {
   annualCategoryReport,
   availableYears,
   projectYearEnd,
+  applyYearEndScenario,
   projectYearEndWithFixedCosts,
   compareYearEndToPrevious,
   forecastBookedRevenue,
@@ -1408,6 +1409,22 @@ describe("projectYearEnd", () => {
     expect(f.scheduledIncome).toBe(400_00);
     expect(f.scheduledTentative).toBe(400_00);
     expect(f.scheduledConfirmed).toBe(0);
+    expect(f.scheduledTentativeCount).toBe(1);
+    expect(f.scheduledConfirmedCount).toBe(0);
+  });
+
+  it("conta confirmados e tentativos separadamente", () => {
+    const shows = [
+      { id: "c1", fee: 300_00, status: "CONFIRMED", date: "2026-09-01T00:00:00.000Z" },
+      { id: "c2", fee: 200_00, status: "PLAYED", date: "2026-10-01T00:00:00.000Z" },
+      { id: "t1", fee: 150_00, status: "PROPOSED", date: "2026-11-01T00:00:00.000Z" },
+    ];
+    const f = projectYearEnd([], shows, 2026, { now });
+    expect(f.scheduledShowCount).toBe(3);
+    expect(f.scheduledConfirmedCount).toBe(2);
+    expect(f.scheduledTentativeCount).toBe(1);
+    expect(f.scheduledConfirmed).toBe(500_00);
+    expect(f.scheduledTentative).toBe(150_00);
   });
 
   it("um show de hoje ainda conta como futuro (>= hoje)", () => {
@@ -1445,6 +1462,55 @@ describe("projectYearEnd", () => {
     expect(f.projectedIncome).toBe(200_00);
     expect(f.projectedExpense).toBe(50_00);
     expect(f.projectedResult).toBe(150_00);
+  });
+});
+
+describe("applyYearEndScenario", () => {
+  const now = "2026-06-15T12:00:00.000Z";
+
+  function forecastWithTentative() {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 300_00, received: true, date: "2026-02-10T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 100_00, received: true, date: "2026-03-10T00:00:00.000Z" }),
+    ];
+    const shows = [
+      { id: "c1", fee: 500_00, status: "CONFIRMED", date: "2026-09-01T00:00:00.000Z" },
+      { id: "t1", fee: 200_00, status: "PROPOSED", date: "2026-10-01T00:00:00.000Z" },
+    ];
+    return projectYearEnd(txs, shows, 2026, { now });
+  }
+
+  it("otimista devolve o forecast inalterado", () => {
+    const f = forecastWithTentative();
+    expect(applyYearEndScenario(f, "optimistic")).toBe(f);
+  });
+
+  it("conservador remove os cachês a confirmar da receita e reprojeta", () => {
+    const f = forecastWithTentative();
+    // Otimista: 300 recebido + 500 confirmado + 200 tentativo = 1000 receita.
+    expect(f.projectedIncome).toBe(1_000_00);
+    expect(f.projectedResult).toBe(900_00); // 1000 − 100
+
+    const c = applyYearEndScenario(f, "conservative");
+    expect(c.scheduledTentative).toBe(0);
+    expect(c.scheduledIncome).toBe(500_00); // só o confirmado
+    expect(c.projectedIncome).toBe(800_00); // 300 + 500
+    expect(c.projectedResult).toBe(700_00); // 800 − 100
+    expect(c.scheduledShowCount).toBe(1); // só o show confirmado
+    expect(c.scheduledTentativeCount).toBe(0);
+    // Despesas e contagem de confirmados intactas.
+    expect(c.projectedExpense).toBe(f.projectedExpense);
+    expect(c.scheduledConfirmedCount).toBe(1);
+    expect(c.scheduledConfirmed).toBe(500_00);
+  });
+
+  it("sem cachês a confirmar, conservador coincide com o forecast", () => {
+    const shows = [
+      { id: "c1", fee: 500_00, status: "CONFIRMED", date: "2026-09-01T00:00:00.000Z" },
+    ];
+    const f = projectYearEnd([], shows, 2026, { now });
+    expect(f.scheduledTentative).toBe(0);
+    expect(applyYearEndScenario(f, "conservative")).toBe(f);
   });
 });
 
