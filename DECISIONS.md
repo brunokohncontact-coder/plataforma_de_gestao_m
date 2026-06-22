@@ -1948,3 +1948,28 @@ contexto, decisão, justificativa e alternativas consideradas.
   smoke test), consultas filtradas por `userId`.
 - **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5 high /
   1 critical), mesma postura de D6/D8; nenhuma dependência nova.
+
+### D74 — Página dedicada de Fluxo de caixa projetado (Sessão 82)
+- **Contexto:** a projeção de caixa (`projectCashflow`, Sessão 18) já existia como **lógica pura testada**,
+  mas só era renderizada num **card do Painel** com horizonte fixo de 6 meses e poucos detalhes (saldo ao
+  fim de cada mês + variação). Faltava uma visão dedicada para responder com calma "quando o caixa vai
+  apertar?" — com horizonte ajustável, o pior momento destacado e a quebra de a-receber/a-pagar por mês.
+- **Decisão:** criar a página `/financas/fluxo-de-caixa` reaproveitando **100%** de `projectCashflow` (sem
+  lógica nova). A página oferece um **seletor de horizonte** (3/6/12/24 meses via `?meses=`, default 6,
+  validado contra a lista), três cards de destaque (Caixa atual, Saldo ao fim do horizonte, **Pior momento**
+  = menor `endBalance` e em que mês), um alerta vermelho quando o caixa fica negativo (mostrando o primeiro
+  mês em que isso ocorre) e a tabela mês a mês (a receber, a pagar, variação e saldo acumulado, com barras
+  proporcionais ao maior fluxo do horizonte). Registrada no hub de Relatórios em Finanças → Receitas &
+  pendências (`REPORT_GROUPS` em `reports.ts`), aparecendo na busca e no índice automaticamente.
+- **Justificativa:** segue o padrão já consagrado "card no Painel + página dedicada" (como a projeção de
+  fechamento do ano, D60/D61). O card do Painel continua sendo o vislumbre rápido; a página dá o controle
+  (horizonte) e os insights (pior momento, primeiro mês negativo) sem inflar o dashboard. Zero lógica nova
+  → zero teste novo necessário (a lógica já tem cobertura em `finance.test.ts`); a página é puramente de
+  apresentação sobre função pura testada.
+- **Alternativas consideradas:** (a) só aumentar o horizonte do card do Painel — descartado: o dashboard já
+  está denso e o card de 6 meses cumpre o papel de vislumbre. (b) tornar o horizonte do Painel configurável
+  — descartado: mistura controle de relatório no dashboard; melhor concentrar isso na página dedicada.
+- **Segurança:** sem mudança — página protegida por `requireUser` (307 → `/login` sem sessão, confirmado no
+  smoke test), consultas filtradas por `userId`.
+- **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5 high /
+  1 critical), mesma postura de D6/D8; nenhuma dependência nova.

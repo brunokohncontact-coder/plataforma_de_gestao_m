@@ -181,6 +181,14 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "📥",
       },
       {
+        title: "Fluxo de caixa projetado",
+        href: "/financas/fluxo-de-caixa",
+        description:
+          "Como o caixa evolui mês a mês com o que está a receber e a pagar, e quando aperta.",
+        subtopic: "Receitas & pendências",
+        icon: "🌊",
+      },
+      {
         title: "Custos fixos",
         href: "/financas/custos-fixos",
         description: "Quanto você precisa faturar todo mês só para se manter (despesas recorrentes).",

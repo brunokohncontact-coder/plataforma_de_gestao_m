@@ -1834,6 +1834,23 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   (→ `/login`). `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência
   nova nem mudança de schema — ver D6/D8). Ver **DECISIONS.md D73**.
 
+### Sessão 82 — Página dedicada de Fluxo de caixa projetado (D74)
+- **UI** (`src/app/(app)/financas/fluxo-de-caixa/page.tsx`): nova página que reaproveita **100%** da lógica
+  pura `projectCashflow` (Sessão 18, já testada) — sem lógica nova. Seletor de **horizonte** (3/6/12/24 meses
+  via `?meses=`, default 6, validado contra a lista); três cards de destaque (Caixa atual, Saldo ao fim do
+  horizonte, **Pior momento** = menor saldo projetado e em que mês); alerta vermelho do primeiro mês em que o
+  caixa fica negativo; tabela mês a mês (a receber / a pagar / variação / saldo acumulado) com barras
+  proporcionais ao maior fluxo do horizonte. Segue o padrão "card no Painel + página dedicada" (o card de 6
+  meses do dashboard continua como vislumbre; a página dá controle e insights sem inflar o dashboard).
+- **Hub** (`src/lib/reports.ts`): entrada "Fluxo de caixa projetado" registrada em Finanças → Receitas &
+  pendências (aparece na busca e no índice do hub automaticamente).
+- Definition of Done verde: build (`prisma generate && next build`) OK (`/financas/fluxo-de-caixa` registrada,
+  260 B), typecheck (`tsc --noEmit`) limpo, lint (0 warnings/erros), **565 testes** (`vitest run`; sem teste
+  novo — lógica pura já coberta), smoke test ao vivo (`next start`): `/login` → 200,
+  `/financas/fluxo-de-caixa` e `?meses=12` sem sessão → 307 (→ `/login`). `npm audit` inalterado (10
+  advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
+  Ver **DECISIONS.md D74**.
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
