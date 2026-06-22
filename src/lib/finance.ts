@@ -3380,6 +3380,136 @@ export function feeDistribution(
   };
 }
 
+// ── Cadência de shows (estou tocando mais ou menos ao longo do tempo?) ───────
+//
+// Responde "minha agenda está mais cheia?": conta os shows JÁ REALIZADOS (mesmo
+// critério de `feeTrend`/`reconcileShowFees` — PLAYED, ou CONFIRMED com data
+// passada) por mês, em ordem cronológica. É a dimensão de VOLUME (quantos shows),
+// complementar à `feeTrend` (preço) e à `feeDistribution` (formato dos cachês).
+// Por isso conta TODOS os gigs realizados, inclusive os de cachê 0 (um show de
+// graça para construir público continua sendo atividade), ao contrário de
+// `feeTrend`, que ignora `fee <= 0`. Pura.
+
+export interface GigCadenceMonth {
+  /** Chave "YYYY-MM" do mês. */
+  month: string;
+  /** Nº de shows realizados no mês. */
+  count: number;
+}
+
+export interface GigCadence {
+  /** Meses com shows realizados, em ordem cronológica crescente. */
+  months: GigCadenceMonth[];
+  /** Nº total de shows realizados considerados. */
+  totalShows: number;
+  /** Nº de meses com ao menos um show (= months.length). */
+  activeMonths: number;
+  /**
+   * Nº de meses do calendário do primeiro ao último mês com show, inclusive
+   * (a "janela" da carreira observada). 0 se nenhum show.
+   */
+  spanMonths: number;
+  /**
+   * Meses sem nenhum show dentro da janela (`spanMonths − activeMonths`): o
+   * tempo parado entre o primeiro e o último gig. 0 se a janela é contígua.
+   */
+  idleMonths: number;
+  /**
+   * Média de shows por mês ATIVO (totalShows / activeMonths), arredondada a 1
+   * casa decimal. "Quando toco num mês, toco quantas vezes?". 0 se nenhum.
+   */
+  avgPerActiveMonth: number;
+  /**
+   * Média de shows por mês de calendário na janela (totalShows / spanMonths),
+   * arredondada a 1 casa decimal — dilui os meses parados. 0 se nenhum.
+   */
+  avgPerMonth: number;
+  /** Mês com mais shows (empate → o mais recente); null se nenhum. */
+  busiestMonth: GigCadenceMonth | null;
+  /** Mês ATIVO com menos shows (empate → o mais antigo); null se nenhum. */
+  quietestMonth: GigCadenceMonth | null;
+  /**
+   * Variação da contagem do mês mais recente vs. o primeiro mês com shows — o
+   * "estou tocando mais?". `null` com menos de 2 meses ativos. Reaproveita
+   * `computeDelta`.
+   */
+  trend: MetricDelta | null;
+}
+
+/** Round a 1 casa decimal (evita ruído de ponto flutuante nos testes). */
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+/** Nº de meses de calendário de "YYYY-MM" a "YYYY-MM", inclusive nas duas pontas. */
+function monthSpan(firstKey: string, lastKey: string): number {
+  const [fy, fm] = firstKey.split("-").map(Number);
+  const [ly, lm] = lastKey.split("-").map(Number);
+  return (ly - fy) * 12 + (lm - fm) + 1;
+}
+
+/**
+ * Cadência (volume) dos shows realizados ao longo do tempo.
+ *
+ * - "Realizado" = `isHappenedGig` (PLAYED, ou CONFIRMED com data já passada);
+ *   propostos, cancelados e shows futuros ficam de fora.
+ * - Conta TODOS os gigs realizados, inclusive cachê 0 — o eixo aqui é atividade,
+ *   não preço (distinto de `feeTrend`, que exige `fee > 0`).
+ * - Agrupa por mês ("YYYY-MM") em ordem cronológica; `trend` compara a contagem
+ *   do mês mais recente com a do primeiro. `spanMonths`/`idleMonths` medem o
+ *   tempo parado entre o primeiro e o último gig. Pura; `now` injetável.
+ */
+export function gigCadence(
+  shows: ReceivableShowLike[],
+  opts: { now?: Date | string } = {},
+): GigCadence {
+  const todayMs = utcMidnight(opts.now ?? new Date());
+
+  const countByMonth = new Map<string, number>();
+  for (const s of shows) {
+    if (!isHappenedGig(s, todayMs)) continue;
+    const key = monthKey(s.date);
+    countByMonth.set(key, (countByMonth.get(key) ?? 0) + 1);
+  }
+
+  const months: GigCadenceMonth[] = [...countByMonth.keys()]
+    .sort()
+    .map((month) => ({ month, count: countByMonth.get(month)! }));
+
+  const totalShows = months.reduce((acc, m) => acc + m.count, 0);
+  const activeMonths = months.length;
+  const spanMonths =
+    activeMonths > 0 ? monthSpan(months[0].month, months[months.length - 1].month) : 0;
+  const idleMonths = Math.max(0, spanMonths - activeMonths);
+
+  let busiestMonth: GigCadenceMonth | null = null;
+  let quietestMonth: GigCadenceMonth | null = null;
+  for (const m of months) {
+    // `months` em ordem crescente: no empate do mais cheio, `>=` mantém o mais
+    // recente; no mais vazio, `<` mantém o mais antigo.
+    if (busiestMonth == null || m.count >= busiestMonth.count) busiestMonth = m;
+    if (quietestMonth == null || m.count < quietestMonth.count) quietestMonth = m;
+  }
+
+  const trend =
+    activeMonths >= 2
+      ? computeDelta(months[months.length - 1].count, months[0].count)
+      : null;
+
+  return {
+    months,
+    totalShows,
+    activeMonths,
+    spanMonths,
+    idleMonths,
+    avgPerActiveMonth: activeMonths > 0 ? round1(totalShows / activeMonths) : 0,
+    avgPerMonth: spanMonths > 0 ? round1(totalShows / spanMonths) : 0,
+    busiestMonth,
+    quietestMonth,
+    trend,
+  };
+}
+
 // ── Desempenho por dia da semana (quais dias valem mais a pena?) ─────────────
 
 /** Rótulos longos dos dias da semana, índice 0 = domingo .. 6 = sábado. */

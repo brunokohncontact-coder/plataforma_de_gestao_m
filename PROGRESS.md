@@ -1851,6 +1851,27 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
   Ver **DECISIONS.md D74**.
 
+### Sessão 83 — Cadência de shows: volume de apresentações ao longo do tempo (D75)
+- **Lógica pura** (`src/lib/finance.ts`): `gigCadence(shows, { now? })` conta os shows **já realizados**
+  (`isHappenedGig` — PLAYED, ou CONFIRMED com data passada) **por mês**, em ordem cronológica, e deriva
+  média por mês ativo, média por mês de calendário, mês mais cheio/vazio, a **janela** do primeiro ao
+  último gig (`spanMonths`), os **meses parados** dentro dela (`idleMonths`) e a **tendência** (contagem do
+  mês recente vs. o primeiro, reaproveitando `computeDelta`). Conta **gigs de cachê 0** (o eixo é atividade,
+  não preço — distinto de `feeTrend`/`feeDistribution`, que exigem `fee > 0`). Helpers privados `round1`
+  (1 casa decimal) e `monthSpan` (meses de calendário entre duas chaves "YYYY-MM"). **+10 testes** em
+  `src/lib/finance.test.ts` → **575 no projeto** (eram 565).
+- **UI** (`src/app/(app)/shows/cadencia/page.tsx`): página espelhando `/shows/evolucao-cache` —
+  cards de destaque (shows por mês ativo, total, mês mais cheio, meses parados), card de tendência
+  ("Você está tocando mais/menos") e tabela mês a mês com barras proporcionais. Estado vazio dedicado.
+- **Hub** (`src/lib/reports.ts`): entrada "Cadência de shows" registrada em Shows → Agenda & pipeline
+  (aparece na busca e no índice do hub automaticamente). Completa o trio preço (`feeTrend`) × distribuição
+  (`feeDistribution`) × volume (`gigCadence`).
+- Definition of Done verde: build (`prisma generate && next build`) OK (`/shows/cadencia` registrada,
+  263 B), typecheck (`tsc --noEmit`) limpo, lint (0 warnings/erros), **575 testes** (`vitest run`), smoke
+  test ao vivo (`next start`): `/login` → 200, `/shows/cadencia` sem sessão → 307 (→ `/login`). `npm audit`
+  inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de
+  schema — ver D6/D8). Ver **DECISIONS.md D75**.
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
@@ -1860,7 +1881,7 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `subgroupEntries` em `reports.ts` + subcabeçalhos `<h3>` em `ReportsBrowser.tsx`, ver D58;
    **sumário de salto rápido por subtema** entregue na Sessão 67 — `subtopicSlug` + `reportsNavIndex`
    em `reports.ts` + `<nav>` "Ir para um tema" com pílulas-âncora em `ReportsBrowser.tsx`, ver D59):
-   catálogo central dos 24 relatórios na navbar, com busca ao vivo, cards agrupados por subtema e
+   catálogo central dos relatórios na navbar, com busca ao vivo, cards agrupados por subtema e
    índice de salto rápido no topo. Ao criar um relatório novo, **registrá-lo em `REPORT_GROUPS`**
    (com `subtopic`) para aparecer no hub, na busca e no índice automaticamente. Próximo possível —
    destacar a área/subtema visível ao rolar (scroll-spy) ou um contador de "novos" relatórios.
