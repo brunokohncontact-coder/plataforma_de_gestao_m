@@ -49,6 +49,7 @@ import {
   DEFAULT_TAX_RATE,
   showPipeline,
   feeTrend,
+  gigCadence,
   feeDistribution,
   feeBandKeyFor,
   FEE_BANDS,
@@ -3052,6 +3053,166 @@ describe("feeTrend", () => {
     // médias: jan 100, fev 200, mar 100 → melhor=fev; pior empata jan/mar → jan.
     expect(t.bestMonth?.month).toBe("2026-02");
     expect(t.worstMonth?.month).toBe("2026-01");
+  });
+});
+
+describe("gigCadence", () => {
+  const now = new Date("2026-06-15T12:00:00.000Z");
+
+  function gig(partial: Partial<ReceivableShowLike>): ReceivableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-01-10T20:00:00.000Z",
+      ...partial,
+    };
+  }
+
+  it("sem shows realizados retorna tudo zerado/nulo", () => {
+    const c = gigCadence([], { now });
+    expect(c.months).toEqual([]);
+    expect(c.totalShows).toBe(0);
+    expect(c.activeMonths).toBe(0);
+    expect(c.spanMonths).toBe(0);
+    expect(c.idleMonths).toBe(0);
+    expect(c.avgPerActiveMonth).toBe(0);
+    expect(c.avgPerMonth).toBe(0);
+    expect(c.busiestMonth).toBeNull();
+    expect(c.quietestMonth).toBeNull();
+    expect(c.trend).toBeNull();
+  });
+
+  it("conta shows realizados por mês cronológico", () => {
+    const c = gigCadence(
+      [
+        gig({ id: "a", date: "2026-01-05T20:00:00.000Z" }),
+        gig({ id: "b", date: "2026-01-20T20:00:00.000Z" }),
+        gig({ id: "c", date: "2026-03-02T20:00:00.000Z" }),
+      ],
+      { now },
+    );
+    expect(c.months).toEqual([
+      { month: "2026-01", count: 2 },
+      { month: "2026-03", count: 1 },
+    ]);
+    expect(c.totalShows).toBe(3);
+    expect(c.activeMonths).toBe(2);
+  });
+
+  it("considera só shows realizados (ignora proposto, cancelado e futuro)", () => {
+    const c = gigCadence(
+      [
+        gig({ id: "played", status: "PLAYED", date: "2026-01-10T20:00:00.000Z" }),
+        gig({ id: "confPast", status: "CONFIRMED", date: "2026-02-10T20:00:00.000Z" }),
+        gig({ id: "confFut", status: "CONFIRMED", date: "2026-09-10T20:00:00.000Z" }),
+        gig({ id: "prop", status: "PROPOSED", date: "2026-01-10T20:00:00.000Z" }),
+        gig({ id: "canc", status: "CANCELLED", date: "2026-01-10T20:00:00.000Z" }),
+      ],
+      { now },
+    );
+    expect(c.totalShows).toBe(2);
+    expect(c.months.map((m) => m.month)).toEqual(["2026-01", "2026-02"]);
+  });
+
+  it("conta gigs de cachê 0 (atividade, não preço) — distinto de feeTrend", () => {
+    const c = gigCadence(
+      [
+        gig({ id: "free", fee: 0, date: "2026-01-10T20:00:00.000Z" }),
+        gig({ id: "paid", fee: 80_00, date: "2026-01-20T20:00:00.000Z" }),
+      ],
+      { now },
+    );
+    expect(c.totalShows).toBe(2);
+    expect(c.months).toEqual([{ month: "2026-01", count: 2 }]);
+  });
+
+  it("span e meses parados medem o intervalo do primeiro ao último gig", () => {
+    const c = gigCadence(
+      [
+        gig({ id: "a", date: "2026-01-10T20:00:00.000Z" }),
+        gig({ id: "b", date: "2026-04-10T20:00:00.000Z" }),
+      ],
+      { now },
+    );
+    // jan e abr ativos; janela jan→abr = 4 meses; 2 ativos → 2 parados (fev, mar).
+    expect(c.activeMonths).toBe(2);
+    expect(c.spanMonths).toBe(4);
+    expect(c.idleMonths).toBe(2);
+    expect(c.avgPerActiveMonth).toBe(1);
+    expect(c.avgPerMonth).toBe(0.5);
+  });
+
+  it("span cruza a virada de ano e nunca tem mês parado negativo", () => {
+    const c = gigCadence(
+      [
+        gig({ id: "a", date: "2025-11-10T20:00:00.000Z" }),
+        gig({ id: "b", date: "2026-02-10T20:00:00.000Z" }),
+      ],
+      { now },
+    );
+    // nov/2025 → fev/2026 = 4 meses de janela.
+    expect(c.spanMonths).toBe(4);
+    expect(c.idleMonths).toBe(2);
+  });
+
+  it("média por mês ativo arredonda a 1 casa decimal", () => {
+    const c = gigCadence(
+      [
+        gig({ id: "a", date: "2026-01-05T20:00:00.000Z" }),
+        gig({ id: "b", date: "2026-01-15T20:00:00.000Z" }),
+        gig({ id: "c", date: "2026-02-05T20:00:00.000Z" }),
+      ],
+      { now },
+    );
+    // 3 shows / 2 meses ativos = 1.5; janela contígua (jan, fev) → idem.
+    expect(c.avgPerActiveMonth).toBe(1.5);
+    expect(c.idleMonths).toBe(0);
+  });
+
+  it("mais cheio desempata pelo mais recente; mais vazio pelo mais antigo", () => {
+    const c = gigCadence(
+      [
+        gig({ id: "a", date: "2026-01-10T20:00:00.000Z" }),
+        gig({ id: "b1", date: "2026-02-05T20:00:00.000Z" }),
+        gig({ id: "b2", date: "2026-02-15T20:00:00.000Z" }),
+        gig({ id: "c", date: "2026-03-10T20:00:00.000Z" }),
+      ],
+      { now },
+    );
+    // contagens: jan 1, fev 2, mar 1 → mais cheio fev; mais vazio empata jan/mar → jan.
+    expect(c.busiestMonth?.month).toBe("2026-02");
+    expect(c.quietestMonth?.month).toBe("2026-01");
+  });
+
+  it("trend compara a contagem do mês mais recente com a do primeiro", () => {
+    const c = gigCadence(
+      [
+        gig({ id: "a", date: "2026-01-10T20:00:00.000Z" }),
+        gig({ id: "b1", date: "2026-04-05T20:00:00.000Z" }),
+        gig({ id: "b2", date: "2026-04-15T20:00:00.000Z" }),
+        gig({ id: "b3", date: "2026-04-25T20:00:00.000Z" }),
+      ],
+      { now },
+    );
+    expect(c.trend).not.toBeNull();
+    expect(c.trend!.current).toBe(3);
+    expect(c.trend!.previous).toBe(1);
+    expect(c.trend!.direction).toBe("up");
+    expect(c.trend!.pct).toBeCloseTo(2, 5);
+  });
+
+  it("trend é null com um único mês ativo", () => {
+    const c = gigCadence(
+      [
+        gig({ id: "a", date: "2026-01-05T20:00:00.000Z" }),
+        gig({ id: "b", date: "2026-01-25T20:00:00.000Z" }),
+      ],
+      { now },
+    );
+    expect(c.activeMonths).toBe(1);
+    expect(c.spanMonths).toBe(1);
+    expect(c.trend).toBeNull();
   });
 });
 

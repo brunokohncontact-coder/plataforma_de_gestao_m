@@ -62,6 +62,13 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "📅",
       },
       {
+        title: "Cadência de shows",
+        href: "/shows/cadencia",
+        description: "Quantos shows você toca por mês ao longo do tempo — se a agenda está mais cheia.",
+        subtopic: "Agenda & pipeline",
+        icon: "🎶",
+      },
+      {
         title: "Conflitos de agenda",
         href: "/shows/conflitos",
         description: "Dias com dois ou mais shows marcados, para resolver choques de agenda.",

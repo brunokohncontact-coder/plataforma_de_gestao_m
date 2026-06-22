@@ -1973,3 +1973,33 @@ contexto, decisão, justificativa e alternativas consideradas.
   smoke test), consultas filtradas por `userId`.
 - **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5 high /
   1 critical), mesma postura de D6/D8; nenhuma dependência nova.
+
+## D75 — Cadência de shows: volume de apresentações ao longo do tempo (Sessão 83)
+- **Contexto:** o app já media a evolução do **preço** (`feeTrend`, `/shows/evolucao-cache`) e o formato
+  da distribuição de cachês (`feeDistribution`, `/shows/faixas-de-cache`), além do desempenho por dia da
+  semana. Faltava a dimensão de **volume/atividade** ao longo do tempo — "estou tocando mais ou menos?",
+  independente de quanto cobro. `feeTrend` traz uma contagem por mês, mas só de shows com `fee > 0`, então
+  não responde à pergunta de cadência (gigs de graça também são atividade) nem mede o tempo parado.
+- **Decisão:** uma função pura `gigCadence(shows, { now? })` em `src/lib/finance.ts` conta os shows **já
+  realizados** (`isHappenedGig` — PLAYED, ou CONFIRMED com data passada) **por mês**, em ordem cronológica,
+  e deriva: média por mês ativo, média por mês de calendário (diluindo parados), mês mais cheio/vazio, a
+  **janela** do primeiro ao último gig (`spanMonths`), os **meses parados** dentro dela (`idleMonths`) e a
+  **tendência** (contagem do mês recente vs. o primeiro, reaproveitando `computeDelta`). Página
+  `/shows/cadencia` com cards de destaque, card de tendência ("Você está tocando mais/menos") e tabela mês
+  a mês com barras. Registrada no hub de Relatórios em Shows → Agenda & pipeline (`REPORT_GROUPS`).
+- **Conta gigs de cachê 0 (distinto de `feeTrend`):** o eixo aqui é **atividade**, não preço — um show de
+  graça para construir público continua sendo um show tocado. Por isso `gigCadence` não filtra por `fee`,
+  ao contrário de `feeTrend`/`feeDistribution` (que medem preço e exigem `fee > 0`). Documentado na função
+  e na própria página.
+- **Justificativa:** completa o trio preço (`feeTrend`) × distribuição (`feeDistribution`) × volume
+  (`gigCadence`) — juntos respondem "toco mais E cobro mais?". `idleMonths`/`spanMonths` dão um sinal de
+  saúde da agenda (tempo parado entre gigs) que nenhum outro relatório oferecia. Mantém o padrão do projeto:
+  lógica pura testável (`computeDelta`, `isHappenedGig`, `monthKey` reaproveitados), página de apresentação
+  sobre função pura. Cobertura: 10 testes em `finance.test.ts` (agrupamento, exclusão de proposto/cancelado/
+  futuro, contagem de gigs grátis, span/idle inclusive na virada de ano, desempates de cheio/vazio, trend).
+- **Alternativas consideradas:** (a) reaproveitar a contagem de `feeTrend` — descartado: ignora gigs sem
+  cachê e não tem span/idle/tendência de volume. (b) usar todos os shows (incl. futuros/propostos) —
+  descartado: cadência é histórico realizado; agenda futura já é coberta por receita agendada/funil. (c)
+  granularidade semanal — over-engineering para o MVP (mensal casa com os demais relatórios temporais).
+- **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5 high /
+  1 critical), mesma postura de D6/D8; nenhuma dependência nova.
