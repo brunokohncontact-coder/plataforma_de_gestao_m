@@ -1774,6 +1774,23 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   `/dashboard` sem sessão → 307 (→ `/login`). `npm audit` inalterado (10 advisories: 4 moderate / 5 high /
   1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8). Ver **DECISIONS.md D70**.
 
+### Sessão 79 — Indicador de "filtro lembrado" nas listas (D71)
+- **Lógica pura** (`src/lib/listFilter.ts`): novo `FILTER_RESTORED_PARAM = "lembrado"` + helpers
+  `withRestoredFlag(query)` (acrescenta o marcador à query de restauração) e `wasFilterRestored(params)`.
+  O marcador NÃO é chave de filtro, então `canonicalQuery` o ignora — nunca entra no cookie e some na
+  primeira submissão. +4 testes em `listFilter.test.ts`, inclusive a garantia de que o marcador não vaza
+  para o cookie e que a URL restaurada (já com chaves) vira `persist` sem loop.
+- **Middleware** (`src/middleware.ts`): o caso `restore` agora redireciona para
+  `<rota>?<filtro>&lembrado=1` (via `withRestoredFlag`), para a página distinguir restauração de submissão.
+- **UI**: novo componente server puro `src/components/RememberedFilterNotice.tsx` (pílula `brand` discreta
+  "Filtro restaurado da sua última visita." + atalho "Limpar" → `?reset=1`, só renderiza quando `restored`).
+  Inserido acima do formulário de filtro nas três listas: `/financas`, `/shows`, `/contatos` (cada uma lê
+  `FILTER_RESTORED_PARAM` da query). Fecha o "indicador visual de filtro lembrado" do item 3.
+- Definition of Done verde: build (`prisma generate && next build`) OK, typecheck (`tsc --noEmit`) limpo,
+  lint (0 warnings/erros), **552 testes** (`vitest run`), smoke test ao vivo (`next start`): `/login` → 200,
+  `/dashboard` e `/shows` sem sessão → 307 (→ `/login`). `npm audit` inalterado (10 advisories: 4 moderate /
+  5 high / 1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8). Ver **DECISIONS.md D71**.
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
@@ -1799,9 +1816,10 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    **transições de status** (log) para uma taxa de conversão proposta→realizado de verdade e
    tempo médio em cada etapa.
 3. **Filtros — evoluções**: persistência do último filtro entregue para Finanças (Sessão 32),
-   Shows e Contatos (Sessão 33) — módulo genérico `src/lib/listFilter.ts` + middleware (ver D23/D24).
-   Próximo possível: indicador visual de "filtro lembrado" na UI, ou estender a `/shows/calendario`
-   e listas derivadas se fizer sentido.
+   Shows e Contatos (Sessão 33) — módulo genérico `src/lib/listFilter.ts` + middleware (ver D23/D24);
+   **indicador visual de "filtro lembrado"** entregue na Sessão 79 — marcador `?lembrado=1` na
+   restauração + pílula `RememberedFilterNotice` nas três listas (ver D71).
+   Próximo possível: estender a persistência a `/shows/calendario` e listas derivadas se fizer sentido.
    (filtro por categoria entregue na Sessão 10; intervalo de datas na Sessão 12;
    exportação CSV do recorte filtrado na Sessão 14; busca textual na Sessão 17;
    base em `src/lib/finance.ts`.)

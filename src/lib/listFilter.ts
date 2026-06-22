@@ -19,6 +19,26 @@
 export const FILTER_RESET_PARAM = "reset";
 
 /**
+ * Marcador acrescentado à URL quando o middleware RESTAURA um filtro salvo (vs.
+ * uma submissão explícita do usuário). Não é chave de filtro — `canonicalQuery`
+ * o ignora, então nunca entra no cookie — serve só para a página avisar "este
+ * recorte veio da sua última visita".
+ */
+export const FILTER_RESTORED_PARAM = "lembrado";
+
+/** Acrescenta o marcador de "filtro restaurado" à query de restauração. */
+export function withRestoredFlag(query: string): string {
+  const params = new URLSearchParams(query);
+  params.set(FILTER_RESTORED_PARAM, "1");
+  return params.toString();
+}
+
+/** A requisição atual chegou de uma restauração de filtro (tem o marcador)? */
+export function wasFilterRestored(params: URLSearchParams): boolean {
+  return params.get(FILTER_RESTORED_PARAM) === "1";
+}
+
+/**
  * Serializa apenas as chaves de filtro conhecidas e não-vazias, em ordem estável
  * (a ordem de `keys`). Garante que o cookie nunca guarde lixo (ex.: `reset`,
  * parâmetros desconhecidos).

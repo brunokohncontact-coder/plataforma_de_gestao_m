@@ -1847,3 +1847,30 @@ contexto, decisão, justificativa e alternativas consideradas.
   teste isolado.
 - **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5 high /
   1 critical), mesma postura de D6/D8; nenhuma dependência nova.
+
+## D71 — Indicador de "filtro lembrado" nas listas (Sessão 79)
+- **Contexto:** o item 3 dos próximos passos previa, após a persistência genérica do último filtro
+  (D23/D24 — Finanças/Shows/Contatos via cookie + middleware), um "indicador visual de filtro lembrado na
+  UI". Sem ele, ao voltar a uma lista pelo menu o middleware restaura o recorte salvo silenciosamente: a
+  lista abre já filtrada e o usuário pode estranhar ("por que só aparecem alguns?"), sem perceber que é um
+  filtro herdado da última visita.
+- **Decisão:** o middleware passa a marcar a URL de RESTAURAÇÃO com `?...&lembrado=1`
+  (`withRestoredFlag` em `src/lib/listFilter.ts`); cada página de lista lê o marcador
+  (`FILTER_RESTORED_PARAM`) e renderiza uma pílula discreta `RememberedFilterNotice` ("Filtro restaurado da
+  sua última visita." + atalho "Limpar" → `?reset=1`). O marcador NÃO é chave de filtro, então
+  `canonicalQuery` o ignora: nunca entra no cookie e some na primeira submissão do formulário (que não tem
+  esse campo). Como a URL restaurada já carrega chaves de filtro, a próxima passada no middleware vira
+  `persist` (não re-restaura) — sem loop, comportamento idêntico ao já testado na D24.
+- **Modelo/UI:** componente server puro (sem cliente), só renderiza quando `restored`; tom `brand` (a
+  identidade do app), mais leve que os avisos âmbar de alerta. Reaproveita o `?reset=1` já existente como
+  ação de "esquecer". Inserido acima do formulário de filtro nas três listas.
+- **Justificativa:** fecha a lacuna de feedback da persistência de filtro reaproveitando toda a infra pura
+  já testada (D24); a lógica nova (marcar/ler o flag) é pura e isolada em `listFilter.ts`, com +4 testes em
+  `listFilter.test.ts` cobrindo `withRestoredFlag`/`wasFilterRestored` e a garantia de que o marcador não
+  vaza para o cookie.
+- **Alternativas consideradas:** (a) destacar visualmente cada campo restaurado no formulário — descartado:
+  mais ruído visual para o mesmo sinal. (b) cookie de sessão sinalizando "acabei de restaurar" — descartado:
+  estado extra e frágil; o marcador na URL é stateless e auto-expira na próxima navegação. (c) toast/efêmero
+  — descartado: exigiria componente cliente e timer; a pílula persistente é suficiente e server-side.
+- **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5 high /
+  1 critical), mesma postura de D6/D8; nenhuma dependência nova.

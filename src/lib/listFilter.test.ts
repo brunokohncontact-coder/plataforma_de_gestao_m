@@ -3,6 +3,9 @@ import {
   canonicalQuery,
   hasAnyFilterParam,
   decideListFilter,
+  withRestoredFlag,
+  wasFilterRestored,
+  FILTER_RESTORED_PARAM,
   LIST_FILTER_CONFIGS,
 } from "./listFilter";
 
@@ -99,6 +102,35 @@ describe("decideListFilter (genérico)", () => {
     expect(restored).toEqual({ kind: "restore", query: "status=DONE" });
     const next = decideListFilter(sp("status=DONE"), "status=DONE", SHOWS_KEYS);
     expect(next).toEqual({ kind: "persist", cookie: "status=DONE" });
+  });
+});
+
+describe("marcador de filtro restaurado", () => {
+  it("withRestoredFlag acrescenta o marcador preservando as chaves", () => {
+    expect(withRestoredFlag("q=jazz&status=DONE")).toBe(
+      `q=jazz&status=DONE&${FILTER_RESTORED_PARAM}=1`,
+    );
+  });
+
+  it("withRestoredFlag funciona com query vazia", () => {
+    expect(withRestoredFlag("")).toBe(`${FILTER_RESTORED_PARAM}=1`);
+  });
+
+  it("wasFilterRestored detecta o marcador, ignorando outros valores", () => {
+    expect(wasFilterRestored(sp(`q=jazz&${FILTER_RESTORED_PARAM}=1`))).toBe(true);
+    expect(wasFilterRestored(sp("q=jazz"))).toBe(false);
+    expect(wasFilterRestored(sp(`${FILTER_RESTORED_PARAM}=0`))).toBe(false);
+  });
+
+  it("o marcador não é chave de filtro: some na canonicalização e não persiste", () => {
+    const restored = withRestoredFlag("q=jazz&status=DONE");
+    // canonicalQuery (o que vai pro cookie) descarta o marcador.
+    expect(canonicalQuery(sp(restored), SHOWS_KEYS)).toBe("q=jazz&status=DONE");
+    // A URL restaurada já tem chaves de filtro → vira persist, sem o marcador.
+    expect(decideListFilter(sp(restored), null, SHOWS_KEYS)).toEqual({
+      kind: "persist",
+      cookie: "q=jazz&status=DONE",
+    });
   });
 });
 

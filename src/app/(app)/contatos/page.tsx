@@ -8,8 +8,10 @@ import {
   isValidContactRole,
   type ContactFilter,
 } from "@/lib/contacts";
+import { FILTER_RESTORED_PARAM } from "@/lib/listFilter";
 import { deleteContactAction } from "./actions";
 import { DeleteButton } from "@/components/DeleteButton";
+import { RememberedFilterNotice } from "@/components/RememberedFilterNotice";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +44,7 @@ export default async function ContactsPage({
     role: isValidContactRole(roleParam) ? roleParam : null,
   };
   const active = hasActiveContactFilter(filter);
+  const restored = readParam(params, FILTER_RESTORED_PARAM) === "1";
 
   const visible = filterContacts(contacts, filter);
 
@@ -60,6 +63,11 @@ export default async function ContactsPage({
           </Link>
         </div>
       </div>
+
+      <RememberedFilterNotice
+        restored={restored}
+        resetHref="/contatos?reset=1"
+      />
 
       {contacts.length > 0 && (
         <form
