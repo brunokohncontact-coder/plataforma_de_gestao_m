@@ -1791,6 +1791,27 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   `/dashboard` e `/shows` sem sessão → 307 (→ `/login`). `npm audit` inalterado (10 advisories: 4 moderate /
   5 high / 1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8). Ver **DECISIONS.md D71**.
 
+### Sessão 80 — Exportação CSV da lista de Shows (D72)
+- **Lógica pura** (`src/lib/csv.ts`): nova interface `CsvShow` + `SHOW_CSV_HEADERS` + `showsToCsv(shows)`,
+  e o helper `csvTime(date)` (hora "HH:MM" em UTC, mesma convenção UTC de `csvDate`/`dayKey`, estável em
+  testes). Colunas: Data, Hora, Título, Local, Cidade, Status (rótulo legível via `SHOW_STATUS_LABELS`,
+  com fallback defensivo p/ status desconhecido), Cachê (R$) (decimal com vírgula via `centsToCsvAmount`),
+  Observações. Mesma convenção pt-BR das demais exportações (delimitador `;`, escape RFC 4180 reaproveitado).
+  +7 testes em `csv.test.ts` (cabeçalho, serialização, ausências, escape, status desconhecido, ordem; e
+  `csvTime`).
+- **Route** (`src/app/(app)/shows/export/route.ts`): GET protegido por `requireUser` que lê os MESMOS
+  filtros da lista (`q`, `status`, `de`, `ate`), aplica `filterShows` sobre os shows do usuário (ordem
+  `date desc`) e devolve CSV com BOM UTF-8 + `Content-Disposition` `shows-AAAA-MM-DD.csv`. Espelha
+  exatamente `financas/export`.
+- **UI** (`src/app/(app)/shows/page.tsx`): link "Exportar CSV" no cabeçalho (ao lado de "Exportar .ics"),
+  apontando para `/shows/export` com a query do filtro ativo (helper `buildShowExportQuery`), para o
+  arquivo respeitar o mesmo recorte exibido. Fecha a lacuna "Finanças tem export CSV, Shows não tinha".
+- Definition of Done verde: build (`prisma generate && next build`) OK (`/shows/export` registrada),
+  typecheck (`tsc --noEmit`) limpo, lint (0 warnings/erros), **559 testes** (`vitest run`), smoke test ao
+  vivo (`next start`): `/login` → 200, `/shows` e `/shows/export` sem sessão → 307 (→ `/login`). `npm audit`
+  inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de
+  schema — ver D6/D8). Ver **DECISIONS.md D72**.
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único

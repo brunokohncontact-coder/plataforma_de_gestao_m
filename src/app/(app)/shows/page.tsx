@@ -60,6 +60,11 @@ export default async function ShowsPage({
 
   const visible = filterShows(shows, filter);
 
+  // Query string com os filtros válidos, para a exportação CSV respeitar o
+  // mesmo recorte exibido (lida pelo route /shows/export).
+  const exportQuery = buildShowExportQuery(filter);
+  const exportHref = `/shows/export${exportQuery ? `?${exportQuery}` : ""}`;
+
   // Sinaliza sobreposições na agenda (dias com 2+ shows não cancelados).
   const conflicts = findScheduleConflicts(shows);
 
@@ -90,6 +95,16 @@ export default async function ShowsPage({
                 {conflicts.dayCount}
               </span>
             </Link>
+          )}
+          {shows.length > 0 && (
+            <a
+              href={exportHref}
+              className="text-sm text-brand-700 hover:underline"
+              download
+              title="Baixar os shows (do recorte filtrado) em CSV"
+            >
+              Exportar CSV
+            </a>
           )}
           {shows.length > 0 && (
             <a
@@ -230,6 +245,16 @@ export default async function ShowsPage({
       )}
     </div>
   );
+}
+
+/** Serializa o filtro ativo na mesma query string lida pelo route de exportação. */
+function buildShowExportQuery(filter: ShowFilter): string {
+  const params = new URLSearchParams();
+  if (filter.q && filter.q.trim()) params.set("q", filter.q.trim());
+  if (filter.status) params.set("status", filter.status);
+  if (filter.from) params.set("de", filter.from);
+  if (filter.to) params.set("ate", filter.to);
+  return params.toString();
 }
 
 function Field({

@@ -4,11 +4,15 @@ import {
   toCsv,
   centsToCsvAmount,
   csvDate,
+  csvTime,
   transactionsToCsv,
+  showsToCsv,
   annualSummaryToCsv,
   TRANSACTION_CSV_HEADERS,
+  SHOW_CSV_HEADERS,
   ANNUAL_SUMMARY_CSV_HEADERS,
   type CsvTransaction,
+  type CsvShow,
 } from "./csv";
 import { annualSummary } from "./finance";
 
@@ -65,6 +69,75 @@ describe("csvDate", () => {
   it("formata como DD/MM/AAAA em UTC", () => {
     expect(csvDate(new Date("2026-06-16T03:00:00Z"))).toBe("16/06/2026");
     expect(csvDate("2026-01-05T12:00:00Z")).toBe("05/01/2026");
+  });
+});
+
+describe("csvTime", () => {
+  it("formata a hora em UTC como HH:MM", () => {
+    expect(csvTime(new Date("2026-06-16T20:30:00Z"))).toBe("20:30");
+    expect(csvTime("2026-01-05T09:05:00Z")).toBe("09:05");
+    expect(csvTime("2026-01-05T00:00:00Z")).toBe("00:00");
+  });
+});
+
+describe("showsToCsv", () => {
+  const show = (over: Partial<CsvShow> = {}): CsvShow => ({
+    date: "2026-06-16T20:30:00Z",
+    title: "Show no Bar X",
+    venue: "Bar X",
+    city: "São Paulo",
+    status: "CONFIRMED",
+    fee: 150000,
+    notes: null,
+    ...over,
+  });
+
+  it("emite o cabeçalho na ordem definida", () => {
+    const csv = showsToCsv([]);
+    expect(csv).toBe(SHOW_CSV_HEADERS.join(";"));
+  });
+
+  it("serializa um show com status legível, cachê com vírgula e data/hora UTC", () => {
+    const csv = showsToCsv([show()]);
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(
+      "Data;Hora;Título;Local;Cidade;Status;Cachê (R$);Observações",
+    );
+    expect(lines[1]).toBe(
+      "16/06/2026;20:30;Show no Bar X;Bar X;São Paulo;Confirmado;1500,00;",
+    );
+  });
+
+  it("trata venue/city/notes ausentes como vazio", () => {
+    const csv = showsToCsv([
+      show({ venue: null, city: undefined, notes: undefined, fee: 0 }),
+    ]);
+    expect(csv.split("\r\n")[1]).toBe(
+      "16/06/2026;20:30;Show no Bar X;;;Confirmado;0,00;",
+    );
+  });
+
+  it("escapa campos com delimitador, aspas ou quebra de linha", () => {
+    const csv = showsToCsv([
+      show({ title: 'Festival "Verão"', venue: "Bar; Pub", notes: "linha1\nlinha2" }),
+    ]);
+    expect(csv.split("\r\n")[1]).toContain('"Festival ""Verão"""');
+    expect(csv.split("\r\n")[1]).toContain('"Bar; Pub"');
+  });
+
+  it("mantém um status desconhecido como veio (defensivo)", () => {
+    const csv = showsToCsv([show({ status: "ARQUIVADO" })]);
+    expect(csv.split("\r\n")[1]).toContain(";ARQUIVADO;");
+  });
+
+  it("preserva a ordem das linhas recebidas", () => {
+    const csv = showsToCsv([
+      show({ title: "Primeiro" }),
+      show({ title: "Segundo" }),
+    ]);
+    const lines = csv.split("\r\n");
+    expect(lines[1]).toContain("Primeiro");
+    expect(lines[2]).toContain("Segundo");
   });
 });
 

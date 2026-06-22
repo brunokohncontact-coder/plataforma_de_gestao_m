@@ -1874,3 +1874,34 @@ contexto, decisão, justificativa e alternativas consideradas.
   — descartado: exigiria componente cliente e timer; a pílula persistente é suficiente e server-side.
 - **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5 high /
   1 critical), mesma postura de D6/D8; nenhuma dependência nova.
+
+### D72 — Exportação CSV da lista de Shows (Sessão 80)
+- **Contexto:** as Finanças já têm exportação CSV respeitando os filtros (`/financas/export`, D14) e a
+  agenda de shows tem exportação iCalendar (`/shows/agenda.ics`, D15), mas a **lista de Shows não tinha
+  exportação tabular**. Um músico que quer levar a lista de shows para a contabilidade, fechar um período
+  com o empresário ou só ter um backup planilhável ficava sem saída — `.ics` é calendário, não planilha.
+- **Decisão:** adicionar `showsToCsv(shows)` à camada pura `src/lib/csv.ts` (interface `CsvShow`,
+  `SHOW_CSV_HEADERS`, helper `csvTime` para a hora em UTC) e um route handler `GET /shows/export` que
+  reaproveita os MESMOS filtros da lista (`q`, `status`, `de`, `ate`) via `filterShows`, espelhando
+  `financas/export`. A página de Shows ganha um link "Exportar CSV" que carrega a query do filtro ativo
+  (`buildShowExportQuery`), para o arquivo refletir o recorte visível.
+- **Modelo/UI:** colunas Data, Hora, Título, Local, Cidade, Status, Cachê (R$), Observações. Status sai
+  como rótulo legível (`SHOW_STATUS_LABELS`) com fallback defensivo p/ valor desconhecido; cachê em reais
+  com vírgula decimal (`centsToCsvAmount`); data/hora em UTC (mesma convenção de `csvDate`/`dayKey`, estável
+  em teste e independente do fuso do servidor). BOM UTF-8 + delimitador `;` + escape RFC 4180, idênticos às
+  exportações existentes — o arquivo abre direto no Excel/Sheets pt-BR.
+- **Justificativa:** fecha uma assimetria óbvia entre as áreas do app reaproveitando 100% da infra pura já
+  testada (`toCsv`/`escapeCsvField`/`centsToCsvAmount`/`csvDate` e `filterShows`); a lógica nova é pura e
+  isolada, com +7 testes em `csv.test.ts`. Sem schema, sem dependência, sem server action.
+- **Por que UTC na hora:** o app armazena `date` em UTC e a lista exibe com `formatDateTime` (fuso local do
+  cliente). Para o CSV optou-se por UTC para casar com `csvDate`/`dayKey` (já UTC) e manter os testes
+  determinísticos; a alternativa (hora local do servidor) seria instável entre ambientes. Documentado para
+  revisão caso usuários estranhem o deslocamento — aceitável por ora, consistente com a coluna de data.
+- **Alternativas consideradas:** (a) exportar todos os shows ignorando filtro — descartado: a página de
+  Finanças já estabeleceu que a exportação respeita o recorte exibido (D14), consistência vale mais. (b)
+  reusar o `.ics` — descartado: calendário não é planilha, casos de uso distintos. (c) uma coluna única
+  "Data/Hora" — descartado: colunas separadas são mais fáceis de ordenar/filtrar na planilha.
+- **Segurança:** route protegido por `requireUser` (307 → `/login` sem sessão, confirmado no smoke test);
+  consulta filtrada por `userId`, sem vazamento entre usuários.
+- **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5 high /
+  1 critical), mesma postura de D6/D8; nenhuma dependência nova.
