@@ -62,6 +62,7 @@ import {
   paymentSpeedBucket,
   PAYMENT_SPEED_BUCKET_ORDER,
   computeGoalProgress,
+  compareGoalScenarios,
   type TxLike,
   type ShowLike,
   type VenueShowLike,
@@ -3655,5 +3656,53 @@ describe("computeGoalProgress", () => {
     expect(p.projectedRatio).toBe(0);
     expect(p.onTrackToHit).toBe(false);
     expect(p.pace).toBeNull(); // meta zero → não julga ritmo
+  });
+});
+
+describe("compareGoalScenarios", () => {
+  const base = { goal: 100_000_00, realized: 40_000_00, year: 2026 };
+  const now = { now: "2026-07-02T12:00:00Z" };
+
+  it("bate a meta só no otimista: em risco quando os cenários divergem", () => {
+    const c = compareGoalScenarios(
+      { ...base, projectedOptimistic: 110_000_00, projectedConservative: 85_000_00 },
+      now,
+    );
+    expect(c.diverges).toBe(true);
+    expect(c.tentativeGap).toBe(25_000_00);
+    expect(c.optimistic.onTrackToHit).toBe(true);
+    expect(c.conservative.onTrackToHit).toBe(false);
+    expect(c.hitsOnlyWithTentative).toBe(true);
+    expect(c.hitsEvenConservatively).toBe(false);
+  });
+
+  it("bate a meta mesmo no conservador: folga real", () => {
+    const c = compareGoalScenarios(
+      { ...base, projectedOptimistic: 130_000_00, projectedConservative: 105_000_00 },
+      now,
+    );
+    expect(c.diverges).toBe(true);
+    expect(c.hitsEvenConservatively).toBe(true);
+    expect(c.hitsOnlyWithTentative).toBe(false);
+  });
+
+  it("sem cachê a confirmar: cenários coincidem (não diverge)", () => {
+    const c = compareGoalScenarios(
+      { ...base, projectedOptimistic: 90_000_00, projectedConservative: 90_000_00 },
+      now,
+    );
+    expect(c.diverges).toBe(false);
+    expect(c.tentativeGap).toBe(0);
+    expect(c.hitsOnlyWithTentative).toBe(false);
+    expect(c.conservative.projected).toBe(c.optimistic.projected);
+  });
+
+  it("tentativeGap nunca é negativo e saneia entradas inválidas", () => {
+    const c = compareGoalScenarios(
+      { ...base, projectedOptimistic: Number.NaN, projectedConservative: 50_000_00 },
+      now,
+    );
+    expect(c.tentativeGap).toBe(0); // otimista saneado a 0 < conservador
+    expect(c.diverges).toBe(false);
   });
 });

@@ -1944,6 +1944,28 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova — ver D6/D8). Ver
   **DECISIONS.md D78**.
 
+### Sessão 87 — Meta de faturamento vs. piso conservador na página de Metas (D79)
+- **Lógica** (`src/lib/finance.ts`): novo helper puro **`compareGoalScenarios`** (+ tipo
+  `GoalScenarioComparison`). Cruza a meta de faturamento com os DOIS cenários da projeção do ano —
+  otimista (`projectYearEnd().projectedIncome`, todos os shows futuros) e conservador
+  (`applyYearEndScenario(forecast, "conservative").projectedIncome`, só os confirmados) — rodando
+  `computeGoalProgress` (D77) em cada um e derivando flags (`diverges`, `hitsEvenConservatively`,
+  `hitsOnlyWithTentative`) + o `tentativeGap` (cachê de shows a confirmar que separa os cenários).
+  Compõe o já testado, não recalcula; saneamento herdado de `computeGoalProgress`.
+- **UI** (`src/app/(app)/financas/metas/page.tsx`): quando os cenários divergem, o `ProgressCard`
+  mostra uma faixa **"piso conservador"** abaixo do ritmo: verde "Folga real" quando a meta resiste só
+  com shows confirmados, âmbar "Atenção ao piso" quando ela só fecha contando shows ainda a confirmar
+  (com o valor do `tentativeGap` e a % da meta no piso). Some quando não há cachê a confirmar
+  (`tentativeGap === 0`) ou em ano passado — sem ruído. Responde "bato a meta mesmo que só os shows
+  confirmados se paguem?", que a projeção otimista da página escondia.
+- **Testes**: **4 testes novos** para `compareGoalScenarios` (bate só no otimista / folga real / cenários
+  coincidem / saneamento + gap nunca negativo). **600 testes** verdes (`vitest run`, eram 596).
+- Definition of Done verde: build (`prisma generate && next build`) OK (`/financas/metas` 1.5 kB),
+  typecheck (`tsc --noEmit`) limpo, lint (0 warnings/erros), **600 testes**, smoke test ao vivo
+  (`next start`): `/login` → 200, `/financas/metas` sem sessão → 307, app sobe (`Ready`). `npm audit`
+  inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de
+  schema — ver D6/D8). Ver **DECISIONS.md D79**.
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
@@ -2025,8 +2047,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    faturamento** definida pelo usuário entregue na Sessão 85 — modelo `RevenueGoal` + `computeGoalProgress`
    + `/financas/metas` + card no Painel, ver D77; **projeção do ano vs. meta** entregue na Sessão 86 —
    card "vs. meta de {ano}" em `/financas/projecao-ano` reaproveitando `computeGoalProgress` sobre a
-   receita projetada do cenário selecionado, ver D78. Próximo possível — metas por trimestre/mês, ou
-   comparar a meta também contra o piso conservador no card do Painel.
+   receita projetada do cenário selecionado, ver D78; **meta vs. piso conservador na página de Metas**
+   entregue na Sessão 87 — `compareGoalScenarios` + faixa "piso conservador" em `/financas/metas`,
+   revelando quando a meta só fecha contando shows ainda a confirmar, ver D79. Próximo possível —
+   metas por trimestre/mês, ou levar o mesmo piso conservador (`compareGoalScenarios`, já testado) ao
+   card de meta do Painel.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

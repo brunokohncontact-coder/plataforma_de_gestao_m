@@ -3911,3 +3911,69 @@ export function computeGoalProgress(
     pace,
   };
 }
+
+// ── Meta × cenário conservador: a meta resiste só com shows confirmados? ──────
+//
+// `computeGoalProgress` cruza a meta com a projeção OTIMISTA do ano (todos os
+// shows futuros, incluindo os ainda a confirmar — `projectYearEnd().projectedIncome`).
+// Quem planeja com cautela quer também o piso: "e se só os shows JÁ confirmados
+// se pagarem, ainda bato a meta?". O cenário conservador (`applyYearEndScenario`,
+// D66) já deriva a receita projetada apenas dos confirmados — então basta rodar
+// `computeGoalProgress` nos dois cenários e comparar. Pura: compõe o helper já
+// testado sem revarrer transações/shows. Ver D79.
+
+export interface GoalScenarioComparison {
+  /** Progresso da meta sob a projeção otimista (todos os shows futuros). */
+  optimistic: RevenueGoalProgress;
+  /** Progresso da meta sob a projeção conservadora (só shows confirmados). */
+  conservative: RevenueGoalProgress;
+  /** Receita projetada a mais no otimista vs. conservador (cachê a confirmar), ≥ 0. */
+  tentativeGap: number;
+  /** True quando os cenários divergem (há cachê a confirmar na projeção). */
+  diverges: boolean;
+  /** True quando a meta é alcançada mesmo no cenário conservador (folga real). */
+  hitsEvenConservatively: boolean;
+  /** True quando a meta só é alcançada contando shows a confirmar (em risco). */
+  hitsOnlyWithTentative: boolean;
+}
+
+/**
+ * Cruza a meta de faturamento com os DOIS cenários da projeção do ano —
+ * otimista (todos os shows futuros) e conservador (só os confirmados) —
+ * respondendo "bato a meta mesmo que só os shows confirmados se paguem?".
+ *
+ * - `projectedOptimistic` é `projectYearEnd().projectedIncome`.
+ * - `projectedConservative` é `applyYearEndScenario(forecast, "conservative").projectedIncome`.
+ * - `tentativeGap` é o cachê de shows a confirmar que separa os dois cenários;
+ *   quando é 0 os cenários coincidem (`diverges` falso) e a UI pode omitir o piso.
+ *
+ * Pura: reaproveita `computeGoalProgress` (que saneia as entradas) em cada cenário.
+ */
+export function compareGoalScenarios(
+  input: {
+    goal: number;
+    realized: number;
+    year: number;
+    projectedOptimistic: number;
+    projectedConservative: number;
+  },
+  opts: { now?: Date | string } = {},
+): GoalScenarioComparison {
+  const optimistic = computeGoalProgress(
+    { goal: input.goal, realized: input.realized, projected: input.projectedOptimistic, year: input.year },
+    opts,
+  );
+  const conservative = computeGoalProgress(
+    { goal: input.goal, realized: input.realized, projected: input.projectedConservative, year: input.year },
+    opts,
+  );
+  const tentativeGap = Math.max(0, optimistic.projected - conservative.projected);
+  return {
+    optimistic,
+    conservative,
+    tentativeGap,
+    diverges: tentativeGap > 0,
+    hitsEvenConservatively: conservative.onTrackToHit,
+    hitsOnlyWithTentative: optimistic.onTrackToHit && !conservative.onTrackToHit,
+  };
+}

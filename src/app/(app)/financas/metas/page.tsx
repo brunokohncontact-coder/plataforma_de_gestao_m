@@ -3,7 +3,10 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   projectYearEnd,
+  applyYearEndScenario,
   computeGoalProgress,
+  compareGoalScenarios,
+  type GoalScenarioComparison,
   type TxLike,
   type YearEndShowLike,
 } from "@/lib/finance";
@@ -75,9 +78,24 @@ export default async function GoalsPage({
   }));
 
   const forecast = projectYearEnd(txs, shows as YearEndShowLike[], year);
+  const conservativeForecast = applyYearEndScenario(forecast, "conservative");
   const progress = goal
     ? computeGoalProgress(
         { goal: goal.amount, realized: forecast.realizedIncome, projected: forecast.projectedIncome, year },
+        {},
+      )
+    : null;
+  // Compara a meta contra os dois cenários da projeção do ano (otimista × só
+  // confirmados), para revelar quando ela só fecha contando shows a confirmar.
+  const scenarios = goal
+    ? compareGoalScenarios(
+        {
+          goal: goal.amount,
+          realized: forecast.realizedIncome,
+          year,
+          projectedOptimistic: forecast.projectedIncome,
+          projectedConservative: conservativeForecast.projectedIncome,
+        },
         {},
       )
     : null;
@@ -111,7 +129,7 @@ export default async function GoalsPage({
 
       {progress && goal ? (
         <>
-          <ProgressCard progress={progress} />
+          <ProgressCard progress={progress} scenarios={scenarios} />
 
           <section className="card space-y-4">
             <div className="flex items-center justify-between gap-3">
@@ -144,7 +162,13 @@ export default async function GoalsPage({
   );
 }
 
-function ProgressCard({ progress }: { progress: NonNullable<ReturnType<typeof computeGoalProgress>> }) {
+function ProgressCard({
+  progress,
+  scenarios,
+}: {
+  progress: NonNullable<ReturnType<typeof computeGoalProgress>>;
+  scenarios: GoalScenarioComparison | null;
+}) {
   const realizedWidth = Math.min(100, Math.round(progress.realizedRatio * 100));
   const projectedWidth = Math.min(100, Math.round(progress.projectedRatio * 100));
   const hit = progress.realized >= progress.goal;
@@ -193,6 +217,8 @@ function ProgressCard({ progress }: { progress: NonNullable<ReturnType<typeof co
       </div>
 
       <PaceMessage progress={progress} />
+
+      {scenarios?.diverges && <ConservativeFloorMessage scenarios={scenarios} />}
 
       <div className="grid gap-4 sm:grid-cols-3">
         <Stat
@@ -266,6 +292,25 @@ function PaceMessage({ progress }: { progress: NonNullable<ReturnType<typeof com
         : progress.pace === "behind"
           ? `Para o ritmo da meta, esperava-se ${expected} recebidos até agora — faltam ${delta}.`
           : `Pelo ritmo da meta, esperava-se ${expected} até agora; você está ${delta} ${progress.paceDelta >= 0 ? "à frente" : "atrás"}.`}
+    </p>
+  );
+}
+
+function ConservativeFloorMessage({ scenarios }: { scenarios: GoalScenarioComparison }) {
+  const { conservative, tentativeGap, hitsEvenConservatively } = scenarios;
+  const tone = hitsEvenConservatively
+    ? "bg-emerald-50 text-emerald-800"
+    : "bg-amber-50 text-amber-800";
+  const floor = formatMoney(conservative.projected);
+  const ratio = pct(conservative.projectedRatio);
+  const gap = formatMoney(tentativeGap);
+
+  return (
+    <p className={"rounded-lg px-4 py-3 text-sm " + tone}>
+      <strong>{hitsEvenConservatively ? "Folga real." : "Atenção ao piso."}</strong>{" "}
+      {hitsEvenConservatively
+        ? `Mesmo contando só os shows já confirmados, a projeção fica em ${floor} (${ratio} da meta) — você bate a meta sem depender dos ${gap} em cachês ainda a confirmar.`
+        : `Tirando os ${gap} em cachês de shows ainda a confirmar, a projeção cai para ${floor} (${ratio} da meta) — abaixo do alvo. Hoje a meta só fecha se esses shows se confirmarem.`}
     </p>
   );
 }
