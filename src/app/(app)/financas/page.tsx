@@ -21,8 +21,10 @@ import {
   TRANSACTION_TYPE_LABELS,
   type TransactionType,
 } from "@/lib/domain";
+import { FILTER_RESTORED_PARAM } from "@/lib/listFilter";
 import { toggleReceivedAction, deleteTransactionAction } from "./actions";
 import { DeleteButton } from "@/components/DeleteButton";
+import { RememberedFilterNotice } from "@/components/RememberedFilterNotice";
 
 export const dynamic = "force-dynamic";
 
@@ -72,6 +74,7 @@ export default async function FinancesPage({
     q: qParam || null,
   };
   const active = hasActiveFilter(filter);
+  const restored = readParam(params, FILTER_RESTORED_PARAM) === "1";
 
   const allTxs: (TxLike & { id: string; description: string; show: { id: string; title: string } | null })[] =
     transactions.map((t) => ({
@@ -124,6 +127,11 @@ export default async function FinancesPage({
           </Link>
         </div>
       </div>
+
+      <RememberedFilterNotice
+        restored={restored}
+        resetHref="/financas?reset=1"
+      />
 
       {transactions.length > 0 && (
         <form

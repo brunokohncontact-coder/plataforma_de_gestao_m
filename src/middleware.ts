@@ -1,5 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { decideListFilter, LIST_FILTER_CONFIGS } from "@/lib/listFilter";
+import {
+  decideListFilter,
+  withRestoredFlag,
+  LIST_FILTER_CONFIGS,
+} from "@/lib/listFilter";
 
 // ~180 dias: o filtro preferido sobrevive entre sessões sem ser eterno.
 const FILTER_MAX_AGE = 60 * 60 * 24 * 180;
@@ -47,8 +51,14 @@ export function middleware(req: NextRequest) {
       return res;
     }
     case "restore": {
+      // Marca a URL restaurada (`?...&lembrado=1`) para a página avisar que o
+      // recorte veio do cookie, não de uma submissão. O marcador não é chave de
+      // filtro, então some na próxima submissão e nunca entra no cookie.
       return NextResponse.redirect(
-        new URL(`${config.path}?${decision.query}`, req.nextUrl.origin),
+        new URL(
+          `${config.path}?${withRestoredFlag(decision.query)}`,
+          req.nextUrl.origin,
+        ),
       );
     }
     default:

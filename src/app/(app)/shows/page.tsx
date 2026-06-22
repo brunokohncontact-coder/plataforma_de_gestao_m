@@ -17,7 +17,9 @@ import {
   type ShowFilter,
 } from "@/lib/shows";
 import { isValidDateKey } from "@/lib/finance";
+import { FILTER_RESTORED_PARAM } from "@/lib/listFilter";
 import { ShowsViewToggle } from "@/components/ShowsViewToggle";
+import { RememberedFilterNotice } from "@/components/RememberedFilterNotice";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +56,7 @@ export default async function ShowsPage({
     to: isValidDateKey(toParam) ? toParam : null,
   };
   const active = hasActiveShowFilter(filter);
+  const restored = readParam(params, FILTER_RESTORED_PARAM) === "1";
 
   const visible = filterShows(shows, filter);
 
@@ -102,6 +105,8 @@ export default async function ShowsPage({
           </Link>
         </div>
       </div>
+
+      <RememberedFilterNotice restored={restored} resetHref="/shows?reset=1" />
 
       {shows.length > 0 && (
         <form
