@@ -1925,6 +1925,25 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   dados reais do dev.db. `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical;
   nenhuma dependência nova — ver D6/D8). Ver **DECISIONS.md D77**.
 
+### Sessão 86 — Projeção do ano vs. meta de faturamento (D78)
+- **UI** (`src/app/(app)/financas/projecao-ano/page.tsx`): novo card **"vs. meta de {ano}"** que cruza
+  a **receita projetada do cenário selecionado** (`view.projectedIncome`) com a meta de faturamento do
+  ano (`RevenueGoal`), respondendo "no ritmo atual, eu bato a meta?". Mostra a razão `% da meta`, a
+  frase de sobra/falta (projeção − meta), e a barra realizado-sobre-projetado (espelha o card de
+  `/financas/metas`). Diferença-chave: aqui o número **segue o seletor de cenário** (otimista /
+  conservador / pior caso), enquanto `/financas/metas` usa sempre o otimista — então o conservador
+  pode revelar que a meta só fecha contando shows ainda a confirmar. Quando não há meta, um convite
+  discreto com link para `/financas/metas?ano={ano}`.
+- **Lógica**: reaproveita o helper puro **já testado** `computeGoalProgress` (D77) — a meta é de
+  **faturamento** (receita), por isso compara contra `projectedIncome`, não `projectedResult`. Sem
+  nova lógica de negócio (sem novos testes necessários); o card é apresentação fina sobre dados já
+  cobertos. Carrega a meta com +1 lookup (`prisma.revenueGoal.findUnique`) no `Promise.all` existente.
+- Definition of Done verde: build (`prisma generate && next build`) OK, typecheck (`tsc --noEmit`)
+  limpo, lint (0 warnings/erros), **596 testes** (`vitest run`, inalterado — mudança só de UI), smoke
+  test ao vivo (`next start`): `/login` → 200, app sobe (`Ready`). `npm audit` inalterado (10
+  advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova — ver D6/D8). Ver
+  **DECISIONS.md D78**.
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
@@ -2004,9 +2023,10 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    página entregue na Sessão 81 — `yearEndScenarioView` + botões Otimista / Conservador / Pior caso em
    `/financas/projecao-ano` (consolidou os cards extras num só controle), ver D73. **Meta de
    faturamento** definida pelo usuário entregue na Sessão 85 — modelo `RevenueGoal` + `computeGoalProgress`
-   + `/financas/metas` + card no Painel, ver D77. Próximo possível — comparar a **projeção** do ano
-   diretamente contra a meta em `/financas/projecao-ano` (a meta já existe no schema), ou metas por
-   trimestre/mês.
+   + `/financas/metas` + card no Painel, ver D77; **projeção do ano vs. meta** entregue na Sessão 86 —
+   card "vs. meta de {ano}" em `/financas/projecao-ano` reaproveitando `computeGoalProgress` sobre a
+   receita projetada do cenário selecionado, ver D78. Próximo possível — metas por trimestre/mês, ou
+   comparar a meta também contra o piso conservador no card do Painel.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

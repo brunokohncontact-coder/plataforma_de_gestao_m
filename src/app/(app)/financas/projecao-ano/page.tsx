@@ -8,8 +8,10 @@ import {
   projectYearEndWithFixedCosts,
   projectYearEndPessimistic,
   compareYearEndToPrevious,
+  computeGoalProgress,
   recurringExpenses,
   type MetricDelta,
+  type RevenueGoalProgress,
   type TxLike,
   type YearEndScenarioChoice,
   type YearEndShowLike,
@@ -69,7 +71,7 @@ export default async function YearEndForecastPage({
   // a shows (de qualquer período) abatem o cachê agendado para não contar duas
   // vezes. Os shows do ano (e do ano anterior, p/ a comparação) fornecem a
   // receita futura ainda não lançada.
-  const [transactions, shows] = await Promise.all([
+  const [transactions, shows, goal] = await Promise.all([
     prisma.transaction.findMany({
       where: { userId: user.id },
       select: { type: true, amount: true, date: true, received: true, showId: true },
@@ -83,6 +85,9 @@ export default async function YearEndForecastPage({
         },
       },
       select: { id: true, fee: true, status: true, date: true },
+    }),
+    prisma.revenueGoal.findUnique({
+      where: { userId_year: { userId: user.id, year } },
     }),
   ]);
 
@@ -116,6 +121,24 @@ export default async function YearEndForecastPage({
     mode,
   );
   const comparison = compareYearEndToPrevious(view, prevView);
+
+  // Projeção vs. meta de faturamento (D78): se há meta para o ano, cruza-a com a
+  // receita PROJETADA do cenário escolhido (não o resultado) — responde "no ritmo
+  // atual, eu bato a meta?". Diferente de /financas/metas, que sempre usa o
+  // cenário otimista: aqui o número segue o seletor, então o conservador/pior caso
+  // pode revelar que a meta só fecha contando shows ainda a confirmar.
+  // Reusa o helper puro já testado `computeGoalProgress`.
+  const goalProgress = goal
+    ? computeGoalProgress(
+        {
+          goal: goal.amount,
+          realized: view.realizedIncome,
+          projected: view.projectedIncome,
+          year,
+        },
+        {},
+      )
+    : null;
 
   // Gating do seletor: o conservador só difere do otimista quando há cachê
   // tentativo a descartar; o pior caso só difere do conservador quando há custo
@@ -267,6 +290,25 @@ export default async function YearEndForecastPage({
               )}
             </p>
           </section>
+
+          {/* Projeção vs. meta de faturamento (D78). Mostra o card quando há meta;
+              senão, um convite discreto para definir uma. O número comparado é a
+              RECEITA projetada do cenário atual (não o resultado), pois a meta é de
+              faturamento. */}
+          {goalProgress ? (
+            <GoalCard progress={goalProgress} year={year} mode={mode} />
+          ) : (
+            <p className="text-sm text-gray-500">
+              Defina uma{" "}
+              <Link
+                href={`/financas/metas?ano=${year}`}
+                className="text-brand-700 hover:underline"
+              >
+                meta de faturamento para {year}
+              </Link>{" "}
+              para acompanhar se a projeção a alcança.
+            </p>
+          )}
 
           {/* Comparação com o fechamento do ano anterior (D63) */}
           {comparison.hasPreviousData && (
@@ -507,6 +549,119 @@ function ScenarioPill({
     >
       {label}
     </Link>
+  );
+}
+
+/**
+ * Card "vs. meta": cruza a receita projetada do cenário atual com a meta de
+ * faturamento do ano. O número que importa é se a projeção alcança a meta e por
+ * quanto (sobra/falta), com barra do realizado sob a do projetado (espelha o card
+ * de /financas/metas, mas aqui o projetado segue o cenário selecionado).
+ */
+function GoalCard({
+  progress,
+  year,
+  mode,
+}: {
+  progress: RevenueGoalProgress;
+  year: number;
+  mode: YearEndScenarioChoice;
+}) {
+  const hits = progress.onTrackToHit;
+  const gap = Math.abs(progress.projected - progress.goal);
+  const realizedWidth = Math.min(100, Math.round(progress.realizedRatio * 100));
+  const projectedWidth = Math.min(100, Math.round(progress.projectedRatio * 100));
+  const scenarioWord =
+    mode === "conservative"
+      ? " (conservador)"
+      : mode === "pessimistic"
+        ? " (pior caso)"
+        : "";
+
+  return (
+    <section
+      className={"card border-l-4 " + (hits ? "border-emerald-400" : "border-amber-400")}
+    >
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-semibold">vs. meta de {year}</h2>
+        <span
+          className={
+            "rounded-full px-2 py-0.5 text-xs font-medium " +
+            (hits ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")
+          }
+        >
+          {Math.round(progress.projectedRatio * 100)}% da meta
+        </span>
+      </div>
+
+      <p className="text-sm text-gray-600">
+        {progress.goal === 0 ? (
+          <>A meta de {year} está em {formatMoney(0)}.</>
+        ) : hits ? (
+          <>
+            A projeção{scenarioWord} de{" "}
+            <span className="font-medium text-emerald-600">
+              {formatMoney(progress.projected)}
+            </span>{" "}
+            {gap === 0 ? "atinge exatamente" : "supera"} a meta de{" "}
+            {formatMoney(progress.goal)}
+            {gap > 0 && (
+              <>
+                {" "}
+                — sobra de{" "}
+                <span className="font-medium text-emerald-600">{formatMoney(gap)}</span>
+              </>
+            )}
+            .
+          </>
+        ) : (
+          <>
+            A projeção{scenarioWord} de{" "}
+            <span className="font-medium">{formatMoney(progress.projected)}</span> fica{" "}
+            <span className="font-medium text-amber-600">{formatMoney(gap)}</span> abaixo
+            da meta de {formatMoney(progress.goal)}.
+          </>
+        )}
+      </p>
+
+      {/* Barra de progresso: faixa do projetado (clara) sob a do realizado. */}
+      <div className="mt-4 space-y-1.5">
+        <div className="relative h-3 overflow-hidden rounded-full bg-gray-100">
+          <div
+            className="absolute inset-y-0 left-0 rounded-full bg-brand-200"
+            style={{ width: `${projectedWidth}%` }}
+            aria-hidden
+          />
+          <div
+            className={
+              "absolute inset-y-0 left-0 rounded-full " +
+              (hits ? "bg-emerald-500" : "bg-brand-500")
+            }
+            style={{ width: `${realizedWidth}%` }}
+            aria-hidden
+          />
+        </div>
+        <div className="flex flex-wrap justify-between gap-x-4 text-xs text-gray-500">
+          <span>
+            <span className="mr-1 inline-block h-2 w-2 rounded-full bg-brand-500 align-middle" />
+            Já recebido: {formatMoney(progress.realized)} (
+            {Math.round(progress.realizedRatio * 100)}%)
+          </span>
+          <span>
+            <span className="mr-1 inline-block h-2 w-2 rounded-full bg-brand-200 align-middle" />
+            Projetado: {formatMoney(progress.projected)}
+          </span>
+        </div>
+      </div>
+
+      <p className="mt-3 text-xs text-gray-400">
+        Meta de faturamento (receita), não de resultado. Ajuste-a em{" "}
+        <Link href={`/financas/metas?ano=${year}`} className="text-brand-700 hover:underline">
+          Metas
+        </Link>
+        .
+      </p>
+    </section>
   );
 }
 
