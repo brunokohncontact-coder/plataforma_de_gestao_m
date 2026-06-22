@@ -3977,3 +3977,114 @@ export function compareGoalScenarios(
     hitsOnlyWithTentative: optimistic.onTrackToHit && !conservative.onTrackToHit,
   };
 }
+
+// ── Meta: ritmo necessário no resto do ano ───────────────────────────────────
+//
+// `computeGoalProgress` diz SE você está adiantado/atrasado (`pace`), mas não
+// QUANTO precisa faturar daqui pra frente. Quem está atrás quer o número
+// acionável: "para bater a meta, preciso receber R$ X por mês no resto do ano".
+// `goalRunRate` deriva isso do progresso já computado — sem revarrer dados:
+//   - `requiredPerMonth` = falta receber ÷ meses restantes do calendário
+//     (mês corrente incluso — ainda dá pra faturar nele);
+//   - `currentPerMonth` = ritmo realizado até agora (recebido ÷ fração do ano
+//     decorrida, em meses), para comparar com o que será preciso;
+//   - `effortRatio` = required ÷ current: >1 exige faturar acima do ritmo atual.
+// Pura: só aritmética sobre `RevenueGoalProgress`. Faz sentido no ano corrente
+// (no passado a meta já fechou; no futuro ainda não começou). Ver DECISIONS.md.
+
+export type GoalRunRateVerdict =
+  | "hit" // meta já batida (nada a receber)
+  | "on-pace" // o ritmo atual já cobre o necessário (effortRatio ≤ 1)
+  | "stretch" // precisa acelerar moderadamente (1 < ratio ≤ 1,25)
+  | "hard" // precisa acelerar bastante (ratio > 1,25)
+  | "unknown"; // sem base de ritmo ainda, ou ano não corrente
+
+export interface GoalRunRate {
+  /** Só é acionável no ano corrente com meta > 0. */
+  applicable: boolean;
+  /** Meses de calendário restantes no ano, mês corrente incluso (1–12). */
+  monthsRemaining: number;
+  /** Quanto falta receber para a meta, em centavos (= progress.remaining). */
+  remaining: number;
+  /** Receita/mês necessária no resto do ano: ceil(remaining / monthsRemaining). */
+  requiredPerMonth: number;
+  /** Ritmo realizado até agora: recebido ÷ meses decorridos (fração do ano × 12). */
+  currentPerMonth: number;
+  /** requiredPerMonth − currentPerMonth (positivo = precisa acelerar). */
+  gapPerMonth: number;
+  /**
+   * Esforço relativo = requiredPerMonth / currentPerMonth. >1 exige faturar
+   * acima do ritmo atual; `null` quando não há base de ritmo (recebido = 0 ou
+   * cedo demais no ano) ou a meta já foi batida.
+   */
+  effortRatio: number | null;
+  /** Classificação do esforço necessário daqui pra frente. */
+  verdict: GoalRunRateVerdict;
+}
+
+/**
+ * A partir de um `RevenueGoalProgress`, calcula o **ritmo necessário** para
+ * bater a meta no resto do ano — o número acionável que falta ao `pace`.
+ * Função pura: só aritmética sobre o progresso já computado.
+ *
+ * - Só é "acionável" (`applicable`) no ano corrente com meta > 0; fora disso
+ *   devolve um shape neutro (`verdict: "unknown"`).
+ * - `monthsRemaining` conta o mês corrente (ainda dá pra faturar nele), então é
+ *   sempre ≥ 1 no ano corrente.
+ * - `currentPerMonth` usa a fração do ano decorrida (em meses) como denominador,
+ *   coerente com o `pace` linear de `computeGoalProgress`; é 0 sem base.
+ */
+export function goalRunRate(
+  progress: RevenueGoalProgress,
+  opts: { now?: Date | string } = {},
+): GoalRunRate {
+  const now = opts.now ? new Date(opts.now) : new Date();
+  const remaining = Math.max(0, Math.round(progress.remaining));
+
+  // Fora do ano corrente (ou sem meta) o número não é acionável.
+  if (!progress.isCurrentYear || progress.goal <= 0) {
+    return {
+      applicable: false,
+      monthsRemaining: progress.isPastYear ? 0 : 12,
+      remaining,
+      requiredPerMonth: 0,
+      currentPerMonth: 0,
+      gapPerMonth: 0,
+      effortRatio: null,
+      verdict: "unknown",
+    };
+  }
+
+  const monthIndex = now.getUTCMonth(); // 0–11
+  const monthsRemaining = 12 - monthIndex; // mês corrente incluso → 1–12
+  const elapsedMonths = progress.yearElapsed * 12; // fracionário, coerente com o pace
+  const currentPerMonth =
+    elapsedMonths > 0 ? Math.round(progress.realized / elapsedMonths) : 0;
+  const requiredPerMonth =
+    remaining > 0 ? Math.ceil(remaining / monthsRemaining) : 0;
+  const gapPerMonth = requiredPerMonth - currentPerMonth;
+
+  let effortRatio: number | null = null;
+  let verdict: GoalRunRateVerdict;
+  if (remaining <= 0) {
+    verdict = "hit";
+  } else if (currentPerMonth <= 0) {
+    verdict = "unknown";
+  } else {
+    effortRatio = requiredPerMonth / currentPerMonth;
+    if (effortRatio <= 1) verdict = "on-pace";
+    else if (effortRatio <= 1.25) verdict = "stretch";
+    else verdict = "hard";
+  }
+
+  return {
+    applicable: true,
+    monthsRemaining,
+    remaining,
+    requiredPerMonth,
+    currentPerMonth,
+    gapPerMonth,
+    effortRatio,
+    verdict,
+  };
+}

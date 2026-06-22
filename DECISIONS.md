@@ -2166,3 +2166,33 @@ contexto, decisão, justificativa e alternativas consideradas.
   "Ver detalhe" para a página completa.
 - `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
   nenhuma dependência nova; nenhuma mudança de schema.
+
+## D81 — Ritmo necessário no resto do ano na página de Metas (Sessão 89)
+- **Contexto:** `computeGoalProgress` (D77) já dizia SE o músico está adiantado/atrasado frente à meta
+  (`pace`: ahead/behind/on-track), mas não QUANTO ele precisa faturar daqui pra frente. O `pace`
+  responde "estou no caminho?"; faltava o número acionável: "para bater a meta, preciso receber R$ X por
+  mês no resto do ano". A página de Metas tinha o veredito qualitativo mas não a meta operacional mensal.
+- **Decisão:** adicionar a função pura `goalRunRate(progress, { now })` em `src/lib/finance.ts`, que deriva
+  do `RevenueGoalProgress` já computado: `requiredPerMonth` (falta receber ÷ meses restantes do calendário,
+  mês corrente incluso), `currentPerMonth` (recebido ÷ meses decorridos, usando a mesma fração do ano do
+  `pace`), `gapPerMonth` e um `verdict` categórico (`hit`/`on-pace`/`stretch`/`hard`/`unknown`) por faixa
+  de `effortRatio` (required/current): ≤1 cobre no ritmo atual, ≤1,25 acelerar pouco, >1,25 acelerar
+  bastante. Página de Metas ganhou um card "Ritmo necessário" (só ano corrente, só com meta em aberto).
+- **Mês corrente sempre conta:** `monthsRemaining = 12 − monthIndex` inclui o mês atual (ainda dá pra
+  faturar nele), então é sempre ≥ 1 no ano corrente — em dezembro sobra 1 mês e o necessário/mês = tudo
+  que falta. Isso evita dividir por zero e reflete que o mês corrente ainda é faturável.
+- **Denominadores deliberadamente diferentes:** o numerador de `currentPerMonth` usa a fração do ano
+  decorrida (fracionária, acurada, coerente com o `pace` linear de `computeGoalProgress`), enquanto
+  `requiredPerMonth` usa meses de calendário inteiros (mais intuitível para planejar: "faturar R$ X nos
+  próximos N meses"). Cada um adota a noção de "mês" natural ao seu propósito; documentado na função.
+- **Zero I/O extra:** o card recombina o `progress` já computado na página; nenhuma consulta nova ao banco.
+- **Testes:** 9 casos puros para `goalRunRate` (on-pace/stretch/hard/hit/unknown, dezembro com 1 mês,
+  ano futuro/passado não acionável, meta zero). 609 testes verdes (eram 600).
+- **Alternativas consideradas:** (a) só mostrar o número, sem `verdict` — descartado: a faixa categórica
+  (verde/âmbar/vermelho) comunica de relance se o esforço é factível, espelhando o padrão das demais
+  mensagens da página. (b) `verdict` por valor absoluto do gap em vez de razão — descartado: a razão
+  (required/current) é escala-invariante e diz "quanto acima do meu ritmo", mais comparável entre metas
+  de tamanhos diferentes. (c) levar o card ao Painel já nesta sessão — adiado: a página de Metas é o lar
+  natural; o helper puro fica pronto para o Painel adotar depois (mesmo caminho de D79→D80).
+- `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
+  nenhuma dependência nova; nenhuma mudança de schema.

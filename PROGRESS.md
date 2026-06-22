@@ -1986,6 +1986,24 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem
   mudança de schema — ver D6/D8). Ver **DECISIONS.md D80**.
 
+### Sessão 89 — Ritmo necessário no resto do ano na página de Metas (D81)
+- **Lógica pura** (`src/lib/finance.ts` → `goalRunRate`): a partir do `RevenueGoalProgress` já computado,
+  calcula o número acionável que faltava ao `pace` — **quanto receber por mês para bater a meta no resto
+  do ano**: `requiredPerMonth` (falta receber ÷ meses do calendário restantes, mês corrente incluso),
+  `currentPerMonth` (ritmo realizado: recebido ÷ meses decorridos, mesma fração do ano do `pace`),
+  `gapPerMonth` e um `verdict` (`hit`/`on-pace`/`stretch`/`hard`/`unknown`) por faixa de `effortRatio`
+  (required/current: ≤1 cobre no ritmo atual; ≤1,25 acelerar pouco; >1,25 acelerar bastante).
+- **UI** (`src/app/(app)/financas/metas/page.tsx`): novo card "Ritmo necessário" com o valor necessário/mês
+  em destaque, o ritmo atual e uma faixa colorida (verde/âmbar/vermelho) com a mensagem acionável. Só
+  aparece no **ano corrente** com a meta ainda em aberto (`runRate.applicable && verdict !== "hit"`).
+- **Zero I/O extra**: o card recombina o `progress` já em mãos; nenhuma consulta nova ao banco.
+- **Testes**: 9 casos puros para `goalRunRate`. **609 testes** verdes (eram 600).
+- Definition of Done verde: build (`prisma generate && next build`) OK, typecheck (`tsc --noEmit`) limpo,
+  lint (0 warnings/erros), **609 testes** (`vitest run`), smoke test ao vivo (`next start`): `/login` → 200,
+  `/dashboard` e `/financas/metas` sem sessão → 307, app sobe (`Ready in 300ms`). `npm audit` inalterado
+  (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de schema —
+  ver D6/D8). Ver **DECISIONS.md D81**.
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
@@ -2072,8 +2090,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    revelando quando a meta só fecha contando shows ainda a confirmar, ver D79; **piso conservador da
    meta no card do Painel** entregue na Sessão 88 — linha "Folga real."/"Atenção ao piso." no card
    "Meta de {ano}" reaproveitando `compareGoalScenarios` sobre as projeções já computadas no dashboard,
-   ver D80. Próximo possível — metas por trimestre/mês, ou alerta proativo (e-mail/badge) quando a meta
-   passa a depender só de shows a confirmar.
+   ver D80; **ritmo necessário no resto do ano** entregue na Sessão 89 — `goalRunRate` + card "Ritmo
+   necessário" em `/financas/metas`, com o necessário/mês, o ritmo atual e o veredito de esforço
+   (on-pace/stretch/hard), ver D81. Próximo possível — levar o ritmo necessário ao card de meta do Painel
+   (mesmo caminho de D79→D80, helper puro já testado), metas por trimestre/mês, ou alerta proativo
+   (e-mail/badge) quando a meta passa a depender só de shows a confirmar.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

@@ -6,7 +6,9 @@ import {
   applyYearEndScenario,
   computeGoalProgress,
   compareGoalScenarios,
+  goalRunRate,
   type GoalScenarioComparison,
+  type GoalRunRate,
   type TxLike,
   type YearEndShowLike,
 } from "@/lib/finance";
@@ -85,6 +87,9 @@ export default async function GoalsPage({
         {},
       )
     : null;
+  // Ritmo necessário no resto do ano (o número acionável que falta ao `pace`):
+  // só faz sentido no ano corrente com meta ainda em aberto.
+  const runRate = progress ? goalRunRate(progress, {}) : null;
   // Compara a meta contra os dois cenários da projeção do ano (otimista × só
   // confirmados), para revelar quando ela só fecha contando shows a confirmar.
   const scenarios = goal
@@ -130,6 +135,10 @@ export default async function GoalsPage({
       {progress && goal ? (
         <>
           <ProgressCard progress={progress} scenarios={scenarios} />
+
+          {runRate?.applicable && runRate.verdict !== "hit" && (
+            <RunRateCard runRate={runRate} />
+          )}
 
           <section className="card space-y-4">
             <div className="flex items-center justify-between gap-3">
@@ -312,6 +321,67 @@ function ConservativeFloorMessage({ scenarios }: { scenarios: GoalScenarioCompar
         ? `Mesmo contando só os shows já confirmados, a projeção fica em ${floor} (${ratio} da meta) — você bate a meta sem depender dos ${gap} em cachês ainda a confirmar.`
         : `Tirando os ${gap} em cachês de shows ainda a confirmar, a projeção cai para ${floor} (${ratio} da meta) — abaixo do alvo. Hoje a meta só fecha se esses shows se confirmarem.`}
     </p>
+  );
+}
+
+function RunRateCard({ runRate }: { runRate: GoalRunRate }) {
+  const { requiredPerMonth, currentPerMonth, monthsRemaining, gapPerMonth, verdict } = runRate;
+
+  const tone =
+    verdict === "on-pace"
+      ? "bg-emerald-50 text-emerald-800"
+      : verdict === "stretch"
+        ? "bg-amber-50 text-amber-800"
+        : verdict === "hard"
+          ? "bg-red-50 text-red-800"
+          : "bg-gray-50 text-gray-700";
+  const headline =
+    verdict === "on-pace"
+      ? "No ritmo certo"
+      : verdict === "stretch"
+        ? "Precisa acelerar um pouco"
+        : verdict === "hard"
+          ? "Precisa acelerar bastante"
+          : "Ritmo ainda sem base";
+
+  const meses = monthsRemaining === 1 ? "1 mês" : `${monthsRemaining} meses`;
+
+  return (
+    <section className="card space-y-4">
+      <div>
+        <h2 className="font-semibold">Ritmo necessário</h2>
+        <p className="mt-1 text-sm text-gray-500">
+          Quanto você precisa receber por mês para bater a meta no resto do ano
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+            Necessário por mês
+          </p>
+          <p className="mt-1 text-3xl font-bold text-gray-900">{formatMoney(requiredPerMonth)}</p>
+          <p className="text-xs text-gray-500">
+            falta receber, dividido por {meses} até dezembro
+          </p>
+        </div>
+        {currentPerMonth > 0 && (
+          <div className="text-right">
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Ritmo atual</p>
+            <p className="mt-1 text-lg font-bold text-gray-700">{formatMoney(currentPerMonth)}/mês</p>
+          </div>
+        )}
+      </div>
+
+      <p className={"rounded-lg px-4 py-3 text-sm " + tone}>
+        <strong>{headline}.</strong>{" "}
+        {verdict === "unknown"
+          ? `Você precisa receber ${formatMoney(requiredPerMonth)} por mês pelos próximos ${meses}. Ainda não há recebimentos no ano para comparar com o ritmo atual.`
+          : gapPerMonth > 0
+            ? `Para bater a meta você precisa de ${formatMoney(requiredPerMonth)}/mês — ${formatMoney(gapPerMonth)} a mais por mês do que vem recebendo (${formatMoney(currentPerMonth)}/mês).`
+            : `No ritmo atual de ${formatMoney(currentPerMonth)}/mês você cobre os ${formatMoney(requiredPerMonth)}/mês que faltam. Mantenha o passo.`}
+      </p>
+    </section>
   );
 }
 
