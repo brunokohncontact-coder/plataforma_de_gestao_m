@@ -31,6 +31,7 @@ import {
   applyYearEndScenario,
   projectYearEndWithFixedCosts,
   projectYearEndPessimistic,
+  yearEndScenarioView,
   compareYearEndToPrevious,
   forecastBookedRevenue,
   reconcileShowFees,
@@ -1647,6 +1648,108 @@ describe("projectYearEndPessimistic", () => {
     expect(p.projectedIncome).toBe(f.projectedIncome); // nada a descartar
     expect(p.estimatedRemainingFixedCost).toBe(6_000_00);
     expect(p.projectedExpense).toBe(6_000_00); // forecast sem despesa lançada
+  });
+});
+
+describe("yearEndScenarioView", () => {
+  const now = "2026-06-15T12:00:00.000Z"; // hoje = 2026-06-15 (UTC), mês atual = junho
+
+  function setup() {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 300_00, received: true, date: "2026-02-10T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 100_00, received: true, date: "2026-03-10T00:00:00.000Z" }),
+    ];
+    const shows = [
+      { id: "c1", fee: 500_00, status: "CONFIRMED", date: "2026-09-01T00:00:00.000Z" },
+      { id: "t1", fee: 200_00, status: "PROPOSED", date: "2026-10-01T00:00:00.000Z" },
+    ];
+    return { f: projectYearEnd(txs, shows, 2026, { now }), txs };
+  }
+
+  it("otimista: forecast cru, sem custo fixo nem descarte", () => {
+    const { f, txs } = setup();
+    const v = yearEndScenarioView(f, txs, 1_000_00, "optimistic", { now });
+    expect(v.mode).toBe("optimistic");
+    expect(v.projectedIncome).toBe(1_000_00); // 300 + 500 + 200
+    expect(v.projectedExpense).toBe(100_00);
+    expect(v.projectedResult).toBe(900_00);
+    expect(v.estimatedRemainingFixedCost).toBe(0);
+    expect(v.droppedTentative).toBe(0);
+    expect(v.droppedTentativeCount).toBe(0);
+    expect(v.scheduledTentative).toBe(200_00);
+  });
+
+  it("conservador: descarta os cachês a confirmar da receita, despesa intacta", () => {
+    const { f, txs } = setup();
+    const v = yearEndScenarioView(f, txs, 1_000_00, "conservative", { now });
+    expect(v.mode).toBe("conservative");
+    expect(v.projectedIncome).toBe(800_00); // 300 + 500 (sem o tentativo)
+    expect(v.projectedExpense).toBe(100_00); // sem custo fixo
+    expect(v.projectedResult).toBe(700_00);
+    expect(v.estimatedRemainingFixedCost).toBe(0);
+    expect(v.scheduledTentative).toBe(0);
+    expect(v.droppedTentative).toBe(200_00);
+    expect(v.droppedTentativeCount).toBe(1);
+  });
+
+  it("pior caso: receita só confirmada E despesa com custo fixo futuro", () => {
+    const { f, txs } = setup();
+    const v = yearEndScenarioView(f, txs, 1_000_00, "pessimistic", { now });
+    expect(v.mode).toBe("pessimistic");
+    // Receita conservadora: 800. Despesa: 100 + 1.000×6 (jul..dez) = 6.100.
+    expect(v.projectedIncome).toBe(800_00);
+    expect(v.estimatedRemainingFixedCost).toBe(6_000_00);
+    expect(v.projectedExpense).toBe(6_100_00);
+    expect(v.projectedResult).toBe(800_00 - 6_100_00);
+    expect(v.droppedTentative).toBe(200_00);
+    expect(v.droppedTentativeCount).toBe(1);
+    expect(v.scheduledTentative).toBe(0);
+  });
+
+  it("pior caso sem custo fixo coincide com o conservador", () => {
+    const { f, txs } = setup();
+    const cons = yearEndScenarioView(f, txs, 0, "conservative", { now });
+    const pess = yearEndScenarioView(f, txs, 0, "pessimistic", { now });
+    expect(pess.estimatedRemainingFixedCost).toBe(0);
+    expect(pess.projectedResult).toBe(cons.projectedResult);
+    expect(pess.projectedIncome).toBe(cons.projectedIncome);
+    expect(pess.projectedExpense).toBe(cons.projectedExpense);
+  });
+
+  it("a composição soma os totais em cada cenário", () => {
+    const { f, txs } = setup();
+    for (const mode of ["optimistic", "conservative", "pessimistic"] as const) {
+      const v = yearEndScenarioView(f, txs, 1_000_00, mode, { now });
+      expect(v.realizedIncome + v.pendingIncome + v.scheduledIncome).toBe(
+        v.projectedIncome,
+      );
+      expect(
+        v.realizedExpense + v.pendingExpense + v.estimatedRemainingFixedCost,
+      ).toBe(v.projectedExpense);
+      expect(v.projectedIncome - v.projectedExpense).toBe(v.projectedResult);
+      expect(v.year).toBe(2026);
+    }
+  });
+
+  it("compõe com compareYearEndToPrevious respeitando o cenário", () => {
+    const { f, txs } = setup();
+    // Ano anterior já encerrado: cenário não tem efeito (sem shows futuros).
+    const prev = projectYearEnd(
+      [tx({ type: "INCOME", amount: 600_00, received: true, date: "2025-02-10T00:00:00.000Z" })],
+      [],
+      2025,
+      { now },
+    );
+    const view = yearEndScenarioView(f, txs, 0, "conservative", { now });
+    const prevView = yearEndScenarioView(prev, txs, 0, "conservative", { now });
+    const cmp = compareYearEndToPrevious(view, prevView);
+    expect(cmp.year).toBe(2026);
+    expect(cmp.previousYear).toBe(2025);
+    expect(cmp.hasPreviousData).toBe(true);
+    // Resultado conservador 2026 = 700; 2025 = 600. Delta +100.
+    expect(cmp.result.current).toBe(700_00);
+    expect(cmp.result.previous).toBe(600_00);
+    expect(cmp.result.delta).toBe(100_00);
   });
 });
 

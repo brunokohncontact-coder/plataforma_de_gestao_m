@@ -1346,6 +1346,137 @@ export function projectYearEndPessimistic(
   };
 }
 
+// ── Cenário do seletor de três botões da projeção do ano ─────────────────────
+//
+// A página de projeção do ano oferece dois pisos conservadores em cima da
+// projeção crua: "só confirmados" (D66, ataca a receita) e o "pior caso" (D68,
+// soma também o custo fixo recorrente futuro). Até aqui eles eram cards extras
+// (previews) ao lado do número otimista. Esta camada unifica os três num único
+// SELETOR: o usuário escolhe qual piso é o número principal. `yearEndScenarioView`
+// normaliza os três cenários num formato comum para a renderização (totais +
+// composição de receita/despesa), reaproveitando `applyYearEndScenario` (D66) e
+// `projectYearEndPessimistic` (D68) — sem reprojetar do zero. Ver D73.
+
+/** Escolha do seletor de cenário da projeção do ano (três botões na página). */
+export type YearEndScenarioChoice = "optimistic" | "conservative" | "pessimistic";
+
+/**
+ * Fechamento projetado do ano sob um dos três cenários do seletor, normalizado
+ * para a renderização. Espelha os campos de composição do `YearEndForecast` mais
+ * o custo fixo futuro estimado (só > 0 no "pior caso") e o que foi descartado da
+ * receita frente ao otimista (cachês de shows a confirmar).
+ */
+export interface YearEndScenarioView {
+  /** Ano de referência (espelha o forecast). */
+  year: number;
+  /** Cenário aplicado. */
+  mode: YearEndScenarioChoice;
+
+  // ── Receitas (após o cenário) ──
+  /** Receita já recebida no ano. */
+  realizedIncome: number;
+  /** Receita lançada e ainda pendente no ano. */
+  pendingIncome: number;
+  /** Cachês de shows futuros ainda não lançados que entram na receita do cenário. */
+  scheduledIncome: number;
+  /** Parte de `scheduledIncome` de shows confirmados/realizados. */
+  scheduledConfirmed: number;
+  /** Parte de `scheduledIncome` de shows a confirmar (0 fora do otimista). */
+  scheduledTentative: number;
+  /** Nº de shows futuros que entram com cachê agendado no cenário. */
+  scheduledShowCount: number;
+
+  // ── Despesas (após o cenário) ──
+  /** Despesa já paga no ano. */
+  realizedExpense: number;
+  /** Despesa lançada e ainda pendente no ano. */
+  pendingExpense: number;
+  /** Custo fixo recorrente futuro somado às despesas (> 0 só no "pior caso" — D62). */
+  estimatedRemainingFixedCost: number;
+
+  // ── Totais ──
+  /** Receita projetada do cenário. */
+  projectedIncome: number;
+  /** Despesa projetada do cenário (inclui o custo fixo futuro no "pior caso"). */
+  projectedExpense: number;
+  /** projectedIncome − projectedExpense — o número do cenário. */
+  projectedResult: number;
+  /** Caixa já realizado no ano (não muda com o cenário). */
+  realizedResult: number;
+
+  // ── O que mudou frente ao otimista ──
+  /** Cachê de shows a confirmar descartado da receita (0 no otimista). */
+  droppedTentative: number;
+  /** Nº de shows a confirmar deixados de fora (0 no otimista). */
+  droppedTentativeCount: number;
+}
+
+/**
+ * Normaliza o fechamento projetado do ano sob o cenário escolhido pelo seletor.
+ *
+ * - "optimistic": forecast cru — conta confirmados + a confirmar, sem custo fixo.
+ * - "conservative": descarta os cachês de shows a confirmar da receita (D66).
+ * - "pessimistic": conservador na receita E soma o custo fixo recorrente futuro
+ *   às despesas (D68) — o piso honesto.
+ *
+ * Recebe sempre o forecast CRU/otimista (`projectYearEnd`). Reúne as camadas já
+ * testadas `applyYearEndScenario` e `projectYearEndPessimistic` num único objeto.
+ * Pura; `now` injetável (repassado ao componente de custos fixos do pessimista).
+ */
+export function yearEndScenarioView(
+  forecast: YearEndForecast,
+  txs: TxLike[],
+  monthlyFixedCost: number,
+  mode: YearEndScenarioChoice,
+  opts: { now?: Date | string } = {},
+): YearEndScenarioView {
+  if (mode === "pessimistic") {
+    // Piso de receita (só confirmados) para a composição + pior caso para os totais.
+    const conservative = applyYearEndScenario(forecast, "conservative");
+    const pess = projectYearEndPessimistic(forecast, txs, monthlyFixedCost, opts);
+    return {
+      year: forecast.year,
+      mode,
+      realizedIncome: conservative.realizedIncome,
+      pendingIncome: conservative.pendingIncome,
+      scheduledIncome: conservative.scheduledIncome,
+      scheduledConfirmed: conservative.scheduledConfirmed,
+      scheduledTentative: conservative.scheduledTentative,
+      scheduledShowCount: conservative.scheduledShowCount,
+      realizedExpense: conservative.realizedExpense,
+      pendingExpense: conservative.pendingExpense,
+      estimatedRemainingFixedCost: pess.estimatedRemainingFixedCost,
+      projectedIncome: pess.projectedIncome,
+      projectedExpense: pess.projectedExpense,
+      projectedResult: pess.projectedResult,
+      realizedResult: conservative.realizedResult,
+      droppedTentative: pess.droppedTentative,
+      droppedTentativeCount: pess.droppedTentativeCount,
+    };
+  }
+  const f = applyYearEndScenario(forecast, mode);
+  return {
+    year: f.year,
+    mode,
+    realizedIncome: f.realizedIncome,
+    pendingIncome: f.pendingIncome,
+    scheduledIncome: f.scheduledIncome,
+    scheduledConfirmed: f.scheduledConfirmed,
+    scheduledTentative: f.scheduledTentative,
+    scheduledShowCount: f.scheduledShowCount,
+    realizedExpense: f.realizedExpense,
+    pendingExpense: f.pendingExpense,
+    estimatedRemainingFixedCost: 0,
+    projectedIncome: f.projectedIncome,
+    projectedExpense: f.projectedExpense,
+    projectedResult: f.projectedResult,
+    realizedResult: f.realizedResult,
+    droppedTentative: mode === "conservative" ? forecast.scheduledTentative : 0,
+    droppedTentativeCount:
+      mode === "conservative" ? forecast.scheduledTentativeCount : 0,
+  };
+}
+
 // ── Projeção do ano vs. ano anterior ────────────────────────────────────────
 //
 // A projeção crua (`projectYearEnd`) responde "como fecho ESTE ano?", mas sozinha
@@ -1384,11 +1515,18 @@ export interface YearEndComparison {
  *   (receita/resultado subir) vs. ruim (despesa subir).
  * - `hasPreviousData = false` quando o ano anterior não teve receita nem despesa.
  *
- * Pura: opera só sobre os dois forecasts já calculados.
+ * Pura: opera só sobre os dois resultados já calculados. Aceita qualquer objeto
+ * com os campos projetados (`YearEndForecast` ou `YearEndScenarioView`), para a
+ * comparação respeitar o cenário escolhido no seletor.
  */
+export type YearEndResultLike = Pick<
+  YearEndForecast,
+  "year" | "projectedResult" | "projectedIncome" | "projectedExpense"
+>;
+
 export function compareYearEndToPrevious(
-  current: YearEndForecast,
-  previous: YearEndForecast,
+  current: YearEndResultLike,
+  previous: YearEndResultLike,
 ): YearEndComparison {
   return {
     year: current.year,
