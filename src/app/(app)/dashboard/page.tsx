@@ -20,6 +20,7 @@ import {
   compareYearEndToPrevious,
   recurringExpenses,
   computeGoalProgress,
+  compareGoalScenarios,
   type TxLike,
   type ReceivableShowLike,
   type ShowLike,
@@ -111,6 +112,23 @@ export default async function DashboardPage() {
   // quando há cachê tentativo a descartar (caso contrário coincide com o cru).
   const conservative = applyYearEndScenario(forecast, "conservative");
   const hasConservativeFloor = forecast.scheduledTentative > 0;
+  // Piso conservador da META: "bato a meta mesmo que só os shows confirmados se
+  // paguem?". Reaproveita as duas projeções já computadas (otimista = forecast,
+  // conservadora = `conservative`); sem I/O nem recálculo. Só vira aviso no card
+  // de meta quando os cenários divergem (há cachê a confirmar separando-os) — ver D79.
+  const goalScenarios =
+    revenueGoal && goalProgress
+      ? compareGoalScenarios(
+          {
+            goal: revenueGoal.amount,
+            realized: forecast.realizedIncome,
+            year: currentYear,
+            projectedOptimistic: forecast.projectedIncome,
+            projectedConservative: conservative.projectedIncome,
+          },
+          {},
+        )
+      : null;
   // Pior caso: cruza os dois eixos conservadores num só piso — receita só de shows
   // confirmados (D66) E despesa somando o custo fixo recorrente futuro (D62), ver
   // D68. Só vira linha quando AMBOS os eixos mordem; sem um deles, o pior caso
@@ -414,6 +432,26 @@ export default async function DashboardPage() {
                     ? "Você está no ritmo da meta."
                     : `Projeção do ano: ${formatMoney(goalProgress.projected)}.`}
             </p>
+            {/* Piso conservador: só aparece quando os cenários divergem (há cachê
+                a confirmar). Verde quando a meta resiste só com confirmados; âmbar
+                quando ela depende dos shows ainda a confirmar para fechar. */}
+            {goalScenarios?.diverges && (
+              <p
+                className={
+                  "mt-2 rounded-md px-3 py-2 text-xs " +
+                  (goalScenarios.hitsEvenConservatively
+                    ? "bg-emerald-50 text-emerald-800"
+                    : "bg-amber-50 text-amber-800")
+                }
+              >
+                <span className="font-semibold">
+                  {goalScenarios.hitsEvenConservatively ? "Folga real." : "Atenção ao piso."}
+                </span>{" "}
+                {goalScenarios.hitsEvenConservatively
+                  ? `Só com shows confirmados, a projeção fica em ${formatMoney(goalScenarios.conservative.projected)} (${Math.round(goalScenarios.conservative.projectedRatio * 100)}% da meta) — você não depende dos ${formatMoney(goalScenarios.tentativeGap)} a confirmar.`
+                  : `Sem os ${formatMoney(goalScenarios.tentativeGap)} de shows a confirmar, a projeção cai para ${formatMoney(goalScenarios.conservative.projected)} (${Math.round(goalScenarios.conservative.projectedRatio * 100)}% da meta) — a meta só fecha se eles se confirmarem.`}
+              </p>
+            )}
           </Link>
         </section>
       )}
