@@ -1905,3 +1905,46 @@ contexto, decisão, justificativa e alternativas consideradas.
   consulta filtrada por `userId`, sem vazamento entre usuários.
 - **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5 high /
   1 critical), mesma postura de D6/D8; nenhuma dependência nova.
+
+### D73 — Seletor de três cenários na projeção do ano (Sessão 81)
+- **Contexto:** a página `/financas/projecao-ano` já oferecia dois pisos conservadores sobre a projeção
+  crua: "só confirmados" (D66, ataca a receita descartando cachês de shows a confirmar) e "pior caso"
+  (D68, soma também o custo fixo recorrente futuro). Mas a UI era assimétrica: o seletor tinha só dois
+  botões (Otimista × Conservador) e o pior caso aparecia como um **card extra** que só surgia no modo
+  otimista quando ambos os eixos mordiam. O usuário não conseguia ver o pior caso como o número
+  PRINCIPAL (com composição de receita/despesa detalhada), nem alternar entre os três pisos de forma
+  uniforme.
+- **Decisão:** transformar o seletor num grupo de **três botões** — Otimista / Conservador / Pior caso —
+  em que cada um escolhe qual piso vira o número principal e a composição abaixo. A lógica pura ganhou
+  `yearEndScenarioView(forecast, txs, fixedCost, mode)` (+ tipo `YearEndScenarioChoice` de 3 valores), que
+  normaliza qualquer um dos três cenários num formato comum (totais + composição de receita/despesa +
+  custo fixo futuro + tentativo descartado), reaproveitando `applyYearEndScenario` (D66) e
+  `projectYearEndPessimistic` (D68) sem reprojetar do zero. O card standalone de "Pior caso" foi removido
+  (consolidado no botão/headline); o card "Cenário com custos fixos" (D62) some no modo pior caso, onde o
+  custo fixo já está embutido no número principal. A composição de despesas ganha a linha "Custo fixo
+  estimado" no modo pior caso.
+- **Gating:** o botão Conservador só aparece quando há cachê tentativo a descartar (`scheduledTentative > 0`);
+  o botão Pior caso só quando há custo fixo futuro a somar (`estimatedRemainingFixedCost > 0`) — caso
+  contrário coincidiria com o conservador ou com o otimista. O grupo inteiro aparece quando há ao menos um
+  piso a oferecer. Slugs pt-BR na query: `?cenario=conservador` / `?cenario=pessimista` (otimista é o
+  default sem param).
+- **Comparação vs. ano anterior:** `compareYearEndToPrevious` teve o parâmetro alargado para um tipo
+  estrutural `YearEndResultLike` (`Pick` de `year`/`projectedResult`/`projectedIncome`/`projectedExpense`),
+  para aceitar tanto `YearEndForecast` quanto o novo `YearEndScenarioView` — a comparação agora respeita o
+  cenário escolhido (compara pior-caso-2026 vs. pior-caso-do-ano-anterior, que num ano encerrado degrada
+  para o fechamento real, pois não há shows futuros nem meses a estimar).
+- **Justificativa:** consolida três affordances espalhadas (card de custos fixos + card de pior caso +
+  seletor de 2 botões) num único controle coerente, reaproveitando 100% da lógica pura já testada (D66/D68/
+  D62) — a única lógica nova (`yearEndScenarioView`) é pura, com +6 testes em `finance.test.ts`. Sem schema,
+  sem dependência, sem server action.
+- **Alternativas consideradas:** (a) manter os cards extras e só renomear — descartado: a duplicação
+  (botão + card mostrando o mesmo número) confunde. (b) estender `YearEndScenarioMode` para 3 valores —
+  descartado: `applyYearEndScenario` é puramente derivável do forecast, mas o pior caso precisa de `txs` +
+  custo fixo (não cabe na mesma assinatura); criou-se o tipo separado `YearEndScenarioChoice` para o
+  seletor da página, preservando o contrato de `applyYearEndScenario`. (c) mostrar os três números lado a
+  lado sempre — descartado: polui a tela; o seletor mantém um número principal por vez com composição
+  detalhada.
+- **Segurança:** sem mudança — página protegida por `requireUser` (307 → `/login` sem sessão, confirmado no
+  smoke test), consultas filtradas por `userId`.
+- **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5 high /
+  1 critical), mesma postura de D6/D8; nenhuma dependência nova.
