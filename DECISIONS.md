@@ -2034,3 +2034,42 @@ contexto, decisão, justificativa e alternativas consideradas.
   over-engineering para o MVP; a variação YoY simples + tendência último-vs-primeiro já comunicam a direção.
 - **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5 high /
   1 critical), mesma postura de D6/D8; nenhuma dependência nova.
+
+## D77 — Meta de faturamento anual: estou no caminho de bater a meta? (Sessão 85)
+- **Contexto:** o app projetava o fechamento do ano por vários ângulos (`projectYearEnd` e cenários,
+  D60–D73), mas não havia uma **meta** do próprio usuário para comparar — o subtema "Custos & metas" do
+  hub só tinha custos (custos fixos, ponto de equilíbrio, reserva de impostos), nenhuma meta. Faltava
+  responder "quanto eu quero faturar este ano e o quão perto estou?".
+- **Decisão:** introduzir a primeira mudança de schema desde a base do MVP — modelo `RevenueGoal`
+  (userId, year, amount em centavos) com **unique (userId, year)**: uma meta de faturamento por ano, por
+  usuário. A lógica de progresso fica numa função pura `computeGoalProgress` em `src/lib/finance.ts` que
+  cruza a meta com o **realizado** (receita já recebida, `YearEndForecast.realizedIncome`) e a
+  **projeção** (`projectedIncome`), reaproveitando 100% do `projectYearEnd` já existente — sem recomputar
+  agregações. Página `/financas/metas` (CRUD da meta + card de progresso) e card compacto no Painel.
+- **Faturamento (receita bruta), não resultado líquido:** a meta é sobre o que **entra** (receita), não
+  sobre o lucro. É a métrica que o músico controla via agenda/cachês e a mais intuitiva para "meta do
+  ano"; o resultado líquido já é coberto pela projeção de fechamento (D60). `realized` = receita recebida
+  no ano; `projected` = recebido + a receber lançado + cachê agendado de shows futuros.
+- **Ritmo (`pace`) por avanço linear, só no ano corrente:** compara o realizado ao esperado por um
+  avanço **linear** da meta ao longo do ano (meta × fração do ano decorrida), com faixa de ±5% para
+  "no ritmo". Linear é uma simplificação consciente (ignora sazonalidade — D37); para o sinal "estou
+  adiantado/atrasado" basta, e não exige histórico. Ano passado não julga ritmo (a meta já está decidida
+  pelo total); ano futuro ainda não começou. Documentado na função.
+- **Upsert por ano + isolamento:** `setRevenueGoalAction` faz upsert na chave (userId, year) — uma meta
+  por ano, sem duplicar; `deleteRevenueGoalAction` usa `deleteMany` escopado ao `userId` (idempotente e
+  imune a ano de outro usuário). O `DeleteButton` reusado passa o ano no campo `id` (sua convenção).
+- **Justificativa:** entrega uma alavanca de planejamento que faltava (a meta do usuário), ancorando os
+  números de projeção numa referência pessoal, com custo baixo: reusa `projectYearEnd`, `MoneyInput`,
+  `DeleteButton` e o padrão lógica-pura-testável + página. Cobertura: 8 testes de `computeGoalProgress`
+  (razões/restante, onTrackToHit, ritmo adiantado/atrasado/no-ritmo, ano futuro/passado, saneamento) + 6
+  de integração das actions (cria, upsert sem duplicar, rejeita meta zero, isolamento entre usuários).
+  **596 testes** no projeto (eram 582).
+- **Alternativas consideradas:** (a) guardar a meta num cookie como os filtros (D23) — descartado: meta é
+  dado de carreira, merece persistência real e por-ano; cookie é frágil e some entre dispositivos. (b)
+  meta de resultado líquido em vez de faturamento — descartado: menos intuitiva e já há projeção de
+  resultado; faturamento é o que o usuário mira. (c) ritmo ponderado por sazonalidade — over-engineering
+  para o MVP; o avanço linear comunica a direção sem exigir histórico confiável. (d) metas por mês/
+  trimestre — escopo maior; a meta anual cobre a pergunta principal e fica como evolução.
+- **Schema alterado** (1ª vez desde o MVP): novo modelo `RevenueGoal` + relação no `User`, aplicado por
+  `prisma db push` (dev). `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical),
+  mesma postura de D6/D8; nenhuma dependência nova.

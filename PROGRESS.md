@@ -1893,6 +1893,38 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de
   schema — ver D6/D8). Ver **DECISIONS.md D76**.
 
+### Sessão 85 — Meta de faturamento anual (D77)
+- **Schema** (`prisma/schema.prisma`): novo modelo `RevenueGoal` (id, userId, year, amount em
+  centavos, timestamps) com **unique (userId, year)** e relação `revenueGoals` no `User`
+  (`onDelete: Cascade`). Aplicado via `prisma db push` (dev); `resetDb` (`src/test/db.ts`) limpa a
+  nova tabela. Primeira mudança de schema desde a base do MVP — preenche a metade "metas" do subtema
+  "Custos & metas", que só tinha custos.
+- **Lógica pura** (`src/lib/finance.ts`): `computeGoalProgress({ goal, realized, projected, year }, { now? })`
+  cruza a meta com a receita já recebida (`realizedIncome`) e a projeção de faturamento
+  (`projectedIncome`, reaproveitando `projectYearEnd`), respondendo "estou no caminho de bater a
+  meta?". Deriva razões realizado/projetado, quanto falta, `onTrackToHit` e o **ritmo** (`pace`:
+  adiantado/no ritmo/atrasado) frente ao avanço linear da meta no ano (faixa ±5%), só no ano corrente;
+  ano passado/futuro não julgam ritmo. Entradas saneadas (não-finito → 0; meta negativa → 0). **+8
+  testes** em `finance.test.ts`.
+- **Validação** (`src/lib/validation.ts`): `revenueGoalSchema` (ano inteiro 1970–2999; valor > 0 via
+  `moneyField`/máscara pt-BR).
+- **Server actions** (`src/app/(app)/financas/metas/actions.ts`): `setRevenueGoalAction` (upsert por
+  userId+year — uma meta por ano) e `deleteRevenueGoalAction` (remove só a do próprio usuário via
+  `deleteMany` escopado). **+6 testes de integração** (`metas/actions.test.ts`): cria, atualiza sem
+  duplicar, rejeita meta zero, isolamento entre usuários (criar e remover).
+- **UI**: página `/financas/metas` (`page.tsx` + `GoalForm.tsx` client) — navegação por ano, formulário
+  de meta (reusa `MoneyInput`), card de progresso com barra (realizado sobre projetado), mensagem de
+  ritmo e três stats; estado vazio para definir a meta; remoção via `DeleteButton` (ano no campo `id`).
+  **Painel** (`dashboard/page.tsx`): card "Meta de {ano}" compacto (barra + ritmo), só quando há meta do
+  ano corrente, reaproveitando o `forecast` já computado (só +1 lookup da meta).
+- **Hub** (`src/lib/reports.ts`): entrada "Meta de faturamento" em Finanças → Custos & metas.
+- Definition of Done verde: build (`prisma generate && next build`) OK (`/financas/metas` registrada,
+  1.5 kB), typecheck (`tsc --noEmit`) limpo, lint (0 warnings/erros), **596 testes** (`vitest run`,
+  eram 582), smoke test ao vivo (`next start`): `/login` → 200, `/financas/metas` sem sessão → 307;
+  **render autenticado** de `/financas/metas` e `/dashboard` → 200 com a meta/ritmo corretos sobre
+  dados reais do dev.db. `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical;
+  nenhuma dependência nova — ver D6/D8). Ver **DECISIONS.md D77**.
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
@@ -1970,8 +2002,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    piso "só confirmados" — agora também visível no Painel; e o card "Pior caso" cruza os dois eixos
    conservadores num só número — agora também visível no Painel (D69); **seletor de três cenários** na
    página entregue na Sessão 81 — `yearEndScenarioView` + botões Otimista / Conservador / Pior caso em
-   `/financas/projecao-ano` (consolidou os cards extras num só controle), ver D73. Próximo possível —
-   comparar contra uma **meta** definida pelo usuário (exigiria schema/CRUD de metas).
+   `/financas/projecao-ano` (consolidou os cards extras num só controle), ver D73. **Meta de
+   faturamento** definida pelo usuário entregue na Sessão 85 — modelo `RevenueGoal` + `computeGoalProgress`
+   + `/financas/metas` + card no Painel, ver D77. Próximo possível — comparar a **projeção** do ano
+   diretamente contra a meta em `/financas/projecao-ano` (a meta já existe no schema), ou metas por
+   trimestre/mês.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

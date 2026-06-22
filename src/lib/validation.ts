@@ -68,6 +68,17 @@ export const changePasswordSchema = z
     path: ["newPassword"],
   });
 
+// ── Meta de faturamento anual ────────────────────────────────────────────────
+export const revenueGoalSchema = z.object({
+  year: z.coerce
+    .number()
+    .int("Ano inválido")
+    .min(1970, "Ano inválido")
+    .max(2999, "Ano inválido"),
+  // O valor chega como string mascarada (MoneyInput) — reusa o parser monetário.
+  amount: moneyField.refine((n) => n > 0, { message: "Informe uma meta maior que zero" }),
+});
+
 // ── Show ──────────────────────────────────────────────────────────────────
 export const showSchema = z.object({
   title: z.string().trim().min(1, "Informe um título"),

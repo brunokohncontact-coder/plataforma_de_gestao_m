@@ -3800,3 +3800,114 @@ export function dayKey(date: Date | string): string {
   const day = String(d.getUTCDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
+
+// ── Metas: progresso da meta de faturamento anual ──────────────────────────
+
+/** Quanto do ano `year` já passou em relação a `now`, como fração [0, 1]. */
+function yearElapsedFraction(year: number, now: Date): number {
+  const start = Date.UTC(year, 0, 1);
+  const end = Date.UTC(year + 1, 0, 1);
+  const t = now.getTime();
+  if (t <= start) return 0;
+  if (t >= end) return 1;
+  return (t - start) / (end - start);
+}
+
+/** Ritmo da meta frente ao esperado linear até agora. */
+export type GoalPace = "ahead" | "behind" | "on-track" | null;
+
+export interface RevenueGoalProgress {
+  /** Meta de faturamento do ano, em centavos (saneada para inteiro ≥ 0). */
+  goal: number;
+  /** Ano de referência. */
+  year: number;
+  /** True se `year` é o ano corrente de `now`. */
+  isCurrentYear: boolean;
+  /** True se `year` já terminou (passado). */
+  isPastYear: boolean;
+  /** Receita já recebida no ano (caixa de entrada), em centavos. */
+  realized: number;
+  /**
+   * Projeção de faturamento do ano (recebido + a receber lançado + cachê
+   * agendado de shows futuros) — tipicamente `YearEndForecast.projectedIncome`.
+   */
+  projected: number;
+  /** Quanto falta receber para bater a meta: max(0, goal − realized). */
+  remaining: number;
+  /** realized / goal, fração ≥ 0 (0 se a meta for 0). */
+  realizedRatio: number;
+  /** projected / goal, fração ≥ 0 (0 se a meta for 0). */
+  projectedRatio: number;
+  /** True quando a projeção do ano alcança/ultrapassa a meta. */
+  onTrackToHit: boolean;
+  /** Fração do ano já decorrida [0, 1]; ano passado = 1; futuro = 0. */
+  yearElapsed: number;
+  /** Meta esperada até agora pelo ritmo linear: round(goal × yearElapsed). */
+  expectedByNow: number;
+  /** realized − expectedByNow (positivo = adiantado). */
+  paceDelta: number;
+  /**
+   * Ritmo frente à meta linear (só faz sentido no ano corrente):
+   * 'ahead' (≥ +5%), 'behind' (≤ −5%), 'on-track' (na faixa), ou `null`
+   * (ano passado/futuro, ou cedo demais para julgar — meta esperada nula).
+   */
+  pace: GoalPace;
+}
+
+/**
+ * Cruza uma meta de faturamento anual com o realizado e a projeção do ano,
+ * respondendo "estou no caminho de bater a meta?". Função pura.
+ *
+ * - `realized` é a receita já recebida no ano (caixa de entrada).
+ * - `projected` é a projeção de faturamento (ex.: `projectYearEnd().projectedIncome`).
+ * - O **ritmo** (`pace`) compara o realizado ao esperado por um avanço linear da
+ *   meta ao longo do ano (meta × fração do ano decorrida), com faixa de ±5%. Só é
+ *   computado no ano corrente; em ano passado a meta já está decidida pelo total,
+ *   e em ano futuro ainda não começou.
+ *
+ * Valores são saneados (não-finitos → 0; meta negativa → 0).
+ */
+export function computeGoalProgress(
+  input: { goal: number; realized: number; projected: number; year: number },
+  opts: { now?: Date | string } = {},
+): RevenueGoalProgress {
+  const sane = (n: number) => (Number.isFinite(n) ? n : 0);
+  const goal = Math.max(0, Math.round(sane(input.goal)));
+  const realized = Math.round(sane(input.realized));
+  const projected = Math.round(sane(input.projected));
+  const year = input.year;
+
+  const now = opts.now ? new Date(opts.now) : new Date();
+  const nowYear = now.getUTCFullYear();
+  const isCurrentYear = nowYear === year;
+  const isPastYear = nowYear > year;
+
+  const yearElapsed = yearElapsedFraction(year, now);
+  const expectedByNow = Math.round(goal * yearElapsed);
+  const paceDelta = realized - expectedByNow;
+
+  let pace: GoalPace = null;
+  if (isCurrentYear && goal > 0 && expectedByNow > 0) {
+    const ratio = realized / expectedByNow;
+    if (ratio >= 1.05) pace = "ahead";
+    else if (ratio <= 0.95) pace = "behind";
+    else pace = "on-track";
+  }
+
+  return {
+    goal,
+    year,
+    isCurrentYear,
+    isPastYear,
+    realized,
+    projected,
+    remaining: Math.max(0, goal - realized),
+    realizedRatio: goal > 0 ? realized / goal : 0,
+    projectedRatio: goal > 0 ? projected / goal : 0,
+    onTrackToHit: goal > 0 && projected >= goal,
+    yearElapsed,
+    expectedByNow,
+    paceDelta,
+    pace,
+  };
+}

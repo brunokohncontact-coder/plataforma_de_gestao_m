@@ -19,6 +19,7 @@ import {
   applyYearEndScenario,
   compareYearEndToPrevious,
   recurringExpenses,
+  computeGoalProgress,
   type TxLike,
   type ReceivableShowLike,
   type ShowLike,
@@ -36,13 +37,17 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const user = await requireUser();
 
-  const [transactions, shows, upcoming] = await Promise.all([
+  const currentYear = new Date().getFullYear();
+  const [transactions, shows, upcoming, revenueGoal] = await Promise.all([
     prisma.transaction.findMany({ where: { userId: user.id } }),
     prisma.show.findMany({ where: { userId: user.id } }),
     prisma.show.findMany({
       where: { userId: user.id, date: { gte: new Date() }, status: { not: "CANCELLED" } },
       orderBy: { date: "asc" },
       take: 5,
+    }),
+    prisma.revenueGoal.findUnique({
+      where: { userId_year: { userId: user.id, year: currentYear } },
     }),
   ]);
 
@@ -65,8 +70,21 @@ export default async function DashboardPage() {
   // Projeção de fechamento do ano corrente (reaproveita os shows/transações já
   // carregados; sem consulta extra). Só vale a pena mostrar quando há um
   // componente futuro (pendência ou cachê agendado) que muda o caixa realizado.
-  const currentYear = new Date().getFullYear();
   const forecast = projectYearEnd(txs, shows as YearEndShowLike[], currentYear);
+  // Progresso da meta de faturamento do ano corrente (reaproveita o forecast já
+  // computado; sem consulta extra além do lookup da meta). Só vira card quando o
+  // usuário definiu uma meta para o ano.
+  const goalProgress = revenueGoal
+    ? computeGoalProgress(
+        {
+          goal: revenueGoal.amount,
+          realized: forecast.realizedIncome,
+          projected: forecast.projectedIncome,
+          year: currentYear,
+        },
+        {},
+      )
+    : null;
   const hasForecast =
     forecast.scheduledIncome > 0 ||
     forecast.pendingIncome > 0 ||
@@ -344,6 +362,58 @@ export default async function DashboardPage() {
                 </span>
               </p>
             )}
+          </Link>
+        </section>
+      )}
+
+      {/* Meta de faturamento do ano: progresso e ritmo */}
+      {goalProgress && (
+        <section className="card">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-semibold">Meta de {currentYear}</h2>
+            <Link href="/financas/metas" className="text-sm text-brand-700 hover:underline">
+              Ver detalhe
+            </Link>
+          </div>
+          <Link
+            href="/financas/metas"
+            className="block rounded-lg bg-gray-50 px-4 py-3 transition hover:bg-gray-100"
+          >
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <p className="text-sm text-gray-600">
+                <span className="font-semibold text-emerald-600">
+                  {formatMoney(goalProgress.realized)}
+                </span>{" "}
+                de {formatMoney(goalProgress.goal)}
+              </p>
+              <p className="text-lg font-bold text-gray-900">
+                {Math.round(goalProgress.realizedRatio * 100)}%
+              </p>
+            </div>
+            <div className="relative mt-2 h-2.5 overflow-hidden rounded-full bg-gray-200">
+              <div
+                className="absolute inset-y-0 left-0 rounded-full bg-brand-200"
+                style={{ width: `${Math.min(100, Math.round(goalProgress.projectedRatio * 100))}%` }}
+                aria-hidden
+              />
+              <div
+                className={
+                  "absolute inset-y-0 left-0 rounded-full " +
+                  (goalProgress.realized >= goalProgress.goal ? "bg-emerald-500" : "bg-brand-500")
+                }
+                style={{ width: `${Math.min(100, Math.round(goalProgress.realizedRatio * 100))}%` }}
+                aria-hidden
+              />
+            </div>
+            <p className="mt-2 text-xs text-gray-500">
+              {goalProgress.pace === "ahead"
+                ? "No ritmo da meta — você está adiantado."
+                : goalProgress.pace === "behind"
+                  ? `Atrás do ritmo da meta — faltam ${formatMoney(Math.abs(goalProgress.paceDelta))} para o esperado até agora.`
+                  : goalProgress.pace === "on-track"
+                    ? "Você está no ritmo da meta."
+                    : `Projeção do ano: ${formatMoney(goalProgress.projected)}.`}
+            </p>
           </Link>
         </section>
       )}

@@ -36,6 +36,26 @@ model User {
   shows        Show[]
   transactions Transaction[]
   contacts     Contact[]
+  revenueGoals RevenueGoal[]
+}
+
+// ── Metas: meta de faturamento anual ────────────────────────────────────────
+// Uma meta de receita (faturamento) por ano, por usuário. O progresso é
+// calculado na camada de aplicação (src/lib/finance.ts → computeGoalProgress)
+// cruzando a meta com a receita já recebida e a projeção de fechamento do ano.
+model RevenueGoal {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  year   Int // ano de referência (ex.: 2026)
+  amount Int // meta de faturamento no ano, em centavos (sempre > 0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, year])
+  @@index([userId])
 }
 
 // ── F2: Agenda de shows ─────────────────────────────────────────────────────

@@ -61,6 +61,7 @@ import {
   paymentLagByContact,
   paymentSpeedBucket,
   PAYMENT_SPEED_BUCKET_ORDER,
+  computeGoalProgress,
   type TxLike,
   type ShowLike,
   type VenueShowLike,
@@ -3562,5 +3563,97 @@ describe("weekdayPerformance", () => {
     );
     // Mesma média (100), terça tem mais shows → vence o desempate.
     expect(w.bestByAvg?.weekday).toBe(2);
+  });
+});
+
+describe("computeGoalProgress", () => {
+  const base = { goal: 100_000_00, realized: 0, projected: 0, year: 2026 };
+
+  it("calcula razões, restante e onTrackToHit", () => {
+    const p = computeGoalProgress(
+      { ...base, realized: 40_000_00, projected: 90_000_00 },
+      { now: "2026-07-02T12:00:00Z" }, // ~meio do ano
+    );
+    expect(p.goal).toBe(100_000_00);
+    expect(p.realized).toBe(40_000_00);
+    expect(p.remaining).toBe(60_000_00);
+    expect(p.realizedRatio).toBeCloseTo(0.4, 5);
+    expect(p.projectedRatio).toBeCloseTo(0.9, 5);
+    expect(p.onTrackToHit).toBe(false); // projeção < meta
+  });
+
+  it("onTrackToHit verdadeiro quando a projeção alcança a meta", () => {
+    const p = computeGoalProgress(
+      { ...base, realized: 50_000_00, projected: 100_000_00 },
+      { now: "2026-07-02T12:00:00Z" },
+    );
+    expect(p.onTrackToHit).toBe(true);
+  });
+
+  it("ritmo: adiantado quando recebido supera o esperado linear em >5%", () => {
+    // Metade do ano (1/jul/2026 ~ 0.4986) → esperado ~49.863. Recebido 70k > +5%.
+    const p = computeGoalProgress(
+      { ...base, realized: 70_000_00 },
+      { now: "2026-07-01T00:00:00Z" },
+    );
+    expect(p.isCurrentYear).toBe(true);
+    expect(p.pace).toBe("ahead");
+    expect(p.paceDelta).toBeGreaterThan(0);
+  });
+
+  it("ritmo: atrasado quando recebido fica >5% abaixo do esperado linear", () => {
+    const p = computeGoalProgress(
+      { ...base, realized: 10_000_00 },
+      { now: "2026-07-01T00:00:00Z" },
+    );
+    expect(p.pace).toBe("behind");
+    expect(p.paceDelta).toBeLessThan(0);
+  });
+
+  it("ritmo: no ritmo dentro da faixa de ±5%", () => {
+    // Esperado ~49.863 em 1/jul; receber exatamente isso → on-track.
+    const elapsed = computeGoalProgress(base, { now: "2026-07-01T00:00:00Z" }).expectedByNow;
+    const p = computeGoalProgress(
+      { ...base, realized: elapsed },
+      { now: "2026-07-01T00:00:00Z" },
+    );
+    expect(p.pace).toBe("on-track");
+  });
+
+  it("ano futuro: sem ritmo, ano decorrido zero", () => {
+    const p = computeGoalProgress(
+      { ...base, realized: 0, projected: 30_000_00 },
+      { now: "2025-06-01T00:00:00Z" },
+    );
+    expect(p.isCurrentYear).toBe(false);
+    expect(p.isPastYear).toBe(false);
+    expect(p.yearElapsed).toBe(0);
+    expect(p.expectedByNow).toBe(0);
+    expect(p.pace).toBeNull();
+  });
+
+  it("ano passado: ano decorrido 100%, sem ritmo", () => {
+    const p = computeGoalProgress(
+      { ...base, realized: 80_000_00, projected: 80_000_00 },
+      { now: "2027-03-01T00:00:00Z" },
+    );
+    expect(p.isPastYear).toBe(true);
+    expect(p.yearElapsed).toBe(1);
+    expect(p.expectedByNow).toBe(p.goal);
+    expect(p.pace).toBeNull();
+  });
+
+  it("saneia entradas inválidas e meta zero/negativa", () => {
+    const p = computeGoalProgress(
+      { goal: -5, realized: Number.NaN, projected: Infinity, year: 2026 },
+      { now: "2026-06-01T00:00:00Z" },
+    );
+    expect(p.goal).toBe(0);
+    expect(p.realized).toBe(0);
+    expect(p.projected).toBe(0);
+    expect(p.realizedRatio).toBe(0);
+    expect(p.projectedRatio).toBe(0);
+    expect(p.onTrackToHit).toBe(false);
+    expect(p.pace).toBeNull(); // meta zero → não julga ritmo
   });
 });
