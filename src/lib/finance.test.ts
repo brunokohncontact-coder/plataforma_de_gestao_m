@@ -63,6 +63,7 @@ import {
   PAYMENT_SPEED_BUCKET_ORDER,
   computeGoalProgress,
   compareGoalScenarios,
+  goalRunRate,
   type TxLike,
   type ShowLike,
   type VenueShowLike,
@@ -3704,5 +3705,110 @@ describe("compareGoalScenarios", () => {
     );
     expect(c.tentativeGap).toBe(0); // otimista saneado a 0 < conservador
     expect(c.diverges).toBe(false);
+  });
+});
+
+describe("goalRunRate", () => {
+  const now = { now: "2026-07-01T00:00:00Z" }; // jul = índice 6 → 6 meses restantes
+  const mkProgress = (over: { goal: number; realized: number }) =>
+    computeGoalProgress(
+      { goal: over.goal, realized: over.realized, projected: 0, year: 2026 },
+      now,
+    );
+
+  it("calcula required/current por mês e verdict no ano corrente", () => {
+    // Meta 120k, recebido 60k em ~meio ano → falta 60k em 6 meses = 10k/mês.
+    // Ritmo atual ~60k / ~6 meses decorridos ≈ 10k/mês → effortRatio ≈ 1.
+    const r = goalRunRate(mkProgress({ goal: 120_000_00, realized: 60_000_00 }), now);
+    expect(r.applicable).toBe(true);
+    expect(r.monthsRemaining).toBe(6); // jul..dez, mês corrente incluso
+    expect(r.remaining).toBe(60_000_00);
+    expect(r.requiredPerMonth).toBe(10_000_00);
+    expect(r.currentPerMonth).toBeGreaterThan(9_000_00);
+    expect(r.currentPerMonth).toBeLessThan(11_000_00);
+    expect(r.effortRatio).toBeCloseTo(1, 1);
+    expect(r.verdict).toBe("on-pace");
+  });
+
+  it("verdict 'hard' quando o necessário supera muito o ritmo atual", () => {
+    // Recebido baixo (5k) → ritmo ~10k/ano... falta 95k em 6 meses ≈ 15.834/mês,
+    // muito acima do ritmo atual → ratio > 1,25.
+    const r = goalRunRate(mkProgress({ goal: 100_000_00, realized: 5_000_00 }), now);
+    expect(r.verdict).toBe("hard");
+    expect(r.effortRatio).not.toBeNull();
+    expect(r.effortRatio!).toBeGreaterThan(1.25);
+    expect(r.gapPerMonth).toBeGreaterThan(0);
+  });
+
+  it("verdict 'stretch' para aceleração moderada (1 < ratio ≤ 1,25)", () => {
+    // Ritmo atual ~10k/mês (60k em meio ano); precisa de ~11k/mês.
+    // falta = required*6. Para required ≈ 11.5k: remaining ≈ 69k → realized 51k? Ajuste:
+    const p = computeGoalProgress(
+      { goal: 120_000_00, realized: 54_000_00, projected: 0, year: 2026 },
+      now,
+    );
+    const r = goalRunRate(p, now);
+    // remaining 66k / 6 = 11k/mês; ritmo ~54k/~6m ≈ 9k → ratio ≈ 1,22.
+    expect(r.requiredPerMonth).toBe(11_000_00);
+    expect(r.effortRatio!).toBeGreaterThan(1);
+    expect(r.effortRatio!).toBeLessThanOrEqual(1.25);
+    expect(r.verdict).toBe("stretch");
+  });
+
+  it("verdict 'hit' quando a meta já foi batida", () => {
+    const r = goalRunRate(mkProgress({ goal: 100_000_00, realized: 120_000_00 }), now);
+    expect(r.remaining).toBe(0);
+    expect(r.requiredPerMonth).toBe(0);
+    expect(r.effortRatio).toBeNull();
+    expect(r.verdict).toBe("hit");
+  });
+
+  it("verdict 'unknown' sem base de ritmo (nada recebido)", () => {
+    const r = goalRunRate(mkProgress({ goal: 100_000_00, realized: 0 }), now);
+    expect(r.currentPerMonth).toBe(0);
+    expect(r.effortRatio).toBeNull();
+    expect(r.verdict).toBe("unknown");
+    expect(r.requiredPerMonth).toBeGreaterThan(0); // ainda mostra o alvo
+  });
+
+  it("mês corrente sempre conta: dezembro deixa 1 mês restante", () => {
+    const dec = { now: "2026-12-15T00:00:00Z" };
+    const p = computeGoalProgress(
+      { goal: 120_000_00, realized: 60_000_00, projected: 0, year: 2026 },
+      dec,
+    );
+    const r = goalRunRate(p, dec);
+    expect(r.monthsRemaining).toBe(1);
+    expect(r.requiredPerMonth).toBe(60_000_00); // tudo que falta neste mês
+  });
+
+  it("não acionável fora do ano corrente (futuro)", () => {
+    const future = { now: "2025-06-01T00:00:00Z" };
+    const p = computeGoalProgress(
+      { goal: 100_000_00, realized: 0, projected: 0, year: 2026 },
+      future,
+    );
+    const r = goalRunRate(p, future);
+    expect(r.applicable).toBe(false);
+    expect(r.verdict).toBe("unknown");
+    expect(r.monthsRemaining).toBe(12);
+  });
+
+  it("não acionável em ano passado", () => {
+    const past = { now: "2027-03-01T00:00:00Z" };
+    const p = computeGoalProgress(
+      { goal: 100_000_00, realized: 80_000_00, projected: 80_000_00, year: 2026 },
+      past,
+    );
+    const r = goalRunRate(p, past);
+    expect(r.applicable).toBe(false);
+    expect(r.monthsRemaining).toBe(0);
+    expect(r.verdict).toBe("unknown");
+  });
+
+  it("meta zero não é acionável", () => {
+    const r = goalRunRate(mkProgress({ goal: 0, realized: 0 }), now);
+    expect(r.applicable).toBe(false);
+    expect(r.verdict).toBe("unknown");
   });
 });
