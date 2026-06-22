@@ -10,6 +10,8 @@ import {
   projectCashflow,
   reconcileShowFees,
   bucketReceivablesByAge,
+  paymentLag,
+  paymentLagHeadline,
   showPipeline,
   projectYearEnd,
   projectYearEndWithFixedCosts,
@@ -22,6 +24,7 @@ import {
   type ShowLike,
   type YearEndShowLike,
   type MetricDelta,
+  type PaymentSpeedBucketKey,
 } from "@/lib/finance";
 import { findScheduleConflicts } from "@/lib/shows";
 import { formatMoney } from "@/lib/money";
@@ -108,6 +111,13 @@ export default async function DashboardPage() {
   // Recebível "encalhado": parado há mais de 90 dias (balde "older" do aging).
   const staleReceivables = receivablesAging.buckets.find((b) => b.key === "older");
   const hasStaleReceivables = staleReceivables != null && staleReceivables.count > 0;
+
+  // Prazo de recebimento realizado (DSO): sobre o cachê que JÁ entrou, em quantos
+  // dias depois do show o dinheiro caiu no caixa. Reaproveita os shows/transações
+  // já carregados. Só vira card com amostra mínima de shows pagos (ver D70).
+  const lagHeadline = paymentLagHeadline(
+    paymentLag(shows as ReceivableShowLike[], txs),
+  );
 
   // Conflitos de agenda ainda acionáveis (dias com 2+ shows de hoje em diante).
   const conflicts = findScheduleConflicts(shows);
@@ -446,6 +456,48 @@ export default async function DashboardPage() {
         </section>
       )}
 
+      {/* Prazo de recebimento realizado (DSO): quanto tempo o cachê leva para
+          cair no caixa depois do show. */}
+      {lagHeadline.show && (
+        <section className="card">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-semibold">Prazo de recebimento</h2>
+            <Link
+              href="/shows/prazo-recebimento"
+              className="text-sm text-brand-700 hover:underline"
+            >
+              Ver detalhe
+            </Link>
+          </div>
+          <Link
+            href="/shows/prazo-recebimento"
+            className={
+              "block rounded-lg border-l-4 bg-gray-50 px-4 py-3 transition hover:bg-gray-100 " +
+              LAG_BORDER_TONES[lagHeadline.bucket]
+            }
+          >
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+              Mediana — metade do cachê entra até
+            </p>
+            <p className={"mt-1 text-2xl font-bold " + LAG_TEXT_TONES[lagHeadline.bucket]}>
+              {daysLabel(lagHeadline.medianDays)}
+            </p>
+            <p className="mt-1 text-xs text-gray-500">
+              Média de {daysLabel(lagHeadline.avgDays)} sobre{" "}
+              {lagHeadline.showCount}{" "}
+              {lagHeadline.showCount === 1 ? "show pago" : "shows pagos"}.
+              {lagHeadline.skewed && (
+                <span className="text-amber-700">
+                  {" "}
+                  A média é puxada por algum recebimento bem atrasado — a mediana
+                  reflete melhor o prazo típico.
+                </span>
+              )}
+            </p>
+          </Link>
+        </section>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Próximos shows */}
         <section className="card">
@@ -606,6 +658,31 @@ function SummaryCard({
 
 function EmptyHint({ children }: { children: React.ReactNode }) {
   return <p className="py-4 text-center text-sm text-gray-400">{children}</p>;
+}
+
+/** Cor da borda do card de prazo, por balde de velocidade do DSO (mais lento = mais quente). */
+const LAG_BORDER_TONES: Record<PaymentSpeedBucketKey, string> = {
+  onTime: "border-emerald-400",
+  d7: "border-emerald-400",
+  d30: "border-amber-400",
+  d60: "border-orange-400",
+  slow: "border-red-400",
+};
+
+/** Cor do número do card de prazo, por balde de velocidade do DSO. */
+const LAG_TEXT_TONES: Record<PaymentSpeedBucketKey, string> = {
+  onTime: "text-emerald-600",
+  d7: "text-emerald-600",
+  d30: "text-amber-600",
+  d60: "text-orange-600",
+  slow: "text-red-600",
+};
+
+/** Texto pt-BR para um prazo em dias (negativo = recebido adiantado). */
+function daysLabel(days: number): string {
+  if (days < 0) return `${Math.abs(days)} dias adiantado`;
+  if (days === 0) return "no mesmo dia";
+  return `${days} ${days === 1 ? "dia" : "dias"}`;
 }
 
 /**

@@ -54,6 +54,7 @@ import {
   weekdayPerformance,
   incomeMix,
   paymentLag,
+  paymentLagHeadline,
   paymentLagByContact,
   paymentSpeedBucket,
   PAYMENT_SPEED_BUCKET_ORDER,
@@ -2200,6 +2201,84 @@ describe("paymentLag", () => {
     const r = paymentLag(shows, txs);
     expect(r.avgDays).toBe(20); // (10*300 + 50*100)/400
     expect(r.medianDays).toBe(10);
+  });
+});
+
+describe("paymentLagHeadline", () => {
+  function gig(partial: Partial<ReceivableShowLike>): ReceivableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-03-01T20:00:00.000Z",
+      ...partial,
+    };
+  }
+
+  it("não mostra sem recebimento algum", () => {
+    const h = paymentLagHeadline(paymentLag([gig({})], []));
+    expect(h.show).toBe(false);
+    expect(h.avgDays).toBe(0);
+    expect(h.medianDays).toBe(0);
+    expect(h.showCount).toBe(0);
+  });
+
+  it("não mostra com um único show pago (amostra insuficiente)", () => {
+    const shows = [gig({ id: "g1", date: "2026-03-01T00:00:00.000Z" })];
+    const txs = [
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "g1", date: "2026-03-11T00:00:00.000Z" }),
+    ];
+    const h = paymentLagHeadline(paymentLag(shows, txs));
+    expect(h.show).toBe(false);
+    expect(h.showCount).toBe(1);
+  });
+
+  it("mostra a partir de dois shows pagos, com DSO médio, mediano e balde", () => {
+    const shows = [
+      gig({ id: "a", date: "2026-03-01T00:00:00.000Z" }),
+      gig({ id: "b", date: "2026-03-01T00:00:00.000Z" }),
+    ];
+    const txs = [
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "a", date: "2026-03-11T00:00:00.000Z" }), // 10 d
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "b", date: "2026-03-11T00:00:00.000Z" }), // 10 d
+    ];
+    const h = paymentLagHeadline(paymentLag(shows, txs));
+    expect(h.show).toBe(true);
+    expect(h.avgDays).toBe(10);
+    expect(h.medianDays).toBe(10);
+    expect(h.bucket).toBe("d30");
+    expect(h.showCount).toBe(2);
+    expect(h.skewed).toBe(false);
+  });
+
+  it("sinaliza assimetria quando um show muito atrasado infla a média", () => {
+    // 3 shows em 10 d + 1 em 90 d → média 30, mediana 10 (diferença ≥ 7).
+    const shows = ["a", "b", "c", "d"].map((id) =>
+      gig({ id, date: "2026-03-01T00:00:00.000Z" }),
+    );
+    const txs = [
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "a", date: "2026-03-11T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "b", date: "2026-03-11T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "c", date: "2026-03-11T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "d", date: "2026-05-30T00:00:00.000Z" }),
+    ];
+    const h = paymentLagHeadline(paymentLag(shows, txs));
+    expect(h.avgDays).toBe(30);
+    expect(h.medianDays).toBe(10);
+    expect(h.skewed).toBe(true);
+  });
+
+  it("derruba a assimetria quando média e mediana ficam próximas (< 7 dias)", () => {
+    const shows = [
+      gig({ id: "a", date: "2026-03-01T00:00:00.000Z" }),
+      gig({ id: "b", date: "2026-03-01T00:00:00.000Z" }),
+    ];
+    const txs = [
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "a", date: "2026-03-11T00:00:00.000Z" }), // 10 d
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "b", date: "2026-03-13T00:00:00.000Z" }), // 12 d
+    ];
+    const h = paymentLagHeadline(paymentLag(shows, txs));
+    expect(h.skewed).toBe(false);
   });
 });
 

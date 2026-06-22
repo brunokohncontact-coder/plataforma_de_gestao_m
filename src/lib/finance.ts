@@ -2261,6 +2261,53 @@ export function paymentLag<S extends ReceivableShowLike>(
   };
 }
 
+/**
+ * Resumo do prazo de recebimento para o Painel: condensa um `PaymentLag` no que
+ * cabe num card de dashboard. Decide se vale a pena mostrar (precisa de uma
+ * amostra mínima de shows pagos), expõe o DSO médio e o mediano, o balde de
+ * velocidade (que dá o tom do card) e sinaliza quando a média está
+ * sensivelmente acima da mediana — caso em que um show muito atrasado infla o
+ * número e a mediana é a leitura típica mais honesta.
+ */
+export interface PaymentLagHeadline {
+  /** Há histórico suficiente para mostrar o DSO no Painel? */
+  show: boolean;
+  /** DSO médio ponderado pelo valor (dias). */
+  avgDays: number;
+  /** DSO mediano ponderado pelo valor (dias) — leitura típica, robusta a outlier. */
+  medianDays: number;
+  /** Balde de velocidade derivado do DSO médio (tom do card). */
+  bucket: PaymentSpeedBucketKey;
+  /** Nº de shows com algum recebimento (tamanho da amostra). */
+  showCount: number;
+  /**
+   * A média está sensivelmente acima da mediana? Sinaliza que um show muito
+   * atrasado puxa o DSO médio para cima — nesse caso a mediana é a leitura mais
+   * honesta do prazo típico.
+   */
+  skewed: boolean;
+}
+
+/** Amostra mínima de shows pagos para um DSO de Painel fazer sentido. */
+export const PAYMENT_LAG_HEADLINE_MIN_SHOWS = 2;
+/** Dias que a média precisa exceder a mediana para soar "puxada por outlier". */
+export const PAYMENT_LAG_SKEW_THRESHOLD_DAYS = 7;
+
+/** Deriva o resumo de Painel a partir do `paymentLag` (pura, sem I/O). */
+export function paymentLagHeadline<S extends ReceivableShowLike>(
+  lag: PaymentLag<S>,
+): PaymentLagHeadline {
+  return {
+    show:
+      lag.showCount >= PAYMENT_LAG_HEADLINE_MIN_SHOWS && lag.totalReceived > 0,
+    avgDays: lag.avgDays,
+    medianDays: lag.medianDays,
+    bucket: paymentSpeedBucket(lag.avgDays),
+    showCount: lag.showCount,
+    skewed: lag.avgDays - lag.medianDays >= PAYMENT_LAG_SKEW_THRESHOLD_DAYS,
+  };
+}
+
 // ── Prazo de recebimento por contratante (quem paga rápido x devagar) ───────
 //
 // Quebra o prazo de recebimento realizado (paymentLag) por quem paga: agrupa os

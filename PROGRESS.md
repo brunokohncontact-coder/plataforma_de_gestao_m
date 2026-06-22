@@ -1757,6 +1757,23 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   `/dashboard` sem sessão → 307 (→ `/login`). `npm audit` inalterado (10 advisories: 4 moderate / 5 high /
   1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8). Ver **DECISIONS.md D69**.
 
+### Sessão 78 — Prazo de recebimento (DSO) no Painel (D70)
+- **Lógica pura** (`src/lib/finance.ts`): novo `paymentLagHeadline(lag)` que condensa um `PaymentLag` para
+  o card do Painel — `show` (exige `PAYMENT_LAG_HEADLINE_MIN_SHOWS = 2` shows pagos e `totalReceived > 0`),
+  `avgDays`/`medianDays`, `bucket` (via `paymentSpeedBucket`, dá o tom) e `skewed` (média ≥ mediana +
+  `PAYMENT_LAG_SKEW_THRESHOLD_DAYS = 7` dias → um recebimento atrasado infla o DSO médio). +5 testes em
+  `finance.test.ts`.
+- **UI** (`src/app/(app)/dashboard/page.tsx`): novo card "Prazo de recebimento" que destaca a **mediana**
+  ("metade do cachê entra até …"), com a média como complemento e um aviso quando `skewed`; tons por balde
+  na borda/número (verde→âmbar→laranja→vermelho); linka para `/shows/prazo-recebimento`. Reaproveita
+  `paymentLag(shows, txs)` sobre os shows/transações já carregados — zero consulta extra. Só aparece com
+  amostra mínima de shows pagos. Fecha o "trazer o DSO/aging para o Painel" do item 5 (aging já estava lá
+  desde a Sessão 41/D32).
+- Definition of Done verde: build (`prisma generate && next build`) OK, typecheck (`tsc --noEmit`) limpo,
+  lint (0 warnings/erros), **548 testes** (`vitest run`), smoke test ao vivo (`next start`): `/login` → 200,
+  `/dashboard` sem sessão → 307 (→ `/login`). `npm audit` inalterado (10 advisories: 4 moderate / 5 high /
+  1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8). Ver **DECISIONS.md D70**.
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
@@ -1801,9 +1818,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `pickPayerContact` + `/shows/prazo-recebimento/por-contratante`, ver D52; **prazo MEDIANO de
    recebimento** (mediana ponderada, robusta a outlier) entregue na Sessão 65 — `medianDays` +
    helper `weightedMedian` em `paymentLag`, card em `/shows/prazo-recebimento`, ver D57):
+   **DSO no Painel** entregue na Sessão 78 — `paymentLagHeadline` + card "Prazo de recebimento" no
+   dashboard, ver D70 (aging já estava no Painel desde a Sessão 41/D32):
    próximo possível — lembrar a última escolha de contato por show, registrar a data prometida de
-   pagamento na própria cobrança, trazer o DSO/aging para o Painel, ou a mediana do prazo por
-   contratante (adiada na D57: com poucos shows por contratante fica ruidosa).
+   pagamento na própria cobrança, ou a mediana do prazo por contratante (adiada na D57: com poucos
+   shows por contratante fica ruidosa).
 4. **Sessões/segurança**: invalidação ao trocar a senha entregue na Sessão 26
    (`passwordChangedAt` + `isSessionFresh`, ver D17). Evoluções possíveis: "encerrar sessão
    específica" (lista de sessões revogáveis) e recuperação de senha por e-mail — adiáveis.

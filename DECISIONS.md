@@ -1815,3 +1815,35 @@ contexto, decisão, justificativa e alternativas consideradas.
   opt-in confundiria a leitura primária.
 - **Sem schema/dependência/server action/teste novo.** `npm audit` inalterado (10 advisories — 4 moderate
   / 5 high / 1 critical), mesma postura de D6/D8; nenhuma dependência nova.
+
+## D70 — Prazo de recebimento (DSO) no Painel (Sessão 78)
+- **Contexto:** o item 5 dos próximos passos previa "trazer o DSO/aging para o Painel". O aging dos
+  recebíveis já chegou ao dashboard na Sessão 41 (D32 — o que AINDA falta receber, com destaque para o
+  dinheiro encalhado há >90 dias). Faltava o lado realizado: o DSO — sobre o cachê que JÁ entrou, em
+  quantos dias depois do show o dinheiro caiu no caixa. A métrica já existia na página
+  `/shows/prazo-recebimento` (D51: `paymentLag`, DSO médio ponderado; D57: DSO mediano robusto a outlier),
+  mas não na primeira tela.
+- **Decisão:** novo helper puro `paymentLagHeadline(lag)` em `src/lib/finance.ts` que condensa um
+  `PaymentLag` no que cabe num card de Painel: decide se vale mostrar (`show` — exige amostra mínima de
+  `PAYMENT_LAG_HEADLINE_MIN_SHOWS = 2` shows pagos e `totalReceived > 0`), expõe `avgDays`/`medianDays`, o
+  `bucket` de velocidade (tom do card, via `paymentSpeedBucket`) e `skewed` (a média excede a mediana em
+  ≥ `PAYMENT_LAG_SKEW_THRESHOLD_DAYS = 7` dias → um recebimento muito atrasado infla o DSO médio e a
+  mediana é a leitura típica mais honesta). O dashboard chama `paymentLag(shows, txs)` (reaproveitando os
+  shows/transações já carregados — zero consulta extra) e renderiza um card "Prazo de recebimento" que
+  destaca a MEDIANA ("metade do cachê entra até …"), com a média como complemento e um aviso quando
+  `skewed`; linka para `/shows/prazo-recebimento`.
+- **Modelo/UI:** a mediana vira o número principal (não a média) por ser a leitura típica resistente a
+  outlier — coerente com a ênfase da D57. Tons por balde (`onTime`/`d7` verde, `d30` âmbar, `d60` laranja,
+  `slow` vermelho) na borda e no número, escalando do mais rápido (bom) ao mais lento (ruim). Limite de 2
+  shows pagos evita um "DSO" sem sentido estatístico a partir de um único recebimento. Card server-side,
+  `<Link>` envolvente (sem componente cliente), mesma postura dos demais cards do Painel.
+- **Justificativa:** entrega o sinal de fluxo de caixa ("depois que toco, em quanto tempo recebo?") na
+  primeira tela reaproveitando lógica pura já testada; o helper novo isola a decisão de exibição/ênfase do
+  Painel (testável em `finance.test.ts` — +5 testes), sem duplicar o cálculo do prazo.
+- **Alternativas consideradas:** (a) mostrar a média como número principal — descartado: um único show
+  muito atrasado a distorce (a razão de existir a mediana, D57). (b) mostrar o card a partir de 1 show pago
+  — descartado: DSO de amostra 1 é o prazo daquele show, não uma métrica. (c) recomputar na página em vez
+  de helper puro — descartado: a decisão de exibição (limite, assimetria, tom) é lógica de negócio e merece
+  teste isolado.
+- **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5 high /
+  1 critical), mesma postura de D6/D8; nenhuma dependência nova.
