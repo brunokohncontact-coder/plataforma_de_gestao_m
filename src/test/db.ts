@@ -9,6 +9,7 @@ export async function resetDb(): Promise<void> {
   await prisma.transaction.deleteMany();
   await prisma.contact.deleteMany();
   await prisma.show.deleteMany();
+  await prisma.revenueGoal.deleteMany();
   await prisma.user.deleteMany();
 }
 

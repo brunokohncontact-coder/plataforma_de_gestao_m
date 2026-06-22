@@ -203,6 +203,13 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "🌊",
       },
       {
+        title: "Meta de faturamento",
+        href: "/financas/metas",
+        description: "Defina quanto quer faturar no ano e acompanhe o quanto já recebeu e a projeção.",
+        subtopic: "Custos & metas",
+        icon: "🎯",
+      },
+      {
         title: "Custos fixos",
         href: "/financas/custos-fixos",
         description: "Quanto você precisa faturar todo mês só para se manter (despesas recorrentes).",
