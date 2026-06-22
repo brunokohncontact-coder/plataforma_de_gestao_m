@@ -972,6 +972,136 @@ export function availableYears(txs: TxLike[]): number[] {
   return Array.from(set).sort((a, b) => b - a);
 }
 
+// ── Crescimento ano a ano (minha carreira está crescendo?) ───────────────────
+//
+// O Resumo anual (`annualSummary`) mostra UM ano por vez, e a Sazonalidade
+// (`monthlySeasonality`) achata todos os anos num único calendário de 12 meses.
+// Falta a visão longitudinal: a série dos anos lado a lado, para responder "estou
+// faturando mais do que ano passado?" ao longo de toda a história. Esta função
+// consolida os totais por ano e calcula o crescimento de cada ano frente ao ANO
+// ATIVO ANTERIOR (o predecessor na série, não necessariamente o ano-calendário
+// −1) — assim o rótulo "vs. {ano}" é sempre verdadeiro mesmo com lacunas. Pura.
+
+export interface YearlyTotal {
+  /** Ano de referência. */
+  year: number;
+  income: number;
+  expense: number;
+  /** income − expense (regime de competência). */
+  net: number;
+  /**
+   * Ano ativo imediatamente anterior na série (predecessor com movimento), ou
+   * `null` para o primeiro ano. É a base da comparação `*Delta`.
+   */
+  previousYear: number | null;
+  /** Variação das receitas frente ao ano ativo anterior; `null` no primeiro. */
+  incomeDelta: MetricDelta | null;
+  /** Variação das despesas frente ao ano ativo anterior; `null` no primeiro. */
+  expenseDelta: MetricDelta | null;
+  /** Variação do resultado frente ao ano ativo anterior; `null` no primeiro. */
+  netDelta: MetricDelta | null;
+}
+
+export interface YearlyHistory {
+  /** Anos com movimento (receita ou despesa > 0), em ordem cronológica crescente. */
+  years: YearlyTotal[];
+  /** Soma das receitas de todos os anos. */
+  totalIncome: number;
+  /** Soma das despesas de todos os anos. */
+  totalExpense: number;
+  /** totalIncome − totalExpense. */
+  net: number;
+  /** Média do resultado por ano ativo (net / years.length), arredondada ao centavo; 0 se vazio. */
+  avgNetPerYear: number;
+  /** Ano de maior resultado líquido (empate → o mais recente); null se vazio. */
+  bestYear: YearlyTotal | null;
+  /** Ano de menor resultado líquido (empate → o mais antigo); null se vazio. */
+  worstYear: YearlyTotal | null;
+  /**
+   * Variação do resultado do último ano vs. o primeiro ano da série — a
+   * trajetória de longo prazo. `null` com menos de 2 anos ativos. Reaproveita
+   * `computeDelta`.
+   */
+  trend: MetricDelta | null;
+}
+
+/**
+ * Série de totais por ano (receita/despesa/resultado) com o crescimento ano a
+ * ano. Responde "minha carreira está crescendo?".
+ *
+ * - Considera só os anos COM movimento (receita ou despesa > 0); anos vazios não
+ *   entram na série nem servem de base de comparação.
+ * - O `*Delta` de cada ano compara com o ano ativo IMEDIATAMENTE ANTERIOR
+ *   (predecessor na série, exposto em `previousYear`), reaproveitando
+ *   `computeDelta`. O primeiro ano não tem base → deltas `null`.
+ * - `trend` compara o resultado do último ano com o do primeiro. Pura.
+ */
+export function yearlyHistory(txs: TxLike[]): YearlyHistory {
+  const incomeByYear = new Map<number, number>();
+  const expenseByYear = new Map<number, number>();
+
+  for (const t of txs) {
+    const year = Number(monthKey(t.date).slice(0, 4));
+    if (t.type === "INCOME") {
+      incomeByYear.set(year, (incomeByYear.get(year) ?? 0) + t.amount);
+    } else {
+      expenseByYear.set(year, (expenseByYear.get(year) ?? 0) + t.amount);
+    }
+  }
+
+  const activeYears = [
+    ...new Set([...incomeByYear.keys(), ...expenseByYear.keys()]),
+  ].sort((a, b) => a - b);
+
+  const years: YearlyTotal[] = [];
+  let prev: YearlyTotal | null = null;
+  for (const year of activeYears) {
+    const income = incomeByYear.get(year) ?? 0;
+    const expense = expenseByYear.get(year) ?? 0;
+    const row: YearlyTotal = {
+      year,
+      income,
+      expense,
+      net: income - expense,
+      previousYear: prev ? prev.year : null,
+      incomeDelta: prev ? computeDelta(income, prev.income) : null,
+      expenseDelta: prev ? computeDelta(expense, prev.expense) : null,
+      netDelta: prev ? computeDelta(income - expense, prev.net) : null,
+    };
+    years.push(row);
+    prev = row;
+  }
+
+  const totalIncome = years.reduce((acc, y) => acc + y.income, 0);
+  const totalExpense = years.reduce((acc, y) => acc + y.expense, 0);
+  const net = totalIncome - totalExpense;
+
+  let bestYear: YearlyTotal | null = null;
+  let worstYear: YearlyTotal | null = null;
+  for (const y of years) {
+    // `years` em ordem crescente: no empate do melhor, `>=` mantém o mais
+    // recente; no pior, `<` mantém o mais antigo.
+    if (bestYear == null || y.net >= bestYear.net) bestYear = y;
+    if (worstYear == null || y.net < worstYear.net) worstYear = y;
+  }
+
+  const trend =
+    years.length >= 2
+      ? computeDelta(years[years.length - 1].net, years[0].net)
+      : null;
+
+  return {
+    years,
+    totalIncome,
+    totalExpense,
+    net,
+    avgNetPerYear: years.length > 0 ? Math.round(net / years.length) : 0,
+    bestYear,
+    worstYear,
+    trend,
+  };
+}
+
 // ── Projeção de fechamento do ano (vou fechar no azul?) ─────────────────────
 //
 // Junta três peças que hoje vivem isoladas — o caixa já realizado, as pendências

@@ -174,6 +174,13 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "🌦️",
       },
       {
+        title: "Crescimento ano a ano",
+        href: "/financas/crescimento",
+        description: "Os seus anos lado a lado, com o crescimento do resultado — a carreira está faturando mais?",
+        subtopic: "Fechamentos",
+        icon: "📈",
+      },
+      {
         title: "Fontes de renda",
         href: "/financas/fontes-de-renda",
         description: "De onde vem o seu dinheiro: o mix de receitas por categoria.",
