@@ -2140,3 +2140,29 @@ contexto, decisão, justificativa e alternativas consideradas.
   ataca também a despesa; o piso de receita correto é só o conservador (descartar shows a confirmar).
 - `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
   nenhuma dependência nova; nenhuma mudança de schema.
+
+## D80 — Piso conservador da meta no card do Painel (Sessão 88)
+- **Contexto:** D79 entregou o helper puro `compareGoalScenarios` e a faixa "piso conservador" na
+  página de Metas, e deixou explícito como próximo passo "levar o mesmo piso conservador (já testado)
+  ao card de meta do Painel". O card "Meta de {ano}" do Painel mostrava só o ritmo/projeção otimista
+  (`computeGoalProgress` sobre `forecast.projectedIncome`), escondendo o risco de a meta depender de
+  shows ainda a confirmar — exatamente a pergunta que a página de Metas já respondia.
+- **Decisão:** computar `goalScenarios = compareGoalScenarios(...)` no `dashboard/page.tsx` e, quando os
+  cenários divergem, anexar ao card de meta uma linha compacta "piso conservador" (verde "Folga real."
+  quando a meta resiste só com shows confirmados; âmbar "Atenção ao piso." quando ela só fecha contando
+  shows a confirmar), espelhando a redação da página de Metas mas condensada para o Painel.
+- **Zero I/O extra:** as DUAS projeções de que `compareGoalScenarios` precisa já estavam computadas no
+  dashboard — a otimista é o `forecast` (`projectYearEnd`) e a conservadora é `conservative`
+  (`applyYearEndScenario(forecast, "conservative")`, já usada na linha "Só confirmados" do card de
+  projeção). O helper só recombina números já em mãos; nenhuma consulta ou recálculo de transações/shows.
+- **Sem testes novos:** a lógica (`compareGoalScenarios`/`computeGoalProgress`) já é coberta por testes
+  puros (D77/D79); esta é uma mudança de UI que reaproveita o helper testado, mesma postura das Sessões
+  75/77 (linhas "Só confirmados"/"Pior caso" no card de projeção do Painel). 600 testes verdes.
+- **Só aparece com divergência:** a linha some quando `tentativeGap === 0` (projeção toda de confirmados)
+  ou em ano sem shows futuros a confirmar — sem ruído, igual à página de Metas.
+- **Alternativas consideradas:** (a) mostrar o número conservador sempre, mesmo sem divergência — descartado:
+  redundante com a projeção já exibida quando não há cachê a confirmar. (b) replicar os três Stats da página
+  de Metas no Painel — exagero para um card de resumo; o Painel quer um veredito de uma linha, com link
+  "Ver detalhe" para a página completa.
+- `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
+  nenhuma dependência nova; nenhuma mudança de schema.
