@@ -2073,3 +2073,35 @@ contexto, decisão, justificativa e alternativas consideradas.
 - **Schema alterado** (1ª vez desde o MVP): novo modelo `RevenueGoal` + relação no `User`, aplicado por
   `prisma db push` (dev). `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical),
   mesma postura de D6/D8; nenhuma dependência nova.
+
+## D78 — Projeção do ano vs. meta de faturamento (Sessão 86)
+- **Contexto:** a Sessão 85 (D77) introduziu a meta de faturamento (`RevenueGoal`) com progresso em
+  `/financas/metas` e um card no Painel, mas a página de **projeção de fechamento**
+  (`/financas/projecao-ano`) — onde o usuário escolhe o cenário (otimista / conservador / pior caso,
+  D73) e vê a receita projetada — não mostrava a meta. Faltava fechar o loop: "neste cenário, eu bato a
+  meta?". O schema já tinha a meta; era só cruzar.
+- **Decisão:** adicionar um card **"vs. meta de {ano}"** em `/financas/projecao-ano` que reaproveita o
+  helper puro já testado `computeGoalProgress` (D77), alimentado com a receita do **cenário selecionado**
+  (`view.projectedIncome` / `view.realizedIncome`), não com o forecast cru. Mostra `% da meta`, a frase
+  de sobra/falta (projeção − meta) e a barra realizado-sobre-projetado. Quando não há meta para o ano,
+  exibe um convite discreto com link para `/financas/metas?ano={ano}`.
+- **Comparar contra a RECEITA projetada, não o resultado:** a meta é de **faturamento** (D77), então o
+  número confrontado é `projectedIncome` (receita), coerente com o card de Metas — e distinto do
+  "Resultado projetado do ano" (receita − despesa) que domina a página. O rótulo deixa isso explícito
+  ("Meta de faturamento (receita), não de resultado").
+- **Seguir o seletor de cenário (o diferencial):** em `/financas/metas` a projeção é sempre otimista; aqui
+  ela segue o cenário ativo. Assim o conservador/pior caso pode revelar que a meta **só fecha contando
+  shows ainda a confirmar** — informação de planejamento que a página de Metas não dá. Esse era o motivo
+  de colocar o card aqui em vez de duplicar Metas.
+- **Sem nova lógica de negócio / sem novos testes:** o card é apresentação fina sobre `computeGoalProgress`
+  (já com 8 testes, D77). Não há cálculo novo a cobrir — `onTrackToHit`, razões e saneamento já estão
+  testados; o gap é `|projetado − meta|`, trivial. **596 testes** (inalterado). Custo de dados: +1
+  `prisma.revenueGoal.findUnique` no `Promise.all` existente.
+- **Alternativas consideradas:** (a) extrair um helper `compareProjectionToGoal` dedicado — descartado por
+  DRY: `computeGoalProgress` já entrega `projectedRatio`/`onTrackToHit` e o gap é trivial; um helper novo
+  só duplicaria. (b) comparar contra o resultado líquido projetado — incoerente com a meta ser de receita
+  (D77) e com o card de Metas. (c) repetir o card de ritmo (`pace`) — redundante com `/financas/metas`; aqui
+  o foco é o cenário × meta, não o avanço temporal. (d) comparar a meta também no Painel contra o piso
+  conservador — deixado como próximo passo.
+- `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
+  nenhuma dependência nova; nenhuma mudança de schema.
