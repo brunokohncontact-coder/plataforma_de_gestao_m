@@ -1872,6 +1872,27 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de
   schema — ver D6/D8). Ver **DECISIONS.md D75**.
 
+### Sessão 84 — Crescimento ano a ano das Finanças (D76)
+- **Lógica pura** (`src/lib/finance.ts`): `yearlyHistory(txs)` consolida os totais por ano
+  (receita/despesa/resultado) **só dos anos com movimento**, em ordem cronológica crescente, e calcula o
+  crescimento de cada ano frente ao **ano ativo anterior** (predecessor na série, exposto em `previousYear`,
+  para que o rótulo "vs. {ano}" seja sempre verdadeiro mesmo com lacunas), reaproveitando `computeDelta`.
+  Deriva totais acumulados, média do resultado por ano (`avgNetPerYear`), melhor/pior ano por resultado
+  líquido e a **tendência de longo prazo** (`trend`: resultado do último ano vs. o primeiro). **+7 testes**
+  em `finance.test.ts` → **582 no projeto** (eram 575).
+- **UI** (`src/app/(app)/financas/crescimento/page.tsx`): página espelhando `/financas/anual` —
+  cards de destaque (resultado acumulado, média por ano, melhor/pior ano), card de tendência ("A sua carreira
+  está crescendo/encolhendo") e tabela ano a ano com barras proporcionais e a variação YoY do resultado;
+  cada ano linka para o resumo anual (`/financas/anual?ano=`). Estado vazio dedicado.
+- **Hub** (`src/lib/reports.ts`): entrada "Crescimento ano a ano" registrada em Finanças → Fechamentos
+  (aparece na busca e no índice do hub automaticamente). Completa o trio fechamento mensal (`annualSummary`)
+  × sazonalidade (`monthlySeasonality`) × trajetória plurianual (`yearlyHistory`).
+- Definition of Done verde: build (`prisma generate && next build`) OK (`/financas/crescimento` registrada,
+  266 B), typecheck (`tsc --noEmit`) limpo, lint (0 warnings/erros), **582 testes** (`vitest run`), smoke
+  test ao vivo (`next start`): `/login` → 200, `/financas/crescimento` sem sessão → 307 (→ `/login`). `npm
+  audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de
+  schema — ver D6/D8). Ver **DECISIONS.md D76**.
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único

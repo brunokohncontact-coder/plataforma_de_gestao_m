@@ -27,6 +27,7 @@ import {
   compareAnnualSummaries,
   annualCategoryReport,
   availableYears,
+  yearlyHistory,
   projectYearEnd,
   applyYearEndScenario,
   projectYearEndWithFixedCosts,
@@ -1345,6 +1346,94 @@ describe("availableYears", () => {
 
   it("lista vazia → []", () => {
     expect(availableYears([])).toEqual([]);
+  });
+});
+
+describe("yearlyHistory", () => {
+  it("lista vazia → série vazia e zeros", () => {
+    const h = yearlyHistory([]);
+    expect(h.years).toEqual([]);
+    expect(h.totalIncome).toBe(0);
+    expect(h.totalExpense).toBe(0);
+    expect(h.net).toBe(0);
+    expect(h.avgNetPerYear).toBe(0);
+    expect(h.bestYear).toBeNull();
+    expect(h.worstYear).toBeNull();
+    expect(h.trend).toBeNull();
+  });
+
+  it("agrega receita/despesa por ano em ordem crescente", () => {
+    const h = yearlyHistory([
+      tx({ type: "INCOME", amount: 200_00, date: "2025-04-10T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 50_00, date: "2025-09-10T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 100_00, date: "2024-02-10T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 30_00, date: "2024-06-10T00:00:00.000Z" }),
+    ]);
+    expect(h.years.map((y) => y.year)).toEqual([2024, 2025]);
+    expect(h.years[0]).toMatchObject({ income: 100_00, expense: 30_00, net: 70_00 });
+    expect(h.years[1]).toMatchObject({ income: 200_00, expense: 50_00, net: 150_00 });
+    expect(h.totalIncome).toBe(300_00);
+    expect(h.totalExpense).toBe(80_00);
+    expect(h.net).toBe(220_00);
+    expect(h.avgNetPerYear).toBe(110_00);
+  });
+
+  it("calcula o crescimento de cada ano frente ao ano ativo anterior", () => {
+    const h = yearlyHistory([
+      tx({ type: "INCOME", amount: 100_00, date: "2024-01-10T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 150_00, date: "2025-01-10T00:00:00.000Z" }),
+    ]);
+    expect(h.years[0].previousYear).toBeNull();
+    expect(h.years[0].netDelta).toBeNull();
+    expect(h.years[1].previousYear).toBe(2024);
+    expect(h.years[1].netDelta?.delta).toBe(50_00);
+    expect(h.years[1].netDelta?.direction).toBe("up");
+    expect(h.years[1].netDelta?.pct).toBeCloseTo(0.5);
+    expect(h.years[1].incomeDelta?.delta).toBe(50_00);
+  });
+
+  it("compara com o ano ativo anterior mesmo havendo uma lacuna", () => {
+    const h = yearlyHistory([
+      tx({ type: "INCOME", amount: 100_00, date: "2022-01-10T00:00:00.000Z" }),
+      // 2023 e 2024 sem movimento.
+      tx({ type: "INCOME", amount: 300_00, date: "2025-01-10T00:00:00.000Z" }),
+    ]);
+    expect(h.years.map((y) => y.year)).toEqual([2022, 2025]);
+    expect(h.years[1].previousYear).toBe(2022); // o predecessor é 2022, não 2024
+    expect(h.years[1].netDelta?.delta).toBe(200_00);
+  });
+
+  it("aponta o melhor e o pior ano por resultado líquido", () => {
+    const h = yearlyHistory([
+      tx({ type: "INCOME", amount: 100_00, date: "2023-01-10T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 500_00, date: "2024-01-10T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 50_00, date: "2025-01-10T00:00:00.000Z" }),
+    ]);
+    expect(h.bestYear?.year).toBe(2024); // net +500
+    expect(h.worstYear?.year).toBe(2025); // net -50
+  });
+
+  it("trend compara o resultado do último ano vs o primeiro", () => {
+    const h = yearlyHistory([
+      tx({ type: "INCOME", amount: 100_00, date: "2023-01-10T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 80_00, date: "2024-01-10T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 250_00, date: "2025-01-10T00:00:00.000Z" }),
+    ]);
+    expect(h.trend?.current).toBe(250_00);
+    expect(h.trend?.previous).toBe(100_00);
+    expect(h.trend?.delta).toBe(150_00);
+    expect(h.trend?.direction).toBe("up");
+  });
+
+  it("um único ano ativo → sem deltas nem trend", () => {
+    const h = yearlyHistory([
+      tx({ type: "INCOME", amount: 100_00, date: "2025-01-10T00:00:00.000Z" }),
+    ]);
+    expect(h.years).toHaveLength(1);
+    expect(h.years[0].netDelta).toBeNull();
+    expect(h.trend).toBeNull();
+    expect(h.bestYear?.year).toBe(2025);
+    expect(h.worstYear?.year).toBe(2025);
   });
 });
 

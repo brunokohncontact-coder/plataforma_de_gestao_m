@@ -2003,3 +2003,34 @@ contexto, decisão, justificativa e alternativas consideradas.
   granularidade semanal — over-engineering para o MVP (mensal casa com os demais relatórios temporais).
 - **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5 high /
   1 critical), mesma postura de D6/D8; nenhuma dependência nova.
+
+## D76 — Crescimento ano a ano: a carreira está faturando mais? (Sessão 84)
+- **Contexto:** o app já fechava UM ano por vez (`annualSummary` → `/financas/anual`) e achatava todos os
+  anos num calendário de 12 meses (`monthlySeasonality` → `/financas/sazonalidade`), mas faltava a visão
+  **longitudinal**: a série dos anos lado a lado para responder "estou faturando mais do que no ano
+  passado?" ao longo de toda a história. `compareAnnualSummaries` compara só dois anos (atual vs. anterior),
+  exigindo navegação manual; não havia a trajetória completa num lugar só.
+- **Decisão:** uma função pura `yearlyHistory(txs)` em `src/lib/finance.ts` consolida os totais por ano
+  (receita/despesa/resultado) **apenas dos anos com movimento**, em ordem cronológica crescente, e calcula
+  o crescimento de cada ano frente ao **ano ativo imediatamente anterior** (predecessor na série, exposto em
+  `previousYear`), reaproveitando `computeDelta`. Deriva totais acumulados, média do resultado por ano,
+  melhor/pior ano (por resultado líquido) e a **tendência de longo prazo** (resultado do último ano vs. o
+  primeiro). Página `/financas/crescimento` com cards de destaque, card de tendência ("A sua carreira está
+  crescendo/encolhendo") e tabela ano a ano (barras + variação YoY do resultado), cada ano linkando para o
+  resumo anual (`/financas/anual?ano=`). Registrada no hub de Relatórios em Finanças → Fechamentos.
+- **Comparar com o ano ativo anterior, não o ano-calendário −1:** em históricos com lacunas (ex.: 2022 e
+  depois 2025), comparar 2025 com 2024 (zerado) marcaria o ano como "novo" e perderia o sinal de
+  crescimento. Comparar com o **predecessor na série** e expor `previousYear` mantém o rótulo "vs. {ano}"
+  sempre verdadeiro. Documentado na função e na própria página ("o ano anterior com movimento").
+- **Justificativa:** responde uma pergunta de carreira que nenhum relatório cobria (a trajetória plurianual),
+  reaproveitando 100% de helpers já testados (`computeDelta`, `monthKey`) — sem schema, sem dependência, sem
+  server action. Mantém o padrão do projeto: lógica pura testável + página de apresentação. Cobertura: 7
+  testes em `finance.test.ts` (vazio, agregação/ordenação, deltas YoY, lacuna entre anos ativos, melhor/pior
+  ano, tendência último-vs-primeiro, ano único sem deltas). **582 testes** no projeto (eram 575).
+- **Alternativas consideradas:** (a) estender `/financas/anual` com uma mini-série dos anos — descartado:
+  mistura fechamento mensal de um ano com a visão plurianual, sobrecarregando a página; o hub já separa os
+  relatórios por pergunta. (b) incluir anos vazios na série (com resultado 0) — descartado: poluiria a tabela
+  e a tendência com anos sem atividade; a série de anos ativos é mais honesta. (c) CAGR/taxa composta —
+  over-engineering para o MVP; a variação YoY simples + tendência último-vs-primeiro já comunicam a direção.
+- **Sem schema/dependência/server action.** `npm audit` inalterado (10 advisories — 4 moderate / 5 high /
+  1 critical), mesma postura de D6/D8; nenhuma dependência nova.
