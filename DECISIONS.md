@@ -2105,3 +2105,38 @@ contexto, decisão, justificativa e alternativas consideradas.
   conservador — deixado como próximo passo.
 - `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
   nenhuma dependência nova; nenhuma mudança de schema.
+
+## D79 — Meta de faturamento vs. piso conservador na página de Metas (Sessão 87)
+- **Contexto:** a página `/financas/metas` (D77) e o card do Painel (D77) cruzam a meta sempre com a
+  projeção **otimista** do ano (`projectYearEnd().projectedIncome` — conta todos os shows futuros,
+  inclusive os ainda a confirmar). Isso esconde um risco de planejamento: a meta pode estar "no caminho"
+  só porque a projeção conta cachês de shows que talvez não se confirmem. O cenário conservador
+  (`applyYearEndScenario`, D66) já existia para a projeção do ano, mas a página de Metas não o usava.
+  D78 deixou explicitamente este item como próximo passo.
+- **Decisão:** adicionar o helper puro `compareGoalScenarios` em `src/lib/finance.ts` e usá-lo em
+  `/financas/metas` para mostrar, quando os cenários divergem, uma faixa "piso conservador": "mesmo
+  contando só os shows já confirmados, a projeção fica em X (Y% da meta) — você bate / não bate a meta".
+  Tom verde quando a meta resiste ao piso (`hitsEvenConservatively`), âmbar quando ela só fecha contando
+  shows a confirmar (`hitsOnlyWithTentative`).
+- **Helper compõe o já testado, não recalcula:** `compareGoalScenarios` roda `computeGoalProgress` (D77)
+  nos dois cenários (projeção otimista e conservadora, ambas vindas dos forecasts já calculados na página)
+  e deriva flags (`diverges`, `hitsEvenConservatively`, `hitsOnlyWithTentative`) + o `tentativeGap`
+  (cachê a confirmar que separa os cenários). É pura e saneada (herda o saneamento de `computeGoalProgress`).
+  **4 testes novos** (cobrem: bate só no otimista, folga real, cenários coincidem, saneamento). 600 testes
+  no total (eram 596).
+- **Por que um helper aqui e não em D78:** em D78 o card de projeção já seguia o seletor de cenário, então
+  o gap era trivial (`|projetado − meta|`) e um helper teria duplicado. Aqui a página de Metas **não** tem
+  seletor — ela precisa confrontar os DOIS cenários lado a lado num único render, e a comparação
+  (qual cenário bate, qual é o gap) é lógica de negócio reutilizável que merece teste. O helper também
+  fica pronto para o card do Painel adotar o mesmo piso depois.
+- **Só aparece quando há divergência:** se não há cachê de shows a confirmar (`tentativeGap === 0`), os
+  cenários coincidem e a faixa some — sem ruído quando a projeção já é toda de confirmados, ou em ano
+  passado (sem shows futuros).
+- **Alternativas consideradas:** (a) colocar no card do Painel em vez da página de Metas — a página de
+  Metas é o lar natural do tema e tem espaço para a mensagem; o Painel pode adotar o helper depois sem
+  retrabalho. (b) um seletor de cenário na página de Metas (como em projeção-ano) — exagero: a meta quer um
+  veredito ("bate mesmo no piso?"), não uma exploração de cenários. (c) comparar contra o "pior caso"
+  (conservador + custos fixos, D68) — descartado: a meta é de **faturamento/receita** (D77), e o pior caso
+  ataca também a despesa; o piso de receita correto é só o conservador (descartar shows a confirmar).
+- `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
+  nenhuma dependência nova; nenhuma mudança de schema.
