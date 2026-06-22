@@ -5,7 +5,12 @@
 // assistente de importação. A camada HTTP (route handler) prefixa um BOM UTF-8
 // para preservar acentuação no Excel.
 
-import { TRANSACTION_TYPE_LABELS, type TransactionType } from "./domain";
+import {
+  TRANSACTION_TYPE_LABELS,
+  SHOW_STATUS_LABELS,
+  type TransactionType,
+  type ShowStatus,
+} from "./domain";
 import { dayKey, type AnnualSummary } from "./finance";
 import { MONTH_NAMES_LONG } from "./calendar";
 
@@ -50,6 +55,14 @@ export function csvDate(date: Date | string): string {
   return `${day}/${month}/${year}`;
 }
 
+/** Hora -> "HH:MM" (em UTC, mesma convenção de `csvDate`, estável em testes). */
+export function csvTime(date: Date | string): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  const mm = String(d.getUTCMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
 /** Forma mínima de transação para exportação (desacoplada do Prisma). */
 export interface CsvTransaction {
   date: Date | string;
@@ -92,6 +105,59 @@ export function transactionsToCsv(
       centsToCsvAmount(t.amount),
       situationLabel(t),
       t.show?.title ?? "",
+    ]);
+  }
+  return toCsv(rows, delimiter);
+}
+
+/** Forma mínima de show para exportação (desacoplada do Prisma). */
+export interface CsvShow {
+  date: Date | string;
+  title: string;
+  venue?: string | null;
+  city?: string | null;
+  status: string;
+  fee: number; // centavos
+  notes?: string | null;
+}
+
+export const SHOW_CSV_HEADERS = [
+  "Data",
+  "Hora",
+  "Título",
+  "Local",
+  "Cidade",
+  "Status",
+  "Cachê (R$)",
+  "Observações",
+] as const;
+
+/** Rótulo de status legível; um status desconhecido sai como veio (defensivo). */
+function showStatusLabel(status: string): string {
+  return SHOW_STATUS_LABELS[status as ShowStatus] ?? status;
+}
+
+/**
+ * Converte shows em texto CSV (cabeçalho + linhas), pronto para download.
+ * Mesma convenção pt-BR de `transactionsToCsv` (delimitador ";", decimal com
+ * vírgula, data/hora em UTC). A ordem das linhas é preservada (a página/route
+ * decide a ordenação). Pura.
+ */
+export function showsToCsv(
+  shows: CsvShow[],
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const rows: string[][] = [Array.from(SHOW_CSV_HEADERS)];
+  for (const s of shows) {
+    rows.push([
+      csvDate(s.date),
+      csvTime(s.date),
+      s.title,
+      s.venue ?? "",
+      s.city ?? "",
+      showStatusLabel(s.status),
+      centsToCsvAmount(s.fee),
+      s.notes ?? "",
     ]);
   }
   return toCsv(rows, delimiter);
