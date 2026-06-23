@@ -224,6 +224,13 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "🔁",
       },
       {
+        title: "Para onde vai o dinheiro",
+        href: "/financas/composicao-despesas",
+        description: "A composição das suas despesas por categoria e qual gasto domina o orçamento.",
+        subtopic: "Custos & metas",
+        icon: "💸",
+      },
+      {
         title: "Ponto de equilíbrio",
         href: "/financas/ponto-de-equilibrio",
         description: "Quantos shows por mês cobrem os seus custos fixos.",

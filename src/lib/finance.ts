@@ -647,19 +647,37 @@ function diversificationLevel(hhi: number, sourceCount: number): Diversification
   return "diversified";
 }
 
+/** Uma categoria no mix, com total, contagem e participação no tipo. */
+interface CategoryMixSlice {
+  category: string;
+  amount: number;
+  count: number;
+  share: number;
+}
+
+/** Estatísticas de concentração compartilhadas por `incomeMix`/`expenseMix`. */
+interface CategoryMixStats {
+  slices: CategoryMixSlice[];
+  total: number;
+  hhi: number;
+  top3Share: number;
+  top: CategoryMixSlice | null;
+}
+
 /**
- * Calcula o mix de receitas por fonte (categoria) sobre as transações INCOME do
- * recorte. Cada fonte recebe seu total, participação (`share`) e contagem; o
- * relatório traz a concentração nas maiores (topShare/top3Share), o HHI, o
- * número efetivo de fontes e o veredito de diversificação. Despesas são
- * ignoradas. Categorias em branco/ausentes caem em "Sem categoria". Pura.
+ * Núcleo compartilhado do mix por categoria: agrupa as transações de um único
+ * `type` (INCOME ou EXPENSE) por categoria, calcula participação (`share`),
+ * ordena por valor decrescente (desempate por nome pt-BR) e deriva o HHI e a
+ * concentração das 3 maiores. Categorias em branco/ausentes caem em
+ * "Sem categoria". Pura. Base de `incomeMix` (fontes de renda) e `expenseMix`
+ * (composição de despesas).
  */
-export function incomeMix(txs: TxLike[]): IncomeMix {
+function categoryMixStats(txs: TxLike[], type: TransactionType): CategoryMixStats {
   const map = new Map<string, { amount: number; count: number }>();
   let total = 0;
 
   for (const t of txs) {
-    if (t.type !== "INCOME") continue;
+    if (t.type !== type) continue;
     const category = t.category?.trim() || "Sem categoria";
     const entry = map.get(category) ?? { amount: 0, count: 0 };
     entry.amount += t.amount;
@@ -668,7 +686,7 @@ export function incomeMix(txs: TxLike[]): IncomeMix {
     total += t.amount;
   }
 
-  const sources: IncomeSourceSlice[] = Array.from(map.entries())
+  const slices: CategoryMixSlice[] = Array.from(map.entries())
     .map(([category, { amount, count }]) => ({
       category,
       amount,
@@ -677,20 +695,105 @@ export function incomeMix(txs: TxLike[]): IncomeMix {
     }))
     .sort((a, b) => b.amount - a.amount || a.category.localeCompare(b.category, "pt-BR"));
 
-  const hhi = sources.reduce((acc, s) => acc + s.share * s.share, 0);
-  const top3Share = sources.slice(0, 3).reduce((acc, s) => acc + s.share, 0);
-  const top = sources[0] ?? null;
+  const hhi = slices.reduce((acc, s) => acc + s.share * s.share, 0);
+  const top3Share = slices.slice(0, 3).reduce((acc, s) => acc + s.share, 0);
+
+  return { slices, total, hhi, top3Share, top: slices[0] ?? null };
+}
+
+/**
+ * Calcula o mix de receitas por fonte (categoria) sobre as transações INCOME do
+ * recorte. Cada fonte recebe seu total, participação (`share`) e contagem; o
+ * relatório traz a concentração nas maiores (topShare/top3Share), o HHI, o
+ * número efetivo de fontes e o veredito de diversificação. Despesas são
+ * ignoradas. Categorias em branco/ausentes caem em "Sem categoria". Pura.
+ */
+export function incomeMix(txs: TxLike[]): IncomeMix {
+  const { slices, total, hhi, top3Share, top } = categoryMixStats(txs, "INCOME");
 
   return {
-    sources,
+    sources: slices,
     total,
-    sourceCount: sources.length,
+    sourceCount: slices.length,
     top,
     topShare: top?.share ?? 0,
     top3Share,
     hhi,
     effectiveSources: hhi === 0 ? 0 : 1 / hhi,
-    level: diversificationLevel(hhi, sources.length),
+    level: diversificationLevel(hhi, slices.length),
+  };
+}
+
+// ── Composição de despesas (para onde vai o dinheiro?) ──────────────────────
+// Espelho de `incomeMix` para o lado das despesas: agrupa as despesas (EXPENSE)
+// por categoria (= rubrica de gasto: transporte, equipamento, marketing, etc.),
+// com a participação de cada uma, a concentração nas maiores e o HHI. Responde
+// "para onde vai o meu dinheiro e o quanto um único gasto domina o orçamento?".
+// Distinto dos custos fixos (D39, foco em recorrência) e do relatório mensal
+// (que olha um mês): aqui o foco é a COMPOSIÇÃO de toda a despesa do recorte.
+
+export interface ExpenseCategorySlice {
+  /** Nome da rubrica (categoria; em branco/ausente cai em "Sem categoria"). */
+  category: string;
+  /** Total gasto na rubrica no recorte (centavos). */
+  amount: number;
+  /** Participação no total de despesas (0..1). */
+  share: number;
+  /** Nº de transações de despesa nessa rubrica. */
+  count: number;
+}
+
+export interface ExpenseMix {
+  /** Rubricas de despesa, ordem decrescente por valor (empate por nome, pt-BR). */
+  categories: ExpenseCategorySlice[];
+  /** Soma de todas as despesas do recorte (centavos). */
+  total: number;
+  /** Nº de rubricas (categorias de despesa) distintas. */
+  categoryCount: number;
+  /** Maior rubrica, ou null se não há despesa. */
+  top: ExpenseCategorySlice | null;
+  /** Participação da maior rubrica (0..1). */
+  topShare: number;
+  /** Participação acumulada das 3 maiores rubricas (0..1). */
+  top3Share: number;
+  /**
+   * Índice de concentração de Herfindahl–Hirschman (HHI): soma dos quadrados
+   * das participações (0..1). 1 = uma única rubrica; quanto menor, mais pulverizado.
+   */
+  hhi: number;
+  /**
+   * Número efetivo de rubricas (1/HHI, índice de Simpson): "como se" a despesa
+   * fosse repartida em N rubricas de mesmo tamanho. 0 quando não há despesa.
+   */
+  effectiveCategories: number;
+  /**
+   * Veredito de concentração (mesma escala de `incomeMix`): `concentrated` = um
+   * gasto domina; `diversified` = despesa pulverizada em várias rubricas. Aqui é
+   * informativo (concentrar não é necessariamente ruim), não um alerta de risco.
+   */
+  level: DiversificationLevel;
+}
+
+/**
+ * Calcula a composição das despesas por rubrica (categoria) sobre as transações
+ * EXPENSE do recorte. Espelho de `incomeMix`: cada rubrica recebe total,
+ * participação e contagem; o relatório traz a concentração nas maiores, o HHI e
+ * o número efetivo de rubricas. Receitas são ignoradas. Categorias em
+ * branco/ausentes caem em "Sem categoria". Pura.
+ */
+export function expenseMix(txs: TxLike[]): ExpenseMix {
+  const { slices, total, hhi, top3Share, top } = categoryMixStats(txs, "EXPENSE");
+
+  return {
+    categories: slices,
+    total,
+    categoryCount: slices.length,
+    top,
+    topShare: top?.share ?? 0,
+    top3Share,
+    hhi,
+    effectiveCategories: hhi === 0 ? 0 : 1 / hhi,
+    level: diversificationLevel(hhi, slices.length),
   };
 }
 

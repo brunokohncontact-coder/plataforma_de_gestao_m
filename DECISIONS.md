@@ -2398,3 +2398,40 @@ contexto, decisão, justificativa e alternativas consideradas.
   corrente — adiado (a barra do mês atual já ganha rótulo em destaque; scroll-spy fica para depois).
 - `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
   nenhuma dependência nova; nenhuma mudança de schema.
+
+## D89 — Composição de despesas: "Para onde vai o dinheiro" (Sessão 97)
+- **Contexto:** o app já tinha o **mix de receitas** (`incomeMix`, D45, `/financas/fontes-de-renda`):
+  "de onde vem o dinheiro e quão dependente sou de uma única fonte". Faltava o espelho do lado das
+  **despesas** — "para onde vai o dinheiro e qual gasto domina o orçamento". Os relatórios de despesa
+  existentes olham outro ângulo: o relatório mensal/anual quebra por categoria mas só de um período;
+  os **custos fixos** (D39) focam em recorrência (categorias que aparecem em ≥3 meses) para estimar o
+  piso mensal. Nenhum respondia à composição/concentração de **toda** a despesa do histórico.
+- **Decisão:** nova função pura `expenseMix(txs)` (em `src/lib/finance.ts`) — espelho exato de
+  `incomeMix` para `EXPENSE`: agrupa as despesas por categoria (= rubrica), com total, participação
+  (`share`), contagem, a concentração nas 3 maiores (`top3Share`), o **HHI**, o **número efetivo de
+  rubricas** (1/HHI) e o veredito `level` (concentrated/moderate/diversified, reusando
+  `diversificationLevel`). Página `/financas/composicao-despesas` com o veredito, cards de destaque
+  (despesa total, maior gasto, nº de categorias) e a tabela de composição com barras. Registrada no hub
+  de Relatórios (Finanças → Custos & metas).
+- **DRY / reaproveitamento:** a matemática comum a `incomeMix` e `expenseMix` (agrupar por categoria de
+  um único `type`, ordenar por valor decrescente com desempate por nome pt-BR, derivar HHI/top3) foi
+  extraída no helper privado `categoryMixStats(txs, type)`. `incomeMix` foi **reescrito para delegar**
+  a ele (saída pública idêntica — os 10 testes de `incomeMix` seguem verdes sem mudança), e `expenseMix`
+  delega ao mesmo núcleo. Um teste novo cruza os dois (as mesmas transações como INCOME vs. EXPENSE
+  produzem os mesmos números) travando essa simetria.
+- **Semântica do `level` no lado da despesa:** a mesma escala de HHI, mas a leitura é **informativa, não
+  um alerta de risco** — concentrar despesa numa rubrica não é necessariamente ruim (pode ser o gasto
+  inevitável da operação). O texto da página é neutro: "concentrada" vira "é onde cortar rende mais",
+  não "risco". A cor do veredito também muda (âmbar/azul/verde em vez do vermelho de risco de renda).
+- **Sem schema, sem dependência, sem server action.** Considera todas as despesas lançadas (pagas e a
+  pagar), coerente com `incomeMix` (que considera recebidas e a receber). Categoria em branco →
+  "Sem categoria" (mesma norma de `categoryReport`/`incomeMix`).
+- **Testes:** 8 casos puros novos de `expenseMix` (vazio, agrupamento ignorando receitas, "Sem
+  categoria", ordenação/desempate, top3/HHI/efetivas, rubrica única→concentrada, distribuída→
+  diversificada, espelho de `incomeMix`). **640 testes** verdes (eram 632).
+- **Alternativas consideradas:** (a) reusar `categoryReport` (que já quebra despesa por categoria) —
+  rejeitado: ele não traz HHI/concentração/veredito e é "por período" (mensal/anual), não a composição
+  do histórico; (b) estender `incomeMix` para receber o tipo — rejeitado: a saída fala "fontes de renda"
+  (sources/sourceCount), nomes errados para despesa; o helper compartilhado dá DRY sem poluir as APIs.
+- `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
+  nenhuma dependência nova; nenhuma mudança de schema.
