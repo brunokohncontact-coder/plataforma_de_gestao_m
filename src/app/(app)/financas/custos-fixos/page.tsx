@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { recurringExpenses, type TxLike } from "@/lib/finance";
+import { recurringExpenses, pendingFixedCosts, type TxLike } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
+import { centsToInputValue } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -11,11 +12,34 @@ const MONTH_ABBR = [
   "jul", "ago", "set", "out", "nov", "dez",
 ];
 
+const MONTH_FULL = [
+  "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+];
+
 /** "YYYY-MM" -> "mmm/aa" (ex.: "jun/26"). */
 function formatMonthKey(key: string): string {
   const [y, m] = key.split("-").map(Number);
   const abbr = MONTH_ABBR[m - 1] ?? key;
   return `${abbr}/${String(y).slice(2)}`;
+}
+
+/** "YYYY-MM" -> "junho de 2026". */
+function formatMonthLong(key: string): string {
+  const [y, m] = key.split("-").map(Number);
+  const name = MONTH_FULL[m - 1] ?? key;
+  return `${name} de ${y}`;
+}
+
+/** Link para a Nova transação já com tipo/categoria/valor/data pré-preenchidos. */
+function lancarHref(category: string, typicalAmount: number, today: string): string {
+  const params = new URLSearchParams({
+    tipo: "EXPENSE",
+    categoria: category,
+    valor: centsToInputValue(typicalAmount),
+    data: today,
+  });
+  return `/financas/nova?${params.toString()}`;
 }
 
 export default async function FixedCostsPage() {
@@ -38,6 +62,11 @@ export default async function FixedCostsPage() {
   const report = recurringExpenses(allTxs);
   const { categories, estimatedMonthlyFixedCost, monthsObserved } = report;
   const activeCount = categories.filter((c) => c.active).length;
+
+  // Lembrete acionável: custos fixos que costumam cair todo mês mas ainda não
+  // foram lançados no mês corrente — com link para lançar com um clique.
+  const pending = pendingFixedCosts(allTxs);
+  const today = new Date().toISOString().slice(0, 10);
 
   // Escala das barras: maior conta típica entre as categorias recorrentes.
   const peak = Math.max(1, ...categories.map((c) => c.avgPerActiveMonth));
@@ -85,6 +114,56 @@ export default async function FixedCostsPage() {
               É o piso que você precisa faturar todo mês só para cobrir o que é fixo.
             </p>
           </section>
+
+          {/* Contas fixas a lançar no mês corrente (lembrete acionável) */}
+          {pending.pending.length > 0 ? (
+            <section className="card border-amber-200 bg-amber-50/40">
+              <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="font-semibold text-amber-900">
+                  ⏰ A lançar em {formatMonthLong(pending.month)}
+                </h2>
+                <span className="text-sm font-medium text-amber-800">
+                  {formatMoney(pending.totalPending)} em{" "}
+                  {pending.pending.length}{" "}
+                  {pending.pending.length === 1 ? "conta" : "contas"}
+                </span>
+              </div>
+              <p className="mb-3 text-xs text-amber-800/80">
+                Custos fixos que costumam cair todo mês e ainda não foram lançados neste mês. O
+                valor sugerido é a conta típica — confira e ajuste ao lançar.
+                {pending.loggedCount > 0 && (
+                  <> {pending.loggedCount} já {pending.loggedCount === 1 ? "lançada" : "lançadas"}.</>
+                )}
+              </p>
+              <ul className="divide-y divide-amber-200/70">
+                {pending.pending.map((c) => (
+                  <li
+                    key={c.category}
+                    className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2"
+                  >
+                    <div className="min-w-0">
+                      <span className="font-medium text-gray-900">{c.category}</span>
+                      <span className="ml-2 text-xs text-gray-500">
+                        típico {formatMoney(c.typicalAmount)} · última {formatMonthKey(c.lastMonth)}
+                      </span>
+                    </div>
+                    <Link
+                      href={lancarHref(c.category, c.typicalAmount, today)}
+                      className="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-1 text-sm font-medium text-amber-800 transition hover:bg-amber-100"
+                    >
+                      Lançar {formatMoney(c.typicalAmount)} →
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : (
+            activeCount > 0 && (
+              <p className="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                ✓ Todos os custos fixos já foram lançados em {formatMonthLong(pending.month)}.
+              </p>
+            )
+          )}
 
           {monthsObserved < 3 && (
             <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">

@@ -2471,3 +2471,47 @@ contexto, decisão, justificativa e alternativas consideradas.
   "o que mudou" o mês imediatamente anterior é o quadro mais direto; a média por categoria fica para depois.
 - `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
   nenhuma dependência nova; nenhuma mudança de schema.
+
+## D91 — Contas fixas a lançar no mês + lançar com um clique (Sessão 99)
+- **Contexto:** os **custos fixos** (D39, `/financas/custos-fixos`) já descobrem QUAIS despesas se repetem
+  todo mês e estimam o custo fixo mensal. Mas a análise era passiva: o usuário ainda tinha que **lembrar**
+  de lançar cada conta recorrente todo mês e **redigitar** tudo. Faltava o lado acionável — "quais contas
+  fixas eu ainda não lancei este mês?" — e um atalho para registrá-las sem retrabalho.
+- **Decisão:** nova função pura `pendingFixedCosts(txs, options)` (em `src/lib/finance.ts`) reaproveita
+  `recurringExpenses` para pegar as categorias recorrentes **ainda ativas** e filtra as que já têm ao menos
+  uma despesa lançada no **mês de referência** (`options.now`, default agora) — o restante é o que falta
+  lançar, ordenado pela maior conta típica primeiro (a ordem de `recurringExpenses`). Devolve `pending`
+  (categoria + conta típica + última ocorrência + meses ativos), `loggedCount`, `activeCount`, `totalPending`
+  e `month`. A página de custos fixos ganhou a seção **"⏰ A lançar em {mês}"** com cada conta pendente e um
+  botão **"Lançar R$ X →"** que abre a Nova transação **pré-preenchida** (tipo EXPENSE, categoria, valor =
+  conta típica, data = hoje); quando não há pendência mas há custo fixo ativo, mostra "✓ Todos os custos
+  fixos já foram lançados". O **Painel** ganhou um alerta âmbar "Custos fixos a lançar" (reaproveita os `txs`
+  já carregados; zero consulta extra) linkando para a página.
+- **Pré-preenchimento da Nova transação:** `NewTransactionPage` passou a ler query params (`tipo`, `categoria`,
+  `valor`, `descricao`, `data`) e repassá-los ao `TransactionForm` via a prop `values` que **já existia**
+  (usada pela edição) — sem novo componente. Cada parâmetro é validado/saneado (tipo ∈ TRANSACTION_TYPES,
+  data no formato `YYYY-MM-DD`, valor reduzido a dígitos/sep.); o que não casar é ignorado, mantendo o
+  formulário utilizável. O valor usa `centsToInputValue` (mesma serialização da edição) e o `MoneyInput`
+  reformata para "80,00" ao montar.
+- **DRY / reaproveitamento:** `pendingFixedCosts` é uma camada fina sobre `recurringExpenses` (mesma
+  definição de recorrência, "ainda ativa", conta típica e "Sem categoria"); o prefill reusa a prop `values`
+  do formulário e `centsToInputValue`; o alerta do Painel reusa os `txs` já mapeados.
+- **Mês de referência via `now`.** Como em `recurringExpenses`, a função é pura e parametrizada por `now`,
+  então é testável de forma determinística e a UI passa a data corrente. "Já lançado" = existe despesa na
+  mesma categoria no mês de `now` (qualquer valor) — não tenta casar o valor típico.
+- **Sem schema, sem dependência, sem server action.** Considera as despesas lançadas (pagas e a pagar);
+  o lançamento em si segue pelo fluxo normal de criação de transação (server action já existente).
+- **Testes:** 7 casos puros novos de `pendingFixedCosts` (sem recorrência; ativa não lançada → pendente;
+  já lançada no mês → fora + loggedCount; encerrada → fora; ordenação por conta típica; separação
+  lançadas/pendentes no mesmo mês; `now` como referência). Verificação ao vivo autenticada: seção renderiza
+  com a conta pendente, Nova transação abre com categoria/valor/data preenchidos e o alerta aparece no
+  Painel. **655 testes** verdes (eram 648).
+- **Alternativas consideradas:** (a) **criar a despesa direto** com um clique (como `settleShowFeeAction`
+  faz para cachês, D26) — rejeitado por ora: a conta fixa real varia de mês a mês (valor da conta de luz,
+  etc.), então pré-preencher e deixar o usuário **conferir/ajustar** antes de salvar é mais seguro que
+  lançar cego; o atalho de prefill já elimina o retrabalho. (b) marcar "conta paga este mês?" por status
+  explícito num modelo de recorrência — rejeitado: exigiria schema; inferir do histórico (a categoria
+  apareceu no mês) é suficiente e sem custo. (c) só no Painel ou só na página — escolhido **ambos**: a
+  página tem os atalhos de lançar; o Painel é o lembrete na primeira tela.
+- `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
+  nenhuma dependência nova; nenhuma mudança de schema.

@@ -19,6 +19,7 @@ import {
   applyYearEndScenario,
   compareYearEndToPrevious,
   recurringExpenses,
+  pendingFixedCosts,
   computeGoalProgress,
   compareGoalScenarios,
   goalRunRate,
@@ -78,6 +79,8 @@ export default async function DashboardPage() {
 
   const summary = summarizeFinances(txs);
   const overdue = summarizeOverdue(txs);
+  // Custos fixos recorrentes ainda não lançados neste mês (lembrete acionável).
+  const fixedCostsDue = pendingFixedCosts(txs);
   const monthly = totalsByMonth(txs).slice(-6);
   const categories = totalsByCategory(txs).slice(0, 5);
   const cashflow = projectCashflow(txs, { months: 6 });
@@ -271,6 +274,22 @@ export default async function DashboardPage() {
             com mais de um show marcado
           </span>
           <span className="text-amber-600">Revisar →</span>
+        </Link>
+      )}
+
+      {/* Aviso de custos fixos recorrentes ainda não lançados neste mês. */}
+      {fixedCostsDue.pending.length > 0 && (
+        <Link
+          href="/financas/custos-fixos"
+          className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 transition hover:bg-amber-100"
+        >
+          <span className="font-semibold">⏰ Custos fixos a lançar</span>
+          <span>
+            <strong>{formatMoney(fixedCostsDue.totalPending)}</strong> em{" "}
+            {fixedCostsDue.pending.length}{" "}
+            {fixedCostsDue.pending.length === 1 ? "conta" : "contas"} ainda sem lançamento neste mês
+          </span>
+          <span className="text-amber-600">Lançar →</span>
         </Link>
       )}
 

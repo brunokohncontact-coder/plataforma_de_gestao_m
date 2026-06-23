@@ -9,8 +9,9 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **648 testes**
-verdes após a Sessão 98 (variação por categoria; eram 125 na Sessão 14, exportação CSV das Finanças). Sessão 4 entregou
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **655 testes**
+verdes após a Sessão 99 (contas fixas a lançar no mês + lançar com um clique; eram 648 na Sessão 98,
+variação por categoria; eram 125 na Sessão 14, exportação CSV das Finanças). Sessão 4 entregou
 a visão de calendário dos shows. Sessão 5 entregou **testes de integração das server
 actions** com um banco SQLite isolado, cobrindo o isolamento por usuário. Sessão 6
 configurou **ESLint** (`next/core-web-vitals`) e adicionou o passo de lint ao CI — fechando
@@ -2159,6 +2160,33 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   `/financas/variacao` → 307 (redireciona para login sem sessão). `npm audit` inalterado
   (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de schema —
   ver D6/D8). Ver **DECISIONS.md D90**.
+
+### Sessão 99 — Contas fixas a lançar no mês + lançar com um clique (ver D91)
+- **O quê:** transformou os **custos fixos** (D39) de análise passiva em **lembrete acionável**. Nova
+  função pura `pendingFixedCosts(txs, options)` (`src/lib/finance.ts`) reaproveita `recurringExpenses`
+  para listar as categorias recorrentes **ainda ativas sem despesa lançada no mês corrente** (ordenadas
+  pela maior conta típica), com `loggedCount`/`activeCount`/`totalPending`/`month`.
+- **UI:** seção **"⏰ A lançar em {mês}"** em `/financas/custos-fixos`
+  (`src/app/(app)/financas/custos-fixos/page.tsx`) com botão **"Lançar R$ X →"** por conta, que abre a
+  Nova transação **pré-preenchida**; quando nada pende, "✓ Todos os custos fixos já foram lançados".
+  Alerta âmbar **"Custos fixos a lançar"** no **Painel** (`src/app/(app)/dashboard/page.tsx`,
+  reaproveita os `txs` já carregados; zero consulta extra).
+- **Prefill:** `NewTransactionPage` (`src/app/(app)/financas/nova/page.tsx`) passou a ler query params
+  (`tipo`, `categoria`, `valor`, `descricao`, `data`), saneá-los e repassá-los ao `TransactionForm` via
+  a prop `values` que **já existia** (usada pela edição) — sem novo componente. Valor via `centsToInputValue`.
+- **Testes:** 7 casos puros novos de `pendingFixedCosts`. **655 testes** verdes (eram 648). Verificação
+  ao vivo autenticada (sessão mintada): seção renderiza a conta pendente, Nova transação abre com
+  categoria/valor/data preenchidos, alerta aparece no Painel.
+- Definition of Done verde: build (`prisma generate && next build`) OK; typecheck (`tsc --noEmit`) limpo;
+  lint (0 warnings/erros); **655 testes** (`vitest run`); smoke test ao vivo (`next start`): `/login` → 200,
+  rotas protegidas → 307 sem sessão e → 200 com sessão. `npm audit` inalterado (10 advisories:
+  4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
+  Ver **DECISIONS.md D91**.
+- **Nota de ambiente:** o download do engine do Prisma (`@prisma/engines` postinstall) é resetado pelo
+  proxy (ECONNRESET); contornado instalando com `npm install --ignore-scripts` e baixando os binários
+  (`libquery_engine`/`schema-engine` para `debian-openssl-3.0.x`, hash `60519735…`) via `curl` para
+  `node_modules/@prisma/engines/`, com `PRISMA_QUERY_ENGINE_LIBRARY`/`PRISMA_SCHEMA_ENGINE_BINARY` apontando
+  para eles. Vale considerar embutir esse fallback no `scripts/session-setup.sh`.
 
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,

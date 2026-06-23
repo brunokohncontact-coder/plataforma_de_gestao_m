@@ -47,6 +47,7 @@ import {
   compareSummaries,
   averageSummaries,
   recurringExpenses,
+  pendingFixedCosts,
   computeBreakEven,
   taxReserve,
   DEFAULT_TAX_RATE,
@@ -849,6 +850,98 @@ describe("recurringExpenses", () => {
     const r = recurringExpenses(txs, { now: NOW });
     expect(r.categories[0].category).toBe("Sem categoria");
     expect(r.categories[0].monthsActive).toBe(3);
+  });
+});
+
+describe("pendingFixedCosts", () => {
+  const NOW = "2026-06-15T00:00:00.000Z"; // junho/2026
+
+  // Custo fixo recorrente (3 meses): abr/mai/jun. Helper para reduzir ruído.
+  function recurring(category: string, amount: number, months: string[]): TxLike[] {
+    return months.map((m) =>
+      tx({ type: "EXPENSE", amount, category, date: `2026-${m}-10T00:00:00.000Z` }),
+    );
+  }
+
+  it("retorna vazio quando não há custos fixos recorrentes", () => {
+    const r = pendingFixedCosts([], { now: NOW });
+    expect(r.pending).toEqual([]);
+    expect(r.totalPending).toBe(0);
+    expect(r.activeCount).toBe(0);
+    expect(r.loggedCount).toBe(0);
+    expect(r.month).toBe("2026-06");
+  });
+
+  it("lista a categoria recorrente ativa ainda não lançada no mês de referência", () => {
+    // Sala de ensaio caiu em mar/abr/mai mas ainda não em junho → pendente.
+    const txs = recurring("Sala de ensaio", 80_00, ["03", "04", "05"]);
+    const r = pendingFixedCosts(txs, { now: NOW });
+    expect(r.pending).toHaveLength(1);
+    expect(r.pending[0]).toMatchObject({
+      category: "Sala de ensaio",
+      typicalAmount: 80_00,
+      lastMonth: "2026-05",
+      monthsActive: 3,
+    });
+    expect(r.totalPending).toBe(80_00);
+    expect(r.activeCount).toBe(1);
+    expect(r.loggedCount).toBe(0);
+  });
+
+  it("não lista a categoria que JÁ tem despesa lançada no mês de referência", () => {
+    // Recorrente em abr/mai e também já lançada em junho → não pendente.
+    const txs = recurring("Streaming", 30_00, ["04", "05", "06"]);
+    const r = pendingFixedCosts(txs, { now: NOW });
+    expect(r.pending).toEqual([]);
+    expect(r.loggedCount).toBe(1);
+    expect(r.activeCount).toBe(1);
+    expect(r.totalPending).toBe(0);
+  });
+
+  it("ignora categorias encerradas (sem lançamento recente)", () => {
+    // Telefone caiu em jan/fev/mar; em junho (now) já passou da janela ativa → fora.
+    const txs = recurring("Telefone antigo", 50_00, ["01", "02", "03"]);
+    const r = pendingFixedCosts(txs, { now: NOW });
+    expect(r.pending).toEqual([]);
+    expect(r.activeCount).toBe(0);
+  });
+
+  it("ordena as pendentes pela maior conta típica primeiro", () => {
+    const txs = [
+      ...recurring("Sala de ensaio", 80_00, ["03", "04", "05"]),
+      ...recurring("Streaming", 30_00, ["03", "04", "05"]),
+      ...recurring("Transporte", 120_00, ["03", "04", "05"]),
+    ];
+    const r = pendingFixedCosts(txs, { now: NOW });
+    expect(r.pending.map((c) => c.category)).toEqual([
+      "Transporte",
+      "Sala de ensaio",
+      "Streaming",
+    ]);
+    expect(r.totalPending).toBe(120_00 + 80_00 + 30_00);
+  });
+
+  it("separa lançadas de pendentes no mesmo mês (loggedCount/totalPending)", () => {
+    const txs = [
+      // Já lançada em junho → loggedCount.
+      ...recurring("Streaming", 30_00, ["04", "05", "06"]),
+      // Pendente em junho → pending.
+      ...recurring("Sala de ensaio", 80_00, ["03", "04", "05"]),
+    ];
+    const r = pendingFixedCosts(txs, { now: NOW });
+    expect(r.activeCount).toBe(2);
+    expect(r.loggedCount).toBe(1);
+    expect(r.pending.map((c) => c.category)).toEqual(["Sala de ensaio"]);
+    expect(r.totalPending).toBe(80_00);
+  });
+
+  it("usa o mês de `now` como referência", () => {
+    // Sala caiu em mai/jun/jul (última ocorrência ainda dentro da janela ativa em
+    // agosto) mas não em agosto → pendente quando avaliada com now = agosto.
+    const txs = recurring("Sala de ensaio", 80_00, ["05", "06", "07"]);
+    const r = pendingFixedCosts(txs, { now: "2026-08-10T00:00:00.000Z" });
+    expect(r.month).toBe("2026-08");
+    expect(r.pending.map((c) => c.category)).toEqual(["Sala de ensaio"]);
   });
 });
 

@@ -3264,6 +3264,88 @@ export function recurringExpenses(
   };
 }
 
+// ── Contas fixas ainda não lançadas no mês (lembrete acionável) ──────────────
+//
+// `recurringExpenses` (D39) descobre QUAIS são os custos fixos; isto responde
+// "quais ainda NÃO lancei este mês?". Cruza as categorias recorrentes ainda
+// ativas com as despesas já registradas no mês de referência: a categoria que
+// costuma cair todo mês mas ainda não apareceu vira um lembrete — com a conta
+// típica pré-calculada, para lançar com um clique (ver D91).
+
+export interface PendingFixedCost {
+  /** Categoria recorrente sem lançamento no mês de referência. */
+  category: string;
+  /** Conta típica (centavos) — `avgPerActiveMonth` da categoria em `recurringExpenses`. */
+  typicalAmount: number;
+  /** Última ocorrência da categoria ("YYYY-MM"). */
+  lastMonth: string;
+  /** Nº de meses distintos em que a categoria já apareceu. */
+  monthsActive: number;
+}
+
+export interface PendingFixedCostsReport {
+  /** Mês de referência verificado ("YYYY-MM"). */
+  month: string;
+  /** Categorias recorrentes ativas SEM despesa lançada no mês de referência. */
+  pending: PendingFixedCost[];
+  /** Nº de categorias recorrentes ativas já lançadas no mês de referência. */
+  loggedCount: number;
+  /** Total de categorias recorrentes ativas (lançadas + pendentes). */
+  activeCount: number;
+  /** Soma das contas típicas das pendentes (centavos). */
+  totalPending: number;
+}
+
+/**
+ * Lista os CUSTOS FIXOS recorrentes que costumam cair todo mês mas ainda não
+ * foram lançados no mês de referência (`options.now`, default agora). Reaproveita
+ * `recurringExpenses` para identificar as categorias recorrentes AINDA ATIVAS e
+ * filtra as que já têm ao menos uma despesa registrada no mês — o restante é o
+ * que falta lançar, ordenado pela maior conta típica primeiro (a ordem de
+ * `recurringExpenses`). Pura; mesmas opções/semântica de `recurringExpenses`.
+ */
+export function pendingFixedCosts(
+  txs: TxLike[],
+  options: RecurringExpensesOptions = {},
+): PendingFixedCostsReport {
+  const month = monthKey(options.now ?? new Date());
+  const active = recurringExpenses(txs, options).categories.filter((c) => c.active);
+
+  // Categorias de despesa que JÁ têm ao menos um lançamento no mês de referência.
+  const loggedThisMonth = new Set<string>();
+  for (const t of txs) {
+    if (t.type !== "EXPENSE" || t.amount <= 0) continue;
+    if (monthKey(t.date) !== month) continue;
+    const category = (t.category ?? "").trim() || "Sem categoria";
+    loggedThisMonth.add(category);
+  }
+
+  const pending: PendingFixedCost[] = [];
+  let loggedCount = 0;
+  for (const c of active) {
+    if (loggedThisMonth.has(c.category)) {
+      loggedCount += 1;
+      continue;
+    }
+    pending.push({
+      category: c.category,
+      typicalAmount: c.avgPerActiveMonth,
+      lastMonth: c.lastMonth,
+      monthsActive: c.monthsActive,
+    });
+  }
+
+  const totalPending = pending.reduce((sum, c) => sum + c.typicalAmount, 0);
+
+  return {
+    month,
+    pending,
+    loggedCount,
+    activeCount: active.length,
+    totalPending,
+  };
+}
+
 // ── Ponto de equilíbrio em shows (quantos gigs/mês cobrem o custo fixo) ──────
 //
 // Responde a pergunta de planejamento mais direta do músico: "quantos shows por
