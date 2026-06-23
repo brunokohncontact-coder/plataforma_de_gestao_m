@@ -9,8 +9,9 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **655 testes**
-verdes após a Sessão 99 (contas fixas a lançar no mês + lançar com um clique; eram 648 na Sessão 98,
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **660 testes**
+verdes após a Sessão 100 (cachês a receber por contratante — de quem cobrar primeiro; eram 655 na
+Sessão 99, contas fixas a lançar no mês; eram 648 na Sessão 98,
 variação por categoria; eram 125 na Sessão 14, exportação CSV das Finanças). Sessão 4 entregou
 a visão de calendário dos shows. Sessão 5 entregou **testes de integração das server
 actions** com um banco SQLite isolado, cobrindo o isolamento por usuário. Sessão 6
@@ -2188,6 +2189,31 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   `node_modules/@prisma/engines/`, com `PRISMA_QUERY_ENGINE_LIBRARY`/`PRISMA_SCHEMA_ENGINE_BINARY` apontando
   para eles. Vale considerar embutir esse fallback no `scripts/session-setup.sh`.
 
+### Sessão 100 — Cachês a receber por contratante (de quem cobrar primeiro) (ver D92)
+- **O quê:** nova leitura de cobrança que responde **"quem está me devendo agora — e há quanto tempo?"**.
+  Função pura `outstandingByContact(receivables, getPayer, {now})` (`src/lib/finance.ts`) recebe a saída de
+  `reconcileShowFees` e agrupa o saldo em aberto pelo contratante (via `pickPayerContact`), reaproveitando a
+  idade do atraso de `bucketReceivablesByAge` (`receivableAgeBucket`). Por devedor: saldo a receber, nº de
+  shows, pior atraso (`maxDaysOutstanding`), atraso médio ponderado pelo valor (`weightedAvgDays`) e o balde
+  de aging do pior atraso (`oldestBucket`); ordena do maior saldo devedor ao menor (grupo "sem contratante"
+  por último); `topDebtor`/`oldestDebtor` ignoram o grupo nulo.
+- **UI:** nova página `/shows/a-receber/por-contratante`
+  (`src/app/(app)/shows/a-receber/por-contratante/page.tsx`) com cards de destaque (total a receber, maior
+  devedor, quem espera mais), tabela por contratante e detalhe dos shows em aberto (mais atrasado → mais
+  recente, cor por balde de aging). Links cruzados com `/shows/a-receber` nos dois sentidos; a cobrança/
+  quitação em si segue lá (esta página é só a priorização). Registrada no hub `/relatorios` (card
+  "A receber por contratante", subtema *Recebíveis*).
+- **DRY:** compõe `reconcileShowFees` + `receivableAgeBucket`/`RECEIVABLE_AGE_BUCKET_*` + `pickPayerContact`;
+  nenhuma regra nova de quem entra/abate. Distinta do aging (agrupa por idade) e do DSO por contratante (D52,
+  prazo do que já entrou) — três perguntas diferentes sobre o mesmo dinheiro.
+- **Testes:** 5 casos puros novos de `outstandingByContact` + ajuste do invariante de busca do hub
+  (`reports.test.ts`). **660 testes** verdes (eram 655).
+- Definition of Done verde: build (`prisma generate && next build`) OK; typecheck (`tsc --noEmit`) limpo;
+  lint (0 warnings/erros); **660 testes** (`vitest run`); smoke test (`next start`): app sobe, `/login` → 200,
+  `/shows/a-receber/por-contratante` → 200, sem erro no log. `npm audit` inalterado (10 advisories:
+  4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
+  Ver **DECISIONS.md D92**.
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
@@ -2234,10 +2260,14 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    recebimento** (mediana ponderada, robusta a outlier) entregue na Sessão 65 — `medianDays` +
    helper `weightedMedian` em `paymentLag`, card em `/shows/prazo-recebimento`, ver D57):
    **DSO no Painel** entregue na Sessão 78 — `paymentLagHeadline` + card "Prazo de recebimento" no
-   dashboard, ver D70 (aging já estava no Painel desde a Sessão 41/D32):
+   dashboard, ver D70 (aging já estava no Painel desde a Sessão 41/D32); **cachês a receber por
+   contratante** ("de quem cobrar primeiro") entregue na Sessão 100 — `outstandingByContact` +
+   `/shows/a-receber/por-contratante`, agrupa o saldo em aberto por devedor (maior saldo/pior atraso
+   primeiro), reaproveitando aging + `pickPayerContact`, ver D92):
    próximo possível — lembrar a última escolha de contato por show, registrar a data prometida de
-   pagamento na própria cobrança, ou a mediana do prazo por contratante (adiada na D57: com poucos
-   shows por contratante fica ruidosa).
+   pagamento na própria cobrança, embutir os atalhos de cobrança (e-mail/WhatsApp) por contratante na
+   nova página, ou a mediana do prazo por contratante (adiada na D57: com poucos shows por contratante
+   fica ruidosa).
 4. **Sessões/segurança**: invalidação ao trocar a senha entregue na Sessão 26
    (`passwordChangedAt` + `isSessionFresh`, ver D17). Evoluções possíveis: "encerrar sessão
    específica" (lista de sessões revogáveis) e recuperação de senha por e-mail — adiáveis.
