@@ -2173,8 +2173,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    linha "Ritmo necessário: {valor}/mês" no card "Meta de {ano}" reaproveitando `goalRunRate` sobre o
    `goalProgress` já computado no dashboard, ver D82; **meta por trimestre na página de Metas** entregue na
    Sessão 93 — `quarterlyGoalProgress` + card "Meta por trimestre" em `/financas/metas`, quebrando a meta
-   anual em 4 alvos iguais e marcando hit/missed/in-progress/upcoming por trimestre, ver D85. Próximo possível —
-   metas por mês (granularidade fina), o mesmo card de trimestres no Painel, ou alerta proativo (e-mail/badge)
+   anual em 4 alvos iguais e marcando hit/missed/in-progress/upcoming por trimestre, ver D85; **meta por
+   trimestre no Painel** entregue na Sessão 94 — tira compacta de 4 mini-barras (cor pelo status, trimestre
+   atual em destaque) + placar "{N} de 4 batidos" no card "Meta de {ano}" do dashboard, reaproveitando
+   `quarterlyGoalProgress`, ver D86. Próximo possível —
+   metas por mês (granularidade fina), ou alerta proativo (e-mail/badge)
    quando a meta passa a depender só de shows a confirmar.
 
 ## Bloqueios / dúvidas (para validação humana)
