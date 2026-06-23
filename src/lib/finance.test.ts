@@ -57,6 +57,7 @@ import {
   FEE_BANDS,
   weekdayPerformance,
   incomeMix,
+  expenseMix,
   paymentLag,
   paymentLagHeadline,
   paymentLagByContact,
@@ -531,6 +532,117 @@ describe("incomeMix", () => {
     const result = incomeMix(txs);
     expect(result.hhi).toBeCloseTo(1 / 3, 6);
     expect(result.level).toBe("moderate");
+  });
+});
+
+describe("expenseMix", () => {
+  it("retorna vazio/zerado quando não há despesas", () => {
+    const result = expenseMix([
+      tx({ type: "INCOME", amount: 100_00, category: "cachê" }),
+    ]);
+    expect(result.categories).toEqual([]);
+    expect(result.total).toBe(0);
+    expect(result.categoryCount).toBe(0);
+    expect(result.top).toBeNull();
+    expect(result.topShare).toBe(0);
+    expect(result.top3Share).toBe(0);
+    expect(result.hhi).toBe(0);
+    expect(result.effectiveCategories).toBe(0);
+  });
+
+  it("ignora receitas e agrupa despesas por rubrica (categoria)", () => {
+    const txs: TxLike[] = [
+      tx({ type: "EXPENSE", amount: 600_00, category: "transporte" }),
+      tx({ type: "EXPENSE", amount: 200_00, category: "transporte" }),
+      tx({ type: "EXPENSE", amount: 200_00, category: "equipamento" }),
+      tx({ type: "INCOME", amount: 999_00, category: "transporte" }),
+    ];
+    const result = expenseMix(txs);
+    expect(result.total).toBe(1000_00);
+    expect(result.categoryCount).toBe(2);
+    expect(result.categories[0]).toMatchObject({
+      category: "transporte",
+      amount: 800_00,
+      count: 2,
+    });
+    expect(result.categories[0].share).toBeCloseTo(0.8, 10);
+    expect(result.categories[1]).toMatchObject({
+      category: "equipamento",
+      amount: 200_00,
+      count: 1,
+    });
+    expect(result.top?.category).toBe("transporte");
+    expect(result.topShare).toBeCloseTo(0.8, 10);
+  });
+
+  it("categoria em branco/ausente cai em 'Sem categoria'", () => {
+    const result = expenseMix([
+      tx({ type: "EXPENSE", amount: 100_00, category: "   " }),
+    ]);
+    expect(result.categories[0].category).toBe("Sem categoria");
+  });
+
+  it("ordena por valor decrescente, desempatando por nome (pt-BR)", () => {
+    const txs: TxLike[] = [
+      tx({ type: "EXPENSE", amount: 100_00, category: "transporte" }),
+      tx({ type: "EXPENSE", amount: 100_00, category: "equipamento" }),
+    ];
+    const result = expenseMix(txs);
+    expect(result.categories.map((c) => c.category)).toEqual([
+      "equipamento",
+      "transporte",
+    ]);
+  });
+
+  it("calcula top3Share, HHI e nº efetivo de rubricas", () => {
+    // 4 rubricas de R$ 250 cada = participações iguais de 0,25.
+    const txs: TxLike[] = ["a", "b", "c", "d"].map((c) =>
+      tx({ type: "EXPENSE", amount: 250_00, category: c }),
+    );
+    const result = expenseMix(txs);
+    expect(result.top3Share).toBeCloseTo(0.75, 10);
+    expect(result.hhi).toBeCloseTo(0.25, 10);
+    expect(result.effectiveCategories).toBeCloseTo(4, 10);
+  });
+
+  it("rubrica única → concentrada (HHI = 1)", () => {
+    const result = expenseMix([
+      tx({ type: "EXPENSE", amount: 500_00, category: "transporte" }),
+    ]);
+    expect(result.hhi).toBeCloseTo(1, 10);
+    expect(result.effectiveCategories).toBeCloseTo(1, 10);
+    expect(result.level).toBe("concentrated");
+  });
+
+  it("despesa bem distribuída → diversificada", () => {
+    // 5 rubricas iguais → HHI = 0,2, abaixo de 0,25.
+    const txs: TxLike[] = ["a", "b", "c", "d", "e"].map((c) =>
+      tx({ type: "EXPENSE", amount: 100_00, category: c }),
+    );
+    const result = expenseMix(txs);
+    expect(result.hhi).toBeCloseTo(0.2, 10);
+    expect(result.level).toBe("diversified");
+  });
+
+  it("é o espelho de incomeMix para o lado das despesas (mesma matemática)", () => {
+    const txs: TxLike[] = [
+      tx({ type: "EXPENSE", amount: 600_00, category: "transporte" }),
+      tx({ type: "EXPENSE", amount: 200_00, category: "equipamento" }),
+      tx({ type: "EXPENSE", amount: 200_00, category: "marketing" }),
+    ];
+    // As mesmas transações como receitas devem produzir os mesmos números.
+    const asIncome = txs.map((t) => ({ ...t, type: "INCOME" as const }));
+    const expense = expenseMix(txs);
+    const income = incomeMix(asIncome);
+    expect(expense.total).toBe(income.total);
+    expect(expense.categoryCount).toBe(income.sourceCount);
+    expect(expense.hhi).toBeCloseTo(income.hhi, 12);
+    expect(expense.top3Share).toBeCloseTo(income.top3Share, 12);
+    expect(expense.effectiveCategories).toBeCloseTo(income.effectiveSources, 12);
+    expect(expense.level).toBe(income.level);
+    expect(expense.categories.map((c) => c.category)).toEqual(
+      income.sources.map((s) => s.category),
+    );
   });
 });
 

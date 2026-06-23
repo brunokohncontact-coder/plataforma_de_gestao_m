@@ -2117,6 +2117,27 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem
   mudança de schema — ver D6/D8). Ver **DECISIONS.md D88**.
 
+### Sessão 97 — Composição de despesas: "Para onde vai o dinheiro" (D89)
+- **Lógica nova** (`src/lib/finance.ts`): `expenseMix(txs)` — espelho de `incomeMix` (D45) para o lado
+  das despesas. Agrupa as despesas (`EXPENSE`) por categoria (= rubrica) com total, participação,
+  contagem, concentração nas 3 maiores, **HHI**, **nº efetivo de rubricas** e veredito
+  (concentrated/moderate/diversified). Responde "para onde vai o dinheiro e qual gasto domina o
+  orçamento". Distinto dos custos fixos (D39, recorrência) e do relatório mensal/anual (por período).
+- **DRY**: a matemática comum aos dois mixes virou o helper privado `categoryMixStats(txs, type)`;
+  `incomeMix` foi reescrito para delegar a ele (saída pública idêntica — seus 10 testes seguem verdes)
+  e `expenseMix` delega ao mesmo núcleo. Um teste novo cruza os dois (mesmas transações como INCOME ×
+  EXPENSE → mesmos números) travando a simetria.
+- **Página** `/financas/composicao-despesas` (`src/app/(app)/financas/composicao-despesas/page.tsx`):
+  veredito (tom neutro — concentrar despesa não é "risco", é "onde cortar rende mais"), cards de
+  destaque (despesa total, maior gasto, nº de categorias) e tabela de composição com barras. Registrada
+  no **hub de Relatórios** (`REPORT_GROUPS` → Finanças → Custos & metas, em `src/lib/reports.ts`).
+- **Testes:** 8 casos puros novos de `expenseMix`. **640 testes** verdes (eram 632).
+- Definition of Done verde: build (`prisma generate && next build`) OK; typecheck (`tsc --noEmit`) limpo;
+  lint (0 warnings/erros); **640 testes** (`vitest run`); smoke test ao vivo (`next start`): `/login` → 200,
+  `/financas/composicao-despesas` → 307 (redireciona para login sem sessão). `npm audit` inalterado
+  (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de schema —
+  ver D6/D8). Ver **DECISIONS.md D89**.
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
