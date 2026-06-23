@@ -9,8 +9,8 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **125 testes**
-verdes após a Sessão 14 (exportação CSV das Finanças). Sessão 4 entregou
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **648 testes**
+verdes após a Sessão 98 (variação por categoria; eram 125 na Sessão 14, exportação CSV das Finanças). Sessão 4 entregou
 a visão de calendário dos shows. Sessão 5 entregou **testes de integração das server
 actions** com um banco SQLite isolado, cobrindo o isolamento por usuário. Sessão 6
 configurou **ESLint** (`next/core-web-vitals`) e adicionou o passo de lint ao CI — fechando
@@ -2137,6 +2137,28 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   `/financas/composicao-despesas` → 307 (redireciona para login sem sessão). `npm audit` inalterado
   (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de schema —
   ver D6/D8). Ver **DECISIONS.md D89**.
+
+### Sessão 98 — Variação por categoria: "o que mudou de um mês para o outro" (D90)
+- **Lógica nova** (`src/lib/finance.ts`): `compareCategoryReports(current, previous)` — cruza a quebra por
+  categoria de dois períodos (mês atual vs. anterior). Para receitas e despesas, lista toda categoria
+  presente em qualquer um dos dois lados (ausente conta como R$ 0) com `{amount, previousAmount, delta}`
+  (o `delta` é o `MetricDelta` do relatório mensal), ordenada pelo **maior movimento absoluto** primeiro.
+  Expõe os totais dos dois lados, a variação dos totais e três destaques: maior alta de gasto, maior
+  **economia** (queda de despesa) e maior alta de receita. Responde "qual categoria explica a diferença"
+  — o relatório mensal (D33) já dizia que a despesa subiu, mas não onde.
+- **DRY:** delega a `categoryReport` (mesma definição de categoria/"Sem categoria") e a `computeDelta`
+  (mesma semântica de variação do relatório mensal) — nenhuma matemática nova de agregação.
+- **Página** `/financas/variacao` (`src/app/(app)/financas/variacao/page.tsx`): navegação por mês
+  (←/→/Mês atual, mesmos helpers do calendário do relatório), cards de total com seta colorida (despesa
+  subindo = vermelho, caindo = verde; inverso para receita), faixa de destaques e duas tabelas
+  (despesas/receitas) com mês ant. × este mês × variação. Registrada no **hub de Relatórios**
+  (`REPORT_GROUPS` → Finanças → Fechamentos) e cruzada com o relatório mensal por link.
+- **Testes:** 8 casos puros novos de `compareCategoryReports`. **648 testes** verdes (eram 640).
+- Definition of Done verde: build (`prisma generate && next build`) OK; typecheck (`tsc --noEmit`) limpo;
+  lint (0 warnings/erros); **648 testes** (`vitest run`); smoke test ao vivo (`next start`): `/login` → 200,
+  `/financas/variacao` → 307 (redireciona para login sem sessão). `npm audit` inalterado
+  (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de schema —
+  ver D6/D8). Ver **DECISIONS.md D90**.
 
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
