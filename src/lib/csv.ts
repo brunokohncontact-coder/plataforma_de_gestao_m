@@ -11,7 +11,7 @@ import {
   type TransactionType,
   type ShowStatus,
 } from "./domain";
-import { dayKey, type AnnualSummary } from "./finance";
+import { dayKey, type AnnualSummary, type QuarterlySummary } from "./finance";
 import { MONTH_NAMES_LONG } from "./calendar";
 
 const DEFAULT_DELIMITER = ";";
@@ -191,6 +191,53 @@ export function annualSummaryToCsv(
   }
   rows.push([
     `Total do ano (${summary.year})`,
+    centsToCsvAmount(summary.totalIncome),
+    centsToCsvAmount(summary.totalExpense),
+    centsToCsvAmount(summary.net),
+  ]);
+  return toCsv(rows, delimiter);
+}
+
+export const QUARTERLY_SUMMARY_CSV_HEADERS = [
+  "Trimestre",
+  "Período",
+  "Receitas (R$)",
+  "Despesas (R$)",
+  "Resultado (R$)",
+] as const;
+
+/** Período abreviado do trimestre, ex.: "Jan–Mar" (espelha a página). */
+function quarterRangeLabel(monthIndexes: number[]): string {
+  if (monthIndexes.length === 0) return "";
+  const first = MONTH_NAMES_LONG[monthIndexes[0] - 1];
+  const last = MONTH_NAMES_LONG[monthIndexes[monthIndexes.length - 1] - 1];
+  return first === last ? first : `${first}–${last}`;
+}
+
+/**
+ * Serializa o resumo trimestral (4 trimestres + total) em CSV, pronto para
+ * download. Mesma convenção pt-BR de `annualSummaryToCsv` (delimitador ";",
+ * decimal com vírgula). Os 4 trimestres saem sempre (Q1→Q4, zeros inclusive)
+ * seguidos de uma linha "Total do ano", espelhando a tabela "Trimestre a
+ * trimestre" da página `/financas/trimestral`.
+ */
+export function quarterlySummaryToCsv(
+  summary: QuarterlySummary,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const rows: string[][] = [Array.from(QUARTERLY_SUMMARY_CSV_HEADERS)];
+  for (const q of summary.quarters) {
+    rows.push([
+      `${q.label} ${summary.year}`,
+      quarterRangeLabel(q.monthIndexes),
+      centsToCsvAmount(q.income),
+      centsToCsvAmount(q.expense),
+      centsToCsvAmount(q.net),
+    ]);
+  }
+  rows.push([
+    `Total do ano (${summary.year})`,
+    "",
     centsToCsvAmount(summary.totalIncome),
     centsToCsvAmount(summary.totalExpense),
     centsToCsvAmount(summary.net),

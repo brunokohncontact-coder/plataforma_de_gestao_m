@@ -2245,3 +2245,28 @@ contexto, decisão, justificativa e alternativas consideradas.
   migração — desnecessário: a granularidade trimestral é puramente derivada das transações existentes.
 - `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
   nenhuma dependência nova; nenhuma mudança de schema.
+
+## D84 — Exportação CSV do Resumo trimestral (Sessão 92)
+- **Contexto:** o Resumo trimestral (D83) entrou sem exportação, enquanto o Resumo anual (D36) já oferece
+  download CSV via `/financas/anual/export`. Para o músico que leva os fechamentos ao contador ou a uma
+  planilha própria, faltava a paridade — o trimestre é justamente a cadência de revisão que se costuma
+  consolidar fora da ferramenta.
+- **Decisão:** nova função pura `quarterlySummaryToCsv(summary)` + `QUARTERLY_SUMMARY_CSV_HEADERS` em
+  `src/lib/csv.ts`, espelhando `annualSummaryToCsv`: cabeçalho + 4 trimestres (Q1→Q4, zeros inclusive) +
+  linha "Total do ano". Acrescenta uma coluna **"Período"** ("Janeiro–Março") para tornar o recorte de
+  cada trimestre legível na planilha. Mesma convenção pt-BR já estabelecida (delimitador ";", decimal com
+  vírgula, BOM UTF-8 prefixado na camada HTTP). Rota `GET /financas/trimestral/export` análoga à anual
+  (`requireUser`, `parseYear` de `?ano=YYYY`, `Content-Disposition` de download
+  `financas-trimestral-{ano}.csv`). Botão "⬇ CSV" no cabeçalho da página (só com movimento no ano).
+- **Reaproveitamento:** a rota e o serializador são cópias estruturais dos equivalentes anuais; a camada
+  pura reusa `quarterlySummary` (D83) e os helpers de CSV (`toCsv`/`centsToCsvAmount`/`MONTH_NAMES_LONG`).
+- **Testes:** 4 casos puros para `quarterlySummaryToCsv` (forma 6 linhas com período; agregação no
+  trimestre certo + total do ano; resultado negativo preservado; ignora outros anos). 618 testes verdes
+  (eram 614).
+- **Alternativas consideradas:** (a) **não** incluir a coluna "Período" para ficar 1:1 com o anual —
+  rejeitado: o anual já traz o nome do mês na própria linha, então o trimestral precisa do período para
+  não ficar ambíguo. (b) exportar também a quebra por categoria do trimestre — adiado: a página ainda não
+  mostra categoria trimestral (mesma fronteira de escopo da D83), o CSV deve refletir o que a página
+  apresenta.
+- `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
+  nenhuma dependência nova; nenhuma mudança de schema.

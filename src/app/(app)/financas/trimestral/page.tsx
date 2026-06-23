@@ -80,9 +80,20 @@ export default async function FinanceQuarterlyPage({
           <h1 className="text-2xl font-bold">Resumo trimestral</h1>
           <p className="text-sm text-gray-500">{year}</p>
         </div>
-        <Link href="/financas" className="text-sm text-gray-500 hover:underline">
-          ← Finanças
-        </Link>
+        <div className="flex items-center gap-2">
+          {hasActivity && (
+            <a
+              href={`/financas/trimestral/export?ano=${year}`}
+              className="btn-secondary text-sm"
+              download
+            >
+              ⬇ CSV
+            </a>
+          )}
+          <Link href="/financas" className="text-sm text-gray-500 hover:underline">
+            ← Finanças
+          </Link>
+        </div>
       </div>
 
       {/* Navegação por ano */}
