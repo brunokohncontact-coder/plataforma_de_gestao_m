@@ -258,3 +258,106 @@ export function buildShowBilling(
 ): ShowBilling | null {
   return buildShowBillings(show, contacts, opts)[0] ?? null;
 }
+
+/** Um show em aberto na cobrança consolidada de um contratante. */
+export interface ContactDunningShow {
+  title: string;
+  date: Date | string;
+  venue?: string | null;
+  city?: string | null;
+  /** Valor em aberto, em centavos. */
+  outstanding: number;
+}
+
+export interface ContactBilling {
+  /** Contato cobrado (o contratante responsável pelo pagamento dos shows). */
+  contact: BillingContactLike;
+  subject: string;
+  body: string;
+  /** mailto: pronto (só quando o contato tem e-mail). */
+  mailtoUrl: string | null;
+  /** https://wa.me/... pronto (só quando o telefone é utilizável). */
+  whatsappUrl: string | null;
+  /** Nº de shows cobrados na mensagem. */
+  showCount: number;
+  /** Soma do valor em aberto dos shows, em centavos. */
+  totalOutstanding: number;
+}
+
+/**
+ * Redige UMA mensagem de cobrança consolidada para vários shows em aberto do mesmo
+ * contratante — "de quem cobrar primeiro" cobra tudo de uma vez. Com um único show,
+ * cai na redação singular de `buildDunningMessage` (evita texto plural artificial);
+ * com vários, lista cada show (título, data, local, valor) e fecha com o total.
+ * `null` quando não há shows. Puro (sem I/O, sem timezone implícito).
+ */
+export function buildContactDunning(
+  shows: ContactDunningShow[],
+  opts: { contactName?: string | null; fromName?: string | null } = {},
+): DunningMessage | null {
+  if (shows.length === 0) return null;
+  if (shows.length === 1) return buildDunningMessage(shows[0], opts);
+
+  const total = shows.reduce((sum, s) => sum + s.outstanding, 0);
+  const saudacao = opts.contactName?.trim()
+    ? `Olá, ${opts.contactName.trim()}!`
+    : "Olá!";
+
+  const itens = shows.map((s) => {
+    const local = venueLabel(s);
+    const onde = local ? `, em ${local}` : "";
+    return `• "${s.title}" (${billingDate(s.date)}${onde}) — ${formatMoney(s.outstanding)}`;
+  });
+
+  const lines = [
+    saudacao,
+    "",
+    `Tudo bem? Passando para confirmar o pagamento de ${shows.length} cachês ainda em aberto:`,
+    "",
+    ...itens,
+    "",
+    `Total em aberto: ${formatMoney(total)}.`,
+    "",
+    "Poderia me confirmar a previsão de pagamento? Se algum já tiver sido pago, " +
+      "me avise para eu dar baixa por aqui. Obrigado!",
+  ];
+  if (opts.fromName?.trim()) {
+    lines.push("", opts.fromName.trim());
+  }
+
+  return {
+    subject: `Cachês pendentes — ${shows.length} shows`,
+    body: lines.join("\n"),
+  };
+}
+
+/**
+ * Monta a cobrança consolidada de um contratante: a mensagem (assunto/corpo) cobrindo
+ * todos os shows em aberto dele + os atalhos mailto/WhatsApp prontos. `null` quando o
+ * contato não tem canal de contato (e-mail/telefone) ou não há shows — a página
+ * "por contratante" então só mostra o saldo, sem botão de cobrança.
+ */
+export function buildContactBilling(
+  contact: BillingContactLike,
+  shows: ContactDunningShow[],
+  opts: { fromName?: string | null } = {},
+): ContactBilling | null {
+  if (!hasChannel(contact)) return null;
+  const message = buildContactDunning(shows, {
+    contactName: contact.name,
+    fromName: opts.fromName,
+  });
+  if (!message) return null;
+
+  const { subject, body } = message;
+  return {
+    contact,
+    subject,
+    body,
+    mailtoUrl: buildMailtoUrl(contact.email, subject, body),
+    // O WhatsApp não usa assunto; manda só o corpo da mensagem.
+    whatsappUrl: buildWhatsappUrl(contact.phone, body),
+    showCount: shows.length,
+    totalOutstanding: shows.reduce((sum, s) => sum + s.outstanding, 0),
+  };
+}

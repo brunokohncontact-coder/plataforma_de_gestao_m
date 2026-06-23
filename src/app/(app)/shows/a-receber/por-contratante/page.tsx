@@ -9,7 +9,7 @@ import {
   type ReceivableShowLike,
   type TxLike,
 } from "@/lib/finance";
-import { pickPayerContact } from "@/lib/billing";
+import { pickPayerContact, buildContactBilling } from "@/lib/billing";
 import { CONTACT_ROLE_LABELS, type ContactRole } from "@/lib/domain";
 import { formatMoney } from "@/lib/money";
 import { formatDate } from "@/lib/format";
@@ -21,6 +21,8 @@ interface PayerContact {
   id: string;
   name: string;
   role: string;
+  email: string | null;
+  phone: string | null;
 }
 
 function pct(share: number): string {
@@ -83,9 +85,19 @@ export default async function ReceivablesByContactPage() {
   type ShowRow = (typeof shows)[number];
   const receivables = reconcileShowFees(shows as (ReceivableShowLike & ShowRow)[], txs);
 
+  const fromName = user.artistName?.trim() || user.name;
+
   const getPayer = (show: ShowRow): PayerContact | null => {
     const picked = pickPayerContact(show.contacts.map((cs) => cs.contact));
-    return picked ? { id: picked.id, name: picked.name, role: picked.role } : null;
+    return picked
+      ? {
+          id: picked.id,
+          name: picked.name,
+          role: picked.role,
+          email: picked.email,
+          phone: picked.phone,
+        }
+      : null;
   };
 
   const byContact = outstandingByContact(
@@ -236,15 +248,67 @@ export default async function ReceivablesByContactPage() {
           {/* Detalhe: shows em aberto de cada contratante (mais atrasado → mais recente) */}
           <section className="space-y-4">
             <h2 className="text-sm font-semibold text-gray-700">Shows em aberto por contratante</h2>
-            {byContact.rows.map((r) => (
+            {byContact.rows.map((r) => {
+              // Cobrança consolidada: uma só mensagem cobrindo todos os shows em aberto
+              // deste contratante (e-mail/WhatsApp). null quando o contato não tem canal
+              // (sem e-mail/telefone) ou é o grupo "Sem contratante".
+              const billing = r.contact
+                ? buildContactBilling(
+                    r.contact,
+                    r.rows.map((a) => {
+                      const info = a.row.show as ReceivableShowLike & {
+                        title: string;
+                        venue: string | null;
+                        city: string | null;
+                      };
+                      return {
+                        title: info.title,
+                        date: info.date,
+                        venue: info.venue,
+                        city: info.city,
+                        outstanding: a.row.outstanding,
+                      };
+                    }),
+                    { fromName },
+                  )
+                : null;
+              return (
               <div key={r.contact?.id ?? "__none__"} className="card">
-                <div className="mb-2 flex items-center justify-between gap-3">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
                   <p className="font-medium text-gray-900">
                     {r.contact ? r.contact.name : "Sem contratante"}
                   </p>
-                  <p className="text-sm font-semibold text-gray-900">
-                    {formatMoney(r.outstanding)}
-                  </p>
+                  <div className="flex items-center gap-3">
+                    {billing && (
+                      <div className="flex items-center gap-1.5">
+                        {billing.mailtoUrl && (
+                          <a
+                            href={billing.mailtoUrl}
+                            className="btn border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 py-1.5 text-xs"
+                            title={`Cobrar ${r.contact!.name} por e-mail (${billing.showCount} ${billing.showCount === 1 ? "show" : "shows"})`}
+                            aria-label={`Cobrar ${r.contact!.name} por e-mail`}
+                          >
+                            ✉ E-mail
+                          </a>
+                        )}
+                        {billing.whatsappUrl && (
+                          <a
+                            href={billing.whatsappUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 py-1.5 text-xs"
+                            title={`Cobrar ${r.contact!.name} pelo WhatsApp (${billing.showCount} ${billing.showCount === 1 ? "show" : "shows"})`}
+                            aria-label={`Cobrar ${r.contact!.name} pelo WhatsApp`}
+                          >
+                            WhatsApp
+                          </a>
+                        )}
+                      </div>
+                    )}
+                    <p className="text-sm font-semibold text-gray-900">
+                      {formatMoney(r.outstanding)}
+                    </p>
+                  </div>
                 </div>
                 <ul className="divide-y divide-gray-100 text-sm">
                   {r.rows.map((a) => {
@@ -286,14 +350,18 @@ export default async function ReceivablesByContactPage() {
                   })}
                 </ul>
               </div>
-            ))}
+              );
+            })}
           </section>
 
           <p className="text-xs text-gray-400">
             Cada show com saldo em aberto é atribuído ao contato responsável pelo pagamento
             (contratante/promoter antes da casa). O atraso conta os dias desde a data do show;
             o atraso médio pondera os shows pelo valor em aberto. Shows sem contato vinculado
-            caem em &quot;Sem contratante&quot;. Para cobrar (e-mail/WhatsApp) ou quitar, use{" "}
+            caem em &quot;Sem contratante&quot;. <strong>✉ E-mail</strong> /{" "}
+            <strong>WhatsApp</strong> por contratante abrem uma única mensagem de cobrança
+            cobrindo todos os shows em aberto dele (aparecem quando o contratante tem
+            e-mail/telefone). Para quitar um cachê, use{" "}
             <Link href="/shows/a-receber" className="text-brand-700 hover:underline">
               Cachês a receber
             </Link>

@@ -2559,3 +2559,43 @@ contexto, decisão, justificativa e alternativas consideradas.
   como desempate e sinal de cor.
 - `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
   nenhuma dependência nova; nenhuma mudança de schema.
+
+## D93 — Cobrança consolidada por contratante (e-mail/WhatsApp na página "por contratante") (Sessão 101)
+- **Contexto:** a D92 deixou `/shows/a-receber/por-contratante` como página de **priorização** ("quem me
+  deve mais, e há quanto tempo"), explicitamente sem o atalho de cobrança — a alternativa (b) da D92 adiou
+  embuti-lo porque "exigiria agregar mensagem de vários shows e escolher canal — escopo próprio". Este é esse
+  escopo. Sem o atalho, o usuário via o maior devedor mas tinha de voltar a `/shows/a-receber` e cobrar
+  **show a show**, perdendo a vantagem de já ter o devedor agrupado.
+- **Decisão:** cobrança **consolidada** por contratante — um botão ✉ E-mail / WhatsApp por linha que abre
+  **uma única mensagem** cobrindo **todos** os shows em aberto daquele contratante. Duas funções puras novas
+  em `src/lib/billing.ts`:
+  - `buildContactDunning(shows, {contactName, fromName})` → `DunningMessage | null`. Com **1** show delega a
+    `buildDunningMessage` (mantém a redação singular já testada — evita "1 cachês"); com **vários**, lista
+    cada show (`• "título" (DD/MM/AAAA UTC, em local) — valor`) e fecha com `Total em aberto: …`; `null` sem
+    shows. Reaproveita `venueLabel`/`billingDate`/`formatMoney`.
+  - `buildContactBilling(contact, shows, {fromName})` → `ContactBilling | null`. Junta a mensagem +
+    `mailtoUrl`/`whatsappUrl` prontos (via `buildMailtoUrl`/`buildWhatsappUrl`, mesma normalização de telefone
+    pt-BR da D27) + `showCount`/`totalOutstanding`; `null` quando o contato não tem canal (`hasChannel`) ou não
+    há shows.
+- **Por que aqui é diferente do por-show (D27):** lá `BillingActions` é um componente **cliente** com seletor
+  de "quem cobrar" entre vários contatos do mesmo show. Aqui o pagador já está resolvido por contratante
+  (um contato por grupo, via `pickPayerContact`), então a UI é só dois `<a>` no **server component** (sem JS
+  de cliente) — mais simples e sem hidratação. O canal (e-mail/WhatsApp) é escolhido pelo botão; não há
+  seleção de contato a fazer.
+- **UI:** `page.tsx` estende o `PayerContact` resolvido com `email`/`phone` (já vinham do `pickPayerContact`,
+  só não eram propagados), deriva `fromName` (`artistName` || `name`, igual a `/shows/a-receber`) e monta
+  `buildContactBilling` por linha de detalhe a partir dos shows em aberto do grupo. Grupo "Sem contratante"
+  e contatos sem canal não mostram botão.
+- **DRY:** zero regra nova de telefone/redação/valor — tudo composto sobre helpers existentes do `billing.ts`.
+  A escolha de pagador é a mesma da D52/D92 (`pickPayerContact`).
+- **Testes:** 8 casos puros novos (`buildContactDunning`: vazio→null, 1 show = singular, vários listam+somam,
+  saudação genérica sem nome; `buildContactBilling`: sem canal→null, sem shows→null, mailto/whatsapp+contagem+
+  total, só-e-mail sem telefone). **668 testes** verdes (eram 660). Build/typecheck/lint verdes; smoke test
+  (app sobe; `/login`→200; página protegida→307 sem sessão; sem erro no log).
+- **Alternativas consideradas:** (a) link `mailto:` com vários destinatários ou um seletor de show por linha —
+  descartado: o valor está em **uma** mensagem agregada por devedor (o ponto da página). (b) reaproveitar o
+  componente cliente `BillingActions` — descartado: ele resolve seleção de contato por show, que aqui não
+  existe (um pagador por grupo); anchors no servidor são mais simples. (c) data prometida de pagamento na
+  cobrança — segue adiado (próximo passo do item 5 do PROGRESS).
+- `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
+  nenhuma dependência nova; nenhuma mudança de schema.
