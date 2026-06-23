@@ -9,8 +9,9 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **660 testes**
-verdes após a Sessão 100 (cachês a receber por contratante — de quem cobrar primeiro; eram 655 na
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **668 testes**
+verdes após a Sessão 101 (cobrança consolidada por contratante — e-mail/WhatsApp na página "por contratante";
+eram 660 na Sessão 100, cachês a receber por contratante — de quem cobrar primeiro; eram 655 na
 Sessão 99, contas fixas a lançar no mês; eram 648 na Sessão 98,
 variação por categoria; eram 125 na Sessão 14, exportação CSV das Finanças). Sessão 4 entregou
 a visão de calendário dos shows. Sessão 5 entregou **testes de integração das server
@@ -2214,6 +2215,30 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8).
   Ver **DECISIONS.md D92**.
 
+### Sessão 101 — Cobrança consolidada por contratante (e-mail/WhatsApp na página "por contratante") (ver D93)
+- **O quê:** embutir os atalhos de cobrança na página `/shows/a-receber/por-contratante` — agora cada
+  contratante ganha um botão **✉ E-mail** / **WhatsApp** que abre **uma única mensagem** cobrindo **todos**
+  os shows em aberto dele de uma vez (antes a cobrança só existia por show em `/shows/a-receber`). Fecha o
+  fluxo "de quem cobrar primeiro": vê o maior devedor e cobra tudo dele num clique.
+- **Lógica pura (`src/lib/billing.ts`):** `buildContactDunning(shows, {contactName, fromName})` redige uma
+  mensagem consolidada (assunto/corpo) listando cada show (título, data UTC, local, valor) e o total em
+  aberto; com **um** show cai na redação singular de `buildDunningMessage` (sem plural artificial); `null`
+  sem shows. `buildContactBilling(contact, shows, {fromName})` monta o `ContactBilling` (mensagem +
+  `mailtoUrl`/`whatsappUrl` prontos + `showCount`/`totalOutstanding`); `null` quando o contato não tem canal
+  (sem e-mail/telefone) ou não há shows. Reaproveita `hasChannel`/`venueLabel`/`billingDate`/`formatMoney`/
+  `buildMailtoUrl`/`buildWhatsappUrl` já existentes — zero regra nova de telefone/redação.
+- **UI:** `page.tsx` passou a estender o `PayerContact` resolvido (`getPayer`) com `email`/`phone`, derivar
+  `fromName` (`artistName` || `name`) e, por linha de detalhe, montar `buildContactBilling` a partir dos shows
+  em aberto daquele contratante, renderizando os links prontos (server component, anchors puros — sem JS de
+  cliente). Rodapé atualizado explicando a cobrança consolidada.
+- **Testes:** 8 casos puros novos (`buildContactDunning` × 4, `buildContactBilling` × 4) em
+  `src/lib/billing.test.ts`. **668 testes** verdes (eram 660).
+- Definition of Done verde: build (`prisma generate && next build`) OK; typecheck (`tsc --noEmit`) limpo;
+  lint (0 warnings/erros); **668 testes** (`vitest run`); smoke test (`next start`): app sobe, `/login` → 200,
+  `/shows/a-receber/por-contratante` → 307 (redireciona p/ login sem sessão), sem erro no log. `npm audit`
+  inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de
+  schema — ver D6/D8). Ver **DECISIONS.md D93**.
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
@@ -2264,10 +2289,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    contratante** ("de quem cobrar primeiro") entregue na Sessão 100 — `outstandingByContact` +
    `/shows/a-receber/por-contratante`, agrupa o saldo em aberto por devedor (maior saldo/pior atraso
    primeiro), reaproveitando aging + `pickPayerContact`, ver D92):
+   **atalhos de cobrança por contratante** embutidos na Sessão 101 — `buildContactDunning`/
+   `buildContactBilling` + botões ✉ E-mail / WhatsApp em `/shows/a-receber/por-contratante`, com **uma
+   mensagem consolidada** cobrindo todos os shows em aberto do contratante, ver D93):
    próximo possível — lembrar a última escolha de contato por show, registrar a data prometida de
-   pagamento na própria cobrança, embutir os atalhos de cobrança (e-mail/WhatsApp) por contratante na
-   nova página, ou a mediana do prazo por contratante (adiada na D57: com poucos shows por contratante
-   fica ruidosa).
+   pagamento na própria cobrança, ou a mediana do prazo por contratante (adiada na D57: com poucos shows
+   por contratante fica ruidosa).
 4. **Sessões/segurança**: invalidação ao trocar a senha entregue na Sessão 26
    (`passwordChangedAt` + `isSessionFresh`, ver D17). Evoluções possíveis: "encerrar sessão
    específica" (lista de sessões revogáveis) e recuperação de senha por e-mail — adiáveis.

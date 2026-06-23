@@ -9,9 +9,13 @@ import {
   buildWhatsappUrl,
   buildShowBilling,
   buildShowBillings,
+  buildContactDunning,
+  buildContactBilling,
   type BillingContactLike,
   type BillingShowInfo,
+  type ContactDunningShow,
 } from "./billing";
+import { formatMoney } from "./money";
 
 function contact(over: Partial<BillingContactLike> & { id: string }): BillingContactLike {
   return { name: "Contato", role: "OTHER", email: null, phone: null, ...over };
@@ -262,5 +266,92 @@ describe("buildShowBillings", () => {
     ];
     const first = buildShowBillings(SHOW, contacts)[0];
     expect(buildShowBilling(SHOW, contacts)).toEqual(first);
+  });
+});
+
+const SHOW_A: ContactDunningShow = {
+  title: "Show no Bar do Zé",
+  date: "2026-05-10T23:00:00Z",
+  venue: "Bar do Zé",
+  city: "Recife",
+  outstanding: 1_250_00,
+};
+const SHOW_B: ContactDunningShow = {
+  title: "Festival da Praça",
+  date: "2026-04-02T20:00:00Z",
+  venue: null,
+  city: "Olinda",
+  outstanding: 800_00,
+};
+
+describe("buildContactDunning", () => {
+  it("retorna null quando não há shows", () => {
+    expect(buildContactDunning([])).toBeNull();
+  });
+
+  it("com um único show, reaproveita a redação singular de buildDunningMessage", () => {
+    const m = buildContactDunning([SHOW_A], { contactName: "Maria", fromName: "Trio" });
+    expect(m).toEqual(buildDunningMessage(SHOW_A, { contactName: "Maria", fromName: "Trio" }));
+  });
+
+  it("com vários shows, lista cada um e soma o total em aberto", () => {
+    const m = buildContactDunning([SHOW_A, SHOW_B], {
+      contactName: "Maria",
+      fromName: "Trio Acústico",
+    });
+    expect(m).not.toBeNull();
+    expect(m!.subject).toBe("Cachês pendentes — 2 shows");
+    expect(m!.body).toContain("Olá, Maria!");
+    expect(m!.body).toContain("2 cachês ainda em aberto");
+    // Cada show vira um item com data (DD/MM/AAAA em UTC), local e valor.
+    expect(m!.body).toContain(`• "Show no Bar do Zé" (10/05/2026, em Bar do Zé · Recife) — ${formatMoney(1_250_00)}`);
+    // Sem venue, cai para a cidade.
+    expect(m!.body).toContain(`• "Festival da Praça" (02/04/2026, em Olinda) — ${formatMoney(800_00)}`);
+    // Total = soma dos valores em aberto.
+    expect(m!.body).toContain(`Total em aberto: ${formatMoney(2_050_00)}.`);
+    // Assinatura ao fim.
+    expect(m!.body.trimEnd().endsWith("Trio Acústico")).toBe(true);
+  });
+
+  it("sem nome do contato, usa saudação genérica", () => {
+    const m = buildContactDunning([SHOW_A, SHOW_B]);
+    expect(m!.body.startsWith("Olá!\n")).toBe(true);
+  });
+});
+
+describe("buildContactBilling", () => {
+  it("retorna null quando o contato não tem canal (sem e-mail/telefone)", () => {
+    const c = contact({ id: "x", name: "Maria" });
+    expect(buildContactBilling(c, [SHOW_A, SHOW_B])).toBeNull();
+  });
+
+  it("retorna null quando não há shows em aberto", () => {
+    const c = contact({ id: "x", name: "Maria", email: "maria@x.com" });
+    expect(buildContactBilling(c, [])).toBeNull();
+  });
+
+  it("monta mailto/whatsapp consolidados com contagem e total", () => {
+    const c = contact({
+      id: "x",
+      name: "Maria",
+      role: "BOOKER",
+      email: "maria@x.com",
+      phone: "(81) 99999-1234",
+    });
+    const b = buildContactBilling(c, [SHOW_A, SHOW_B], { fromName: "Trio" });
+    expect(b).not.toBeNull();
+    expect(b!.showCount).toBe(2);
+    expect(b!.totalOutstanding).toBe(2_050_00);
+    expect(b!.subject).toBe("Cachês pendentes — 2 shows");
+    expect(b!.mailtoUrl).toContain("mailto:maria%40x.com");
+    expect(b!.mailtoUrl).toContain(encodeURIComponent("Cachês pendentes — 2 shows"));
+    expect(b!.whatsappUrl).toContain("https://wa.me/5581999991234");
+  });
+
+  it("oferece só o canal disponível (e-mail sem telefone)", () => {
+    const c = contact({ id: "x", name: "Maria", email: "maria@x.com" });
+    const b = buildContactBilling(c, [SHOW_A]);
+    expect(b!.mailtoUrl).not.toBeNull();
+    expect(b!.whatsappUrl).toBeNull();
   });
 });
