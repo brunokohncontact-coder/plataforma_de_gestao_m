@@ -2061,6 +2061,26 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem
   mudança de schema — ver D6/D8). Ver **DECISIONS.md D84**.
 
+### Sessão 93 — Meta por trimestre na página de Metas (D85)
+- **Lógica pura** (`src/lib/finance.ts`): nova função `quarterlyGoalProgress(txs, year, goal, opts)` que
+  **quebra a meta anual em 4 alvos iguais** (meta/4, com os centavos da divisão distribuídos aos primeiros
+  trimestres para que a soma dos 4 seja exatamente a meta) e cruza cada alvo com a **receita já recebida**
+  (caixa, `received`) naquele trimestre — a mesma base do `realized` da meta anual (`computeGoalProgress`),
+  não a competência do `quarterlySummary`. Marca o `status` de cada trimestre conforme o tempo:
+  `hit` (recebido ≥ alvo), `missed` (trimestre encerrado abaixo), `in-progress` (trimestre corrente) ou
+  `upcoming` (futuro). Tipos `QuarterGoalStatus`/`QuarterGoalProgress`/`QuarterlyGoalProgress`.
+- **UI** (`src/app/(app)/financas/metas/page.tsx`): novo card "Meta por trimestre" (entre "Ritmo necessário"
+  e o formulário de ajuste), com uma barra por trimestre (recebido / alvo + %), selo de status colorido,
+  marca "(atual)" no trimestre corrente e o placar "{N} de 4 batidos". Responde "em qual trimestre eu fiquei
+  para trás?" — o horizonte de revisão natural entre o ritmo mensal (D81) e a corrida anual (D77).
+- **Testes:** 7 casos puros novos para `quarterlyGoalProgress` (alvos somam a meta com sobra de centavos;
+  só receitas recebidas agrupadas por trimestre; hit/missed em ano encerrado; missed/in-progress/upcoming no
+  ano corrente; trimestre corrente que já bateu vira hit; ano futuro tudo upcoming; meta negativa saneada a 0).
+- Definition of Done verde: build (`prisma generate && next build`) OK; typecheck (`tsc --noEmit`) limpo;
+  lint (0 warnings/erros); **625 testes** (`vitest run`, eram 618); smoke test ao vivo (`next start`):
+  `/login` → 200. `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência
+  nova nem mudança de schema — ver D6/D8). Ver **DECISIONS.md D85**.
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
@@ -2151,8 +2171,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    necessário" em `/financas/metas`, com o necessário/mês, o ritmo atual e o veredito de esforço
    (on-pace/stretch/hard), ver D81; **ritmo necessário no card de meta do Painel** entregue na Sessão 90 —
    linha "Ritmo necessário: {valor}/mês" no card "Meta de {ano}" reaproveitando `goalRunRate` sobre o
-   `goalProgress` já computado no dashboard, ver D82. Próximo possível — metas por trimestre/mês, ou alerta
-   proativo (e-mail/badge) quando a meta passa a depender só de shows a confirmar.
+   `goalProgress` já computado no dashboard, ver D82; **meta por trimestre na página de Metas** entregue na
+   Sessão 93 — `quarterlyGoalProgress` + card "Meta por trimestre" em `/financas/metas`, quebrando a meta
+   anual em 4 alvos iguais e marcando hit/missed/in-progress/upcoming por trimestre, ver D85. Próximo possível —
+   metas por mês (granularidade fina), o mesmo card de trimestres no Painel, ou alerta proativo (e-mail/badge)
+   quando a meta passa a depender só de shows a confirmar.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

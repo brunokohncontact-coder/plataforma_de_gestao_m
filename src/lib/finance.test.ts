@@ -65,6 +65,7 @@ import {
   computeGoalProgress,
   compareGoalScenarios,
   goalRunRate,
+  quarterlyGoalProgress,
   type TxLike,
   type ShowLike,
   type VenueShowLike,
@@ -3895,5 +3896,79 @@ describe("goalRunRate", () => {
     const r = goalRunRate(mkProgress({ goal: 0, realized: 0 }), now);
     expect(r.applicable).toBe(false);
     expect(r.verdict).toBe("unknown");
+  });
+});
+
+describe("quarterlyGoalProgress", () => {
+  it("divide a meta em 4 alvos que somam exatamente a meta", () => {
+    // 100.001 centavos → base 25.000, resto 1 distribuído ao 1º trimestre.
+    const q = quarterlyGoalProgress([], 2026, 100_001, { now: "2026-12-31T12:00:00Z" });
+    const targets = q.quarters.map((x) => x.target);
+    expect(targets).toEqual([25_001, 25_000, 25_000, 25_000]);
+    expect(targets.reduce((a, b) => a + b, 0)).toBe(100_001);
+  });
+
+  it("conta só receitas recebidas no ano e as agrupa por trimestre", () => {
+    const txs = [
+      tx({ type: "INCOME", amount: 10_000_00, received: true, date: "2026-02-10" }), // Q1
+      tx({ type: "INCOME", amount: 5_000_00, received: false, date: "2026-02-15" }), // a receber → ignora
+      tx({ type: "INCOME", amount: 8_000_00, received: true, date: "2026-05-01" }), // Q2
+      tx({ type: "INCOME", amount: 3_000_00, received: true, date: "2026-09-20" }), // Q3
+      tx({ type: "EXPENSE", amount: 9_999_00, received: true, date: "2026-02-01" }), // despesa → ignora
+      tx({ type: "INCOME", amount: 1_000_00, received: true, date: "2025-12-31" }), // outro ano → ignora
+    ];
+    const q = quarterlyGoalProgress(txs, 2026, 40_000_00, { now: "2026-12-31T12:00:00Z" });
+    expect(q.quarters.map((x) => x.realized)).toEqual([10_000_00, 8_000_00, 3_000_00, 0]);
+    expect(q.realized).toBe(21_000_00);
+  });
+
+  it("marca hit/missed por trimestre num ano já encerrado", () => {
+    const txs = [
+      tx({ type: "INCOME", amount: 30_000_00, received: true, date: "2025-03-01" }), // Q1 ≥ 25k
+      tx({ type: "INCOME", amount: 10_000_00, received: true, date: "2025-06-01" }), // Q2 < 25k
+    ];
+    const q = quarterlyGoalProgress(txs, 2025, 100_000_00, { now: "2026-06-01T12:00:00Z" });
+    expect(q.isCurrentYear).toBe(false);
+    expect(q.currentQuarter).toBeNull();
+    expect(q.quarters.map((x) => x.status)).toEqual(["hit", "missed", "missed", "missed"]);
+    expect(q.hitCount).toBe(1);
+    expect(q.quarters[1].remaining).toBe(15_000_00);
+  });
+
+  it("no ano corrente: passado=missed/hit, atual=in-progress, futuro=upcoming", () => {
+    // now em maio (Q2). Q1 abaixo do alvo, Q2 em andamento.
+    const txs = [
+      tx({ type: "INCOME", amount: 5_000_00, received: true, date: "2026-02-01" }), // Q1 < 25k
+      tx({ type: "INCOME", amount: 1_000_00, received: true, date: "2026-05-01" }), // Q2 parcial
+    ];
+    const q = quarterlyGoalProgress(txs, 2026, 100_000_00, { now: "2026-05-15T12:00:00Z" });
+    expect(q.currentQuarter).toBe(2);
+    expect(q.quarters.map((x) => x.status)).toEqual([
+      "missed",
+      "in-progress",
+      "upcoming",
+      "upcoming",
+    ]);
+  });
+
+  it("um trimestre que já bateu o alvo fica hit mesmo sendo o corrente", () => {
+    const txs = [tx({ type: "INCOME", amount: 30_000_00, received: true, date: "2026-05-01" })];
+    const q = quarterlyGoalProgress(txs, 2026, 100_000_00, { now: "2026-05-15T12:00:00Z" });
+    expect(q.quarters[1].status).toBe("hit");
+    expect(q.quarters[1].ratio).toBeCloseTo(30_000_00 / 25_000_00);
+  });
+
+  it("ano futuro: todos os trimestres upcoming, nada recebido", () => {
+    const q = quarterlyGoalProgress([], 2030, 100_000_00, { now: "2026-06-01T12:00:00Z" });
+    expect(q.quarters.every((x) => x.status === "upcoming")).toBe(true);
+    expect(q.hitCount).toBe(0);
+  });
+
+  it("saneia meta negativa/não-finita para zero (sem hit)", () => {
+    const txs = [tx({ type: "INCOME", amount: 1_000_00, received: true, date: "2026-02-01" })];
+    const q = quarterlyGoalProgress(txs, 2026, -50_000_00, { now: "2026-12-31T12:00:00Z" });
+    expect(q.goal).toBe(0);
+    expect(q.quarters.every((x) => x.target === 0)).toBe(true);
+    expect(q.hitCount).toBe(0);
   });
 });

@@ -4172,3 +4172,145 @@ export function goalRunRate(
     verdict,
   };
 }
+
+// ── Meta por trimestre: a meta anual quebrada em 4 alvos ──────────────────────
+//
+// A meta de faturamento (D77) é anual e o ritmo necessário (`goalRunRate`, D81) dá
+// o número MENSAL que falta — mas o músico costuma revisar o ano em trimestres (o
+// "Resumo trimestral", D83, já é essa cadência intermediária entre o mês e o ano).
+// `quarterlyGoalProgress` quebra a meta anual em 4 alvos iguais (meta/4, com os
+// centavos da divisão distribuídos aos primeiros trimestres para que a soma dos 4
+// seja exatamente a meta) e cruza cada alvo com a receita JÁ RECEBIDA naquele
+// trimestre — a mesma base de caixa do `realized` da meta anual (não a competência
+// do `quarterlySummary`). Responde "em qual trimestre eu fiquei para trás?".
+//
+// Status por trimestre:
+//   - "hit"         recebido ≥ alvo (com alvo > 0)
+//   - "upcoming"    trimestre ainda no futuro (ou ano futuro) — nada a cobrar ainda
+//   - "in-progress" trimestre corrente, alvo ainda não atingido
+//   - "missed"      trimestre já encerrado abaixo do alvo
+// Pura: só varre as transações uma vez e faz aritmética. Ver DECISIONS.md.
+
+export type QuarterGoalStatus = "hit" | "missed" | "in-progress" | "upcoming";
+
+export interface QuarterGoalProgress {
+  /** Trimestre 1–4. */
+  quarter: number;
+  /** Rótulo curto, ex.: "1º tri". */
+  label: string;
+  /** Alvo do trimestre, em centavos (≈ meta/4; a soma dos 4 == meta). */
+  target: number;
+  /** Receita recebida (caixa) no trimestre, em centavos. */
+  realized: number;
+  /** max(0, target − realized). */
+  remaining: number;
+  /** realized / target, fração ≥ 0 (0 se o alvo for 0). */
+  ratio: number;
+  status: QuarterGoalStatus;
+}
+
+export interface QuarterlyGoalProgress {
+  /** Ano de referência. */
+  year: number;
+  /** Meta anual saneada (inteiro ≥ 0). */
+  goal: number;
+  /** True se `year` é o ano corrente de `now`. */
+  isCurrentYear: boolean;
+  /** Trimestre corrente 1–4 quando `isCurrentYear`; senão `null`. */
+  currentQuarter: number | null;
+  /** Exatamente 4 trimestres (Q1→Q4). */
+  quarters: QuarterGoalProgress[];
+  /** Soma do recebido nos 4 trimestres, em centavos. */
+  realized: number;
+  /** Quantos trimestres atingiram o alvo. */
+  hitCount: number;
+}
+
+/**
+ * Quebra a meta de faturamento anual em 4 alvos trimestrais (iguais) e cruza cada
+ * um com a receita já recebida no trimestre, respondendo "em que trimestre eu
+ * fiquei para trás?". Função pura.
+ *
+ * - O alvo de cada trimestre é `meta/4`; os centavos restantes da divisão são
+ *   distribuídos aos primeiros trimestres, de modo que a soma dos 4 alvos seja
+ *   exatamente a meta.
+ * - `realized` por trimestre usa **só receitas recebidas** (`received`) com data no
+ *   ano — a mesma base de caixa do `realized` da meta anual (`computeGoalProgress`).
+ * - O `status` depende do tempo: trimestres futuros ficam "upcoming", o corrente
+ *   "in-progress" (até bater o alvo), os já encerrados "hit"/"missed".
+ *
+ * Valores são saneados (não-finitos → 0; meta negativa → 0).
+ */
+export function quarterlyGoalProgress(
+  txs: TxLike[],
+  year: number,
+  goal: number,
+  opts: { now?: Date | string } = {},
+): QuarterlyGoalProgress {
+  const sane = (n: number) => (Number.isFinite(n) ? n : 0);
+  const safeGoal = Math.max(0, Math.round(sane(goal)));
+
+  // Alvos por trimestre: meta/4 com os centavos da divisão distribuídos aos
+  // primeiros trimestres, para que a soma dos 4 seja exatamente a meta.
+  const base = Math.floor(safeGoal / 4);
+  const extra = safeGoal - base * 4; // 0–3
+  const targets = [0, 1, 2, 3].map((q) => base + (q < extra ? 1 : 0));
+
+  // Receita recebida (caixa) por trimestre — mesma base do `realized` da meta anual.
+  const prefix = `${year}-`;
+  const realizedByQuarter = [0, 0, 0, 0];
+  for (const t of txs) {
+    if (t.type !== "INCOME" || !t.received) continue;
+    const key = monthKey(t.date);
+    if (!key.startsWith(prefix)) continue;
+    const monthIdx = Number(key.slice(5, 7)) - 1; // 0–11
+    if (monthIdx < 0 || monthIdx > 11) continue;
+    realizedByQuarter[Math.floor(monthIdx / 3)] += t.amount;
+  }
+
+  const now = opts.now ? new Date(opts.now) : new Date();
+  const isCurrentYear = now.getUTCFullYear() === year;
+  const isPastYear = now.getUTCFullYear() > year;
+  const currentQuarterIdx = isCurrentYear
+    ? Math.floor(now.getUTCMonth() / 3)
+    : null;
+
+  const quarters: QuarterGoalProgress[] = [0, 1, 2, 3].map((q) => {
+    const target = targets[q];
+    const realized = realizedByQuarter[q];
+    const hit = target > 0 && realized >= target;
+    let status: QuarterGoalStatus;
+    if (hit) {
+      status = "hit";
+    } else if (isPastYear) {
+      status = "missed";
+    } else if (currentQuarterIdx == null) {
+      status = "upcoming"; // ano futuro: nada decorrido
+    } else if (q < currentQuarterIdx) {
+      status = "missed";
+    } else if (q === currentQuarterIdx) {
+      status = "in-progress";
+    } else {
+      status = "upcoming";
+    }
+    return {
+      quarter: q + 1,
+      label: QUARTER_LABELS[q],
+      target,
+      realized,
+      remaining: Math.max(0, target - realized),
+      ratio: target > 0 ? realized / target : 0,
+      status,
+    };
+  });
+
+  return {
+    year,
+    goal: safeGoal,
+    isCurrentYear,
+    currentQuarter: currentQuarterIdx == null ? null : currentQuarterIdx + 1,
+    quarters,
+    realized: sum(realizedByQuarter),
+    hitCount: quarters.filter((q) => q.status === "hit").length,
+  };
+}

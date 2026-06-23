@@ -2270,3 +2270,32 @@ contexto, decisão, justificativa e alternativas consideradas.
   apresenta.
 - `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
   nenhuma dependência nova; nenhuma mudança de schema.
+
+## D85 — Meta por trimestre na página de Metas (Sessão 93)
+- **Contexto:** a meta de faturamento é anual (D77), o card de pace diz se você está adiantado/atrasado
+  (D77) e o "Ritmo necessário" (D81) dá o número mensal que falta — mas faltava o horizonte intermediário
+  de revisão. O Resumo trimestral (D83) provou que o trimestre é a cadência natural entre o mês e o ano;
+  o mesmo recorte aplicado à meta responde a pergunta acionável "em qual trimestre eu fiquei para trás?".
+- **Decisão:** nova função pura `quarterlyGoalProgress(txs, year, goal, opts)` em `src/lib/finance.ts` que
+  quebra a meta anual em **4 alvos iguais** (meta/4) e cruza cada alvo com a receita já recebida no
+  trimestre. O `status` de cada trimestre depende do tempo (`hit`/`missed`/`in-progress`/`upcoming`),
+  permitindo distinguir um trimestre que ficou para trás de um que ainda nem começou. Card "Meta por
+  trimestre" em `/financas/metas`, com barra recebido/alvo por trimestre, selo de status e placar
+  "{N} de 4 batidos".
+- **Base de "recebido":** usa **só receitas recebidas** (`received`, regime de caixa), idêntica ao
+  `realized` de `computeGoalProgress` — e deliberadamente NÃO a competência de `quarterlySummary`. A meta
+  fala em dinheiro que entrou no caixa; medir o trimestre por competência inflaria o progresso com receita
+  ainda a receber e divergiria do headline anual.
+- **Divisão dos centavos:** o alvo é `floor(meta/4)` com o resto (0–3 centavos) distribuído aos primeiros
+  trimestres, garantindo que a soma dos 4 alvos seja exatamente a meta (sem perda por arredondamento).
+- **Reaproveitamento:** reusa os rótulos `QUARTER_LABELS` (D83) e os helpers internos `monthKey`/`sum`;
+  a varredura é única e a função é pura (recebe `now` injetável para os testes).
+- **Testes:** 7 casos puros para `quarterlyGoalProgress`. 625 testes verdes (eram 618).
+- **Alternativas consideradas:** (a) **alvos sazonais** (ponderar cada trimestre pela receita histórica do
+  ano anterior) — rejeitado por ora: mais sofisticado, mas com poucos anos de histórico fica ruidoso e o
+  alvo "1/4 igual" é o piso honesto e previsível; pode evoluir depois. (b) **metas mensais** (12 alvos) —
+  adiado: granularidade fina demais para a tela de meta, e o ritmo mensal já é coberto por `goalRunRate`
+  (D81); o trimestre é o passo certo agora. (c) levar o card ao Painel — adiado para uma sessão futura
+  (mesma evolução incremental que D80/D82 fizeram com os outros cards de meta).
+- `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
+  nenhuma dependência nova; nenhuma mudança de schema.
