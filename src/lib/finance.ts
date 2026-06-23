@@ -1005,6 +1005,11 @@ export interface QuarterlySummary {
 
 const QUARTER_LABELS = ["1º tri", "2º tri", "3º tri", "4º tri"];
 
+const MONTH_GOAL_LABELS = [
+  "jan", "fev", "mar", "abr", "mai", "jun",
+  "jul", "ago", "set", "out", "nov", "dez",
+];
+
 /**
  * Consolida as transações de um ano em 4 trimestres, com os totais do ano e o
  * melhor/pior trimestre (por resultado líquido) entre os que tiveram movimento.
@@ -4312,5 +4317,142 @@ export function quarterlyGoalProgress(
     quarters,
     realized: sum(realizedByQuarter),
     hitCount: quarters.filter((q) => q.status === "hit").length,
+  };
+}
+
+// A meta por trimestre (D85) dá a cadência intermediária; `monthlyGoalProgress`
+// é a granularidade mais fina — quebra a meta anual em 12 alvos iguais (meta/12,
+// com os centavos da divisão distribuídos aos primeiros meses para que a soma dos
+// 12 seja exatamente a meta) e cruza cada alvo com a receita JÁ RECEBIDA naquele
+// mês — a mesma base de caixa do `realized` da meta anual (`computeGoalProgress`)
+// e do trimestre (`quarterlyGoalProgress`). Responde "em qual mês eu fiquei para
+// trás?", com o detalhe que o trimestre esconde.
+//
+// Status por mês (mesma semântica de `quarterlyGoalProgress`):
+//   - "hit"         recebido ≥ alvo (com alvo > 0)
+//   - "upcoming"    mês ainda no futuro (ou ano futuro) — nada a cobrar ainda
+//   - "in-progress" mês corrente, alvo ainda não atingido
+//   - "missed"      mês já encerrado abaixo do alvo
+// Pura: varre as transações uma vez e faz aritmética. Ver DECISIONS.md.
+
+export type MonthGoalStatus = QuarterGoalStatus;
+
+export interface MonthGoalProgress {
+  /** Mês 1–12. */
+  month: number;
+  /** Rótulo curto, ex.: "jan". */
+  label: string;
+  /** Alvo do mês, em centavos (≈ meta/12; a soma dos 12 == meta). */
+  target: number;
+  /** Receita recebida (caixa) no mês, em centavos. */
+  realized: number;
+  /** max(0, target − realized). */
+  remaining: number;
+  /** realized / target, fração ≥ 0 (0 se o alvo for 0). */
+  ratio: number;
+  status: MonthGoalStatus;
+}
+
+export interface MonthlyGoalProgress {
+  /** Ano de referência. */
+  year: number;
+  /** Meta anual saneada (inteiro ≥ 0). */
+  goal: number;
+  /** True se `year` é o ano corrente de `now`. */
+  isCurrentYear: boolean;
+  /** Mês corrente 1–12 quando `isCurrentYear`; senão `null`. */
+  currentMonth: number | null;
+  /** Exatamente 12 meses (jan→dez). */
+  months: MonthGoalProgress[];
+  /** Soma do recebido nos 12 meses, em centavos. */
+  realized: number;
+  /** Quantos meses atingiram o alvo. */
+  hitCount: number;
+}
+
+/**
+ * Quebra a meta de faturamento anual em 12 alvos mensais (iguais) e cruza cada um
+ * com a receita já recebida no mês, respondendo "em que mês eu fiquei para trás?".
+ * Função pura — granularidade fina sobre `quarterlyGoalProgress` (D85).
+ *
+ * - O alvo de cada mês é `meta/12`; os centavos restantes da divisão são
+ *   distribuídos aos primeiros meses, de modo que a soma dos 12 alvos seja
+ *   exatamente a meta.
+ * - `realized` por mês usa **só receitas recebidas** (`received`) com data no ano —
+ *   a mesma base de caixa do `realized` da meta anual (`computeGoalProgress`).
+ * - O `status` depende do tempo: meses futuros ficam "upcoming", o corrente
+ *   "in-progress" (até bater o alvo), os já encerrados "hit"/"missed".
+ *
+ * Valores são saneados (não-finitos → 0; meta negativa → 0).
+ */
+export function monthlyGoalProgress(
+  txs: TxLike[],
+  year: number,
+  goal: number,
+  opts: { now?: Date | string } = {},
+): MonthlyGoalProgress {
+  const sane = (n: number) => (Number.isFinite(n) ? n : 0);
+  const safeGoal = Math.max(0, Math.round(sane(goal)));
+
+  // Alvos por mês: meta/12 com os centavos da divisão distribuídos aos primeiros
+  // meses, para que a soma dos 12 seja exatamente a meta.
+  const base = Math.floor(safeGoal / 12);
+  const extra = safeGoal - base * 12; // 0–11
+  const targets = Array.from({ length: 12 }, (_, m) => base + (m < extra ? 1 : 0));
+
+  // Receita recebida (caixa) por mês — mesma base do `realized` da meta anual.
+  const prefix = `${year}-`;
+  const realizedByMonth = Array.from({ length: 12 }, () => 0);
+  for (const t of txs) {
+    if (t.type !== "INCOME" || !t.received) continue;
+    const key = monthKey(t.date);
+    if (!key.startsWith(prefix)) continue;
+    const monthIdx = Number(key.slice(5, 7)) - 1; // 0–11
+    if (monthIdx < 0 || monthIdx > 11) continue;
+    realizedByMonth[monthIdx] += t.amount;
+  }
+
+  const now = opts.now ? new Date(opts.now) : new Date();
+  const isCurrentYear = now.getUTCFullYear() === year;
+  const isPastYear = now.getUTCFullYear() > year;
+  const currentMonthIdx = isCurrentYear ? now.getUTCMonth() : null;
+
+  const months: MonthGoalProgress[] = Array.from({ length: 12 }, (_, m) => {
+    const target = targets[m];
+    const realized = realizedByMonth[m];
+    const hit = target > 0 && realized >= target;
+    let status: MonthGoalStatus;
+    if (hit) {
+      status = "hit";
+    } else if (isPastYear) {
+      status = "missed";
+    } else if (currentMonthIdx == null) {
+      status = "upcoming"; // ano futuro: nada decorrido
+    } else if (m < currentMonthIdx) {
+      status = "missed";
+    } else if (m === currentMonthIdx) {
+      status = "in-progress";
+    } else {
+      status = "upcoming";
+    }
+    return {
+      month: m + 1,
+      label: MONTH_GOAL_LABELS[m],
+      target,
+      realized,
+      remaining: Math.max(0, target - realized),
+      ratio: target > 0 ? realized / target : 0,
+      status,
+    };
+  });
+
+  return {
+    year,
+    goal: safeGoal,
+    isCurrentYear,
+    currentMonth: currentMonthIdx == null ? null : currentMonthIdx + 1,
+    months,
+    realized: sum(realizedByMonth),
+    hitCount: months.filter((m) => m.status === "hit").length,
   };
 }

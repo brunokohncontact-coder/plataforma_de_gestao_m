@@ -66,6 +66,7 @@ import {
   compareGoalScenarios,
   goalRunRate,
   quarterlyGoalProgress,
+  monthlyGoalProgress,
   type TxLike,
   type ShowLike,
   type VenueShowLike,
@@ -3970,5 +3971,84 @@ describe("quarterlyGoalProgress", () => {
     expect(q.goal).toBe(0);
     expect(q.quarters.every((x) => x.target === 0)).toBe(true);
     expect(q.hitCount).toBe(0);
+  });
+});
+
+describe("monthlyGoalProgress", () => {
+  it("divide a meta em 12 alvos que somam exatamente a meta", () => {
+    // 120.007 centavos → base 10.000, resto 7 distribuído aos 7 primeiros meses.
+    const m = monthlyGoalProgress([], 2026, 120_007, { now: "2026-12-31T12:00:00Z" });
+    const targets = m.months.map((x) => x.target);
+    expect(targets).toEqual([
+      10_001, 10_001, 10_001, 10_001, 10_001, 10_001, 10_001,
+      10_000, 10_000, 10_000, 10_000, 10_000,
+    ]);
+    expect(targets.reduce((a, b) => a + b, 0)).toBe(120_007);
+    expect(m.months).toHaveLength(12);
+  });
+
+  it("conta só receitas recebidas no ano e as agrupa por mês", () => {
+    const txs = [
+      tx({ type: "INCOME", amount: 10_000_00, received: true, date: "2026-02-10" }), // fev
+      tx({ type: "INCOME", amount: 5_000_00, received: false, date: "2026-02-15" }), // a receber → ignora
+      tx({ type: "INCOME", amount: 8_000_00, received: true, date: "2026-05-01" }), // mai
+      tx({ type: "EXPENSE", amount: 9_999_00, received: true, date: "2026-02-01" }), // despesa → ignora
+      tx({ type: "INCOME", amount: 1_000_00, received: true, date: "2025-12-31" }), // outro ano → ignora
+    ];
+    const m = monthlyGoalProgress(txs, 2026, 120_000_00, { now: "2026-12-31T12:00:00Z" });
+    expect(m.months[1].realized).toBe(10_000_00); // fev
+    expect(m.months[4].realized).toBe(8_000_00); // mai
+    expect(m.realized).toBe(18_000_00);
+  });
+
+  it("marca hit/missed por mês num ano já encerrado", () => {
+    // meta 120k → alvo 10k/mês.
+    const txs = [
+      tx({ type: "INCOME", amount: 12_000_00, received: true, date: "2025-01-15" }), // jan ≥ 10k → hit
+      tx({ type: "INCOME", amount: 3_000_00, received: true, date: "2025-06-01" }), // jun < 10k → missed
+    ];
+    const m = monthlyGoalProgress(txs, 2025, 120_000_00, { now: "2026-06-01T12:00:00Z" });
+    expect(m.isCurrentYear).toBe(false);
+    expect(m.currentMonth).toBeNull();
+    expect(m.months[0].status).toBe("hit");
+    expect(m.months[5].status).toBe("missed");
+    expect(m.months.every((x) => x.status === "hit" || x.status === "missed")).toBe(true);
+    expect(m.hitCount).toBe(1);
+    expect(m.months[5].remaining).toBe(7_000_00);
+  });
+
+  it("no ano corrente: passado=missed/hit, atual=in-progress, futuro=upcoming", () => {
+    // now em maio (mês 5, idx 4). jan abaixo do alvo, mai em andamento.
+    const txs = [
+      tx({ type: "INCOME", amount: 2_000_00, received: true, date: "2026-01-10" }), // jan < 10k
+      tx({ type: "INCOME", amount: 1_000_00, received: true, date: "2026-05-02" }), // mai parcial
+    ];
+    const m = monthlyGoalProgress(txs, 2026, 120_000_00, { now: "2026-05-15T12:00:00Z" });
+    expect(m.currentMonth).toBe(5);
+    expect(m.months[0].status).toBe("missed"); // jan
+    expect(m.months[4].status).toBe("in-progress"); // mai
+    expect(m.months[5].status).toBe("upcoming"); // jun
+    expect(m.months[11].status).toBe("upcoming"); // dez
+  });
+
+  it("um mês que já bateu o alvo fica hit mesmo sendo o corrente", () => {
+    const txs = [tx({ type: "INCOME", amount: 15_000_00, received: true, date: "2026-05-01" })];
+    const m = monthlyGoalProgress(txs, 2026, 120_000_00, { now: "2026-05-15T12:00:00Z" });
+    expect(m.months[4].status).toBe("hit");
+    expect(m.months[4].ratio).toBeCloseTo(15_000_00 / 10_000_00);
+  });
+
+  it("ano futuro: todos os meses upcoming, nada recebido", () => {
+    const m = monthlyGoalProgress([], 2030, 120_000_00, { now: "2026-06-01T12:00:00Z" });
+    expect(m.months.every((x) => x.status === "upcoming")).toBe(true);
+    expect(m.hitCount).toBe(0);
+  });
+
+  it("saneia meta negativa/não-finita para zero (sem hit)", () => {
+    const txs = [tx({ type: "INCOME", amount: 1_000_00, received: true, date: "2026-02-01" })];
+    const m = monthlyGoalProgress(txs, 2026, -50_000_00, { now: "2026-12-31T12:00:00Z" });
+    expect(m.goal).toBe(0);
+    expect(m.months.every((x) => x.target === 0)).toBe(true);
+    expect(m.hitCount).toBe(0);
   });
 });
