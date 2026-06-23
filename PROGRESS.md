@@ -2101,6 +2101,22 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   `/login` → 200, `/financas/metas` sem sessão → 307. `npm audit` inalterado (10 advisories: 4 moderate /
   5 high / 1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8). Ver **DECISIONS.md D87**.
 
+### Sessão 96 — Tira mensal de meta no Painel (sparkline) (D88)
+- **UI apenas** (`src/app/(app)/dashboard/page.tsx`): nova tira compacta "Por mês" no card "Meta de
+  {ano}", abaixo da tira trimestral (Sessão 94/D86) — 12 mini-barras (uma por mês, cor pelo status)
+  como uma sparkline que mostra de relance em qual mês o ritmo caiu, com o placar "{N} de 12 batidos".
+  Rótulo de cada barra é a inicial do mês (J/F/M/...); o detalhe completo (valores, selos) está em
+  `/financas/metas`. Só aparece com meta > 0.
+- **Reúso**: chama `monthlyGoalProgress` (D87) — nenhuma lógica nova. O mapa de cor de barra do
+  dashboard foi renomeado de `QUARTER_BAR` para `GOAL_BAR` (mês e trimestre compartilham a mesma união
+  de status `QuarterGoalStatus`; `MonthGoalStatus` é alias dela), reaproveitado pelas duas tiras.
+- **Testes:** nenhum novo — a lógica (`monthlyGoalProgress`) já tem 7 casos puros (Sessão 95); a mudança
+  é puramente de apresentação. Os 632 testes seguem verdes.
+- Definition of Done verde: build (`prisma generate && next build`) OK; typecheck (`tsc --noEmit`) limpo;
+  lint (0 warnings/erros); **632 testes** (`vitest run`); smoke test ao vivo (`next start`): `/login` → 200.
+  `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem
+  mudança de schema — ver D6/D8). Ver **DECISIONS.md D88**.
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
@@ -2198,9 +2214,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    atual em destaque) + placar "{N} de 4 batidos" no card "Meta de {ano}" do dashboard, reaproveitando
    `quarterlyGoalProgress`, ver D86; **meta por mês na página de Metas** entregue na Sessão 95 —
    `monthlyGoalProgress` + card "Meta por mês" em `/financas/metas`, quebrando a meta anual em 12 alvos
-   iguais (grade de mini-blocos, placar "{N} de 12 batidos"), ver D87. Próximo possível —
-   levar a tira mensal ao Painel (formato compacto/sparkline, a decidir), ou alerta proativo (e-mail/badge)
-   quando a meta passa a depender só de shows a confirmar.
+   iguais (grade de mini-blocos, placar "{N} de 12 batidos"), ver D87; **tira mensal de meta no Painel**
+   entregue na Sessão 96 — sparkline de 12 mini-barras (cor pelo status, inicial do mês) + placar "{N} de
+   12 batidos" no card "Meta de {ano}" do dashboard, abaixo da tira trimestral, reaproveitando
+   `monthlyGoalProgress` (mapa de cor unificado `GOAL_BAR`), ver D88. Próximo possível — alerta proativo
+   (e-mail/badge) quando a meta passa a depender só de shows a confirmar, ou um scroll-spy/scroll para o
+   mês corrente na tira.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)
