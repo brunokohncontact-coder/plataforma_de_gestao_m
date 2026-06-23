@@ -159,6 +159,13 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "📆",
       },
       {
+        title: "Resumo trimestral",
+        href: "/financas/trimestral",
+        description: "Os 4 trimestres do ano, com totais e o melhor/pior — a revisão entre o mês e o ano.",
+        subtopic: "Fechamentos",
+        icon: "🗂️",
+      },
+      {
         title: "Projeção de fechamento",
         href: "/financas/projecao-ano",
         description:

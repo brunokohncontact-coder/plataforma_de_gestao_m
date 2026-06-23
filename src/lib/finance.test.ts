@@ -24,6 +24,7 @@ import {
   projectCashflow,
   buildDueAgenda,
   annualSummary,
+  quarterlySummary,
   compareAnnualSummaries,
   annualCategoryReport,
   availableYears,
@@ -1232,6 +1233,90 @@ describe("annualSummary", () => {
     );
     expect(a.best?.month).toBe("2026-04");
     expect(a.worst?.month).toBe("2026-04");
+  });
+});
+
+describe("quarterlySummary", () => {
+  it("retorna 4 trimestres (Q1→Q4) mesmo sem transações", () => {
+    const q = quarterlySummary([], 2026);
+    expect(q.year).toBe(2026);
+    expect(q.quarters).toHaveLength(4);
+    expect(q.quarters[0]).toMatchObject({
+      quarter: 1,
+      label: "1º tri",
+      monthIndexes: [1, 2, 3],
+    });
+    expect(q.quarters[3]).toMatchObject({
+      quarter: 4,
+      label: "4º tri",
+      monthIndexes: [10, 11, 12],
+    });
+    expect(q.totalIncome).toBe(0);
+    expect(q.totalExpense).toBe(0);
+    expect(q.net).toBe(0);
+    expect(q.best).toBeNull();
+    expect(q.worst).toBeNull();
+  });
+
+  it("agrupa os meses no trimestre certo e soma os totais do ano", () => {
+    const q = quarterlySummary(
+      [
+        tx({ type: "INCOME", amount: 100_00, date: "2026-01-10T00:00:00.000Z" }),
+        tx({ type: "EXPENSE", amount: 30_00, date: "2026-03-20T00:00:00.000Z" }),
+        tx({ type: "INCOME", amount: 50_00, date: "2026-07-05T00:00:00.000Z" }),
+        tx({ type: "INCOME", amount: 20_00, date: "2026-12-31T00:00:00.000Z" }),
+      ],
+      2026,
+    );
+    // Q1: jan +100, mar -30  → net 70
+    expect(q.quarters[0]).toMatchObject({ income: 100_00, expense: 30_00, net: 70_00 });
+    // Q2: sem movimento
+    expect(q.quarters[1]).toMatchObject({ income: 0, expense: 0, net: 0 });
+    // Q3: jul +50
+    expect(q.quarters[2]).toMatchObject({ income: 50_00, expense: 0, net: 50_00 });
+    // Q4: dez +20
+    expect(q.quarters[3]).toMatchObject({ income: 20_00, expense: 0, net: 20_00 });
+    expect(q.totalIncome).toBe(170_00);
+    expect(q.totalExpense).toBe(30_00);
+    expect(q.net).toBe(140_00);
+  });
+
+  it("ignora transações de outros anos", () => {
+    const q = quarterlySummary(
+      [
+        tx({ type: "INCOME", amount: 100_00, date: "2025-12-31T00:00:00.000Z" }),
+        tx({ type: "INCOME", amount: 200_00, date: "2027-01-01T00:00:00.000Z" }),
+        tx({ type: "INCOME", amount: 40_00, date: "2026-06-15T00:00:00.000Z" }),
+      ],
+      2026,
+    );
+    expect(q.totalIncome).toBe(40_00);
+    expect(q.quarters[1].income).toBe(40_00); // Q2 (jun)
+  });
+
+  it("aponta o melhor e o pior trimestre por resultado, só entre os com movimento", () => {
+    const q = quarterlySummary(
+      [
+        tx({ type: "INCOME", amount: 100_00, date: "2026-02-10T00:00:00.000Z" }), // Q1
+        tx({ type: "EXPENSE", amount: 80_00, date: "2026-05-10T00:00:00.000Z" }), // Q2
+        tx({ type: "INCOME", amount: 20_00, date: "2026-09-10T00:00:00.000Z" }), // Q3
+      ],
+      2026,
+    );
+    expect(q.best?.quarter).toBe(1); // net +100
+    expect(q.worst?.quarter).toBe(2); // net -80
+  });
+
+  it("desempata o melhor/pior trimestre pelo mais cedo", () => {
+    const q = quarterlySummary(
+      [
+        tx({ type: "INCOME", amount: 50_00, date: "2026-04-10T00:00:00.000Z" }), // Q2
+        tx({ type: "INCOME", amount: 50_00, date: "2026-10-10T00:00:00.000Z" }), // Q4
+      ],
+      2026,
+    );
+    expect(q.best?.quarter).toBe(2);
+    expect(q.worst?.quarter).toBe(2);
   });
 });
 

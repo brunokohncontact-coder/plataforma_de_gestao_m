@@ -965,6 +965,90 @@ export function annualCategoryReport(txs: TxLike[], year: number): CategoryRepor
   return categoryReport(inYear);
 }
 
+// ── Resumo trimestral ────────────────────────────────────────────────────────
+//
+// Entre o Relatório mensal (um mês) e o Resumo anual (12 meses) falta a cadência
+// trimestral — o período natural de revisão de progresso (e de pacing contra a
+// meta anual de faturamento). Esta função deriva os 4 trimestres do
+// `annualSummary` (uma só fonte de verdade da agregação mensal), agrupando
+// jan–mar (Q1), abr–jun (Q2), jul–set (Q3) e out–dez (Q4). Pura.
+
+export interface QuarterSummary {
+  /** Trimestre 1–4. */
+  quarter: number;
+  /** Rótulo curto, ex.: "1º tri". */
+  label: string;
+  /** Meses (1–12) que compõem o trimestre. */
+  monthIndexes: number[];
+  income: number;
+  expense: number;
+  /** income − expense (regime de competência). */
+  net: number;
+}
+
+export interface QuarterlySummary {
+  /** Ano de referência. */
+  year: number;
+  /** Exatamente 4 trimestres (Q1→Q4), zeros inclusive. */
+  quarters: QuarterSummary[];
+  /** Soma das receitas do ano. */
+  totalIncome: number;
+  /** Soma das despesas do ano. */
+  totalExpense: number;
+  /** totalIncome − totalExpense. */
+  net: number;
+  /** Trimestre de maior resultado entre os com movimento; null se nenhum teve. */
+  best: QuarterSummary | null;
+  /** Trimestre de menor resultado entre os com movimento; null se nenhum teve. */
+  worst: QuarterSummary | null;
+}
+
+const QUARTER_LABELS = ["1º tri", "2º tri", "3º tri", "4º tri"];
+
+/**
+ * Consolida as transações de um ano em 4 trimestres, com os totais do ano e o
+ * melhor/pior trimestre (por resultado líquido) entre os que tiveram movimento.
+ * Responde "como foi cada trimestre?" — a cadência de revisão entre o mês e o
+ * ano. Deriva do `annualSummary` (mesma fonte de agregação mensal); pura.
+ */
+export function quarterlySummary(txs: TxLike[], year: number): QuarterlySummary {
+  const annual = annualSummary(txs, year);
+
+  const quarters: QuarterSummary[] = [0, 1, 2, 3].map((q) => {
+    const months = annual.months.slice(q * 3, q * 3 + 3);
+    const income = sum(months.map((m) => m.income));
+    const expense = sum(months.map((m) => m.expense));
+    return {
+      quarter: q + 1,
+      label: QUARTER_LABELS[q],
+      monthIndexes: months.map((m) => m.monthIndex),
+      income,
+      expense,
+      net: income - expense,
+    };
+  });
+
+  // Melhor/pior entre trimestres com movimento (receita ou despesa > 0). Empate
+  // pelo trimestre mais cedo (ordem estável, já que percorremos Q1→Q4).
+  const active = quarters.filter((q) => q.income > 0 || q.expense > 0);
+  let best: QuarterSummary | null = null;
+  let worst: QuarterSummary | null = null;
+  for (const q of active) {
+    if (best === null || q.net > best.net) best = q;
+    if (worst === null || q.net < worst.net) worst = q;
+  }
+
+  return {
+    year,
+    quarters,
+    totalIncome: annual.totalIncome,
+    totalExpense: annual.totalExpense,
+    net: annual.net,
+    best,
+    worst,
+  };
+}
+
 /** Anos presentes nas transações, em ordem decrescente. */
 export function availableYears(txs: TxLike[]): number[] {
   const set = new Set<number>();
