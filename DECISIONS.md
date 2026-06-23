@@ -2196,3 +2196,25 @@ contexto, decisão, justificativa e alternativas consideradas.
   natural; o helper puro fica pronto para o Painel adotar depois (mesmo caminho de D79→D80).
 - `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
   nenhuma dependência nova; nenhuma mudança de schema.
+
+## D82 — Ritmo necessário no card de meta do Painel (Sessão 90)
+- **Contexto:** D81 entregou o helper puro `goalRunRate` e o card "Ritmo necessário" na página de Metas,
+  e deixou explícito como adiado "levar o card ao Painel depois (mesmo caminho de D79→D80, helper puro já
+  testado)". O card "Meta de {ano}" do Painel mostrava o ritmo qualitativo (`pace`: adiantado/atrasado) e
+  o piso conservador (D80), mas não o número acionável — quanto receber por mês para fechar a meta.
+- **Decisão:** computar `goalRun = goalRunRate(goalProgress, {})` no `dashboard/page.tsx` e, quando
+  `applicable && verdict !== "hit"`, anexar ao card de meta uma linha compacta "Ritmo necessário:
+  {requiredPerMonth}/mês", colorida pelo `verdict` (verde on-pace / âmbar stretch / vermelho hard / cinza
+  unknown) — espelhando a redação do card da página de Metas, condensada para o Painel.
+- **Zero I/O extra:** `goalRunRate` deriva só do `goalProgress` (`RevenueGoalProgress`) já computado no
+  dashboard; nenhuma consulta nem recálculo de transações/shows. Mesma postura das Sessões 75/77/88 (linhas
+  reaproveitando helpers puros já em mãos no card do Painel).
+- **Sem testes novos:** `goalRunRate`/`computeGoalProgress` já têm cobertura pura (D77/D81); esta é uma
+  mudança de UI que reusa o helper testado. 609 testes verdes.
+- **Só aparece quando acionável:** a linha some fora do ano corrente, sem meta, ou com a meta já batida
+  (`verdict === "hit"`) — sem ruído, coerente com o card da página de Metas.
+- **Alternativas consideradas:** (a) replicar os dois Stats (necessário/mês + ritmo atual) do card de Metas —
+  exagero para um card-resumo; o Painel quer uma linha com link "Ver detalhe". (b) mostrar mesmo com a meta
+  batida — descartado: redundante com o "100%"/barra cheia já visível.
+- `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
+  nenhuma dependência nova; nenhuma mudança de schema.
