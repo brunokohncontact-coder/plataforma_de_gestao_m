@@ -7,8 +7,11 @@ import {
   computeGoalProgress,
   compareGoalScenarios,
   goalRunRate,
+  quarterlyGoalProgress,
   type GoalScenarioComparison,
   type GoalRunRate,
+  type QuarterlyGoalProgress,
+  type QuarterGoalProgress,
   type TxLike,
   type YearEndShowLike,
 } from "@/lib/finance";
@@ -104,6 +107,9 @@ export default async function GoalsPage({
         {},
       )
     : null;
+  // Quebra a meta anual em 4 alvos trimestrais e cruza cada um com o recebido do
+  // trimestre — "em qual trimestre eu fiquei para trás?".
+  const quarterly = goal ? quarterlyGoalProgress(txs, year, goal.amount, {}) : null;
 
   return (
     <div className="space-y-6">
@@ -138,6 +144,10 @@ export default async function GoalsPage({
 
           {runRate?.applicable && runRate.verdict !== "hit" && (
             <RunRateCard runRate={runRate} />
+          )}
+
+          {quarterly && quarterly.goal > 0 && (
+            <QuarterlyCard quarterly={quarterly} />
           )}
 
           <section className="card space-y-4">
@@ -380,6 +390,91 @@ function RunRateCard({ runRate }: { runRate: GoalRunRate }) {
           : gapPerMonth > 0
             ? `Para bater a meta você precisa de ${formatMoney(requiredPerMonth)}/mês — ${formatMoney(gapPerMonth)} a mais por mês do que vem recebendo (${formatMoney(currentPerMonth)}/mês).`
             : `No ritmo atual de ${formatMoney(currentPerMonth)}/mês você cobre os ${formatMoney(requiredPerMonth)}/mês que faltam. Mantenha o passo.`}
+      </p>
+    </section>
+  );
+}
+
+const QUARTER_STATUS: Record<
+  QuarterGoalProgress["status"],
+  { label: string; badge: string; bar: string }
+> = {
+  hit: {
+    label: "Batido",
+    badge: "bg-emerald-100 text-emerald-800",
+    bar: "bg-emerald-500",
+  },
+  missed: {
+    label: "Abaixo",
+    badge: "bg-amber-100 text-amber-800",
+    bar: "bg-amber-500",
+  },
+  "in-progress": {
+    label: "Em andamento",
+    badge: "bg-brand-100 text-brand-700",
+    bar: "bg-brand-500",
+  },
+  upcoming: {
+    label: "A seguir",
+    badge: "bg-gray-100 text-gray-500",
+    bar: "bg-gray-300",
+  },
+};
+
+function QuarterlyCard({ quarterly }: { quarterly: QuarterlyGoalProgress }) {
+  return (
+    <section className="card space-y-4">
+      <div>
+        <h2 className="font-semibold">Meta por trimestre</h2>
+        <p className="mt-1 text-sm text-gray-500">
+          A meta anual dividida em quatro alvos iguais, cada um comparado ao que você
+          já recebeu no trimestre · {quarterly.hitCount} de 4 batidos
+        </p>
+      </div>
+
+      <ul className="space-y-3">
+        {quarterly.quarters.map((q) => {
+          const cfg = QUARTER_STATUS[q.status];
+          const width = Math.min(100, Math.round(q.ratio * 100));
+          const isCurrent = quarterly.currentQuarter === q.quarter;
+          return (
+            <li key={q.quarter} className="space-y-1.5">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-sm">
+                <span className="flex items-center gap-2">
+                  <span className="font-medium text-gray-900">{q.label}</span>
+                  {isCurrent && (
+                    <span className="text-xs text-brand-700">(atual)</span>
+                  )}
+                  <span
+                    className={
+                      "rounded-full px-2 py-0.5 text-xs font-medium " + cfg.badge
+                    }
+                  >
+                    {cfg.label}
+                  </span>
+                </span>
+                <span className="text-gray-600">
+                  <span className="font-semibold text-gray-900">
+                    {formatMoney(q.realized)}
+                  </span>{" "}
+                  / {formatMoney(q.target)} · {pct(q.ratio)}
+                </span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+                <div
+                  className={"h-full rounded-full " + cfg.bar}
+                  style={{ width: `${width}%` }}
+                  aria-hidden
+                />
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+
+      <p className="text-xs text-gray-500">
+        O alvo de cada trimestre é a meta anual dividida por quatro. Conta apenas a
+        receita já recebida (caixa), na mesma base do progresso anual.
       </p>
     </section>
   );
