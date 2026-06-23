@@ -2040,6 +2040,27 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   ao login). `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência
   nova nem mudança de schema — ver D6/D8). Ver **DECISIONS.md D83**.
 
+### Sessão 92 — Exportação CSV do Resumo trimestral (D84)
+- **Lógica pura** (`src/lib/csv.ts`): nova função `quarterlySummaryToCsv(summary)` + cabeçalhos
+  `QUARTERLY_SUMMARY_CSV_HEADERS` (Trimestre / Período / Receitas / Despesas / Resultado). Os 4
+  trimestres saem sempre (Q1→Q4, zeros inclusive) com a coluna "Período" ("Janeiro–Março") seguidos de
+  uma linha "Total do ano" — espelha a tabela "Trimestre a trimestre" da página e a mesma convenção
+  pt-BR de `annualSummaryToCsv` (delimitador ";", decimal com vírgula, BOM UTF-8 na camada HTTP).
+- **Rota** (`src/app/(app)/financas/trimestral/export/route.ts`): handler `GET` análogo ao
+  `/financas/anual/export` — `requireUser`, lê o ano de `?ano=YYYY` (mesmo `parseYear`/validação),
+  serializa via a camada pura e baixa `financas-trimestral-{ano}.csv`. Fecha a lacuna: o Resumo anual já
+  exportava CSV, o trimestral não.
+- **UI** (`src/app/(app)/financas/trimestral/page.tsx`): botão "⬇ CSV" no cabeçalho (só com movimento no
+  ano), espelhando o do Resumo anual.
+- **Testes:** 4 casos puros novos para `quarterlySummaryToCsv` (cabeçalho + 4 trimestres + total = 6
+  linhas; agregação no trimestre certo + total do ano; resultado negativo preservado; ignora outros anos).
+- Definition of Done verde: build (`prisma generate && next build`) OK — rota
+  `/financas/trimestral/export` gerada; typecheck (`tsc --noEmit`) limpo; lint (0 warnings/erros);
+  **618 testes** (`vitest run`, eram 614); smoke test ao vivo (`next start`): `/login` e `/` → 200,
+  `/financas/trimestral` e `/financas/trimestral/export` → 307 (protegidas, redirecionam ao login).
+  `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem
+  mudança de schema — ver D6/D8). Ver **DECISIONS.md D84**.
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único

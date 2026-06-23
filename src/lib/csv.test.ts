@@ -8,13 +8,15 @@ import {
   transactionsToCsv,
   showsToCsv,
   annualSummaryToCsv,
+  quarterlySummaryToCsv,
   TRANSACTION_CSV_HEADERS,
   SHOW_CSV_HEADERS,
   ANNUAL_SUMMARY_CSV_HEADERS,
+  QUARTERLY_SUMMARY_CSV_HEADERS,
   type CsvTransaction,
   type CsvShow,
 } from "./csv";
-import { annualSummary } from "./finance";
+import { annualSummary, quarterlySummary } from "./finance";
 
 describe("escapeCsvField", () => {
   it("não envolve em aspas campos simples", () => {
@@ -241,5 +243,52 @@ describe("annualSummaryToCsv", () => {
     ];
     const csv = annualSummaryToCsv(annualSummary(txs, 2026));
     expect(csv.split("\r\n")[13]).toBe("Total do ano (2026);0,00;0,00;0,00");
+  });
+});
+
+describe("quarterlySummaryToCsv", () => {
+  it("emite cabeçalho + 4 trimestres + linha de total (6 linhas)", () => {
+    const csv = quarterlySummaryToCsv(quarterlySummary([], 2026));
+    const lines = csv.split("\r\n");
+    expect(lines).toHaveLength(6);
+    expect(lines[0]).toBe(QUARTERLY_SUMMARY_CSV_HEADERS.join(";"));
+    // Sem transações: trimestres zerados, na ordem Q1→Q4, com período.
+    expect(lines[1]).toBe("1º tri 2026;Janeiro–Março;0,00;0,00;0,00");
+    expect(lines[4]).toBe("4º tri 2026;Outubro–Dezembro;0,00;0,00;0,00");
+    expect(lines[5]).toBe("Total do ano (2026);;0,00;0,00;0,00");
+  });
+
+  it("agrega receitas e despesas no trimestre certo e totaliza o ano", () => {
+    const txs = [
+      { type: "INCOME" as const, amount: 150000, category: "Cachê", date: "2026-03-10T12:00:00Z", received: true, showId: null },
+      { type: "EXPENSE" as const, amount: 50000, category: "Transporte", date: "2026-03-20T12:00:00Z", received: true, showId: null },
+      { type: "INCOME" as const, amount: 80000, category: "Cachê", date: "2026-07-01T12:00:00Z", received: false, showId: null },
+    ];
+    const csv = quarterlySummaryToCsv(quarterlySummary(txs, 2026));
+    const lines = csv.split("\r\n");
+    // Q1 (linha 1): 1500 receita, 500 despesa, 1000 resultado.
+    expect(lines[1]).toBe("1º tri 2026;Janeiro–Março;1500,00;500,00;1000,00");
+    // Q3 (linha 3): só 800 de receita.
+    expect(lines[3]).toBe("3º tri 2026;Julho–Setembro;800,00;0,00;800,00");
+    // Total: 2300 receita, 500 despesa, 1800 resultado.
+    expect(lines[5]).toBe("Total do ano (2026);;2300,00;500,00;1800,00");
+  });
+
+  it("preserva resultado negativo no trimestre e no total", () => {
+    const txs = [
+      { type: "EXPENSE" as const, amount: 30000, category: "Equipamento", date: "2026-01-15T12:00:00Z", received: true, showId: null },
+    ];
+    const csv = quarterlySummaryToCsv(quarterlySummary(txs, 2026));
+    const lines = csv.split("\r\n");
+    expect(lines[1]).toBe("1º tri 2026;Janeiro–Março;0,00;300,00;-300,00");
+    expect(lines[5]).toBe("Total do ano (2026);;0,00;300,00;-300,00");
+  });
+
+  it("ignora transações de outros anos", () => {
+    const txs = [
+      { type: "INCOME" as const, amount: 99900, category: "Cachê", date: "2025-12-31T12:00:00Z", received: true, showId: null },
+    ];
+    const csv = quarterlySummaryToCsv(quarterlySummary(txs, 2026));
+    expect(csv.split("\r\n")[5]).toBe("Total do ano (2026);;0,00;0,00;0,00");
   });
 });
