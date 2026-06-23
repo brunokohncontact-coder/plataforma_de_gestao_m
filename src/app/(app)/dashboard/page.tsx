@@ -22,7 +22,9 @@ import {
   computeGoalProgress,
   compareGoalScenarios,
   goalRunRate,
+  quarterlyGoalProgress,
   type TxLike,
+  type QuarterGoalStatus,
   type ReceivableShowLike,
   type ShowLike,
   type YearEndShowLike,
@@ -35,6 +37,16 @@ import { formatDate, formatMonthKey } from "@/lib/format";
 import { SHOW_STATUS_LABELS, SHOW_STATUS_COLORS, type ShowStatus } from "@/lib/domain";
 
 export const dynamic = "force-dynamic";
+
+// Cor da mini-barra de cada trimestre na tira compacta do card de meta, por status
+// (mesma semântica das cores da página de Metas: batido=verde, abaixo=âmbar,
+// em andamento=marca, a seguir=cinza). Ver D85 / quarterlyGoalProgress.
+const QUARTER_BAR: Record<QuarterGoalStatus, string> = {
+  hit: "bg-emerald-500",
+  missed: "bg-amber-500",
+  "in-progress": "bg-brand-500",
+  upcoming: "bg-gray-300",
+};
 
 export default async function DashboardPage() {
   const user = await requireUser();
@@ -135,6 +147,13 @@ export default async function DashboardPage() {
   // `goalProgress` já computado (sem I/O nem recálculo). Só vira linha no card
   // quando é acionável (ano corrente, meta > 0) e a meta ainda não foi batida.
   const goalRun = goalProgress ? goalRunRate(goalProgress, {}) : null;
+  // Meta por trimestre (D85): quebra a meta anual em 4 alvos iguais cruzados com o
+  // recebido (caixa) de cada trimestre, respondendo "em qual trimestre fiquei para
+  // trás?". Reaproveita as transações já carregadas (sem I/O extra). Só vira a tira
+  // compacta no card de meta quando há meta definida para o ano corrente.
+  const quarterly = revenueGoal
+    ? quarterlyGoalProgress(txs, currentYear, revenueGoal.amount, {})
+    : null;
   // Pior caso: cruza os dois eixos conservadores num só piso — receita só de shows
   // confirmados (D66) E despesa somando o custo fixo recorrente futuro (D62), ver
   // D68. Só vira linha quando AMBOS os eixos mordem; sem um deles, o pior caso
@@ -483,6 +502,41 @@ export default async function DashboardPage() {
                     ? `— ${formatMoney(goalRun.gapPerMonth)} a mais por mês do que vem recebendo (${formatMoney(goalRun.currentPerMonth)}/mês).`
                     : `no seu ritmo atual de ${formatMoney(goalRun.currentPerMonth)}/mês você cobre. Mantenha o passo.`}
               </p>
+            )}
+            {/* Por trimestre (D85): tira compacta de 4 mini-barras (uma por trimestre,
+                cor pelo status) que mostra de relance em qual trimestre o ritmo caiu.
+                Só aparece com meta > 0. O detalhe completo está em /financas/metas. */}
+            {quarterly && quarterly.goal > 0 && (
+              <div className="mt-3 border-t border-gray-100 pt-3">
+                <div className="mb-2 flex items-baseline justify-between text-xs text-gray-500">
+                  <span className="font-medium text-gray-600">Por trimestre</span>
+                  <span>{quarterly.hitCount} de 4 batidos</span>
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {quarterly.quarters.map((q) => {
+                    const isCurrent = quarterly.currentQuarter === q.quarter;
+                    return (
+                      <div key={q.quarter} className="space-y-1">
+                        <div className="h-1.5 overflow-hidden rounded-full bg-gray-100">
+                          <div
+                            className={"h-full rounded-full " + QUARTER_BAR[q.status]}
+                            style={{ width: `${Math.min(100, Math.round(q.ratio * 100))}%` }}
+                            aria-hidden
+                          />
+                        </div>
+                        <p
+                          className={
+                            "text-center text-[11px] " +
+                            (isCurrent ? "font-semibold text-brand-700" : "text-gray-400")
+                          }
+                        >
+                          {q.label}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             )}
           </Link>
         </section>

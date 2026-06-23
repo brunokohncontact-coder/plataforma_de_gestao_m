@@ -2299,3 +2299,33 @@ contexto, decisão, justificativa e alternativas consideradas.
   (mesma evolução incremental que D80/D82 fizeram com os outros cards de meta).
 - `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
   nenhuma dependência nova; nenhuma mudança de schema.
+
+## D86 — Meta por trimestre no Painel (tira compacta no card de meta) (Sessão 94)
+- **Contexto:** a D85 (Sessão 93) entregou o card "Meta por trimestre" em `/financas/metas` via
+  `quarterlyGoalProgress`, mas a função pura ainda não aparecia no Painel — onde os demais sinais da
+  meta já vivem (progresso anual + piso conservador D80, ritmo necessário D82). A própria D85 anotou
+  "levar o card ao Painel" como evolução adiada, na mesma cadência incremental de D80/D82.
+- **Decisão:** acrescentar uma **tira compacta** ao card "Meta de {ano}" do dashboard, abaixo das linhas
+  já existentes (piso conservador, ritmo necessário), reaproveitando `quarterlyGoalProgress` sobre as
+  transações já carregadas (sem I/O extra além do lookup da meta, já feito). A tira é uma grade de 4
+  mini-barras (uma por trimestre, largura = `ratio`, cor pelo status via o mapa local `QUARTER_BAR`) com
+  o rótulo do trimestre (o atual em destaque) e um placar "{hitCount} de 4 batidos". Só renderiza quando
+  há meta > 0 para o ano corrente; o detalhe completo (selos de status, valores, alvo) continua em
+  `/financas/metas`.
+- **Tira compacta, não o card inteiro:** o card de meta do Painel é um resumo glanceável que linka para o
+  detalhe — repetir o card completo (com selos textuais e valores por trimestre) seria redundante e
+  pesado. A grade de 4 barras coloridas dá de relance "em qual trimestre o ritmo caiu", que é o valor
+  específico do recorte trimestral, sem encher o dashboard. Mesma escolha de "linha/tira no card +
+  detalhe na página" das D67/D80/D82.
+- **Cores:** mapa local `QUARTER_BAR` (status → classe de barra) espelha a semântica de `QUARTER_STATUS`
+  da página de Metas (batido=verde, abaixo=âmbar, em andamento=marca, a seguir=cinza), mas é declarado no
+  dashboard para não exportar UI de uma página; os rótulos/labels vêm do próprio `QuarterGoalProgress`.
+- **Sem teste novo:** mudança puramente de UI que reaproveita `quarterlyGoalProgress` (já com 7 testes
+  puros, D85). Verificada por build + typecheck + lint + smoke, alinhada às sessões de UI anteriores
+  (41/52/69/88/90). 625 testes verdes (inalterado).
+- **Alternativas consideradas:** (a) replicar o `QuarterlyCard` inteiro no Painel — rejeitado (redundante
+  com a página de detalhe e visualmente pesado para o dashboard); (b) reduzir a uma única linha textual
+  ("Q3: R$ X/Y") como as demais — rejeitado: perde o "qual trimestre falhou", que é o ponto do recorte;
+  a grade de 4 barras é compacta e ainda assim comparativa.
+- `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
+  nenhuma dependência nova; nenhuma mudança de schema.
