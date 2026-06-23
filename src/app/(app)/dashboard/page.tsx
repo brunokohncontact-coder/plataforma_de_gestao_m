@@ -23,6 +23,7 @@ import {
   compareGoalScenarios,
   goalRunRate,
   quarterlyGoalProgress,
+  monthlyGoalProgress,
   type TxLike,
   type QuarterGoalStatus,
   type ReceivableShowLike,
@@ -38,10 +39,11 @@ import { SHOW_STATUS_LABELS, SHOW_STATUS_COLORS, type ShowStatus } from "@/lib/d
 
 export const dynamic = "force-dynamic";
 
-// Cor da mini-barra de cada trimestre na tira compacta do card de meta, por status
-// (mesma semântica das cores da página de Metas: batido=verde, abaixo=âmbar,
-// em andamento=marca, a seguir=cinza). Ver D85 / quarterlyGoalProgress.
-const QUARTER_BAR: Record<QuarterGoalStatus, string> = {
+// Cor da mini-barra das tiras compactas do card de meta (trimestre e mês), por
+// status (mesma semântica das cores da página de Metas: batido=verde, abaixo=âmbar,
+// em andamento=marca, a seguir=cinza). `MonthGoalStatus` é alias de `QuarterGoalStatus`.
+// Ver D85 / quarterlyGoalProgress, D87 / monthlyGoalProgress.
+const GOAL_BAR: Record<QuarterGoalStatus, string> = {
   hit: "bg-emerald-500",
   missed: "bg-amber-500",
   "in-progress": "bg-brand-500",
@@ -153,6 +155,11 @@ export default async function DashboardPage() {
   // compacta no card de meta quando há meta definida para o ano corrente.
   const quarterly = revenueGoal
     ? quarterlyGoalProgress(txs, currentYear, revenueGoal.amount, {})
+    : null;
+  // Meta por mês (D87): a mesma quebra, em 12 alvos iguais — uma tira-sparkline que
+  // mostra de relance em qual mês o ritmo caiu. O detalhe está em /financas/metas.
+  const monthlyGoal = revenueGoal
+    ? monthlyGoalProgress(txs, currentYear, revenueGoal.amount, {})
     : null;
   // Pior caso: cruza os dois eixos conservadores num só piso — receita só de shows
   // confirmados (D66) E despesa somando o custo fixo recorrente futuro (D62), ver
@@ -519,7 +526,7 @@ export default async function DashboardPage() {
                       <div key={q.quarter} className="space-y-1">
                         <div className="h-1.5 overflow-hidden rounded-full bg-gray-100">
                           <div
-                            className={"h-full rounded-full " + QUARTER_BAR[q.status]}
+                            className={"h-full rounded-full " + GOAL_BAR[q.status]}
                             style={{ width: `${Math.min(100, Math.round(q.ratio * 100))}%` }}
                             aria-hidden
                           />
@@ -531,6 +538,41 @@ export default async function DashboardPage() {
                           }
                         >
                           {q.label}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {/* Por mês (D87): a granularidade fina da tira trimestral — 12 mini-barras
+                (uma por mês, cor pelo status) revelam exatamente em qual mês o ritmo
+                caiu. Só aparece com meta > 0. O detalhe está em /financas/metas. */}
+            {monthlyGoal && monthlyGoal.goal > 0 && (
+              <div className="mt-3 border-t border-gray-100 pt-3">
+                <div className="mb-2 flex items-baseline justify-between text-xs text-gray-500">
+                  <span className="font-medium text-gray-600">Por mês</span>
+                  <span>{monthlyGoal.hitCount} de 12 batidos</span>
+                </div>
+                <div className="grid grid-cols-12 gap-1">
+                  {monthlyGoal.months.map((m) => {
+                    const isCurrent = monthlyGoal.currentMonth === m.month;
+                    return (
+                      <div key={m.month} className="space-y-1">
+                        <div className="h-1.5 overflow-hidden rounded-full bg-gray-100">
+                          <div
+                            className={"h-full rounded-full " + GOAL_BAR[m.status]}
+                            style={{ width: `${Math.min(100, Math.round(m.ratio * 100))}%` }}
+                            aria-hidden
+                          />
+                        </div>
+                        <p
+                          className={
+                            "text-center text-[9px] leading-tight " +
+                            (isCurrent ? "font-semibold text-brand-700" : "text-gray-400")
+                          }
+                        >
+                          {m.label.charAt(0).toUpperCase()}
                         </p>
                       </div>
                     );

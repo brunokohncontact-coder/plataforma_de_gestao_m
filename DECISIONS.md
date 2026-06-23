@@ -2368,3 +2368,33 @@ contexto, decisão, justificativa e alternativas consideradas.
   Painel — adiado (acima).
 - `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
   nenhuma dependência nova; nenhuma mudança de schema.
+
+## D88 — Tira mensal de meta no Painel (sparkline no card de meta) (Sessão 96)
+- **Contexto:** a "Meta por mês" (D87) entrou na página `/financas/metas`, mas a própria D87 deixou
+  explícito que **levar a tira mensal ao Painel ficaria para uma sessão futura** ("decidir o formato,
+  talvez sparkline, à parte"). O card "Meta de {ano}" do dashboard já evoluiu pela mesma cadência
+  incremental: piso conservador (D80), ritmo necessário (D82) e a tira trimestral (D86). O detalhe mensal
+  é o passo seguinte natural — o trimestre agrega três meses e esconde qual deles puxou o ritmo pra baixo.
+- **Decisão:** nova tira compacta "Por mês" no card "Meta de {ano}" do dashboard, **abaixo da tira
+  trimestral** (D86), com 12 mini-barras (uma por mês, cor pelo status) no formato sparkline + o placar
+  "{N} de 12 batidos". Reusa `monthlyGoalProgress` (D87) — **nenhuma lógica nova**. Só aparece com meta > 0.
+- **Formato sparkline, não a grade de blocos da página:** a página tem espaço para 12 mini-blocos com
+  valores e selos; o card do dashboard já carrega anual + piso + ritmo + trimestre, então a versão do
+  Painel é deliberadamente mínima — só as 12 barras finas (grade de 12 colunas) com a inicial do mês como
+  rótulo. O "de relance" é a cor das barras; quem quer o valor de cada mês segue o link para
+  `/financas/metas`. Mesma filosofia "retrato compacto, detalhe na página" da tira trimestral (D86).
+- **Reaproveitamento / DRY:** o mapa de cor de barra do dashboard foi renomeado de `QUARTER_BAR` para
+  `GOAL_BAR` (`Record<QuarterGoalStatus, string>`), agora compartilhado pelas duas tiras — mês e trimestre
+  usam a mesma união de status (`MonthGoalStatus = QuarterGoalStatus`), espelhando o `GOAL_STATUS` que a
+  página já unificou na D87.
+- **Rótulo = inicial do mês (J/F/M/...):** com 12 colunas finas não cabe "jan/fev"; a inicial mantém a
+  orientação posicional (jan→dez) sem poluir. Há colisão de iniciais (3xJ, 2xM/A), tolerável porque o sinal
+  é a sequência das barras, não a leitura individual do rótulo — o detalhe nomeado está na página.
+- **Testes:** nenhum novo — `monthlyGoalProgress` já tem 7 casos puros (D87) e a mudança é puramente de
+  apresentação (sem lógica). 632 testes seguem verdes.
+- **Alternativas consideradas:** (a) replicar a grade de blocos da página no card — rejeitado: dominaria o
+  dashboard; (b) substituir a tira trimestral pela mensal — rejeitado: os dois recortes coexistem
+  (anual->trimestral->mensal), o trimestre é o horizonte de revisão mais leve; (c) destacar/rolar para o mês
+  corrente — adiado (a barra do mês atual já ganha rótulo em destaque; scroll-spy fica para depois).
+- `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
+  nenhuma dependência nova; nenhuma mudança de schema.
