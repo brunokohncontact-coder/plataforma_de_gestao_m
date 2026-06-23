@@ -2649,6 +2649,160 @@ export function bucketReceivablesByAge<S extends ReceivableShowLike>(
   };
 }
 
+// ── Cachês a receber por contratante (de quem cobrar primeiro) ──────────────
+//
+// O aging (`bucketReceivablesByAge`) responde "qual dinheiro está parado há mais
+// tempo?"; esta visão responde "QUEM está te devendo — e há quanto tempo?",
+// agrupando o saldo em aberto pelo contratante responsável pelo pagamento. É a
+// lista de cobrança priorizada: quem deve mais (e há mais tempo) vem primeiro.
+
+export interface ContactReceivableRow<
+  C,
+  S extends ReceivableShowLike = ReceivableShowLike,
+> {
+  /** Contratante devedor; `null` agrega os shows sem contato vinculado. */
+  contact: C | null;
+  /** Total ainda a receber atribuído a esse contratante (centavos). */
+  outstanding: number;
+  /** Nº de shows com saldo em aberto desse contratante. */
+  showCount: number;
+  /** Maior atraso (dias desde o show) entre os shows do contratante. */
+  maxDaysOutstanding: number;
+  /** Atraso médio (dias) ponderado pelo valor em aberto. */
+  weightedAvgDays: number;
+  /** Balde de aging do atraso MAIS LONGO do contratante (para destacar urgência). */
+  oldestBucket: ReceivableAgeBucketKey;
+  /** Participação no total a receber (0..1). 0 se o total for 0. */
+  share: number;
+  /** Shows em aberto do contratante, do atraso mais longo ao mais curto. */
+  rows: AgedReceivableRow<S>[];
+}
+
+export interface OutstandingByContact<
+  C,
+  S extends ReceivableShowLike = ReceivableShowLike,
+> {
+  /** Grupos por contratante, do maior saldo devedor ao menor; o grupo `null`
+   * (sem contratante) vai sempre por último. */
+  rows: ContactReceivableRow<C, S>[];
+  /** Nº de contratantes devedores identificados (exclui o grupo `null`). */
+  contactCount: number;
+  /** Nº de shows com saldo em aberto. */
+  count: number;
+  /** Soma de tudo que ainda falta receber (centavos). */
+  totalOutstanding: number;
+  /** Maior devedor identificado (maior `outstanding`), ou null. */
+  topDebtor: ContactReceivableRow<C, S> | null;
+  /** Devedor com o atraso mais longo (maior `maxDaysOutstanding`), ou null. */
+  oldestDebtor: ContactReceivableRow<C, S> | null;
+}
+
+/**
+ * Agrupa os cachês a receber (saída de `reconcileShowFees`) pelo contratante que
+ * responde pelo pagamento, para priorizar a cobrança por DEVEDOR — complementa o
+ * aging por idade com "quem te deve mais, e há quanto tempo".
+ *
+ * - Reaproveita a idade do atraso de `bucketReceivablesByAge` (mesma regra: dias
+ *   UTC desde a data do show, nunca negativo; mesmos baldes de aging).
+ * - `getPayer(show)` escolhe o contratante de cada show (ex.: billing.pickPayerContact);
+ *   `null` cai no grupo "sem contratante". A identidade do contato vem de `id`.
+ * - Por contratante: soma o saldo em aberto, conta os shows, guarda o pior atraso
+ *   (`maxDaysOutstanding`) e o atraso médio ponderado pelo valor (`weightedAvgDays`);
+ *   `oldestBucket` é o balde de aging do pior atraso (sinal de urgência).
+ * - Grupos ordenados do MAIOR saldo devedor ao menor (desempate: atraso mais longo,
+ *   depois id); o grupo `null` vai sempre por último. Os shows de cada grupo vão do
+ *   atraso mais longo ao mais curto (id desempata). Pura; `now` injetável.
+ */
+export function outstandingByContact<
+  C extends { id: string },
+  S extends ReceivableShowLike,
+>(
+  receivables: ShowReceivables<S>,
+  getPayer: (show: S) => C | null,
+  opts: { now?: Date | string } = {},
+): OutstandingByContact<C, S> {
+  const todayMs = utcMidnight(opts.now ?? new Date());
+
+  interface Group {
+    contact: C | null;
+    outstanding: number;
+    weightedDays: number;
+    maxDays: number;
+    rows: AgedReceivableRow<S>[];
+  }
+  const NO_CONTACT = " "; // chave reservada para o grupo sem contratante
+  const groups = new Map<string, Group>();
+
+  for (const row of receivables.rows) {
+    const days = Math.max(
+      0,
+      Math.round((todayMs - utcMidnight(row.show.date)) / DAY_MS),
+    );
+    const aged: AgedReceivableRow<S> = {
+      row,
+      daysOutstanding: days,
+      bucket: receivableAgeBucket(days),
+    };
+    const contact = getPayer(row.show);
+    const key = contact ? contact.id : NO_CONTACT;
+    const g =
+      groups.get(key) ??
+      ({ contact, outstanding: 0, weightedDays: 0, maxDays: 0, rows: [] } as Group);
+    g.outstanding += row.outstanding;
+    g.weightedDays += days * row.outstanding;
+    g.maxDays = Math.max(g.maxDays, days);
+    g.rows.push(aged);
+    groups.set(key, g);
+  }
+
+  const totalOutstanding = receivables.totalOutstanding;
+  const rows: ContactReceivableRow<C, S>[] = [];
+  for (const g of groups.values()) {
+    g.rows.sort(
+      (a, b) =>
+        b.daysOutstanding - a.daysOutstanding ||
+        a.row.show.id.localeCompare(b.row.show.id),
+    );
+    rows.push({
+      contact: g.contact,
+      outstanding: g.outstanding,
+      showCount: g.rows.length,
+      maxDaysOutstanding: g.maxDays,
+      weightedAvgDays:
+        g.outstanding === 0 ? 0 : Math.round(g.weightedDays / g.outstanding),
+      oldestBucket: receivableAgeBucket(g.maxDays),
+      share: totalOutstanding === 0 ? 0 : g.outstanding / totalOutstanding,
+      rows: g.rows,
+    });
+  }
+
+  // Maior saldo devedor → menor; o grupo sem contratante (contact null) por último.
+  rows.sort((a, b) => {
+    if (!a.contact !== !b.contact) return a.contact ? -1 : 1;
+    return (
+      b.outstanding - a.outstanding ||
+      b.maxDaysOutstanding - a.maxDaysOutstanding ||
+      (a.contact?.id ?? "").localeCompare(b.contact?.id ?? "")
+    );
+  });
+
+  const identified = rows.filter((r) => r.contact);
+  const oldestDebtor = identified.reduce<ContactReceivableRow<C, S> | null>(
+    (best, r) =>
+      best == null || r.maxDaysOutstanding > best.maxDaysOutstanding ? r : best,
+    null,
+  );
+
+  return {
+    rows,
+    contactCount: identified.length,
+    count: receivables.rows.length,
+    totalOutstanding,
+    topDebtor: identified[0] ?? null,
+    oldestDebtor,
+  };
+}
+
 // ── Prazo de recebimento (quão rápido o cachê entra depois do show) ─────────
 //
 // Métrica "realizada", complementar ao aging (que mede o que AINDA falta

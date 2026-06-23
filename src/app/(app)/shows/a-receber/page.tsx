@@ -65,9 +65,14 @@ export default async function ShowReceivablesPage() {
             não entrou no caixa. Cobre o dinheiro que ficou na mesa.
           </p>
         </div>
-        <Link href="/shows" className="btn-secondary">
-          ← Shows
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/shows/a-receber/por-contratante" className="btn-secondary">
+            Por contratante →
+          </Link>
+          <Link href="/shows" className="btn-secondary">
+            ← Shows
+          </Link>
+        </div>
       </div>
 
       {result.count === 0 ? (

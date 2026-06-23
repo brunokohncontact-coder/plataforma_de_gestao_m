@@ -249,6 +249,7 @@ describe("filterReports / countFilteredReports", () => {
     const hrefs = groups[0].entries.map((e) => e.href);
     expect(hrefs).toEqual([
       "/shows/a-receber",
+      "/shows/a-receber/por-contratante",
       "/shows/prazo-recebimento",
       "/shows/prazo-recebimento/por-contratante",
     ]);

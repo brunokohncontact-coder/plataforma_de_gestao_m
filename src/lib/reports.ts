@@ -125,6 +125,13 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "🎤",
       },
       {
+        title: "A receber por contratante",
+        href: "/shows/a-receber/por-contratante",
+        description: "Quem está te devendo — e há quanto tempo: o saldo em aberto agrupado por devedor.",
+        subtopic: "Recebíveis",
+        icon: "📨",
+      },
+      {
         title: "Prazo de recebimento",
         href: "/shows/prazo-recebimento",
         description: "Quantos dias, em média, o cachê leva para cair na conta depois do show (DSO).",

@@ -2515,3 +2515,47 @@ contexto, decisão, justificativa e alternativas consideradas.
   página tem os atalhos de lançar; o Painel é o lembrete na primeira tela.
 - `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
   nenhuma dependência nova; nenhuma mudança de schema.
+
+## D92 — Cachês a receber por contratante (de quem cobrar primeiro) (Sessão 100)
+- **Contexto:** os recebíveis já têm duas leituras: a lista plana `/shows/a-receber` (D25–D40, com
+  aging por idade do atraso, D31) e o prazo de recebimento realizado por contratante
+  (`/shows/prazo-recebimento/por-contratante`, D52). O aging responde "qual dinheiro está parado há mais
+  tempo?"; o DSO por contratante responde "quem PAGA rápido/devagar (histórico do que já entrou)". Faltava
+  a pergunta operacional de cobrança: **"quem está me devendo AGORA — e há quanto tempo?"** — o saldo em
+  aberto agrupado por devedor, para priorizar de quem cobrar primeiro.
+- **Decisão:** nova função pura `outstandingByContact(receivables, getPayer, {now})` em `src/lib/finance.ts`
+  e nova página `/shows/a-receber/por-contratante`. A função recebe a saída de `reconcileShowFees`
+  (os shows com `outstanding > 0`) e `getPayer` (mesmo `billing.pickPayerContact` da D52 — contratante/
+  promoter antes da casa, sem exigir canal), reaproveita a **idade do atraso de `bucketReceivablesByAge`**
+  (dias UTC desde a data do show, baldes d30/d60/d90/older) e agrega por devedor: saldo a receber, nº de
+  shows, **pior atraso** (`maxDaysOutstanding`), **atraso médio ponderado pelo valor em aberto**
+  (`weightedAvgDays`) e o **balde de aging do pior atraso** (`oldestBucket`, cor de urgência). Ordena do
+  **maior saldo devedor ao menor** (desempate: atraso mais longo, depois id), com o grupo "sem contratante"
+  sempre por último; `topDebtor`/`oldestDebtor` ignoram o grupo nulo.
+- **UI:** cards de destaque (total a receber, maior devedor, quem espera mais), tabela por contratante
+  (a receber / shows / pior atraso / atraso médio, com bolinha de cor pelo balde de aging) e o detalhe de
+  shows em aberto por contratante (mais atrasado → mais recente). A cobrança/quitação em si continua em
+  `/shows/a-receber` (links cruzados nos dois sentidos) — esta página é a **priorização**, não duplica o
+  fluxo de ação.
+- **DRY / reaproveitamento:** compõe `reconcileShowFees` (regra de "já aconteceu" e abatimento),
+  `receivableAgeBucket`/`RECEIVABLE_AGE_BUCKET_*` (mesma idade do atraso que o aging) e `pickPayerContact`
+  (mesma escolha de pagador que o DSO por contratante). Nenhuma regra nova de quem entra/abate.
+- **Distinção das vistas vizinhas:** difere do aging (D31, agrupa por **idade**, não por **devedor**) e do
+  DSO por contratante (D52, mede o **prazo realizado** do que já entrou, não o **saldo em aberto**). As três
+  respondem perguntas diferentes sobre o mesmo dinheiro.
+- **Registro no hub:** novo card "A receber por contratante" em `REPORT_GROUPS` (subtema *Recebíveis*),
+  contíguo a "Cachês a receber" — aparece na busca e no índice do hub automaticamente (D54/D56/D58).
+- **Testes:** 5 casos puros novos de `outstandingByContact` (vazio; agrupa e ordena por maior saldo;
+  pior atraso + atraso médio ponderado + `oldestBucket`; grupo nulo por último e ignorado em top/oldest;
+  desempate por atraso quando o saldo é igual) + ajuste do invariante de busca do hub. Build/typecheck/lint
+  verdes; smoke test (app sobe, rota responde 200, sem erro no log). **660 testes** verdes (eram 655).
+- **Alternativas consideradas:** (a) **mediana do prazo por contratante** (item adiado na D57(c)) —
+  segue adiado: com poucos shows por contratante a mediana fica ruidosa, e a pergunta de cobrança é melhor
+  servida por "quanto/há quanto tempo me devem" do que por uma estatística de prazo. (b) embutir os atalhos
+  de cobrança (e-mail/WhatsApp) por contratante aqui — adiado: o fluxo de cobrança/quitação já está consolidado
+  em `/shows/a-receber` (por show, onde o valor e o canal são escolhidos); duplicá-lo por contratante exigiria
+  agregar mensagem de vários shows e escolher canal — escopo próprio. (c) ordenar por idade do atraso em vez de
+  saldo — descartado: o aging já prioriza por idade; aqui a leitura primária é "quem deve mais", com o atraso
+  como desempate e sinal de cor.
+- `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
+  nenhuma dependência nova; nenhuma mudança de schema.

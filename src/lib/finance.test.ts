@@ -39,6 +39,7 @@ import {
   forecastBookedRevenue,
   reconcileShowFees,
   bucketReceivablesByAge,
+  outstandingByContact,
   receivableAgeBucket,
   RECEIVABLE_AGE_BUCKET_ORDER,
   resolveSettlementAmount,
@@ -2998,6 +2999,105 @@ describe("paymentLagByContact", () => {
     ];
     const r = paymentLagByContact(shows, txs, getPayer);
     expect(r.rows[0].shows.map((s) => s.show.id)).toEqual(["lento", "rapido"]);
+  });
+});
+
+describe("outstandingByContact", () => {
+  const now = new Date("2026-04-01T12:00:00.000Z");
+
+  interface Contact {
+    id: string;
+    name: string;
+  }
+  type ShowWithPayer = ReceivableShowLike & { payer: Contact | null };
+  const getPayer = (s: ShowWithPayer) => s.payer;
+
+  function gig(partial: Partial<ShowWithPayer>): ShowWithPayer {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-03-01T00:00:00.000Z",
+      payer: null,
+      ...partial,
+    };
+  }
+
+  const receivablesOf = (shows: ShowWithPayer[]) =>
+    reconcileShowFees(shows, [], { now });
+
+  it("retorna vazio quando não há nada a receber", () => {
+    const r = outstandingByContact(receivablesOf([]), getPayer, { now });
+    expect(r.rows).toEqual([]);
+    expect(r.contactCount).toBe(0);
+    expect(r.count).toBe(0);
+    expect(r.totalOutstanding).toBe(0);
+    expect(r.topDebtor).toBeNull();
+    expect(r.oldestDebtor).toBeNull();
+  });
+
+  it("agrupa por contratante e ordena do maior saldo devedor ao menor", () => {
+    const a = { id: "a", name: "Bar A" };
+    const b = { id: "b", name: "Bar B" };
+    const shows = [
+      gig({ id: "x", fee: 100_00, payer: b }),
+      gig({ id: "y", fee: 300_00, payer: a }),
+    ];
+    const r = outstandingByContact(receivablesOf(shows), getPayer, { now });
+    expect(r.rows.map((row) => row.contact?.id)).toEqual(["a", "b"]);
+    expect(r.totalOutstanding).toBe(400_00);
+    expect(r.contactCount).toBe(2);
+    expect(r.count).toBe(2);
+    expect(r.topDebtor!.contact!.id).toBe("a");
+    expect(r.rows[0].outstanding).toBe(300_00);
+    expect(r.rows[0].share).toBeCloseTo(0.75, 5);
+    expect(r.rows[1].share).toBeCloseTo(0.25, 5);
+  });
+
+  it("calcula pior atraso, atraso médio ponderado e o balde do mais antigo", () => {
+    const a = { id: "a", name: "Bar A" };
+    const shows = [
+      gig({ id: "recente", fee: 100_00, payer: a, date: "2026-03-22T00:00:00.000Z" }), // 10 dias
+      gig({ id: "antigo", fee: 300_00, payer: a, date: "2026-02-10T00:00:00.000Z" }), // 50 dias
+    ];
+    const r = outstandingByContact(receivablesOf(shows), getPayer, { now });
+    expect(r.rows).toHaveLength(1);
+    const row = r.rows[0];
+    expect(row.showCount).toBe(2);
+    expect(row.maxDaysOutstanding).toBe(50);
+    // ponderado pelo valor: (10*100 + 50*300)/400 = 40
+    expect(row.weightedAvgDays).toBe(40);
+    expect(row.oldestBucket).toBe("d60"); // 50 dias → 31–60
+    // shows do atraso mais longo ao mais curto
+    expect(row.rows.map((s) => s.row.show.id)).toEqual(["antigo", "recente"]);
+    expect(r.oldestDebtor!.contact!.id).toBe("a");
+  });
+
+  it("joga shows sem contratante para o grupo nulo (sempre por último) e o ignora em top/oldest", () => {
+    const dono = { id: "d", name: "Contratante" };
+    const shows = [
+      // órfão: deve mais e está mais atrasado, ainda assim vai por último.
+      gig({ id: "orfao", fee: 900_00, payer: null, date: "2026-01-01T00:00:00.000Z" }),
+      gig({ id: "comdono", fee: 100_00, payer: dono, date: "2026-03-25T00:00:00.000Z" }),
+    ];
+    const r = outstandingByContact(receivablesOf(shows), getPayer, { now });
+    expect(r.rows.map((row) => row.contact?.id ?? null)).toEqual(["d", null]);
+    expect(r.contactCount).toBe(1); // exclui o grupo nulo
+    expect(r.topDebtor!.contact!.id).toBe("d");
+    expect(r.oldestDebtor!.contact!.id).toBe("d");
+  });
+
+  it("desempata pelo atraso mais longo quando o saldo devedor é igual", () => {
+    const a = { id: "a", name: "Bar A" };
+    const b = { id: "b", name: "Bar B" };
+    const shows = [
+      gig({ id: "x", fee: 200_00, payer: a, date: "2026-03-25T00:00:00.000Z" }), // 10 dias
+      gig({ id: "y", fee: 200_00, payer: b, date: "2026-02-10T00:00:00.000Z" }), // 50 dias
+    ];
+    const r = outstandingByContact(receivablesOf(shows), getPayer, { now });
+    // mesmo saldo (200,00); b está mais atrasado, então vem primeiro.
+    expect(r.rows.map((row) => row.contact?.id)).toEqual(["b", "a"]);
+    expect(r.oldestDebtor!.contact!.id).toBe("b");
   });
 });
 
