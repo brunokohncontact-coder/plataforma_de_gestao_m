@@ -21,6 +21,7 @@ import {
   recurringExpenses,
   computeGoalProgress,
   compareGoalScenarios,
+  goalRunRate,
   type TxLike,
   type ReceivableShowLike,
   type ShowLike,
@@ -129,6 +130,11 @@ export default async function DashboardPage() {
           {},
         )
       : null;
+  // Ritmo necessário no resto do ano (D81): o número acionável que falta ao
+  // `pace` — "preciso receber R$ X/mês para fechar a meta". Reaproveita o
+  // `goalProgress` já computado (sem I/O nem recálculo). Só vira linha no card
+  // quando é acionável (ano corrente, meta > 0) e a meta ainda não foi batida.
+  const goalRun = goalProgress ? goalRunRate(goalProgress, {}) : null;
   // Pior caso: cruza os dois eixos conservadores num só piso — receita só de shows
   // confirmados (D66) E despesa somando o custo fixo recorrente futuro (D62), ver
   // D68. Só vira linha quando AMBOS os eixos mordem; sem um deles, o pior caso
@@ -450,6 +456,32 @@ export default async function DashboardPage() {
                 {goalScenarios.hitsEvenConservatively
                   ? `Só com shows confirmados, a projeção fica em ${formatMoney(goalScenarios.conservative.projected)} (${Math.round(goalScenarios.conservative.projectedRatio * 100)}% da meta) — você não depende dos ${formatMoney(goalScenarios.tentativeGap)} a confirmar.`
                   : `Sem os ${formatMoney(goalScenarios.tentativeGap)} de shows a confirmar, a projeção cai para ${formatMoney(goalScenarios.conservative.projected)} (${Math.round(goalScenarios.conservative.projectedRatio * 100)}% da meta) — a meta só fecha se eles se confirmarem.`}
+              </p>
+            )}
+            {/* Ritmo necessário (D81): o número acionável — quanto receber por mês
+                no resto do ano para fechar a meta. Cor pelo esforço (verde/âmbar/
+                vermelho); só aparece quando é acionável e a meta ainda não fechou. */}
+            {goalRun?.applicable && goalRun.verdict !== "hit" && (
+              <p
+                className={
+                  "mt-2 rounded-md px-3 py-2 text-xs " +
+                  (goalRun.verdict === "on-pace"
+                    ? "bg-emerald-50 text-emerald-800"
+                    : goalRun.verdict === "stretch"
+                      ? "bg-amber-50 text-amber-800"
+                      : goalRun.verdict === "hard"
+                        ? "bg-red-50 text-red-800"
+                        : "bg-gray-50 text-gray-700")
+                }
+              >
+                <span className="font-semibold">
+                  Ritmo necessário: {formatMoney(goalRun.requiredPerMonth)}/mês
+                </span>{" "}
+                {goalRun.verdict === "unknown"
+                  ? `pelos próximos ${goalRun.monthsRemaining === 1 ? "1 mês" : `${goalRun.monthsRemaining} meses`} até dezembro.`
+                  : goalRun.gapPerMonth > 0
+                    ? `— ${formatMoney(goalRun.gapPerMonth)} a mais por mês do que vem recebendo (${formatMoney(goalRun.currentPerMonth)}/mês).`
+                    : `no seu ritmo atual de ${formatMoney(goalRun.currentPerMonth)}/mês você cobre. Mantenha o passo.`}
               </p>
             )}
           </Link>

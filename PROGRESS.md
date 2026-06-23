@@ -2004,6 +2004,21 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de schema —
   ver D6/D8). Ver **DECISIONS.md D81**.
 
+### Sessão 90 — Ritmo necessário no card de meta do Painel (D82)
+- **UI** (`src/app/(app)/dashboard/page.tsx`): o card "Meta de {ano}" do Painel ganhou a linha compacta
+  **"Ritmo necessário: {valor}/mês"** — o número acionável que faltava ao `pace` qualitativo já exibido —,
+  colorida pelo `verdict` (verde on-pace / âmbar stretch / vermelho hard / cinza unknown), espelhando o card
+  da página de Metas (Sessão 89) condensado para o resumo. Só aparece quando é acionável e a meta ainda não
+  fechou (`goalRun.applicable && verdict !== "hit"`).
+- **Reaproveitamento**: `goalRun = goalRunRate(goalProgress, {})` deriva só do `goalProgress`
+  (`RevenueGoalProgress`) já computado no dashboard — **zero I/O extra**, nenhum recálculo de
+  transações/shows. Mesmo caminho de D79→D80 (helper da página de Metas adotado no card do Painel).
+- **Sem testes novos**: `goalRunRate`/`computeGoalProgress` já têm cobertura pura (D77/D81); mudança de UI.
+- Definition of Done verde: build (`prisma generate && next build`) OK, typecheck (`tsc --noEmit`) limpo,
+  lint (0 warnings/erros), **609 testes** (`vitest run`), smoke test ao vivo (`next start`): `/login` e
+  `/` → 200, app sobe. `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma
+  dependência nova nem mudança de schema — ver D6/D8). Ver **DECISIONS.md D82**.
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
@@ -2092,9 +2107,10 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    "Meta de {ano}" reaproveitando `compareGoalScenarios` sobre as projeções já computadas no dashboard,
    ver D80; **ritmo necessário no resto do ano** entregue na Sessão 89 — `goalRunRate` + card "Ritmo
    necessário" em `/financas/metas`, com o necessário/mês, o ritmo atual e o veredito de esforço
-   (on-pace/stretch/hard), ver D81. Próximo possível — levar o ritmo necessário ao card de meta do Painel
-   (mesmo caminho de D79→D80, helper puro já testado), metas por trimestre/mês, ou alerta proativo
-   (e-mail/badge) quando a meta passa a depender só de shows a confirmar.
+   (on-pace/stretch/hard), ver D81; **ritmo necessário no card de meta do Painel** entregue na Sessão 90 —
+   linha "Ritmo necessário: {valor}/mês" no card "Meta de {ano}" reaproveitando `goalRunRate` sobre o
+   `goalProgress` já computado no dashboard, ver D82. Próximo possível — metas por trimestre/mês, ou alerta
+   proativo (e-mail/badge) quando a meta passa a depender só de shows a confirmar.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)
