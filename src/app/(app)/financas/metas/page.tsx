@@ -8,10 +8,12 @@ import {
   compareGoalScenarios,
   goalRunRate,
   quarterlyGoalProgress,
+  monthlyGoalProgress,
   type GoalScenarioComparison,
   type GoalRunRate,
   type QuarterlyGoalProgress,
   type QuarterGoalProgress,
+  type MonthlyGoalProgress,
   type TxLike,
   type YearEndShowLike,
 } from "@/lib/finance";
@@ -110,6 +112,9 @@ export default async function GoalsPage({
   // Quebra a meta anual em 4 alvos trimestrais e cruza cada um com o recebido do
   // trimestre — "em qual trimestre eu fiquei para trás?".
   const quarterly = goal ? quarterlyGoalProgress(txs, year, goal.amount, {}) : null;
+  // Granularidade fina: a meta anual em 12 alvos mensais — "em qual mês eu fiquei
+  // para trás?", o detalhe que o trimestre esconde.
+  const monthly = goal ? monthlyGoalProgress(txs, year, goal.amount, {}) : null;
 
   return (
     <div className="space-y-6">
@@ -149,6 +154,8 @@ export default async function GoalsPage({
           {quarterly && quarterly.goal > 0 && (
             <QuarterlyCard quarterly={quarterly} />
           )}
+
+          {monthly && monthly.goal > 0 && <MonthlyCard monthly={monthly} />}
 
           <section className="card space-y-4">
             <div className="flex items-center justify-between gap-3">
@@ -395,7 +402,7 @@ function RunRateCard({ runRate }: { runRate: GoalRunRate }) {
   );
 }
 
-const QUARTER_STATUS: Record<
+const GOAL_STATUS: Record<
   QuarterGoalProgress["status"],
   { label: string; badge: string; bar: string }
 > = {
@@ -434,7 +441,7 @@ function QuarterlyCard({ quarterly }: { quarterly: QuarterlyGoalProgress }) {
 
       <ul className="space-y-3">
         {quarterly.quarters.map((q) => {
-          const cfg = QUARTER_STATUS[q.status];
+          const cfg = GOAL_STATUS[q.status];
           const width = Math.min(100, Math.round(q.ratio * 100));
           const isCurrent = quarterly.currentQuarter === q.quarter;
           return (
@@ -475,6 +482,67 @@ function QuarterlyCard({ quarterly }: { quarterly: QuarterlyGoalProgress }) {
       <p className="text-xs text-gray-500">
         O alvo de cada trimestre é a meta anual dividida por quatro. Conta apenas a
         receita já recebida (caixa), na mesma base do progresso anual.
+      </p>
+    </section>
+  );
+}
+
+function MonthlyCard({ monthly }: { monthly: MonthlyGoalProgress }) {
+  return (
+    <section className="card space-y-4">
+      <div>
+        <h2 className="font-semibold">Meta por mês</h2>
+        <p className="mt-1 text-sm text-gray-500">
+          A meta anual dividida em doze alvos iguais, cada um comparado ao que você
+          já recebeu no mês · {monthly.hitCount} de 12 batidos
+        </p>
+      </div>
+
+      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        {monthly.months.map((m) => {
+          const cfg = GOAL_STATUS[m.status];
+          const width = Math.min(100, Math.round(m.ratio * 100));
+          const isCurrent = monthly.currentMonth === m.month;
+          return (
+            <li
+              key={m.month}
+              className={
+                "rounded-lg border p-3 " +
+                (isCurrent ? "border-brand-300 bg-brand-50/40" : "border-gray-100")
+              }
+            >
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-sm font-medium capitalize text-gray-900">
+                  {m.label}
+                  {isCurrent && (
+                    <span className="ml-1 text-xs font-normal text-brand-700">(atual)</span>
+                  )}
+                </span>
+                <span
+                  className={"rounded-full px-2 py-0.5 text-[11px] font-medium " + cfg.badge}
+                >
+                  {cfg.label}
+                </span>
+              </div>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100">
+                <div
+                  className={"h-full rounded-full " + cfg.bar}
+                  style={{ width: `${width}%` }}
+                  aria-hidden
+                />
+              </div>
+              <p className="mt-1.5 text-xs text-gray-600">
+                <span className="font-semibold text-gray-900">{formatMoney(m.realized)}</span>{" "}
+                / {formatMoney(m.target)}
+              </p>
+            </li>
+          );
+        })}
+      </ul>
+
+      <p className="text-xs text-gray-500">
+        O alvo de cada mês é a meta anual dividida por doze. Conta apenas a receita já
+        recebida (caixa), na mesma base do progresso anual e trimestral.
       </p>
     </section>
   );

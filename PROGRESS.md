@@ -2081,6 +2081,26 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   `/login` → 200. `npm audit` inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência
   nova nem mudança de schema — ver D6/D8). Ver **DECISIONS.md D85**.
 
+### Sessão 95 — Meta por mês na página de Metas (granularidade fina) (D87)
+- **Lógica pura** (`src/lib/finance.ts`): nova `monthlyGoalProgress(txs, year, goal, opts)`, espelhando
+  `quarterlyGoalProgress` (D85) com **12 alvos iguais** (meta/12, centavos da divisão distribuídos aos
+  primeiros meses para somar exatamente a meta). Cruza cada alvo com a receita **já recebida** no mês
+  (regime de caixa, mesma base do `realized` anual) e marca o `status` por tempo
+  (`hit`/`missed`/`in-progress`/`upcoming`). Rótulos curtos pt-BR num const local `MONTH_GOAL_LABELS`
+  (mantém `finance.ts` sem importar `calendar.ts`, como já fazia `QUARTER_LABELS`).
+- **UI** (`src/app/(app)/financas/metas/page.tsx`): novo card "Meta por mês" (abaixo do card trimestral),
+  com uma grade responsiva de 12 mini-blocos (barra recebido/alvo, selo de status, valores, mês atual em
+  destaque) e o placar "{N} de 12 batidos". O mapa de status da página foi renomeado de `QUARTER_STATUS`
+  para `GOAL_STATUS` (mês e trimestre compartilham a mesma união de status). Responde "em qual mês eu
+  fiquei para trás?", o detalhe que o trimestre agrega.
+- **Testes:** 7 casos puros novos para `monthlyGoalProgress` (soma dos 12 alvos == meta; só receitas
+  recebidas agrupadas por mês; hit/missed em ano encerrado; missed/in-progress/upcoming no ano corrente;
+  mês corrente que já bateu vira hit; ano futuro tudo upcoming; meta negativa saneada a 0).
+- Definition of Done verde: build (`prisma generate && next build`) OK; typecheck (`tsc --noEmit`) limpo;
+  lint (0 warnings/erros); **632 testes** (`vitest run`, eram 625); smoke test ao vivo (`next start`):
+  `/login` → 200, `/financas/metas` sem sessão → 307. `npm audit` inalterado (10 advisories: 4 moderate /
+  5 high / 1 critical; nenhuma dependência nova nem mudança de schema — ver D6/D8). Ver **DECISIONS.md D87**.
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
@@ -2176,8 +2196,10 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    anual em 4 alvos iguais e marcando hit/missed/in-progress/upcoming por trimestre, ver D85; **meta por
    trimestre no Painel** entregue na Sessão 94 — tira compacta de 4 mini-barras (cor pelo status, trimestre
    atual em destaque) + placar "{N} de 4 batidos" no card "Meta de {ano}" do dashboard, reaproveitando
-   `quarterlyGoalProgress`, ver D86. Próximo possível —
-   metas por mês (granularidade fina), ou alerta proativo (e-mail/badge)
+   `quarterlyGoalProgress`, ver D86; **meta por mês na página de Metas** entregue na Sessão 95 —
+   `monthlyGoalProgress` + card "Meta por mês" em `/financas/metas`, quebrando a meta anual em 12 alvos
+   iguais (grade de mini-blocos, placar "{N} de 12 batidos"), ver D87. Próximo possível —
+   levar a tira mensal ao Painel (formato compacto/sparkline, a decidir), ou alerta proativo (e-mail/badge)
    quando a meta passa a depender só de shows a confirmar.
 
 ## Bloqueios / dúvidas (para validação humana)

@@ -2329,3 +2329,42 @@ contexto, decisão, justificativa e alternativas consideradas.
   a grade de 4 barras é compacta e ainda assim comparativa.
 - `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
   nenhuma dependência nova; nenhuma mudança de schema.
+
+## D87 — Meta por mês na página de Metas (granularidade fina) (Sessão 95)
+- **Contexto:** a meta de faturamento é anual (D77); o "Ritmo necessário" (D81) dá o número mensal que
+  falta dali pra frente; a "Meta por trimestre" (D85) responde "em qual trimestre fiquei para trás?". A
+  própria D85 anotou as **metas mensais (12 alvos)** como evolução adiada — "granularidade fina demais
+  para a tela de meta" naquele momento. Com o recorte trimestral já no ar (e levado ao Painel na D86), o
+  passo seguinte natural é o detalhe mensal: o trimestre agrega três meses e esconde qual deles puxou o
+  resultado pra baixo.
+- **Decisão:** nova função pura `monthlyGoalProgress(txs, year, goal, opts)` em `src/lib/finance.ts`,
+  espelhando `quarterlyGoalProgress` (D85) com **12 alvos iguais** (meta/12) em vez de 4. Cruza cada alvo
+  com a receita já recebida no mês e classifica o `status` por tempo (`hit`/`missed`/`in-progress`/
+  `upcoming`). Card "Meta por mês" em `/financas/metas` (abaixo do card trimestral), com uma grade
+  responsiva de 12 mini-blocos (barra recebido/alvo, selo de status, valores, mês atual em destaque) e o
+  placar "{N} de 12 batidos".
+- **Base de "recebido" idêntica à D85/D77:** só receitas recebidas (`received`, regime de caixa), a mesma
+  base do `realized` anual — e deliberadamente NÃO a competência. Coerência entre o headline anual, o
+  trimestre e o mês.
+- **Divisão dos centavos:** alvo `floor(meta/12)` com o resto (0–11 centavos) distribuído aos primeiros
+  meses, garantindo que a soma dos 12 seja exatamente a meta (mesma regra da D85).
+- **UI — grade compacta, não 12 linhas full-width:** o card trimestral usa 4 linhas largas; replicar isso
+  para 12 meses dominaria a página. A grade de mini-blocos (2/3/4 colunas conforme a largura) mostra os 12
+  meses de relance sem empurrar o resto da tela. O componente reusa o mapa de status da página (renomeado
+  de `QUARTER_STATUS` para `GOAL_STATUS`, já que mês e trimestre compartilham a mesma união de status —
+  `MonthGoalStatus = QuarterGoalStatus`).
+- **Reaproveitamento:** `monthKey`/`sum` internos e o padrão exato da D85; rótulos curtos pt-BR num const
+  local `MONTH_GOAL_LABELS` (mantém `finance.ts` sem dependência de `calendar.ts`, como já fazia com
+  `QUARTER_LABELS`). Função pura com `now` injetável.
+- **Testes:** 7 casos puros para `monthlyGoalProgress` (soma dos 12 alvos == meta; só recebidas agrupadas
+  por mês; hit/missed em ano encerrado; missed/in-progress/upcoming no ano corrente; mês corrente que já
+  bateu vira hit; ano futuro tudo upcoming; meta negativa saneada a 0). 632 testes verdes (eram 625).
+- **Escopo desta sessão = só a página.** Levar a tira mensal ao Painel fica para uma sessão futura (mesma
+  cadência incremental D80/D82/D86); o card do dashboard já carrega progresso anual + piso + ritmo +
+  trimestre, e 12 mini-barras lá poderiam ficar pesadas — decidir o formato (talvez sparkline) à parte.
+- **Alternativas consideradas:** (a) substituir o card trimestral pelo mensal — rejeitado: o trimestre é o
+  horizonte de revisão mais leve e os dois recortes coexistem (anual→trimestral→mensal); (b) alvos sazonais
+  ponderados pelo histórico — rejeitado por ora (ruidoso com poucos anos, igual à D85); (c) levar já ao
+  Painel — adiado (acima).
+- `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
+  nenhuma dependência nova; nenhuma mudança de schema.
