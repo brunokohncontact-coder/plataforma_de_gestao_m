@@ -2435,3 +2435,39 @@ contexto, decisão, justificativa e alternativas consideradas.
   (sources/sourceCount), nomes errados para despesa; o helper compartilhado dá DRY sem poluir as APIs.
 - `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
   nenhuma dependência nova; nenhuma mudança de schema.
+
+## D90 — Variação por categoria: "o que mudou de um mês para o outro" (Sessão 98)
+- **Contexto:** o **relatório mensal** (D33, `/financas/relatorio`) já responde "estou melhor que o mês
+  passado?" comparando os **quatro totais** (receita/despesa/saldo/caixa) frente ao mês anterior. Mas
+  quando o saldo piora, ele não diz **qual categoria** explica a diferença — só que a despesa subiu.
+  A composição de despesas (D89) e o mix de receitas (D45) olham um único recorte, sem comparar períodos.
+  Faltava o cruzamento: a quebra por categoria de **dois** meses lado a lado, com a variação de cada uma.
+- **Decisão:** nova função pura `compareCategoryReports(current, previous)` (em `src/lib/finance.ts`) —
+  para receitas e despesas, lista toda categoria presente em **qualquer** dos dois períodos (ausente num
+  lado conta como R$ 0) com `{amount, previousAmount, delta}`, onde `delta` é o `MetricDelta` já usado no
+  relatório mensal. Ordena pelo **maior movimento absoluto** (`|delta|` desc; empate por valor atual desc,
+  depois nome pt-BR) — quem mais mudou (alta ou queda) aparece primeiro. Expõe os totais dos dois lados, a
+  variação dos totais (`incomeDelta`/`expenseDelta`) e três destaques: maior alta de despesa, maior
+  **economia** (maior queda de despesa) e maior alta de receita. Página `/financas/variacao` com navegação
+  por mês (←/→/Mês atual, mesmos helpers do relatório) comparando o mês escolhido vs. o anterior; cards de
+  total com seta colorida, faixa de destaques e duas tabelas (despesas/receitas). Registrada no hub de
+  Relatórios (Finanças → Fechamentos) e cruzada com o relatório mensal.
+- **DRY / reaproveitamento:** delega a `categoryReport` (mesma definição de categoria e de "Sem categoria")
+  e a `computeDelta` (mesma semântica de variação/`pct`/`direction` do relatório mensal) — uma fonte de
+  verdade para os dois lados. A página reaproveita os helpers de mês do calendário (`parseMonthKey`,
+  `shiftMonth`, `monthKey`, `formatMonthTitle`) e `filterTransactions({month})`, exatamente como o relatório.
+- **Direção é só sinal; a UI decide o tom.** Como em D33, `direction` reflete só o sinal do delta: a página
+  pinta despesa subindo de vermelho e caindo de verde (e o inverso para receita). Base anterior 0 → `pct`
+  nulo, exibido como "novo".
+- **Sem schema, sem dependência, sem server action.** Considera as transações lançadas (pagas e a pagar),
+  coerente com o relatório mensal.
+- **Testes:** 8 casos puros novos de `compareCategoryReports` (dois vazios, variação de despesa, categoria
+  só num lado contando 0, ordenação por movimento absoluto, os três destaques, sem altas/quedas → destaques
+  nulos, totais/variação agregados, "Sem categoria" nos dois lados). **648 testes** verdes (eram 640).
+- **Alternativas consideradas:** (a) embutir a quebra comparada **dentro** do relatório mensal — rejeitado:
+  inflaria uma página já densa; uma página dedicada com seu próprio foco ("o que mudou") é mais legível e
+  segue o estilo do app (muitas páginas pequenas); as duas se cruzam por link. (b) comparar contra a
+  **média** dos últimos meses (como o relatório faz para os totais) em vez do mês anterior — adiável: para
+  "o que mudou" o mês imediatamente anterior é o quadro mais direto; a média por categoria fica para depois.
+- `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
+  nenhuma dependência nova; nenhuma mudança de schema.

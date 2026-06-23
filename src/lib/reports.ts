@@ -152,6 +152,14 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "🗓️",
       },
       {
+        title: "Variação por categoria",
+        href: "/financas/variacao",
+        description:
+          "O que mudou de um mês para o outro, categoria por categoria — qual gasto ou receita explica a diferença.",
+        subtopic: "Fechamentos",
+        icon: "🔀",
+      },
+      {
         title: "Resumo anual",
         href: "/financas/anual",
         description: "Os 12 meses do ano lado a lado, com totais e o melhor/pior mês.",

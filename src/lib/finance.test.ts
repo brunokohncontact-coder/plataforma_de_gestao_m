@@ -7,6 +7,7 @@ import {
   summarizeFinances,
   totalsByCategory,
   categoryReport,
+  compareCategoryReports,
   totalsByMonth,
   monthlySeasonality,
   monthKey,
@@ -1277,6 +1278,130 @@ describe("categoryReport", () => {
     expect(r.income).toHaveLength(1);
     expect(r.income[0].category).toBe("Sem categoria");
     expect(r.income[0].share).toBeCloseTo(1, 5);
+  });
+});
+
+describe("compareCategoryReports", () => {
+  it("dois períodos vazios → tudo zerado e sem destaques", () => {
+    const c = compareCategoryReports([], []);
+    expect(c.income).toEqual([]);
+    expect(c.expense).toEqual([]);
+    expect(c.totalIncome).toBe(0);
+    expect(c.totalExpense).toBe(0);
+    expect(c.previousTotalIncome).toBe(0);
+    expect(c.previousTotalExpense).toBe(0);
+    expect(c.topIncomeRise).toBeNull();
+    expect(c.topExpenseRise).toBeNull();
+    expect(c.topExpenseDrop).toBeNull();
+  });
+
+  it("calcula a variação por categoria de despesa (atual vs anterior)", () => {
+    const current = [
+      tx({ type: "EXPENSE", amount: 150_00, category: "Transporte" }),
+      tx({ type: "EXPENSE", amount: 50_00, category: "Equipamento" }),
+    ];
+    const previous = [
+      tx({ type: "EXPENSE", amount: 100_00, category: "Transporte" }),
+      tx({ type: "EXPENSE", amount: 50_00, category: "Equipamento" }),
+    ];
+    const c = compareCategoryReports(current, previous);
+    const transporte = c.expense.find((r) => r.category === "Transporte")!;
+    expect(transporte.amount).toBe(150_00);
+    expect(transporte.previousAmount).toBe(100_00);
+    expect(transporte.delta.delta).toBe(50_00);
+    expect(transporte.delta.pct).toBeCloseTo(0.5, 5);
+    expect(transporte.delta.direction).toBe("up");
+    const equip = c.expense.find((r) => r.category === "Equipamento")!;
+    expect(equip.delta.delta).toBe(0);
+    expect(equip.delta.direction).toBe("flat");
+  });
+
+  it("inclui categoria presente só num dos períodos (o outro lado conta como 0)", () => {
+    const current = [tx({ type: "EXPENSE", amount: 80_00, category: "Marketing" })];
+    const previous = [tx({ type: "EXPENSE", amount: 40_00, category: "Aluguel" })];
+    const c = compareCategoryReports(current, previous);
+    const marketing = c.expense.find((r) => r.category === "Marketing")!;
+    expect(marketing.previousAmount).toBe(0);
+    expect(marketing.delta.delta).toBe(80_00);
+    expect(marketing.delta.pct).toBeNull(); // base anterior = 0
+    const aluguel = c.expense.find((r) => r.category === "Aluguel")!;
+    expect(aluguel.amount).toBe(0);
+    expect(aluguel.delta.delta).toBe(-40_00);
+    expect(aluguel.delta.direction).toBe("down");
+  });
+
+  it("ordena pelo maior movimento absoluto (alta ou queda) primeiro", () => {
+    const current = [
+      tx({ type: "EXPENSE", amount: 100_00, category: "Pequena" }),
+      tx({ type: "EXPENSE", amount: 200_00, category: "Subiu" }),
+      tx({ type: "EXPENSE", amount: 0, category: "Caiu" }),
+    ];
+    const previous = [
+      tx({ type: "EXPENSE", amount: 90_00, category: "Pequena" }),
+      tx({ type: "EXPENSE", amount: 50_00, category: "Subiu" }),
+      tx({ type: "EXPENSE", amount: 300_00, category: "Caiu" }),
+    ];
+    const c = compareCategoryReports(current, previous);
+    // |Caiu| = 300, |Subiu| = 150, |Pequena| = 10
+    expect(c.expense.map((r) => r.category)).toEqual(["Caiu", "Subiu", "Pequena"]);
+  });
+
+  it("destaca a maior alta de despesa, a maior queda e a maior alta de receita", () => {
+    const current = [
+      tx({ type: "EXPENSE", amount: 300_00, category: "Subiu muito" }),
+      tx({ type: "EXPENSE", amount: 10_00, category: "Economizei" }),
+      tx({ type: "INCOME", amount: 500_00, category: "Cachê" }),
+    ];
+    const previous = [
+      tx({ type: "EXPENSE", amount: 100_00, category: "Subiu muito" }),
+      tx({ type: "EXPENSE", amount: 200_00, category: "Economizei" }),
+      tx({ type: "INCOME", amount: 100_00, category: "Cachê" }),
+    ];
+    const c = compareCategoryReports(current, previous);
+    expect(c.topExpenseRise?.category).toBe("Subiu muito");
+    expect(c.topExpenseRise?.delta.delta).toBe(200_00);
+    expect(c.topExpenseDrop?.category).toBe("Economizei");
+    expect(c.topExpenseDrop?.delta.delta).toBe(-190_00);
+    expect(c.topIncomeRise?.category).toBe("Cachê");
+    expect(c.topIncomeRise?.delta.delta).toBe(400_00);
+  });
+
+  it("sem altas/quedas reais → destaques ficam null", () => {
+    const txs = [tx({ type: "EXPENSE", amount: 50_00, category: "Fixo" })];
+    const c = compareCategoryReports(txs, txs);
+    expect(c.topExpenseRise).toBeNull();
+    expect(c.topExpenseDrop).toBeNull();
+    expect(c.topIncomeRise).toBeNull();
+    expect(c.expense[0].delta.direction).toBe("flat");
+  });
+
+  it("agrega os totais e as variações de receita e despesa", () => {
+    const current = [
+      tx({ type: "INCOME", amount: 400_00, category: "Cachê" }),
+      tx({ type: "EXPENSE", amount: 120_00, category: "Transporte" }),
+    ];
+    const previous = [
+      tx({ type: "INCOME", amount: 300_00, category: "Cachê" }),
+      tx({ type: "EXPENSE", amount: 200_00, category: "Transporte" }),
+    ];
+    const c = compareCategoryReports(current, previous);
+    expect(c.totalIncome).toBe(400_00);
+    expect(c.previousTotalIncome).toBe(300_00);
+    expect(c.incomeDelta.delta).toBe(100_00);
+    expect(c.totalExpense).toBe(120_00);
+    expect(c.previousTotalExpense).toBe(200_00);
+    expect(c.expenseDelta.delta).toBe(-80_00);
+    expect(c.expenseDelta.direction).toBe("down");
+  });
+
+  it("categoria em branco vira 'Sem categoria' nos dois lados", () => {
+    const c = compareCategoryReports(
+      [tx({ type: "EXPENSE", amount: 30_00, category: "  " })],
+      [tx({ type: "EXPENSE", amount: 10_00, category: "" })],
+    );
+    expect(c.expense).toHaveLength(1);
+    expect(c.expense[0].category).toBe("Sem categoria");
+    expect(c.expense[0].delta.delta).toBe(20_00);
   });
 });
 

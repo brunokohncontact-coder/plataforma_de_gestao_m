@@ -586,6 +586,120 @@ export function categoryReport(txs: TxLike[]): CategoryReport {
   };
 }
 
+/** Uma categoria com o total no período atual, no anterior e a variação entre eles. */
+export interface CategoryDelta {
+  /** Nome da categoria (em branco/ausente cai em "Sem categoria"). */
+  category: string;
+  /** Total da categoria no período atual (centavos). */
+  amount: number;
+  /** Total da categoria no período anterior (centavos). */
+  previousAmount: number;
+  /** Variação atual vs anterior (reaproveita `computeDelta`). */
+  delta: MetricDelta;
+}
+
+/** Comparativo da quebra por categoria entre dois períodos (atual vs anterior). */
+export interface CategoryReportComparison {
+  /** Categorias de receita presentes em qualquer um dos dois períodos. */
+  income: CategoryDelta[];
+  /** Categorias de despesa presentes em qualquer um dos dois períodos. */
+  expense: CategoryDelta[];
+  /** Soma das receitas no período atual. */
+  totalIncome: number;
+  /** Soma das despesas no período atual. */
+  totalExpense: number;
+  /** Soma das receitas no período anterior. */
+  previousTotalIncome: number;
+  /** Soma das despesas no período anterior. */
+  previousTotalExpense: number;
+  /** Variação do total de receitas (atual vs anterior). */
+  incomeDelta: MetricDelta;
+  /** Variação do total de despesas (atual vs anterior). */
+  expenseDelta: MetricDelta;
+  /** Maior alta de receita (delta > 0), ou null se nenhuma subiu. */
+  topIncomeRise: CategoryDelta | null;
+  /** Maior alta de despesa (delta > 0), ou null se nenhuma subiu. */
+  topExpenseRise: CategoryDelta | null;
+  /** Maior queda de despesa (delta < 0) — a economia do período, ou null. */
+  topExpenseDrop: CategoryDelta | null;
+}
+
+/**
+ * Compara a quebra por categoria de dois períodos (tipicamente mês atual vs mês
+ * anterior), respondendo "o que mudou, categoria por categoria?". Reaproveita
+ * `categoryReport` (mesma definição de categoria/"Sem categoria") e `computeDelta`
+ * (mesma semântica de variação do relatório mensal — uma fonte de verdade).
+ *
+ * Cada lista (receitas e despesas) traz toda categoria presente em qualquer um
+ * dos dois períodos (ausente num lado conta como 0), ordenada pelo **maior
+ * movimento absoluto** primeiro (`|delta|` desc; empate por valor atual desc e
+ * depois nome pt-BR) — quem mais mudou, para cima ou para baixo, aparece no topo.
+ * Os destaques isolam a maior alta de receita/despesa e a maior queda de despesa
+ * (economia). Pura.
+ */
+export function compareCategoryReports(
+  current: TxLike[],
+  previous: TxLike[],
+): CategoryReportComparison {
+  const cur = categoryReport(current);
+  const prev = categoryReport(previous);
+
+  const build = (
+    curSlices: CategorySlice[],
+    prevSlices: CategorySlice[],
+  ): CategoryDelta[] => {
+    const curMap = new Map(curSlices.map((s) => [s.category, s.amount]));
+    const prevMap = new Map(prevSlices.map((s) => [s.category, s.amount]));
+    const categories = new Set<string>([...curMap.keys(), ...prevMap.keys()]);
+
+    return Array.from(categories)
+      .map((category) => {
+        const amount = curMap.get(category) ?? 0;
+        const previousAmount = prevMap.get(category) ?? 0;
+        return {
+          category,
+          amount,
+          previousAmount,
+          delta: computeDelta(amount, previousAmount),
+        };
+      })
+      .sort(
+        (a, b) =>
+          Math.abs(b.delta.delta) - Math.abs(a.delta.delta) ||
+          b.amount - a.amount ||
+          a.category.localeCompare(b.category, "pt-BR"),
+      );
+  };
+
+  const income = build(cur.income, prev.income);
+  const expense = build(cur.expense, prev.expense);
+
+  const maxBy = (
+    rows: CategoryDelta[],
+    keep: (delta: number, best: number) => boolean,
+  ): CategoryDelta | null => {
+    let best: CategoryDelta | null = null;
+    for (const r of rows) {
+      if (keep(r.delta.delta, best?.delta.delta ?? 0)) best = r;
+    }
+    return best;
+  };
+
+  return {
+    income,
+    expense,
+    totalIncome: cur.totalIncome,
+    totalExpense: cur.totalExpense,
+    previousTotalIncome: prev.totalIncome,
+    previousTotalExpense: prev.totalExpense,
+    incomeDelta: computeDelta(cur.totalIncome, prev.totalIncome),
+    expenseDelta: computeDelta(cur.totalExpense, prev.totalExpense),
+    topIncomeRise: maxBy(income, (d, best) => d > 0 && d > best),
+    topExpenseRise: maxBy(expense, (d, best) => d > 0 && d > best),
+    topExpenseDrop: maxBy(expense, (d, best) => d < 0 && d < best),
+  };
+}
+
 // ── Mix de receitas (diversificação das fontes de renda) ────────────────────
 // Responde "de onde vem minha renda e quão dependente sou de uma única fonte?".
 // Agrega as receitas (INCOME) por categoria (= fonte de renda: cachê, aulas,
