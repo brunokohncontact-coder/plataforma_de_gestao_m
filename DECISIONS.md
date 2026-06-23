@@ -2218,3 +2218,30 @@ contexto, decisão, justificativa e alternativas consideradas.
   batida — descartado: redundante com o "100%"/barra cheia já visível.
 - `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
   nenhuma dependência nova; nenhuma mudança de schema.
+
+## D83 — Resumo trimestral das Finanças (Sessão 91)
+- **Contexto:** o conjunto de Fechamentos cobria o **mês** (Relatório mensal, D21) e o **ano** (Resumo
+  anual, D36; Sazonalidade; Crescimento ano a ano), mas faltava a cadência **trimestral** — o período
+  natural de revisão de progresso entre o mês e o ano, e o horizonte mais direto para acompanhar o pacing
+  contra a meta anual de faturamento (D77).
+- **Decisão:** nova função pura `quarterlySummary(txs, year)` em `src/lib/finance.ts` que **deriva os 4
+  trimestres do `annualSummary`** (uma só fonte de verdade da agregação mensal já testada), agrupando
+  jan–mar (Q1), abr–jun (Q2), jul–set (Q3), out–dez (Q4); soma income/expense/net por trimestre, repassa os
+  totais do ano e aponta o melhor/pior trimestre (por resultado) entre os com movimento, com desempate pelo
+  trimestre mais cedo (Q1→Q4) — espelhando exatamente o contrato e a semântica de `annualSummary`. Página
+  `/financas/trimestral` análoga ao Resumo anual (totais do ano, cards de melhor/pior trimestre, tabela
+  trimestre a trimestre com barras e período "Jan–Mar"), com navegação por ano e link cruzado ao Resumo
+  anual. Registrada no hub de Relatórios (Finanças → Fechamentos).
+- **Reaproveitamento:** zero duplicação de agregação — `quarterlySummary` chama `annualSummary` e fatia os
+  12 meses em 4 trimestres; a página reusa o padrão visual (Stat/Bar/HighlightCard) do Resumo anual.
+- **Testes:** 5 casos puros para `quarterlySummary` (4 trimestres vazios, agrupamento no trimestre certo +
+  totais, ignora outros anos, melhor/pior por resultado, desempate pelo mais cedo). 614 testes verdes
+  (eram 609).
+- **Alternativas consideradas:** (a) trimestre **fiscal/móvel** (últimos 3 meses a partir de hoje) —
+  descartado: trimestres de calendário são o que se compara ano a ano e o que o usuário espera de um
+  "fechamento trimestral". (b) adicionar quebra por categoria e comparativo trimestre-a-trimestre já nesta
+  sessão — adiado: o Resumo anual já cobre a categoria do ano, e manter o escopo fechado mantém a sessão
+  funcional e mergeável; o helper puro deixa a porta aberta para um comparativo QoQ depois. (c) novo modelo/
+  migração — desnecessário: a granularidade trimestral é puramente derivada das transações existentes.
+- `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
+  nenhuma dependência nova; nenhuma mudança de schema.
