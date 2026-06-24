@@ -3699,6 +3699,94 @@ export function computeBreakEven(
   };
 }
 
+// ── Fôlego de caixa (por quantos meses o caixa cobre os custos fixos) ────────
+
+/** Dias médios por mês (365,25 / 12) — para projetar a data de esgotamento. */
+const AVG_DAYS_PER_MONTH = 365.25 / 12;
+
+/**
+ * Veredito do fôlego de caixa:
+ * - `no-cost`: não há custo fixo recorrente identificado — nada a sustentar.
+ * - `negative`: caixa atual ≤ 0 — já no vermelho, não há fôlego a medir.
+ * - `critical`: o caixa cobre menos de `CRITICAL_RUNWAY_MONTHS` meses de custo fixo.
+ * - `tight`: cobre de `CRITICAL` a menos de `HEALTHY_RUNWAY_MONTHS` meses.
+ * - `healthy`: cobre `HEALTHY_RUNWAY_MONTHS` meses ou mais.
+ */
+export type RunwayVerdict = "healthy" | "tight" | "critical" | "no-cost" | "negative";
+
+/** Abaixo disto o fôlego é crítico (meses). HIPÓTESE de planejamento — ver D99. */
+export const CRITICAL_RUNWAY_MONTHS = 3;
+/** A partir disto o fôlego é confortável (meses). HIPÓTESE de planejamento — ver D99. */
+export const HEALTHY_RUNWAY_MONTHS = 6;
+
+export interface CashRunway {
+  /** Caixa realizado atual (recebido − pago), em centavos. Pode ser negativo. */
+  currentCash: number;
+  /** Custo fixo mensal estimado (centavos) — de `recurringExpenses`. */
+  monthlyFixedCost: number;
+  /**
+   * Por quantos meses o caixa atual cobre o custo fixo: `currentCash / monthlyFixedCost`.
+   * Número não arredondado (≥ 0). `null` quando não há o que medir:
+   * - `monthlyFixedCost <= 0` (sem custo fixo recorrente), ou
+   * - `currentCash <= 0` (caixa já zerado/negativo).
+   */
+  runwayMonths: number | null;
+  /**
+   * Data estimada em que o caixa zera (`now` + `runwayMonths` meses, mês ≈ 30,44 dias).
+   * `null` quando `runwayMonths` é `null`. Aproximada (planejamento, não contabilidade).
+   */
+  depletionDate: Date | null;
+  /** Veredito de saúde do fôlego (ver `RunwayVerdict`). */
+  verdict: RunwayVerdict;
+}
+
+/**
+ * Fôlego de caixa: "se as receitas parassem hoje, por quantos meses o caixa atual
+ * cobriria meus custos fixos?". Cruza dois números já existentes:
+ *
+ * - `currentCash` = caixa realizado de `summarizeFinances` (recebido − pago); só o
+ *   que de fato entrou/saiu, não pendências (o pessimismo é deliberado — fôlego é o
+ *   que você tem em mãos, não o que promete entrar).
+ * - `monthlyFixedCost` = `recurringExpenses().estimatedMonthlyFixedCost` (D39): a soma
+ *   das contas típicas das categorias recorrentes ainda ativas.
+ *
+ * `runwayMonths = currentCash / monthlyFixedCost`. É um indicador de resiliência
+ * (fundo de emergência do autônomo), complementar ao ponto de equilíbrio (D40, que
+ * mede o fluxo necessário) e à reserva de impostos (D41). Pura; `now` e as opções de
+ * recorrência são injetáveis.
+ */
+export function cashRunway(
+  txs: TxLike[],
+  options: { now?: Date | string; recurring?: RecurringExpensesOptions } = {},
+): CashRunway {
+  const now = options.now ?? new Date();
+  const currentCash = summarizeFinances(txs).cashBalance;
+  const monthlyFixedCost = recurringExpenses(txs, {
+    now,
+    ...options.recurring,
+  }).estimatedMonthlyFixedCost;
+
+  if (monthlyFixedCost <= 0) {
+    return { currentCash, monthlyFixedCost, runwayMonths: null, depletionDate: null, verdict: "no-cost" };
+  }
+  if (currentCash <= 0) {
+    return { currentCash, monthlyFixedCost, runwayMonths: null, depletionDate: null, verdict: "negative" };
+  }
+
+  const runwayMonths = currentCash / monthlyFixedCost;
+  const nowMs = (typeof now === "string" ? new Date(now) : now).getTime();
+  const depletionDate = new Date(nowMs + runwayMonths * AVG_DAYS_PER_MONTH * 86_400_000);
+
+  const verdict: RunwayVerdict =
+    runwayMonths < CRITICAL_RUNWAY_MONTHS
+      ? "critical"
+      : runwayMonths < HEALTHY_RUNWAY_MONTHS
+        ? "tight"
+        : "healthy";
+
+  return { currentCash, monthlyFixedCost, runwayMonths, depletionDate, verdict };
+}
+
 // ── Reserva para impostos (guardar parte do que entra) ──────────────────────
 
 /**

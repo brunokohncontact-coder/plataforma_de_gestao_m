@@ -2780,3 +2780,37 @@ contexto, decisão, justificativa e alternativas consideradas.
   o card é um nudge de "próxima oportunidade", não uma ferramenta de planejamento; manter 12 fixo lá preserva
   o placar consistente com o link. (c) persistir a última janela escolhida (padrão D23/listFilter) — adiável:
   a escolha de janela é exploratória/efêmera, não um filtro de trabalho recorrente; o default 12 basta.
+
+## D99 — Fôlego de caixa (runway: por quantos meses o caixa cobre os custos fixos) (Sessão 107)
+- **Contexto:** o app já media o **fluxo** necessário (ponto de equilíbrio, D40) e o quanto guardar de
+  imposto (D41), mas faltava o indicador de **resiliência** mais básico do autônomo: "se as receitas
+  parassem hoje, por quanto tempo meu caixa me sustenta?". É o fundo de emergência traduzido em meses.
+- **Decisão:** novo helper **puro** `cashRunway(txs, { now?, recurring? })` em `src/lib/finance.ts`, cruzando
+  dois números já existentes e testados — `summarizeFinances(txs).cashBalance` (caixa **realizado**:
+  recebido − pago) e `recurringExpenses(txs).estimatedMonthlyFixedCost` (custo fixo mensal típico, D39).
+  `runwayMonths = currentCash / monthlyFixedCost`. Veredito (`RunwayVerdict`): `no-cost` (sem custo fixo
+  recorrente → nada a medir), `negative` (caixa ≤ 0 → já no vermelho), e `critical`/`tight`/`healthy` pelos
+  limiares `CRITICAL_RUNWAY_MONTHS=3` e `HEALTHY_RUNWAY_MONTHS=6`. Também devolve uma `depletionDate`
+  aproximada (`now + runwayMonths × 30,4375 dias`).
+- **Por que só caixa realizado (não pendências):** fôlego é o que você tem **em mãos**, não o que promete
+  entrar — incluir contas a receber inflaria o número justamente no cenário que ele simula (as receitas
+  pararam). O pessimismo é deliberado, coerente com a leitura conservadora-por-design do projeto (D60).
+- **Página** `/financas/folego-de-caixa` (registrada no hub de Relatórios, Finanças → Custos & metas, ícone
+  🛟): hero "Meses de fôlego", caixa de veredito colorida (verde/âmbar/vermelho), data estimada de
+  esgotamento e os dois números por trás; estados dedicados para `no-cost` (sem custos fixos → atalho para
+  Custos fixos) e `negative` (caixa zerado/negativo → foco em recompor o caixa).
+- **Limiares 3/6 meses são HIPÓTESE de planejamento** (referência usual de fundo de emergência para autônomos),
+  exportados como constantes e sinalizados como ajustáveis na cópia da página — não são premissa contábil.
+- **DoD:** build de produção, typecheck e lint (0 avisos) verdes; **717 testes** verdes (+8 puros para
+  `cashRunway`: no-cost, negative, cálculo runway = caixa/custo, verdicts crítico/tight, limiares inclusivos
+  no piso 3→tight e 6→healthy, projeção da data de esgotamento, pendências ignoradas no caixa); smoke test
+  (app sobe; `/login` e `/` → 200; rota protegida sem sessão → 307→/login).
+- `npm audit` inalterado vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
+  postcss bundlado; correção só via upgrade quebrando para Next 16 — já rastreado nos bloqueios/D6); nenhuma
+  dependência nova.
+- **Alternativas consideradas:** (a) somar pendências a receber ao caixa — descartado: contradiz o cenário
+  simulado (receitas pararam) e o objetivo de medir resiliência real. (b) usar o resultado médio mensal
+  (burn rate) em vez do custo fixo recorrente — adiável: o custo fixo (D39) é a base estável que você precisa
+  cobrir mesmo sem tocar; o burn rate completo (incl. custos variáveis de show) varia com a agenda e mistura
+  o que é discricionário. (c) card no Painel — próximo passo natural (reusa `cashRunway` sobre as transações
+  já carregadas no dashboard), deixado para uma sessão seguinte para manter o escopo fechado.

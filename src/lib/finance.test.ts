@@ -53,6 +53,7 @@ import {
   recurringExpenses,
   pendingFixedCosts,
   computeBreakEven,
+  cashRunway,
   taxReserve,
   DEFAULT_TAX_RATE,
   showPipeline,
@@ -3507,6 +3508,118 @@ describe("computeBreakEven", () => {
     expect(r.showsNeeded).toBe(1);
     expect(r.avgShowsPerMonth).toBe(2);
     expect(r.covered).toBe(true);
+  });
+});
+
+describe("cashRunway", () => {
+  const NOW = "2026-06-15T00:00:00.000Z"; // junho/2026
+
+  // 3 meses distintos de "Sala de ensaio" a 100,00 → custo fixo típico = 100,00/mês.
+  const fixedCostTxs: TxLike[] = [
+    tx({ type: "EXPENSE", amount: 100_00, category: "Sala de ensaio", received: true, date: "2026-04-10T00:00:00.000Z" }),
+    tx({ type: "EXPENSE", amount: 100_00, category: "Sala de ensaio", received: true, date: "2026-05-10T00:00:00.000Z" }),
+    tx({ type: "EXPENSE", amount: 100_00, category: "Sala de ensaio", received: true, date: "2026-06-10T00:00:00.000Z" }),
+  ];
+
+  it("retorna no-cost quando não há custo fixo recorrente", () => {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 500_00, received: true, date: "2026-06-01T00:00:00.000Z" }),
+    ];
+    const r = cashRunway(txs, { now: NOW });
+    expect(r.monthlyFixedCost).toBe(0);
+    expect(r.runwayMonths).toBeNull();
+    expect(r.depletionDate).toBeNull();
+    expect(r.verdict).toBe("no-cost");
+    expect(r.currentCash).toBe(500_00);
+  });
+
+  it("retorna negative quando o caixa atual é <= 0 (apesar de haver custo fixo)", () => {
+    // Só despesas pagas (o próprio custo fixo) → caixa = -300,00.
+    const r = cashRunway(fixedCostTxs, { now: NOW });
+    expect(r.monthlyFixedCost).toBe(100_00);
+    expect(r.currentCash).toBe(-300_00);
+    expect(r.runwayMonths).toBeNull();
+    expect(r.depletionDate).toBeNull();
+    expect(r.verdict).toBe("negative");
+  });
+
+  it("calcula runwayMonths = caixa / custo fixo mensal", () => {
+    const txs: TxLike[] = [
+      // Caixa de entrada de 1.200,00 recebido; custo fixo típico 100,00/mês.
+      tx({ type: "INCOME", amount: 1200_00, received: true, date: "2026-06-01T00:00:00.000Z" }),
+      ...fixedCostTxs,
+    ];
+    const r = cashRunway(txs, { now: NOW });
+    // caixa = 1200,00 − 300,00 (3 aluguéis pagos) = 900,00; runway = 900/100 = 9.
+    expect(r.currentCash).toBe(900_00);
+    expect(r.monthlyFixedCost).toBe(100_00);
+    expect(r.runwayMonths).toBe(9);
+    expect(r.verdict).toBe("healthy");
+  });
+
+  it("marca verdict crítico quando o fôlego é menor que 3 meses", () => {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 450_00, received: true, date: "2026-06-01T00:00:00.000Z" }),
+      ...fixedCostTxs,
+    ];
+    // caixa = 450 − 300 = 150,00; runway = 1,5 mês → crítico (< 3).
+    const r = cashRunway(txs, { now: NOW });
+    expect(r.runwayMonths).toBeCloseTo(1.5, 5);
+    expect(r.verdict).toBe("critical");
+  });
+
+  it("marca verdict tight entre 3 e 6 meses", () => {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 700_00, received: true, date: "2026-06-01T00:00:00.000Z" }),
+      ...fixedCostTxs,
+    ];
+    // caixa = 700 − 300 = 400,00; runway = 4 meses → tight.
+    const r = cashRunway(txs, { now: NOW });
+    expect(r.runwayMonths).toBe(4);
+    expect(r.verdict).toBe("tight");
+  });
+
+  it("os limiares são inclusivos no piso (3 → tight, 6 → healthy)", () => {
+    const at3: TxLike[] = [
+      tx({ type: "INCOME", amount: 600_00, received: true, date: "2026-06-01T00:00:00.000Z" }),
+      ...fixedCostTxs,
+    ]; // caixa = 300; runway = 3 → tight (não crítico).
+    expect(cashRunway(at3, { now: NOW }).verdict).toBe("tight");
+
+    const at6: TxLike[] = [
+      tx({ type: "INCOME", amount: 900_00, received: true, date: "2026-06-01T00:00:00.000Z" }),
+      ...fixedCostTxs,
+    ]; // caixa = 600; runway = 6 → healthy.
+    expect(cashRunway(at6, { now: NOW }).verdict).toBe("healthy");
+  });
+
+  it("projeta a data de esgotamento a partir de now + runwayMonths meses", () => {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 1200_00, received: true, date: "2026-06-01T00:00:00.000Z" }),
+      ...fixedCostTxs,
+    ];
+    const r = cashRunway(txs, { now: NOW });
+    // runway = 9 meses ≈ 9 × 30,4375 dias após 2026-06-15.
+    const expected = new Date(
+      new Date(NOW).getTime() + 9 * (365.25 / 12) * 86_400_000,
+    );
+    expect(r.depletionDate?.getTime()).toBe(expected.getTime());
+    // Sanidade: cai por volta de março/2027.
+    expect(r.depletionDate?.getUTCFullYear()).toBe(2027);
+    expect(r.depletionDate?.getUTCMonth()).toBe(2); // março (0-based)
+  });
+
+  it("não conta pendências no caixa (só recebido/pago)", () => {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 5000_00, received: false, date: "2026-06-01T00:00:00.000Z" }), // a receber: ignorado
+      tx({ type: "INCOME", amount: 600_00, received: true, date: "2026-06-01T00:00:00.000Z" }),
+      ...fixedCostTxs,
+    ];
+    const r = cashRunway(txs, { now: NOW });
+    // caixa = 600 − 300 = 300,00 (pendência de 5.000 não entra); runway = 3 → tight.
+    expect(r.currentCash).toBe(300_00);
+    expect(r.runwayMonths).toBe(3);
+    expect(r.verdict).toBe("tight");
   });
 });
 

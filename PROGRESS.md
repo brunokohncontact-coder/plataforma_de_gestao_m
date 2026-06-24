@@ -9,8 +9,14 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **709 testes**
-verdes após a Sessão 106 (**janela parametrizável na página de fins de semana livres** —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **717 testes**
+verdes após a Sessão 107 (**fôlego de caixa / runway** — helper puro `cashRunway` em
+`src/lib/finance.ts` cruza o caixa realizado (`summarizeFinances().cashBalance`) com o custo fixo
+mensal (`recurringExpenses().estimatedMonthlyFixedCost`, D39) → `runwayMonths = caixa / custo`, com
+veredito (no-cost/negative/critical/tight/healthy pelos limiares 3 e 6 meses) e data estimada de
+esgotamento; nova página `/financas/folego-de-caixa` (hub → Custos & metas, 🛟) responde "se as
+receitas parassem hoje, por quantos meses meu caixa me sustenta?". +8 testes puros, ver D99; eram
+709 na Sessão 106, **janela parametrizável na página de fins de semana livres** —
 helper puro `parseWeekendWindow` em `src/lib/shows.ts` lê e saneia `?semanas=` (default 12,
 grampeado a 1–52, trunca fracionário, aceita query repetida) e a página
 `/shows/fins-de-semana-livres` ganhou pílulas de janela 4/8/12/26 semanas com a ativa em
@@ -2418,6 +2424,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `monthlyGoalProgress` (mapa de cor unificado `GOAL_BAR`), ver D88. Próximo possível — alerta proativo
    (e-mail/badge) quando a meta passa a depender só de shows a confirmar, ou um scroll-spy/scroll para o
    mês corrente na tira.
+7. **Resiliência / fôlego de caixa** (entregue na Sessão 107, `/financas/folego-de-caixa` + `cashRunway`,
+   ver D99): cruza o caixa realizado com o custo fixo mensal (D39) → por quantos meses o caixa cobre os
+   custos fixos se as receitas pararem, com veredito (limiares 3/6 meses, hipótese) e data de esgotamento.
+   Próximo possível — **card "Fôlego de caixa" no Painel** (reusa `cashRunway` sobre as transações já
+   carregadas no dashboard, só quando o veredito for tight/critical, para não virar ruído), ou tornar os
+   limiares 3/6 configuráveis pelo usuário.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)
