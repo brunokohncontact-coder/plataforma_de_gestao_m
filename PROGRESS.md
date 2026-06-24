@@ -9,8 +9,12 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **728 testes**
-verdes após a Sessão 109 (**fôlego de caixa pelo burn rate realizado** — helper puro `cashBurnRunway`
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **736 testes**
+verdes após a Sessão 110 (**seletor de janela `?meses=` no fôlego de caixa** — helper puro `parseBurnWindow`
+em `src/lib/finance.ts` espelha `parseWeekendWindow` e reaproveita `sanitizeBurnWindow` (clamp 1–24); a página
+`/financas/folego-de-caixa` ganhou pílulas 3m/6m/12m/24m (`BURN_WINDOW_PRESETS`) que passam `{ months }` a
+`cashBurnRunway`, lendo `?meses=` saneado. +8 testes puros, ver D102; eram 728 na Sessão 109,
+**fôlego de caixa pelo burn rate realizado** — helper puro `cashBurnRunway`
 em `src/lib/finance.ts` mede o fluxo de caixa líquido médio dos últimos 6 meses fechados (gastos variáveis
 incluídos, receita recebida descontada) → por quantos meses o caixa dura no ritmo real; veredito
 `surplus`/`negative`/`critical`/`tight`/`healthy` (limiares 3/6 reusados de `cashRunway`); card "Cenário
@@ -2446,8 +2450,10 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    fechados (custos variáveis incluídos, receita recebida descontada) → por quantos meses o caixa dura no
    ritmo real; card "Cenário alternativo · ritmo de gasto real" sempre visível em `/financas/folego-de-caixa`,
    ver D101.
-   Próximo possível — tornar os limiares 3/6 configuráveis pelo usuário; expor um seletor de janela
-   (`?meses=`, já saneada por `sanitizeBurnWindow` 1–24) na página; ou um card de burn rate no Painel.
+   **Seletor de janela (`?meses=`)** entregue na Sessão 110 — `parseBurnWindow` em `src/lib/finance.ts`
+   (espelha `parseWeekendWindow`, reaproveita `sanitizeBurnWindow`) + pílulas 3m/6m/12m/24m
+   (`BURN_WINDOW_PRESETS`) no card "Cenário alternativo" de `/financas/folego-de-caixa`, ver D102.
+   Próximo possível — tornar os limiares 3/6 configuráveis pelo usuário; ou um card de burn rate no Painel.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)
