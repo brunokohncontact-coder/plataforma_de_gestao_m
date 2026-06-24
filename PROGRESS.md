@@ -9,8 +9,14 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **695 testes**
-verdes após a Sessão 104 (**fins de semana livres** — `findOpenWeekends` em `src/lib/shows.ts` +
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **700 testes**
+verdes após a Sessão 105 (**card "próximo fim de semana livre" no Painel** —
+`dashboard/page.tsx` reaproveita `findOpenWeekends` sobre os shows já carregados e exibe um
+banner-nudge "🎸 Fim de semana livre" com o próximo aberto + placar "N de M livres", linkando
+para `/shows/fins-de-semana-livres`; aparece só com agenda futura, para não virar ruído em conta
+vazia. Os helpers de rótulo `formatWeekendLabel`/`weekendKeyToDate` foram extraídos da página da
+D96 para `src/lib/shows.ts` (DRY); +5 testes puros, ver D97; eram
+695 na Sessão 104, **fins de semana livres** — `findOpenWeekends` em `src/lib/shows.ts` +
 `/shows/fins-de-semana-livres`: lista os próximos 12 fins de semana sexta→domingo e marca os sem
 show como oportunidade de booking, registrado no hub de relatórios; +11 testes puros, ver D96; eram
 684 na Sessão 103, promessas furadas no recorte por contratante — banner + selo ⚠ por
@@ -2304,8 +2310,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `.ics` na Sessão 15 — base em `src/lib/calendar.ts` e `src/lib/ics.ts`;
    **fins de semana livres** entregue na Sessão 104 — `findOpenWeekends` em `src/lib/shows.ts` +
    `/shows/fins-de-semana-livres`: próximos 12 fins de semana sexta→domingo, marcando os vazios como
-   oportunidade de booking, ver D96.) Próximo possível — card "próximo fim de semana livre" no Painel
-   reaproveitando `findOpenWeekends.nextOpenFriday`, ou parametrizar a janela (`?semanas=`).
+   oportunidade de booking, ver D96; **card "próximo fim de semana livre" no Painel** entregue na
+   Sessão 105 — banner-nudge "🎸 Fim de semana livre" em `dashboard/page.tsx` reaproveitando
+   `findOpenWeekends` + helpers `formatWeekendLabel`/`weekendKeyToDate` extraídos para `shows.ts`,
+   só com agenda futura, ver D97.) Próximo possível — parametrizar a janela (`?semanas=`) na página,
+   ou um mini-calendário de salto rápido na agenda.
 2b. **Funil de propostas — evoluções** (entregue na Sessão 51, `/shows/funil` + `showPipeline`,
    ver D42; **card do funil no Painel** entregue na Sessão 52 — cachê em aberto + taxa de
    concretização, ver D43): hoje é um retrato do estado atual. Próximo possível — registrar

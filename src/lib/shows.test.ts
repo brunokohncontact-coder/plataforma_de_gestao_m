@@ -3,6 +3,8 @@ import {
   filterShows,
   findScheduleConflicts,
   findOpenWeekends,
+  formatWeekendLabel,
+  weekendKeyToDate,
   hasActiveShowFilter,
   isValidShowStatus,
   type ConflictShowLike,
@@ -381,5 +383,36 @@ describe("findOpenWeekends", () => {
     const before = input.map((s) => s.date);
     findOpenWeekends(input, { now: SUNDAY, weeks: 3 });
     expect(input.map((s) => s.date)).toEqual(before);
+  });
+});
+
+describe("weekendKeyToDate", () => {
+  it("interpreta a chave como meia-noite UTC (sem escorregar de fuso)", () => {
+    const d = weekendKeyToDate("2026-03-13");
+    expect(d.getUTCFullYear()).toBe(2026);
+    expect(d.getUTCMonth()).toBe(2); // março (0-based)
+    expect(d.getUTCDate()).toBe(13);
+    expect(d.getUTCHours()).toBe(0);
+  });
+});
+
+describe("formatWeekendLabel", () => {
+  it("usa um mês só quando sexta e domingo caem no mesmo mês", () => {
+    expect(formatWeekendLabel("2026-03-13", "2026-03-15")).toBe("13–15 de mar");
+  });
+
+  it("mostra os dois meses quando o fim de semana vira o mês", () => {
+    expect(formatWeekendLabel("2026-02-27", "2026-03-01")).toBe("27 fev – 1 mar");
+  });
+
+  it("vira o ano sem quebrar (dez → jan)", () => {
+    expect(formatWeekendLabel("2026-12-31", "2027-01-02")).toBe("31 dez – 2 jan");
+  });
+
+  it("casa o rótulo do próximo fim de semana livre de findOpenWeekends", () => {
+    // Domingo 15/03/2026; o fim de semana corrente (13–15) está livre.
+    const r = findOpenWeekends([], { now: "2026-03-15T12:00:00.000Z", weeks: 4 });
+    const next = r.weekends.find((w) => w.friday === r.nextOpenFriday)!;
+    expect(formatWeekendLabel(next.friday, next.days[2])).toBe("13–15 de mar");
   });
 });

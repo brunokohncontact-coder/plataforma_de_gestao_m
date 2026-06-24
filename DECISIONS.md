@@ -2720,3 +2720,32 @@ contexto, decisão, justificativa e alternativas consideradas.
   brunch), excluí-lo marcaria como "livre" um fim de semana já ocupado. (c) estimar a receita perdida por fim
   de semana livre (cachê médio × livres) — descartado por ora: seria hipótese frágil (cachê médio histórico
   pode não valer para a data futura); o sinal "N de M livres" já basta para priorizar.
+
+## D97 — Card "próximo fim de semana livre" no Painel (Sessão 105)
+- **Contexto:** a Sessão 104 (D96) entregou `/shows/fins-de-semana-livres`, mas a oportunidade de booking
+  mais próxima só aparecia ao navegar até a página dedicada. O Painel já é o hub de sinais acionáveis
+  (pendências vencidas, cachês a receber, conflitos de agenda, custos fixos a lançar); faltava trazer a
+  "receita na mesa" para a primeira tela, no mesmo padrão de banner-nudge.
+- **Decisão:** card-banner "🎸 Fim de semana livre" no `dashboard/page.tsx` reaproveitando
+  `findOpenWeekends` (janela de 12 semanas, igual à página) sobre os **shows já carregados** pelo dashboard —
+  sem consulta extra. Mostra o rótulo do próximo fim de semana aberto e, quando há mais de um, o placar
+  "N de M fins de semana livres", linkando para a página completa.
+  - **Gate anti-ruído:** só aparece quando `nextOpenFriday != null` **E** `upcoming.length > 0` (o artista já
+    tem agenda futura). Num cadastro vazio todo fim de semana está livre — o aviso seria ruído, não
+    oportunidade; exigir agenda futura garante que um fim de semana aberto é dinheiro deixado na mesa por
+    quem está ativamente tocando.
+  - **Tom visual:** paleta `brand` (roxo, oportunidade), distinta dos banners âmbar (avisos: conflitos,
+    custos fixos) e vermelho (urgência: pendências). Sinaliza "ação positiva/prospecção", não "problema".
+- **DRY:** o rótulo compacto do fim de semana (`13–15 de mar` / `27 fev – 1 mar`) e o parsing de chave UTC
+  estavam **privados** na página da D96; foram promovidos a `formatWeekendLabel`/`weekendKeyToDate` puros e
+  exportados em `src/lib/shows.ts` (uma fonte de verdade), agora reaproveitados pela página e pelo card.
+- **DoD:** build de produção, typecheck e lint (0 avisos) verdes; **700 testes** verdes (+5 puros para os
+  helpers extraídos: `weekendKeyToDate` (meia-noite UTC), `formatWeekendLabel` (mesmo mês / vira mês / vira
+  ano / casamento com `findOpenWeekends`)); smoke test (app sobe; rota protegida redireciona p/ login).
+- `npm audit` inalterado vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
+  postcss bundlado; correção só via upgrade quebrando para Next 16 — já rastreado nos bloqueios/D6); nenhuma
+  dependência nova.
+- **Alternativas consideradas:** (a) mostrar o card sempre que houver fim de semana livre (sem o gate de
+  agenda futura) — descartado: poluiria o Painel de contas novas/vazias. (b) parametrizar a janela do card
+  separada da página — descartado: 12 semanas mantém placar consistente com a página linkada. (c) estimar a
+  receita perdida (cachê médio × livres) no card — descartado pelos mesmos motivos da D96 (hipótese frágil).
