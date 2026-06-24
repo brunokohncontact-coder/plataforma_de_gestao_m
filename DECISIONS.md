@@ -2877,3 +2877,39 @@ contexto, decisão, justificativa e alternativas consideradas.
   — descartado: misturaria dois conceitos (piso de resiliência × ritmo real) num número ambíguo; mantê-los como
   dois cards distintos é mais honesto. (b) incluir o mês corrente na janela — descartado pela distorção do mês
   parcial. (c) card no Painel — adiável (próximo possível); manter o escopo da sessão fechado na página dedicada.
+
+## D102 — Seletor de janela (`?meses=`) na página de fôlego de caixa (Sessão 110)
+- **Contexto:** `cashBurnRunway` (D101) já aceitava `{ months }` e a janela era saneada por `sanitizeBurnWindow`
+  (inteiro em [1, 24], default 6), mas a página `/financas/folego-de-caixa` chamava sempre com o default — sem
+  controle na UI. O item 7 dos próximos passos listava como "próximo possível" justamente expor o seletor de
+  janela (`?meses=`). Olhar o burn rate por trimestre (3) vs. semestre (6) vs. ano (12) muda a leitura: janela
+  curta capta uma virada recente de patamar; janela longa suaviza a sazonalidade de quem tem renda irregular.
+- **Decisão:** novo helper puro **`parseBurnWindow(raw, fallback?)`** exportado em `src/lib/finance.ts`,
+  espelhando `parseWeekendWindow` (shows.ts, D98) — lê string única ou repetida (usa a primeira), valor ausente/
+  vazio/não-numérico cai no `fallback` (default `DEFAULT_BURN_WINDOW_MONTHS`), e reaproveita `sanitizeBurnWindow`
+  para o clamp em [`BURN_WINDOW_MIN`=1, `BURN_WINDOW_MAX`=24] truncando fração. As constantes do clamp e o conjunto
+  `BURN_WINDOW_PRESETS = [3, 6, 12, 24]` (trimestre/semestre/ano/dois anos) viraram exports, e `sanitizeBurnWindow`
+  passou a referenciar `BURN_WINDOW_MIN/MAX` (uma fonte de verdade dos limites).
+- **UI:** a página lê `searchParams.meses` via `parseBurnWindow` e passa `{ months }` a `cashBurnRunway`; o card
+  "Cenário alternativo · ritmo de gasto real" ganhou uma fileira de pílulas-âncora `3m/6m/12m/24m` (a ativa em
+  `bg-brand-600`, `aria-current`), cada uma linkando `?meses=N`. O texto do card já dizia "os últimos {windowMonths}
+  meses fechados", então reflete a janela escolhida automaticamente.
+- **Testes:** 8 casos puros novos (`parseBurnWindow`) em `finance.test.ts`: default/fallback, leitura válida,
+  truncamento de fração, clamp piso/teto, não-numérico, param repetido/vazio e validade de todos os presets.
+  **736 testes** verdes (eram 728).
+- **DoD:** build de produção, typecheck e lint (0 avisos) verdes; **736 testes**; smoke test — `npm start`:
+  `/login` → 200, `/financas/folego-de-caixa?meses=12` → 307 (redireciona ao login sem sessão, rota compila e
+  resolve os searchParams). `npm audit` inalterado vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical,
+  todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) seletor de janela só com presets fixos vs. campo numérico livre — escolhido
+  presets (menos atrito, cobre os recortes úteis; o `?meses=` cru ainda aceita qualquer valor 1–24 para quem
+  digitar na URL). (b) tornar os limiares 3/6 configuráveis e/ou um card de burn rate no Painel — adiados (próximos
+  possíveis), mantendo o escopo da sessão fechado e funcional na página dedicada.
+
+### Infra/ambiente — engines do Prisma via proxy (Sessão 110)
+- O `postinstall` do `@prisma/engines` baixa os engines por um downloader Node que, atrás do proxy de egress,
+  aborta com `ECONNRESET` (o mesmo host responde 200 via `curl --cacert`). Contorno desta sessão (não commitado):
+  `npm install --ignore-scripts`, baixar `libquery_engine`/`schema-engine` (`debian-openssl-3.0.x`,
+  commit `605197351a3c8bdd595af2d2a9bc3025bca48ea2`) com `curl` para `node_modules/@prisma/engines/`, e rodar
+  `prisma generate`/`db push` com `PRISMA_QUERY_ENGINE_LIBRARY`/`PRISMA_SCHEMA_ENGINE_BINARY` apontando para eles +
+  `NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt`. Não afeta o CI (rede liberada). Anotado para a próxima sessão.

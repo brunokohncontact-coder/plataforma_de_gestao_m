@@ -55,7 +55,11 @@ import {
   computeBreakEven,
   cashRunway,
   cashBurnRunway,
+  parseBurnWindow,
   DEFAULT_BURN_WINDOW_MONTHS,
+  BURN_WINDOW_MIN,
+  BURN_WINDOW_MAX,
+  BURN_WINDOW_PRESETS,
   taxReserve,
   DEFAULT_TAX_RATE,
   showPipeline,
@@ -3755,6 +3759,53 @@ describe("cashBurnRunway", () => {
     // runway = 14 meses ≈ 14 × 30,4375 dias após 2026-06-15.
     const expected = new Date(new Date(NOW).getTime() + 14 * (365.25 / 12) * 86_400_000);
     expect(r.depletionDate?.getTime()).toBe(expected.getTime());
+  });
+});
+
+describe("parseBurnWindow", () => {
+  it("usa o default quando ausente, vazio ou só espaços", () => {
+    expect(parseBurnWindow(undefined)).toBe(DEFAULT_BURN_WINDOW_MONTHS);
+    expect(parseBurnWindow("")).toBe(DEFAULT_BURN_WINDOW_MONTHS);
+    expect(parseBurnWindow("   ")).toBe(DEFAULT_BURN_WINDOW_MONTHS);
+  });
+
+  it("usa o fallback informado quando ausente", () => {
+    expect(parseBurnWindow(undefined, 12)).toBe(12);
+    expect(parseBurnWindow("abc", 3)).toBe(3);
+  });
+
+  it("lê um valor numérico válido", () => {
+    expect(parseBurnWindow("12")).toBe(12);
+    expect(parseBurnWindow("3")).toBe(3);
+  });
+
+  it("trunca a fração para inteiro", () => {
+    expect(parseBurnWindow("4.9")).toBe(4);
+    expect(parseBurnWindow("6.01")).toBe(6);
+  });
+
+  it("grampeia ao piso e ao teto", () => {
+    expect(parseBurnWindow("0")).toBe(BURN_WINDOW_MIN);
+    expect(parseBurnWindow("-5")).toBe(BURN_WINDOW_MIN);
+    expect(parseBurnWindow("100")).toBe(BURN_WINDOW_MAX);
+  });
+
+  it("cai no default para valores não-numéricos", () => {
+    expect(parseBurnWindow("abc")).toBe(DEFAULT_BURN_WINDOW_MONTHS);
+    expect(parseBurnWindow("NaN")).toBe(DEFAULT_BURN_WINDOW_MONTHS);
+  });
+
+  it("usa a primeira ocorrência quando o param vem repetido", () => {
+    expect(parseBurnWindow(["12", "3"])).toBe(12);
+    expect(parseBurnWindow([])).toBe(DEFAULT_BURN_WINDOW_MONTHS);
+  });
+
+  it("todos os presets são janelas válidas (dentro de [min, max])", () => {
+    for (const m of BURN_WINDOW_PRESETS) {
+      expect(parseBurnWindow(String(m))).toBe(m);
+      expect(m).toBeGreaterThanOrEqual(BURN_WINDOW_MIN);
+      expect(m).toBeLessThanOrEqual(BURN_WINDOW_MAX);
+    }
   });
 });
 

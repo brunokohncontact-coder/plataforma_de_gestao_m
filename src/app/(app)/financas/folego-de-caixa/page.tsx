@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import {
   cashRunway,
   cashBurnRunway,
+  parseBurnWindow,
+  BURN_WINDOW_PRESETS,
   CRITICAL_RUNWAY_MONTHS,
   HEALTHY_RUNWAY_MONTHS,
   type RunwayVerdict,
@@ -30,8 +32,14 @@ const VERDICT_STYLE: Record<
   critical: { box: "bg-red-50 text-red-800", emoji: "🔴", label: "Fôlego crítico" },
 };
 
-export default async function CashRunwayPage() {
+export default async function CashRunwayPage({
+  searchParams,
+}: {
+  searchParams?: { meses?: string | string[] };
+}) {
   const user = await requireUser();
+
+  const burnWindow = parseBurnWindow(searchParams?.meses);
 
   const transactions = await prisma.transaction.findMany({
     where: { userId: user.id },
@@ -51,8 +59,9 @@ export default async function CashRunwayPage() {
   const { currentCash, monthlyFixedCost, runwayMonths, depletionDate, verdict } = runway;
 
   // Cenário alternativo (completo): fôlego pelo ritmo de gasto real dos últimos meses,
-  // incluindo custos variáveis e descontando a receita que de fato entrou (D101).
-  const burn = cashBurnRunway(txs);
+  // incluindo custos variáveis e descontando a receita que de fato entrou (D101). A
+  // janela é parametrizável via ?meses= (saneada por parseBurnWindow, D102).
+  const burn = cashBurnRunway(txs, { months: burnWindow });
 
   return (
     <div className="space-y-6">
@@ -180,7 +189,7 @@ export default async function CashRunwayPage() {
         independe de haver custo fixo recorrente detectado — é útil justamente quando o
         número de cima não tem o que medir (sem custo fixo) ou para a foto completa.
       */}
-      <BurnRunwayCard burn={burn} />
+      <BurnRunwayCard burn={burn} window={burnWindow} />
     </div>
   );
 }
@@ -210,7 +219,7 @@ const BURN_VERDICT_STYLE: Record<
  * variáveis e descontando a receita já recebida na janela. Complementa o número de
  * cima (que só cobre o custo fixo) com a foto completa do caixa.
  */
-function BurnRunwayCard({ burn }: { burn: CashBurnRunway }) {
+function BurnRunwayCard({ burn, window }: { burn: CashBurnRunway; window: number }) {
   const {
     windowMonths,
     avgMonthlyNet,
@@ -223,9 +232,31 @@ function BurnRunwayCard({ burn }: { burn: CashBurnRunway }) {
 
   return (
     <section className="card">
-      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
-        Cenário alternativo · ritmo de gasto real
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+          Cenário alternativo · ritmo de gasto real
+        </p>
+        <div className="flex flex-wrap items-center gap-1" aria-label="Janela de meses">
+          {BURN_WINDOW_PRESETS.map((m) => {
+            const active = m === window;
+            return (
+              <Link
+                key={m}
+                href={`/financas/folego-de-caixa?meses=${m}`}
+                aria-current={active ? "true" : undefined}
+                className={
+                  "rounded-full px-2.5 py-1 text-xs font-medium transition-colors " +
+                  (active
+                    ? "bg-brand-600 text-white"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200")
+                }
+              >
+                {m}m
+              </Link>
+            );
+          })}
+        </div>
+      </div>
       <p className="mt-1 text-sm text-gray-500">
         Olhando os últimos {windowMonths} meses fechados — gastos variáveis incluídos e a receita
         que de fato entrou descontada — qual foi a queima média de caixa?

@@ -3796,6 +3796,18 @@ export function cashRunway(
  */
 export const DEFAULT_BURN_WINDOW_MONTHS = 6;
 
+/** Menor janela de burn rate admitida (1 mês). */
+export const BURN_WINDOW_MIN = 1;
+/** Maior janela de burn rate admitida (24 meses). */
+export const BURN_WINDOW_MAX = 24;
+
+/**
+ * Janelas oferecidas no seletor da página de fôlego de caixa. Trimestre (3),
+ * semestre (6, default), ano (12) e dois anos (24) cobrem do recorte recente à
+ * média mais suave. Todas dentro de [`BURN_WINDOW_MIN`, `BURN_WINDOW_MAX`].
+ */
+export const BURN_WINDOW_PRESETS: readonly number[] = [3, 6, 12, 24];
+
 /**
  * Veredito do fôlego pelo burn rate:
  * - `surplus`: no período observado o caixa **cresceu** (entrou mais do que saiu) —
@@ -3911,13 +3923,33 @@ export function cashBurnRunway(
   return { ...base, runwayMonths, depletionDate, verdict };
 }
 
-/** Sanitiza a janela de burn rate: inteiro em [1, 24], default `DEFAULT_BURN_WINDOW_MONTHS`. */
+/**
+ * Sanitiza a janela de burn rate: inteiro em [`BURN_WINDOW_MIN`, `BURN_WINDOW_MAX`],
+ * default `DEFAULT_BURN_WINDOW_MONTHS`.
+ */
 function sanitizeBurnWindow(months: number | undefined): number {
   if (months === undefined || !Number.isFinite(months)) return DEFAULT_BURN_WINDOW_MONTHS;
   const n = Math.trunc(months);
-  if (n < 1) return 1;
-  if (n > 24) return 24;
+  if (n < BURN_WINDOW_MIN) return BURN_WINDOW_MIN;
+  if (n > BURN_WINDOW_MAX) return BURN_WINDOW_MAX;
   return n;
+}
+
+/**
+ * Lê a janela de burn rate de um query param (`?meses=`) e a saneia para
+ * [`BURN_WINDOW_MIN`, `BURN_WINDOW_MAX`]. Aceita string única ou repetida (usa a
+ * primeira); valor ausente, vazio ou não-numérico cai no `fallback`. Pura — espelha
+ * `parseWeekendWindow` (shows.ts) reaproveitando `sanitizeBurnWindow` para o clamp.
+ */
+export function parseBurnWindow(
+  raw: string | string[] | undefined,
+  fallback: number = DEFAULT_BURN_WINDOW_MONTHS,
+): number {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (value == null || value.trim() === "") return fallback;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return sanitizeBurnWindow(n);
 }
 
 // ── Reserva para impostos (guardar parte do que entra) ──────────────────────
