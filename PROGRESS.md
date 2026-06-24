@@ -10,8 +10,10 @@
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
 do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **684 testes**
-verdes após a Sessão 102 (data prometida de pagamento + promessas furadas nos cachês a receber —
-campo `Show.paymentPromisedAt`; eram 668 na Sessão 101, cobrança consolidada por contratante —
+verdes após a Sessão 103 (promessas furadas no recorte por contratante — banner + selo ⚠ por
+devedor e por show em `/shows/a-receber/por-contratante`, reaproveitando `summarizePaymentPromises`;
+mudança de UI, sem novos testes — eram 684 na Sessão 102, data prometida de pagamento + promessas
+furadas nos cachês a receber — campo `Show.paymentPromisedAt`; eram 668 na Sessão 101, cobrança consolidada por contratante —
 e-mail/WhatsApp na página "por contratante";
 eram 660 na Sessão 100, cachês a receber por contratante — de quem cobrar primeiro; eram 655 na
 Sessão 99, contas fixas a lançar no mês; eram 648 na Sessão 98,
@@ -2334,9 +2336,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    **data prometida de pagamento + promessas furadas** entregue na Sessão 102 — campo
    `Show.paymentPromisedAt` + `paymentPromiseStatus`/`summarizePaymentPromises`/`resolvePromiseDate` +
    `setPaymentPromiseAction` + `PromiseButton`; coluna "Promessa" e card de promessas em `/shows/a-receber`,
-   linha "promessas vencidas" no Painel, ver D94):
-   próximo possível — lembrar a última escolha de contato por show, **promessas furadas no recorte por
-   contratante** (agregar `summarizePaymentPromises` em `/shows/a-receber/por-contratante`), ou a mediana
+   linha "promessas vencidas" no Painel, ver D94; **promessas furadas no recorte por contratante** entregue
+   na Sessão 103 — banner geral + selo "⚠ N promessas vencidas" por devedor (tabela e detalhe) e "⚠ promessa
+   vencida" / "📅 promete {data}" por show em `/shows/a-receber/por-contratante`, reaproveitando
+   `summarizePaymentPromises`/`paymentPromiseStatus` por grupo, ver D95):
+   próximo possível — lembrar a última escolha de contato por show, ou a mediana
    do prazo por contratante (adiada na D57: com poucos shows por contratante fica ruidosa).
 4. **Sessões/segurança**: invalidação ao trocar a senha entregue na Sessão 26
    (`passwordChangedAt` + `isSessionFresh`, ver D17). Evoluções possíveis: "encerrar sessão

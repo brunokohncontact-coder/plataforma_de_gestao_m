@@ -2647,3 +2647,37 @@ contexto, decisão, justificativa e alternativas consideradas.
   no Painel sem editar na lista — descartado: o registro precisa estar onde se cobra.
 - `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
   nenhuma dependência nova; **um** campo de schema novo (aditivo, opcional, portável p/ PostgreSQL).
+
+## D95 — Promessas furadas no recorte por contratante (Sessão 103)
+- **Contexto:** a D94 registrou a **data prometida de pagamento** por show e destacou as promessas furadas,
+  mas só na visão plana `/shows/a-receber` (coluna "Promessa" + card geral) e no Painel. A visão de cobrança
+  priorizada por **devedor** (`/shows/a-receber/por-contratante`, D92/D93) ainda ignorava a promessa — ou seja,
+  ao decidir "de quem cobrar primeiro" o músico não via *quem prometeu e não cumpriu*, que é justamente o sinal
+  mais forte de cobrança. Era o "próximo possível" do item 5 do PROGRESS.
+- **Decisão:** trazer o panorama de promessas para a página por contratante, **sem nova lógica pura** — apenas
+  reaproveitando `summarizePaymentPromises`/`paymentPromiseStatus` (D94), chamados sobre os recebíveis já
+  agrupados por `outstandingByContact` (D92). Três níveis de sinal, do geral ao específico:
+  - **Banner geral** (espelha o card de `/shows/a-receber`): total/contagem de promessas vencidas × no prazo
+    do recorte inteiro, a partir de `summarizePaymentPromises(receivables.rows)`.
+  - **Selo por contratante** ("⚠ N promessas vencidas") na tabela de priorização e no cabeçalho do detalhe,
+    a partir de um `Map<chave-do-grupo, PaymentPromiseSummary>` construído com uma chamada por grupo
+    (`r.rows.map(a => a.row)`). A chave casa exatamente a de `byContact.rows` (`contact.id` / `"__none__"`).
+  - **Selo por show** na lista de detalhe: "⚠ promessa vencida" (vermelho) ou "📅 promete {data}" (âmbar),
+    via `paymentPromiseStatus(show.paymentPromisedAt)`. O campo já vinha no `findMany` (sem `select`).
+- **Por que aqui não tem o `PromiseButton`:** a página por contratante é de **priorização/leitura** (decidir por
+  quem começar); o registro/edição da data continua único em `/shows/a-receber` (D94) — evita dois pontos de
+  escrita do mesmo campo. O rodapé e o banner linkam para lá.
+- **DRY:** nenhuma função nova; toda a classificação/agrupamento de promessas é a de D94, já com 9 testes puros.
+  A mudança é de UI (composição de helpers testados), no mesmo padrão das sessões 41/52/72/77 (sinal no Painel
+  reaproveitando lógica pura). Por isso **não** adiciona testes — contagem segue em **684**.
+- **DoD:** build de produção, typecheck e lint (0 avisos) verdes; **684 testes** verdes; smoke test
+  **autenticado** (sessão semeada com um contratante e dois shows PLAYED sem cachê lançado — um com promessa
+  10 dias vencida, outro prometido p/ +5 dias) renderiza HTTP 200 com o banner "🤝 Promessas de pagamento",
+  o selo "⚠ promessa vencida" por show e por devedor e o "📅 promete" no prazo.
+- `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), nenhuma dependência nova;
+  nenhuma mudança de schema.
+- **Alternativas consideradas:** (a) ordenar os contratantes com promessa furada no topo (acima do maior
+  devedor) — descartado por ora: muda o critério de priorização da D92 (maior saldo) sem pedido claro; o selo
+  já chama atenção visual sem reordenar. (b) `summarizePromisesByContact` como função pura nova em `finance.ts`
+  — descartado: seria um wrapper trivial de um `.map` + `summarizePaymentPromises` por grupo, sem regra própria
+  a testar; manter a composição na página é mais simples e não cria superfície redundante.

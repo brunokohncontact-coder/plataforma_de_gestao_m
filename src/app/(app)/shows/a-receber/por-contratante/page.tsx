@@ -4,9 +4,12 @@ import { prisma } from "@/lib/prisma";
 import {
   reconcileShowFees,
   outstandingByContact,
+  summarizePaymentPromises,
+  paymentPromiseStatus,
   RECEIVABLE_AGE_BUCKET_LABELS,
   type ReceivableAgeBucketKey,
   type ReceivableShowLike,
+  type PaymentPromiseSummary,
   type TxLike,
 } from "@/lib/finance";
 import { pickPayerContact, buildContactBilling } from "@/lib/billing";
@@ -105,6 +108,19 @@ export default async function ReceivablesByContactPage() {
     getPayer as (s: ReceivableShowLike & ShowRow) => PayerContact | null,
   );
 
+  // Promessas de pagamento no recorte por contratante: o panorama geral (banner)
+  // e, por devedor, quantas promessas já furaram — para priorizar quem prometeu e
+  // não cumpriu. Reaproveita a lógica pura já testada (summarizePaymentPromises),
+  // chamada sobre os recebíveis de cada grupo. A chave casa a do byContact.rows.
+  const promises = summarizePaymentPromises(receivables.rows);
+  const NO_CONTACT_KEY = "__none__";
+  const promisesByKey = new Map<string, PaymentPromiseSummary<ReceivableShowLike & ShowRow>>(
+    byContact.rows.map((r) => [
+      r.contact?.id ?? NO_CONTACT_KEY,
+      summarizePaymentPromises(r.rows.map((a) => a.row)),
+    ]),
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -188,6 +204,46 @@ export default async function ReceivablesByContactPage() {
             </div>
           </div>
 
+          {(promises.brokenCount > 0 || promises.pendingCount > 0) && (
+            <div
+              className={
+                "rounded-lg border px-4 py-3 text-sm " +
+                (promises.brokenCount > 0
+                  ? "border-red-200 bg-red-50 text-red-800"
+                  : "border-amber-200 bg-amber-50 text-amber-800")
+              }
+            >
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                <span className="font-semibold">🤝 Promessas de pagamento</span>
+                {promises.brokenCount > 0 && (
+                  <span className="font-semibold text-red-700">
+                    ⚠ {formatMoney(promises.brokenOutstanding)} em{" "}
+                    {promises.brokenCount}{" "}
+                    {promises.brokenCount === 1 ? "promessa vencida" : "promessas vencidas"}
+                  </span>
+                )}
+                {promises.pendingCount > 0 && (
+                  <span className={promises.brokenCount > 0 ? "text-red-600" : "text-amber-700"}>
+                    {formatMoney(promises.pendingOutstanding)} em{" "}
+                    {promises.pendingCount}{" "}
+                    {promises.pendingCount === 1 ? "promessa no prazo" : "promessas no prazo"}
+                  </span>
+                )}
+              </div>
+              {promises.brokenCount > 0 && (
+                <p className="mt-1 text-xs text-red-600">
+                  Quem prometeu e não pagou aparece com{" "}
+                  <span className="font-medium">⚠</span> ao lado do contratante — comece a
+                  cobrança por eles. A data de cada promessa é editável em{" "}
+                  <Link href="/shows/a-receber" className="font-medium text-red-700 hover:underline">
+                    Cachês a receber
+                  </Link>
+                  .
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Por contratante, do maior saldo devedor ao menor */}
           <section className="card overflow-x-auto p-0">
             <table className="w-full text-sm">
@@ -201,19 +257,32 @@ export default async function ReceivablesByContactPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {byContact.rows.map((r) => (
+                {byContact.rows.map((r) => {
+                  const groupPromises = promisesByKey.get(r.contact?.id ?? NO_CONTACT_KEY);
+                  return (
                   <tr key={r.contact?.id ?? "__none__"} className="hover:bg-gray-50">
                     <td className="px-4 py-3">
-                      {r.contact ? (
-                        <Link
-                          href={`/contatos/${r.contact.id}`}
-                          className="font-medium text-gray-900 hover:underline"
-                        >
-                          {r.contact.name}
-                        </Link>
-                      ) : (
-                        <span className="font-medium text-gray-500">Sem contratante</span>
-                      )}
+                      <span className="inline-flex items-center gap-2">
+                        {r.contact ? (
+                          <Link
+                            href={`/contatos/${r.contact.id}`}
+                            className="font-medium text-gray-900 hover:underline"
+                          >
+                            {r.contact.name}
+                          </Link>
+                        ) : (
+                          <span className="font-medium text-gray-500">Sem contratante</span>
+                        )}
+                        {groupPromises && groupPromises.brokenCount > 0 && (
+                          <span
+                            className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700"
+                            title={`${groupPromises.brokenCount} ${groupPromises.brokenCount === 1 ? "promessa vencida" : "promessas vencidas"} (${formatMoney(groupPromises.brokenOutstanding)})`}
+                          >
+                            ⚠ {groupPromises.brokenCount}{" "}
+                            {groupPromises.brokenCount === 1 ? "promessa" : "promessas"}
+                          </span>
+                        )}
+                      </span>
                       <p className="text-xs text-gray-400">
                         {r.contact ? roleLabel(r.contact.role) : "shows sem contato vinculado"}
                         {" · "}
@@ -240,7 +309,8 @@ export default async function ReceivablesByContactPage() {
                       {daysLabel(r.weightedAvgDays)}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </section>
@@ -249,6 +319,7 @@ export default async function ReceivablesByContactPage() {
           <section className="space-y-4">
             <h2 className="text-sm font-semibold text-gray-700">Shows em aberto por contratante</h2>
             {byContact.rows.map((r) => {
+              const groupPromises = promisesByKey.get(r.contact?.id ?? NO_CONTACT_KEY);
               // Cobrança consolidada: uma só mensagem cobrindo todos os shows em aberto
               // deste contratante (e-mail/WhatsApp). null quando o contato não tem canal
               // (sem e-mail/telefone) ou é o grupo "Sem contratante".
@@ -275,8 +346,17 @@ export default async function ReceivablesByContactPage() {
               return (
               <div key={r.contact?.id ?? "__none__"} className="card">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-                  <p className="font-medium text-gray-900">
+                  <p className="flex items-center gap-2 font-medium text-gray-900">
                     {r.contact ? r.contact.name : "Sem contratante"}
+                    {groupPromises && groupPromises.brokenCount > 0 && (
+                      <span
+                        className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700"
+                        title={`${groupPromises.brokenCount} ${groupPromises.brokenCount === 1 ? "promessa vencida" : "promessas vencidas"} (${formatMoney(groupPromises.brokenOutstanding)})`}
+                      >
+                        ⚠ {groupPromises.brokenCount}{" "}
+                        {groupPromises.brokenCount === 1 ? "promessa vencida" : "promessas vencidas"}
+                      </span>
+                    )}
                   </p>
                   <div className="flex items-center gap-3">
                     {billing && (
@@ -316,19 +396,39 @@ export default async function ReceivablesByContactPage() {
                       title: string;
                       venue: string | null;
                       city: string | null;
+                      paymentPromisedAt?: Date | string | null;
                     };
+                    const promiseStatus = paymentPromiseStatus(info.paymentPromisedAt);
                     return (
                       <li
                         key={info.id}
                         className="flex items-center justify-between gap-3 py-2"
                       >
                         <div className="min-w-0">
-                          <Link
-                            href={`/shows/${info.id}`}
-                            className="font-medium text-gray-900 hover:underline"
-                          >
-                            {info.title}
-                          </Link>
+                          <span className="flex items-center gap-2">
+                            <Link
+                              href={`/shows/${info.id}`}
+                              className="font-medium text-gray-900 hover:underline"
+                            >
+                              {info.title}
+                            </Link>
+                            {promiseStatus === "broken" && (
+                              <span
+                                className="shrink-0 text-xs font-medium text-red-600"
+                                title={`Prometido para ${formatDate(info.paymentPromisedAt as Date)} — promessa vencida`}
+                              >
+                                ⚠ promessa vencida
+                              </span>
+                            )}
+                            {promiseStatus === "pending" && (
+                              <span
+                                className="shrink-0 text-xs text-amber-600"
+                                title={`Pagamento prometido para ${formatDate(info.paymentPromisedAt as Date)}`}
+                              >
+                                📅 promete {formatDate(info.paymentPromisedAt as Date)}
+                              </span>
+                            )}
+                          </span>
                           <p className="text-xs text-gray-400">
                             {formatDate(info.date)}
                             {info.venue
@@ -361,11 +461,15 @@ export default async function ReceivablesByContactPage() {
             caem em &quot;Sem contratante&quot;. <strong>✉ E-mail</strong> /{" "}
             <strong>WhatsApp</strong> por contratante abrem uma única mensagem de cobrança
             cobrindo todos os shows em aberto dele (aparecem quando o contratante tem
-            e-mail/telefone). Para quitar um cachê, use{" "}
+            e-mail/telefone). O selo <span className="font-medium text-red-600">⚠ promessa
+            vencida</span> marca quem prometeu pagar até uma data que já passou (e o cachê
+            continua em aberto); <span className="font-medium text-amber-600">📅</span> indica
+            promessa ainda no prazo. A data prometida é registrada/editada em{" "}
             <Link href="/shows/a-receber" className="text-brand-700 hover:underline">
               Cachês a receber
             </Link>
-            . Baldes de atraso: {Object.values(RECEIVABLE_AGE_BUCKET_LABELS).join(" · ")}.
+            , onde também se quita o cachê. Baldes de atraso:{" "}
+            {Object.values(RECEIVABLE_AGE_BUCKET_LABELS).join(" · ")}.
           </p>
         </>
       )}
