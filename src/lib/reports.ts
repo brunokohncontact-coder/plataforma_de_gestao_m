@@ -76,6 +76,14 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "⚠️",
       },
       {
+        title: "Fins de semana livres",
+        href: "/shows/fins-de-semana-livres",
+        description:
+          "Quais fins de semana (sexta a domingo) ainda estão sem show — onde focar a prospecção.",
+        subtopic: "Agenda & pipeline",
+        icon: "🗓️",
+      },
+      {
         title: "Receita agendada",
         href: "/shows/receita-agendada",
         description: "Os cachês dos shows futuros projetados por mês (confirmado x a confirmar).",
