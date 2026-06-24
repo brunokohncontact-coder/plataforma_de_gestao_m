@@ -2906,6 +2906,35 @@ contexto, decisão, justificativa e alternativas consideradas.
   digitar na URL). (b) tornar os limiares 3/6 configuráveis e/ou um card de burn rate no Painel — adiados (próximos
   possíveis), mantendo o escopo da sessão fechado e funcional na página dedicada.
 
+## D103 — Card "Ritmo de gasto" (burn rate) no Painel (Sessão 111)
+- **Contexto:** `cashBurnRunway` (D101) já media o fôlego pelo ritmo real de gasto (custos variáveis incluídos,
+  receita recebida descontada), mas só aparecia na página `/financas/folego-de-caixa`. D101/D102 listaram "card de
+  burn rate no Painel" como próximo possível, deliberadamente adiado. O Painel já trazia o nudge de `cashRunway`
+  (D100 — só custo fixo); faltava a leitura **completa** ao alcance do olho, na home.
+- **Decisão:** novo helper puro **`cashBurnHeadline(burn: CashBurnRunway): CashBurnHeadline`** em
+  `src/lib/finance.ts`, espelhando `paymentLagHeadline` (D70): recebe um `cashBurnRunway` já computado e devolve a
+  decisão de Painel (`show`, `critical`, `runwayMonths`, `monthlyBurn`, `verdict`). A regra de exibição vive no
+  helper (testável), não na página. `show` é `true` só com veredito `tight`/`critical` — mesma disciplina
+  "só quando morde" dos demais nudges: `surplus` (caixa cresce, não queima), `healthy` (fôlego folgado) e
+  `negative` (caixa já zerado) não geram aviso, para não virar ruído.
+- **UI:** segundo banner-nudge em `dashboard/page.tsx`, logo após o nudge de custo fixo (D100), reaproveitando as
+  transações já carregadas (sem I/O extra). Ícone 🔥 (âmbar, apertado) / 🔴 (vermelho, crítico < 3 meses), texto
+  "No ritmo real o caixa dura N meses (queima de R$X/mês)", linkando para `/financas/folego-de-caixa`. Os dois
+  nudges são independentes e complementares — raramente disparam juntos (o de custo fixo costuma dar runway maior;
+  o burn rate só morde quando há queima líquida real). Mantidos separados de propósito: misturá-los num número só
+  ocultaria qual lente disparou.
+- **Testes:** 5 casos puros novos (`cashBurnHeadline`) em `finance.test.ts` cobrindo os cinco vereditos
+  (`healthy`/`surplus`/`negative` → não mostra; `tight`/`critical` → mostra, com `critical` distinto). **741 testes**
+  verdes (eram 736).
+- **DoD:** build de produção, typecheck e lint (0 avisos) verdes; **741 testes**; smoke test — `npm start`:
+  `/` → 200 e `/login` → 200, app sobe. `npm audit` inalterado vs. baseline (10 advisories — 4 moderate / 5 high /
+  1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) suprimir o nudge de custo fixo quando o burn rate diz `surplus` (você não está
+  realmente queimando, embora o caixa cubra poucos meses de custo fixo) — atraente, mas mudaria o comportamento
+  estabelecido da D100 e acopla os dois cálculos; adiado como refinamento futuro. (b) um único card "fôlego" que
+  alterna entre as duas métricas — descartado: esconde qual cenário está ativo. (c) reusar a regra inline na página
+  em vez de um helper — descartado: o helper puro torna a decisão de Painel testável, como em `paymentLagHeadline`.
+
 ### Infra/ambiente — engines do Prisma via proxy (Sessão 110)
 - O `postinstall` do `@prisma/engines` baixa os engines por um downloader Node que, atrás do proxy de egress,
   aborta com `ECONNRESET` (o mesmo host responde 200 via `curl --cacert`). Contorno desta sessão (não commitado):

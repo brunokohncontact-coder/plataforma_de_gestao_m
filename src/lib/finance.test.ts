@@ -55,6 +55,7 @@ import {
   computeBreakEven,
   cashRunway,
   cashBurnRunway,
+  cashBurnHeadline,
   parseBurnWindow,
   DEFAULT_BURN_WINDOW_MONTHS,
   BURN_WINDOW_MIN,
@@ -3759,6 +3760,72 @@ describe("cashBurnRunway", () => {
     // runway = 14 meses ≈ 14 × 30,4375 dias após 2026-06-15.
     const expected = new Date(new Date(NOW).getTime() + 14 * (365.25 / 12) * 86_400_000);
     expect(r.depletionDate?.getTime()).toBe(expected.getTime());
+  });
+});
+
+describe("cashBurnHeadline", () => {
+  const NOW = "2026-06-15T00:00:00.000Z";
+  const windowExpenses = (each: number): TxLike[] =>
+    [
+      "2025-12-10",
+      "2026-01-10",
+      "2026-02-10",
+      "2026-03-10",
+      "2026-04-10",
+      "2026-05-10",
+    ].map((d) => tx({ type: "EXPENSE", amount: each, received: true, date: `${d}T00:00:00.000Z` }));
+  const income = (amount: number): TxLike =>
+    tx({ type: "INCOME", amount, received: true, date: "2025-11-15T00:00:00.000Z" });
+
+  it("não mostra com fôlego saudável (≥ 6 meses)", () => {
+    // queima 100/mês, caixa 1400 → runway 14 meses (healthy).
+    const h = cashBurnHeadline(cashBurnRunway([income(2000_00), ...windowExpenses(100_00)], { now: NOW }));
+    expect(h.verdict).toBe("healthy");
+    expect(h.show).toBe(false);
+    expect(h.critical).toBe(false);
+  });
+
+  it("não mostra quando o caixa cresce na janela (surplus)", () => {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 1200_00, received: true, date: "2026-03-10T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 600_00, received: true, date: "2026-03-15T00:00:00.000Z" }),
+    ];
+    const h = cashBurnHeadline(cashBurnRunway(txs, { now: NOW }));
+    expect(h.verdict).toBe("surplus");
+    expect(h.show).toBe(false);
+    expect(h.runwayMonths).toBeNull();
+    expect(h.monthlyBurn).toBe(0);
+  });
+
+  it("não mostra quando o caixa já está zerado/negativo (negative)", () => {
+    const h = cashBurnHeadline(cashBurnRunway(windowExpenses(100_00), { now: NOW }));
+    expect(h.verdict).toBe("negative");
+    expect(h.show).toBe(false);
+    expect(h.runwayMonths).toBeNull();
+  });
+
+  it("mostra (não-crítico) quando o fôlego é apertado (entre 3 e 6 meses)", () => {
+    // queima 200/mês, caixa = 1000 − 1200 = ... ajustamos: caixa 900, queima 200 → 4,5 meses (tight).
+    const h = cashBurnHeadline(
+      cashBurnRunway([income(2100_00), ...windowExpenses(200_00)], { now: NOW }),
+    );
+    // queima = 1200/6 = 200/mês; caixa = 2100 − 1200 = 900; runway = 4,5 → tight.
+    expect(h.verdict).toBe("tight");
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(false);
+    expect(h.runwayMonths).toBeCloseTo(4.5, 5);
+    expect(h.monthlyBurn).toBe(200_00);
+  });
+
+  it("mostra como crítico quando o fôlego é menor que 3 meses", () => {
+    const h = cashBurnHeadline(
+      cashBurnRunway([income(1000_00), ...windowExpenses(150_00)], { now: NOW }),
+    );
+    // queima = 900/6 = 150/mês; caixa = 100; runway ≈ 0,67 → critical.
+    expect(h.verdict).toBe("critical");
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(true);
+    expect(h.runwayMonths).toBeCloseTo(100 / 150, 5);
   });
 });
 

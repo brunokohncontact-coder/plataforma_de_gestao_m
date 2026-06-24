@@ -3952,6 +3952,47 @@ export function parseBurnWindow(
   return sanitizeBurnWindow(n);
 }
 
+export interface CashBurnHeadline {
+  /**
+   * Deve aparecer no Painel? Só quando o fôlego pelo ritmo real **morde**
+   * (`tight`/`critical`). Com `surplus` (caixa cresce — não há queima),
+   * `healthy` (fôlego folgado) ou `negative` (caixa já zerado, sem runway a
+   * medir) o aviso seria ruído, não alerta.
+   */
+  show: boolean;
+  /** Veredito é crítico (fôlego < `CRITICAL_RUNWAY_MONTHS` meses)? */
+  critical: boolean;
+  /**
+   * Por quantos meses o caixa dura no ritmo real de gasto. Sempre um número
+   * (não-`null`) quando `show` é `true`, pois `tight`/`critical` só ocorrem com
+   * `runwayMonths` definido.
+   */
+  runwayMonths: number | null;
+  /** Queima média mensal de caixa (centavos, ≥ 0) que sustenta o cálculo. */
+  monthlyBurn: number;
+  /** Veredito completo do burn rate (para quem quiser o detalhe). */
+  verdict: BurnRunwayVerdict;
+}
+
+/**
+ * Resumo de Painel do fôlego de caixa pelo **burn rate realizado**: deriva, de um
+ * `cashBurnRunway` já computado, se o nudge deve aparecer e com que urgência. Pura,
+ * sem I/O — espelha `paymentLagHeadline` (D70): a regra de exibição vive aqui, o
+ * dashboard só consome. Complementa o nudge de `cashRunway` (que cobre só o custo
+ * fixo, D100): este inclui custos variáveis e desconta a receita que entrou, então
+ * só dispara quando o músico de fato queima caixa no ritmo recente.
+ */
+export function cashBurnHeadline(burn: CashBurnRunway): CashBurnHeadline {
+  const show = burn.verdict === "tight" || burn.verdict === "critical";
+  return {
+    show,
+    critical: burn.verdict === "critical",
+    runwayMonths: burn.runwayMonths,
+    monthlyBurn: burn.monthlyBurn,
+    verdict: burn.verdict,
+  };
+}
+
 // ── Reserva para impostos (guardar parte do que entra) ──────────────────────
 
 /**
