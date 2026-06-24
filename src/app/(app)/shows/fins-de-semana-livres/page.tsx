@@ -1,33 +1,18 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { findOpenWeekends, type ConflictShowLike } from "@/lib/shows";
+import {
+  findOpenWeekends,
+  formatWeekendLabel,
+  type ConflictShowLike,
+} from "@/lib/shows";
 import { formatMoney } from "@/lib/money";
-import { MONTH_NAMES_LONG } from "@/lib/calendar";
 import { SHOW_STATUS_DOT, SHOW_STATUS_LABELS, type ShowStatus } from "@/lib/domain";
 
 export const dynamic = "force-dynamic";
 
 // Janela analisada: próximos ~3 meses de fins de semana.
 const WEEKS = 12;
-
-// "YYYY-MM-DD" (UTC) → Date em UTC, para formatação sem escorregar de fuso.
-function keyToDate(key: string): Date {
-  const [y, m, d] = key.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d));
-}
-
-// Rótulo compacto do fim de semana, ex.: "13–15 de mar" ou "27 fev – 1 mar".
-function weekendLabel(fri: string, sun: string): string {
-  const f = keyToDate(fri);
-  const s = keyToDate(sun);
-  const fMonth = MONTH_NAMES_LONG[f.getUTCMonth()].slice(0, 3).toLowerCase();
-  const sMonth = MONTH_NAMES_LONG[s.getUTCMonth()].slice(0, 3).toLowerCase();
-  if (f.getUTCMonth() === s.getUTCMonth()) {
-    return `${f.getUTCDate()}–${s.getUTCDate()} de ${fMonth}`;
-  }
-  return `${f.getUTCDate()} ${fMonth} – ${s.getUTCDate()} ${sMonth}`;
-}
 
 function formatTime(date: Date): string {
   return date.toLocaleTimeString("pt-BR", {
@@ -98,7 +83,7 @@ export default async function OpenWeekendsPage() {
           label="Próximo livre"
           value={
             report.nextOpenFriday
-              ? weekendLabel(
+              ? formatWeekendLabel(
                   report.nextOpenFriday,
                   report.weekends.find((w) => w.friday === report.nextOpenFriday)!
                     .days[2],
@@ -115,7 +100,7 @@ export default async function OpenWeekendsPage() {
             Todos os {report.total} fins de semana têm algo marcado. 🎉
           </p>
           <p className="mt-1 text-sm">
-            Agenda cheia até {weekendLabel(
+            Agenda cheia até {formatWeekendLabel(
               report.weekends[report.weekends.length - 1].friday,
               report.weekends[report.weekends.length - 1].days[2],
             )}.
@@ -132,7 +117,7 @@ export default async function OpenWeekendsPage() {
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="font-semibold capitalize text-gray-900">
-                  {weekendLabel(w.friday, w.days[2])}
+                  {formatWeekendLabel(w.friday, w.days[2])}
                 </h2>
                 <span
                   className={

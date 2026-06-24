@@ -35,7 +35,12 @@ import {
   type MetricDelta,
   type PaymentSpeedBucketKey,
 } from "@/lib/finance";
-import { findScheduleConflicts } from "@/lib/shows";
+import {
+  findScheduleConflicts,
+  findOpenWeekends,
+  formatWeekendLabel,
+  type ConflictShowLike,
+} from "@/lib/shows";
 import { formatMoney } from "@/lib/money";
 import { formatDate, formatMonthKey } from "@/lib/format";
 import { SHOW_STATUS_LABELS, SHOW_STATUS_COLORS, type ShowStatus } from "@/lib/domain";
@@ -197,6 +202,18 @@ export default async function DashboardPage() {
   // Conflitos de agenda ainda acionáveis (dias com 2+ shows de hoje em diante).
   const conflicts = findScheduleConflicts(shows);
 
+  // Próximo fim de semana livre (sexta→domingo sem nenhum show) na janela das
+  // próximas 12 semanas — a "receita na mesa" mais próxima (D96/findOpenWeekends).
+  // Reaproveita os shows já carregados (sem I/O extra). Só vira nudge quando o
+  // artista já tem agenda futura (upcoming > 0) — num cadastro vazio todo fim de
+  // semana está livre e o aviso seria ruído, não oportunidade.
+  const openWeekends = findOpenWeekends(shows as ConflictShowLike[], { weeks: 12 });
+  const nextOpenWeekend =
+    openWeekends.nextOpenFriday != null
+      ? openWeekends.weekends.find((w) => w.friday === openWeekends.nextOpenFriday)
+      : undefined;
+  const showOpenWeekend = nextOpenWeekend != null && upcoming.length > 0;
+
   // Rentabilidade: top shows realizados por resultado
   const playedShows = shows.filter((s) => s.status === "PLAYED");
   const showPnls = playedShows
@@ -290,6 +307,29 @@ export default async function DashboardPage() {
             com mais de um show marcado
           </span>
           <span className="text-amber-600">Revisar →</span>
+        </Link>
+      )}
+
+      {/* Oportunidade: próximo fim de semana livre (sexta→domingo sem show). */}
+      {showOpenWeekend && nextOpenWeekend && (
+        <Link
+          href="/shows/fins-de-semana-livres"
+          className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900 transition hover:bg-brand-100"
+        >
+          <span className="font-semibold">🎸 Fim de semana livre</span>
+          <span>
+            Próximo aberto:{" "}
+            <strong className="capitalize">
+              {formatWeekendLabel(nextOpenWeekend.friday, nextOpenWeekend.days[2])}
+            </strong>
+            {openWeekends.openCount > 1 && (
+              <span className="text-brand-600">
+                {" "}
+                · {openWeekends.openCount} de {openWeekends.total} fins de semana livres
+              </span>
+            )}
+          </span>
+          <span className="text-brand-600">Agendar →</span>
         </Link>
       )}
 

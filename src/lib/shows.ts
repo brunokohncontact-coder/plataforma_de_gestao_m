@@ -6,6 +6,7 @@
 
 import { dayKey, isValidDateKey, normalizeText } from "./finance";
 import { SHOW_STATUSES, type ShowStatus } from "./domain";
+import { MONTH_NAMES_LONG } from "./calendar";
 
 export interface ShowLike {
   title: string;
@@ -280,4 +281,26 @@ export function findOpenWeekends<T extends ConflictShowLike>(
     bookedCount: weekends.length - openCount,
     nextOpenFriday,
   };
+}
+
+/** "YYYY-MM-DD" (UTC) → Date em UTC, para formatação sem escorregar de fuso. Pura. */
+export function weekendKeyToDate(key: string): Date {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d));
+}
+
+/**
+ * Rótulo compacto de um fim de semana sexta→domingo, ex.: "13–15 de mar" (mesmo
+ * mês) ou "27 fev – 1 mar" (vira o mês). Uma fonte de verdade reaproveitada pela
+ * página `/shows/fins-de-semana-livres` e pelo card do Painel. Pura.
+ */
+export function formatWeekendLabel(friday: string, sunday: string): string {
+  const f = weekendKeyToDate(friday);
+  const s = weekendKeyToDate(sunday);
+  const fMonth = MONTH_NAMES_LONG[f.getUTCMonth()].slice(0, 3).toLowerCase();
+  const sMonth = MONTH_NAMES_LONG[s.getUTCMonth()].slice(0, 3).toLowerCase();
+  if (f.getUTCMonth() === s.getUTCMonth()) {
+    return `${f.getUTCDate()}–${s.getUTCDate()} de ${fMonth}`;
+  }
+  return `${f.getUTCDate()} ${fMonth} – ${s.getUTCDate()} ${sMonth}`;
 }
