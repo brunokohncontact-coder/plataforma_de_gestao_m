@@ -9,8 +9,14 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **741 testes**
-verdes após a Sessão 111 (**card "Ritmo de gasto" (burn rate) no Painel** — helper puro `cashBurnHeadline`
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **747 testes**
+verdes após a Sessão 112 (**detalhamento mês a mês do burn rate** — helper puro `cashFlowByMonth`
+em `src/lib/finance.ts` devolve o fluxo de caixa realizado (received/paid/net) por mês na **mesma janela** de
+`cashBurnRunway` (soma dos `net` ÷ janela = `avgMonthlyNet`), com mês sem movimento zerado e em ordem cronológica;
+a página `/financas/folego-de-caixa` ganhou uma tira `MonthlyFlowStrip` (barras ↑ verde / ↓ vermelho por mês) dentro
+do card "Cenário alternativo", revelando a tendência que a média esconde — segue o seletor `?meses=` (D102) sem
+controle novo. +6 testes puros, ver D104; eram 741 na Sessão 111,
+**card "Ritmo de gasto" (burn rate) no Painel** — helper puro `cashBurnHeadline`
 em `src/lib/finance.ts` (espelha `paymentLagHeadline`/D70) deriva de um `cashBurnRunway` já computado se o
 nudge deve aparecer e com que urgência; `dashboard/page.tsx` ganhou um segundo banner-nudge 🔥/🔴 logo após o
 de custo fixo (D100), surgindo só quando o caixa de fato queima no ritmo real (`tight`/`critical`), linkando
@@ -2462,8 +2468,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `src/lib/finance.ts` (espelha `paymentLagHeadline`/D70) deriva a decisão de Painel de um `cashBurnRunway`
    já computado; segundo banner-nudge 🔥/🔴 em `dashboard/page.tsx`, logo após o de custo fixo (D100),
    surgindo só quando o caixa queima no ritmo real (`tight`/`critical`), ver D103.
-   Próximo possível — tornar os limiares 3/6 configuráveis pelo usuário; ou um seletor de janela `?meses=`
-   também no recorte do Painel (hoje o card usa a janela default de 6 meses).
+   **Detalhamento mês a mês** entregue na Sessão 112 — `cashFlowByMonth` em `src/lib/finance.ts` devolve o fluxo
+   de caixa realizado (received/paid/net) por mês na mesma janela de `cashBurnRunway` (consistente: soma dos `net`
+   ÷ janela = `avgMonthlyNet`) + tira `MonthlyFlowStrip` (barras ↑/↓ por mês) no card "Cenário alternativo" de
+   `/financas/folego-de-caixa`, mostrando a tendência que a média esconde, ver D104.
+   Próximo possível — tornar os limiares 3/6 configuráveis pelo usuário; um seletor de janela `?meses=`
+   também no recorte do Painel (hoje o card usa a janela default de 6 meses); ou um veredito automático de
+   tendência (queima acelerando × estabilizando) cruzando sub-janelas (adiado na D104 por ser mais hipótese).
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

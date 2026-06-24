@@ -2935,6 +2935,37 @@ contexto, decisão, justificativa e alternativas consideradas.
   alterna entre as duas métricas — descartado: esconde qual cenário está ativo. (c) reusar a regra inline na página
   em vez de um helper — descartado: o helper puro torna a decisão de Painel testável, como em `paymentLagHeadline`.
 
+## D104 — Detalhamento mês a mês do burn rate (tira de fluxo de caixa na janela) (Sessão 112)
+- **Contexto:** a página `/financas/folego-de-caixa` resume o fôlego pelo ritmo real (D101) num único número —
+  `avgMonthlyNet`/`monthlyBurn`, a **média** dos meses fechados da janela. Uma média de 6 (ou 24) meses esconde a
+  tendência: um caixa positivo no começo da janela e despencando no fim dá a mesma média que uma queima estável,
+  mas exige reações opostas. Faltava a textura por trás do número.
+- **Decisão:** novo helper puro **`cashFlowByMonth(txs, { now?, months? }): CashFlowMonth[]`** em
+  `src/lib/finance.ts`. Usa **exatamente** a mesma janela e o mesmo critério de `cashBurnRunway` (os `months` meses
+  completos anteriores ao mês corrente — exclui o mês em curso, parcial; só caixa realizado `received === true`;
+  saneada por `sanitizeBurnWindow`), de modo que `soma(net) / windowMonths` reproduz o `avgMonthlyNet` daquele
+  helper (a menos do arredondamento). Devolve **sempre uma entrada por mês** da janela em ordem cronológica (mês sem
+  movimento vem zerado), cada uma com `received`/`paid`/`net` (centavos). Pura; `now` e janela injetáveis.
+- **UI:** `MonthlyFlowStrip` (sub-componente da própria página) renderiza a tira dentro do card "Cenário
+  alternativo · ritmo de gasto real", logo abaixo do parágrafo de introdução e acima do veredito — assim a janela
+  da tira segue o seletor `?meses=` (D102) sem controle novo. Cada mês é uma coluna: barra **para cima** (verde,
+  líquido ≥ 0, o caixa cresceu) ou **para baixo** (vermelho, queimou), altura proporcional ao maior `|net|` da
+  janela, com `title` (mês + líquido) e rótulo do mês (pt-BR curto). `role="img"` + `aria-label` para leitor de
+  tela. Some quando não há nenhum movimento na janela, para não virar uma régua vazia.
+- **Testes:** 6 casos puros novos (`cashFlowByMonth`) em `finance.test.ts`: ordem/chaves da janela e meses zerados;
+  agregação received/paid/net por mês; **consistência** com `cashBurnRunway` (soma dos `net` ÷ janela =
+  `avgMonthlyNet`); exclusão do mês corrente e do que está fora da janela; ignora pendências (`received=false`);
+  janela customizada + saneamento (piso 1 / teto 24 / default). **747 testes** verdes (eram 741).
+- **DoD:** build de produção, typecheck e lint (0 avisos) verdes; **747 testes**; smoke test — `npm start`:
+  `/` → 200 e `/login` → 200, app sobe. `npm audit` inalterado vs. baseline (10 advisories — 4 moderate / 5 high /
+  1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) reaproveitar a página `/financas/fluxo-de-caixa` — descartado: aquela é a
+  projeção **futura** (pendências por vencimento), não o realizado da janela de burn; propósitos distintos.
+  (b) calcular a tendência (acelerando × estabilizando) num veredito automático — adiado: exigiria comparar
+  sub-janelas e definir limiares (mais hipótese); a tira deixa o músico ler a tendência com o próprio olho, que é
+  honesto com poucos meses de dado. (c) sparkline só com o `net` (uma barra por mês acima/abaixo de uma linha) sem
+  expor received/paid — mantido assim na UI por simplicidade, mas o helper devolve os três para reuso futuro.
+
 ### Infra/ambiente — engines do Prisma via proxy (Sessão 110)
 - O `postinstall` do `@prisma/engines` baixa os engines por um downloader Node que, atrás do proxy de egress,
   aborta com `ECONNRESET` (o mesmo host responde 200 via `curl --cacert`). Contorno desta sessão (não commitado):

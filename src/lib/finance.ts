@@ -3993,6 +3993,69 @@ export function cashBurnHeadline(burn: CashBurnRunway): CashBurnHeadline {
   };
 }
 
+export interface CashFlowMonth {
+  /** Mês de competência do caixa, "YYYY-MM" (UTC). */
+  monthKey: string;
+  /** Receita recebida no caixa nesse mês (centavos, ≥ 0). */
+  received: number;
+  /** Despesa paga no caixa nesse mês (centavos, ≥ 0). */
+  paid: number;
+  /**
+   * Fluxo de caixa líquido do mês (centavos): `received − paid`. Positivo = o caixa
+   * cresceu no mês; negativo = queimou.
+   */
+  net: number;
+}
+
+/**
+ * Fluxo de caixa realizado **mês a mês** dentro da janela de burn rate — a textura por
+ * trás do `avgMonthlyNet` de `cashBurnRunway`. Uma média de 6 meses pode esconder que a
+ * queima é recente (caixa positivo no começo, despencando no fim) ou pontual; este
+ * detalhamento revela a tendência.
+ *
+ * Usa exatamente a mesma janela e o mesmo critério de `cashBurnRunway` — os `months`
+ * meses **completos** anteriores ao mês corrente (exclui o mês em curso), só caixa
+ * realizado (`received === true`) — de modo que a soma dos `net` dividida pela janela
+ * reproduz o `avgMonthlyNet` daquele helper (a menos do arredondamento). Sempre devolve
+ * uma entrada por mês da janela (mês sem movimento vem zerado), em ordem cronológica.
+ * Pura; `now` e o tamanho da janela são injetáveis.
+ */
+export function cashFlowByMonth(
+  txs: TxLike[],
+  options: { now?: Date | string; months?: number } = {},
+): CashFlowMonth[] {
+  const now = typeof options.now === "string" ? new Date(options.now) : (options.now ?? new Date());
+  const windowMonths = sanitizeBurnWindow(options.months);
+
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  const windowEndMs = Date.UTC(y, m, 1);
+  const windowStartMs = Date.UTC(y, m - windowMonths, 1);
+
+  // Pré-popula a janela em ordem cronológica para que meses sem movimento apareçam zerados.
+  const months: CashFlowMonth[] = [];
+  const index = new Map<string, CashFlowMonth>();
+  for (let i = windowMonths; i >= 1; i--) {
+    const key = monthKey(new Date(Date.UTC(y, m - i, 1)));
+    const entry: CashFlowMonth = { monthKey: key, received: 0, paid: 0, net: 0 };
+    months.push(entry);
+    index.set(key, entry);
+  }
+
+  for (const t of txs) {
+    if (!t.received) continue;
+    const ts = txTime(t);
+    if (ts < windowStartMs || ts >= windowEndMs) continue;
+    const entry = index.get(monthKey(t.date));
+    if (!entry) continue;
+    if (t.type === "INCOME") entry.received += t.amount;
+    else entry.paid += t.amount;
+  }
+
+  for (const entry of months) entry.net = entry.received - entry.paid;
+  return months;
+}
+
 // ── Reserva para impostos (guardar parte do que entra) ──────────────────────
 
 /**
