@@ -267,6 +267,13 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         subtopic: "Custos & metas",
         icon: "🧾",
       },
+      {
+        title: "Fôlego de caixa",
+        href: "/financas/folego-de-caixa",
+        description: "Por quantos meses seu caixa atual cobre os custos fixos se as receitas pararem.",
+        subtopic: "Custos & metas",
+        icon: "🛟",
+      },
     ],
   },
   {
