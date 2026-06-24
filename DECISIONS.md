@@ -2749,3 +2749,34 @@ contexto, decisão, justificativa e alternativas consideradas.
   agenda futura) — descartado: poluiria o Painel de contas novas/vazias. (b) parametrizar a janela do card
   separada da página — descartado: 12 semanas mantém placar consistente com a página linkada. (c) estimar a
   receita perdida (cachê médio × livres) no card — descartado pelos mesmos motivos da D96 (hipótese frágil).
+
+## D98 — Janela parametrizável (`?semanas=`) na página de fins de semana livres (Sessão 106)
+- **Contexto:** a página `/shows/fins-de-semana-livres` (D96) fixava a janela em 12 fins de semana (~3 meses).
+  A própria D96 deixou a parametrização como alternativa adiada (a): para prospecção curta, 12 é ruído (muito
+  longe); para quem planeja temporada/turnê, é curto demais. A lógica pura `findOpenWeekends` já aceitava
+  `weeks` — só faltava expor o controle na UI sem reabrir a lógica.
+- **Decisão:** ler `?semanas=` na página e oferecer presets de janela (4 / 8 / 12 / 26 semanas) como pílulas
+  de navegação, mantendo 12 como padrão. Novo helper **puro** `parseWeekendWindow(raw, fallback?)` em
+  `src/lib/shows.ts` (ao lado de `findOpenWeekends`) faz o saneamento: ausente/vazio/não numérico → fallback;
+  trunca fracionário; grampeia a `[WEEKEND_WINDOW_MIN=1, WEEKEND_WINDOW_MAX=52]`; aceita array (query repetida,
+  usa o primeiro). Constantes `WEEKEND_WINDOW_PRESETS`/`WEEKEND_WINDOW_DEFAULT`/`_MIN`/`_MAX` exportadas (uma
+  fonte de verdade entre o parser e a UI).
+- **Por que parser puro e não inline na página:** o saneamento de query string é exatamente a lógica testável
+  (limites, lixo, fracionário, array) — fica coberta sem render. A página vira só fiação: `parseWeekendWindow`
+  → `findOpenWeekends({ weeks })` → pílulas. Segue o padrão dos demais parsers de filtro do projeto.
+- **UX:** a janela ativa fica destacada (pílula escura, `aria-current="page"`); o cabeçalho passa a dizer
+  "Os próximos {weeks} fins de semana" (corrige também a cópia antiga que dizia "noites"). Janela custom fora
+  dos presets (ex.: `?semanas=5`) ainda aplica — só não acende nenhuma pílula.
+- **DoD:** build de produção, typecheck e lint (0 avisos) verdes; **709 testes** verdes (+9 puros para
+  `parseWeekendWindow`: default ausente, vazio/espaços, não numérico, válido na faixa, truncamento, grampeamento
+  min/max, array, fallback custom, integração com `findOpenWeekends`); smoke test (app sobe; rota protegida
+  redireciona p/ login — middleware ok).
+- `npm audit` inalterado vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
+  postcss bundlado; correção só via upgrade quebrando para Next 16 — já rastreado nos bloqueios/D6); nenhuma
+  dependência nova.
+- **Alternativas consideradas:** (a) campo numérico livre em vez de presets — descartado por ora: presets
+  cobrem os casos reais (mês / 2 meses / trimestre / semestre) com um clique e sem teclado; a janela custom via
+  URL continua funcionando para quem quiser. (b) parametrizar também o card do Painel (D97) — fora de escopo:
+  o card é um nudge de "próxima oportunidade", não uma ferramenta de planejamento; manter 12 fixo lá preserva
+  o placar consistente com o link. (c) persistir a última janela escolhida (padrão D23/listFilter) — adiável:
+  a escolha de janela é exploratória/efêmera, não um filtro de trabalho recorrente; o default 12 basta.

@@ -283,6 +283,33 @@ export function findOpenWeekends<T extends ConflictShowLike>(
   };
 }
 
+/** Presets de janela (em semanas) oferecidos na página de fins de semana livres. */
+export const WEEKEND_WINDOW_PRESETS = [4, 8, 12, 26] as const;
+/** Janela padrão: ~3 meses de fins de semana. */
+export const WEEKEND_WINDOW_DEFAULT = 12;
+/** Limites duros da janela analisável (1 fim de semana … ~1 ano). */
+export const WEEKEND_WINDOW_MIN = 1;
+export const WEEKEND_WINDOW_MAX = 52;
+
+/**
+ * Lê o parâmetro `?semanas=` e devolve um tamanho de janela válido — um inteiro
+ * dentro de [WEEKEND_WINDOW_MIN, WEEKEND_WINDOW_MAX]. Valor ausente, vazio ou não
+ * numérico cai no `fallback`; fora da faixa é grampeado nos limites. Pura.
+ */
+export function parseWeekendWindow(
+  raw: string | string[] | undefined,
+  fallback: number = WEEKEND_WINDOW_DEFAULT,
+): number {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (value == null || value.trim() === "") return fallback;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  const i = Math.floor(n);
+  if (i < WEEKEND_WINDOW_MIN) return WEEKEND_WINDOW_MIN;
+  if (i > WEEKEND_WINDOW_MAX) return WEEKEND_WINDOW_MAX;
+  return i;
+}
+
 /** "YYYY-MM-DD" (UTC) → Date em UTC, para formatação sem escorregar de fuso. Pura. */
 export function weekendKeyToDate(key: string): Date {
   const [y, m, d] = key.split("-").map(Number);

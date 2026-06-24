@@ -5,6 +5,10 @@ import {
   findOpenWeekends,
   formatWeekendLabel,
   weekendKeyToDate,
+  parseWeekendWindow,
+  WEEKEND_WINDOW_DEFAULT,
+  WEEKEND_WINDOW_MIN,
+  WEEKEND_WINDOW_MAX,
   hasActiveShowFilter,
   isValidShowStatus,
   type ConflictShowLike,
@@ -414,5 +418,51 @@ describe("formatWeekendLabel", () => {
     const r = findOpenWeekends([], { now: "2026-03-15T12:00:00.000Z", weeks: 4 });
     const next = r.weekends.find((w) => w.friday === r.nextOpenFriday)!;
     expect(formatWeekendLabel(next.friday, next.days[2])).toBe("13–15 de mar");
+  });
+});
+
+describe("parseWeekendWindow", () => {
+  it("cai no default quando o parâmetro está ausente", () => {
+    expect(parseWeekendWindow(undefined)).toBe(WEEKEND_WINDOW_DEFAULT);
+  });
+
+  it("cai no default em string vazia ou só espaços", () => {
+    expect(parseWeekendWindow("")).toBe(WEEKEND_WINDOW_DEFAULT);
+    expect(parseWeekendWindow("   ")).toBe(WEEKEND_WINDOW_DEFAULT);
+  });
+
+  it("cai no default quando não é numérico", () => {
+    expect(parseWeekendWindow("abc")).toBe(WEEKEND_WINDOW_DEFAULT);
+    expect(parseWeekendWindow("NaN")).toBe(WEEKEND_WINDOW_DEFAULT);
+  });
+
+  it("aceita um inteiro válido dentro da faixa", () => {
+    expect(parseWeekendWindow("8")).toBe(8);
+    expect(parseWeekendWindow("26")).toBe(26);
+  });
+
+  it("trunca a parte fracionária", () => {
+    expect(parseWeekendWindow("12.9")).toBe(12);
+  });
+
+  it("grampeia abaixo do mínimo e acima do máximo", () => {
+    expect(parseWeekendWindow("0")).toBe(WEEKEND_WINDOW_MIN);
+    expect(parseWeekendWindow("-5")).toBe(WEEKEND_WINDOW_MIN);
+    expect(parseWeekendWindow("999")).toBe(WEEKEND_WINDOW_MAX);
+  });
+
+  it("usa o primeiro valor quando o parâmetro vem repetido (array)", () => {
+    expect(parseWeekendWindow(["8", "26"])).toBe(8);
+  });
+
+  it("aceita um fallback customizado", () => {
+    expect(parseWeekendWindow(undefined, 4)).toBe(4);
+    expect(parseWeekendWindow("lixo", 4)).toBe(4);
+  });
+
+  it("alimenta findOpenWeekends com um tamanho de janela coerente", () => {
+    const weeks = parseWeekendWindow("26");
+    const r = findOpenWeekends([], { now: "2026-03-15T12:00:00.000Z", weeks });
+    expect(r.total).toBe(26);
   });
 });
