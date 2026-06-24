@@ -9,8 +9,15 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **747 testes**
-verdes após a Sessão 112 (**detalhamento mês a mês do burn rate** — helper puro `cashFlowByMonth`
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **753 testes**
+verdes após a Sessão 113 (**rentabilidade por contratante** — helper puro `rankContactsByProfit`
+em `src/lib/finance.ts` atribui cada show a **um único** contratante (via `pickPayerContact`, por papel) e agrega o
+`computeShowPnL` por quem paga: cachê/extras/despesas/líquido/média/margem, ordenado por resultado, com grupo "Sem
+contratante" por último; como cada show pesa para um só contratante, o `totalNet` reconcilia com a soma dos P&L dos
+shows (≠ ranking, que é bruto e conta um show para cada contato). Nova página `/contatos/rentabilidade` (layout de
+`/shows/locais`, registrada no hub de Relatórios em Contatos → "Quem move a carreira", 💸) responde "quais clientes
+dão dinheiro de verdade depois dos custos?". +6 testes puros, ver D105; eram 747 na Sessão 112,
+**detalhamento mês a mês do burn rate** — helper puro `cashFlowByMonth`
 em `src/lib/finance.ts` devolve o fluxo de caixa realizado (received/paid/net) por mês na **mesma janela** de
 `cashBurnRunway` (soma dos `net` ÷ janela = `avgMonthlyNet`), com mês sem movimento zerado e em ordem cronológica;
 a página `/financas/folego-de-caixa` ganhou uma tira `MonthlyFlowStrip` (barras ↑ verde / ↓ vermelho por mês) dentro
@@ -2475,6 +2482,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    Próximo possível — tornar os limiares 3/6 configuráveis pelo usuário; um seletor de janela `?meses=`
    também no recorte do Painel (hoje o card usa a janela default de 6 meses); ou um veredito automático de
    tendência (queima acelerando × estabilizando) cruzando sub-janelas (adiado na D104 por ser mais hipótese).
+8. **Contatos / relacionamento — evoluções** (ranking por cachê bruto, Sessão 27; concentração/HHI; fidelização,
+   Sessão 56; reativar dormentes, Sessão 30): **rentabilidade por contratante** entregue na Sessão 113 —
+   `rankContactsByProfit` + `/contatos/rentabilidade`, P&L líquido somado por quem paga (um show → um contratante),
+   ver D105. Próximo possível — **cachê médio por contratante** (nível de preço, distinto do líquido; adiado na
+   D105); levar a rentabilidade por contratante ao detalhe do contato (`/contatos/[id]`) como um card; ou um
+   recorte por período (filtrar os shows por ano).
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

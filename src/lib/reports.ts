@@ -295,6 +295,13 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "🎯",
       },
       {
+        title: "Rentabilidade por contratante",
+        href: "/contatos/rentabilidade",
+        description: "Quais clientes dão dinheiro de verdade — resultado líquido somado por quem paga.",
+        subtopic: "Quem move a carreira",
+        icon: "💸",
+      },
+      {
         title: "Fidelização de contratantes",
         href: "/contatos/retencao",
         description: "Quem repete contratação e quem chamou uma vez só.",

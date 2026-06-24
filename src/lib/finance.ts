@@ -343,6 +343,149 @@ function pickLabel(
   return best?.label ?? emptyLabel;
 }
 
+// ── Rentabilidade por contratante (P&L agrupado por quem paga) ──────────────
+
+/** Contratante (pagador) resolvido para um show — forma mínima do agrupamento. */
+export interface ContactProfitContact {
+  id: string;
+  name: string;
+  role: string;
+}
+
+export interface ContactProfitRow {
+  /** Contratante do grupo; `null` = shows sem contato atribuído ("Sem contratante"). */
+  contact: ContactProfitContact | null;
+  /** Nº de shows no grupo (após exclusões). */
+  showCount: number;
+  /** Cachê somado (centavos). */
+  totalFee: number;
+  /** Receitas extras somadas (centavos). */
+  totalExtra: number;
+  /** Despesas somadas (centavos). */
+  totalExpenses: number;
+  /** Resultado líquido somado = cachê + extras − despesas (centavos). */
+  totalNet: number;
+  /** Resultado líquido médio por show no grupo (centavos, arredondado). */
+  avgNet: number;
+  /** Margem agregada (net / receita bruta), 0 se receita bruta 0. */
+  margin: number;
+}
+
+export interface ContactsProfitability {
+  /** Linhas por resultado (`totalNet`) decrescente; o grupo "sem contratante" por último. */
+  rows: ContactProfitRow[];
+  /** Nº de contratantes distintos identificados (exclui o grupo "sem contratante"). */
+  contactCount: number;
+  /** Nº de shows considerados (após exclusões). */
+  count: number;
+  /** Resultado líquido somado de todos os grupos. */
+  totalNet: number;
+  /** Contratante mais rentável (maior `totalNet`, ignora "sem contratante") ou null. */
+  best: ContactProfitRow | null;
+  /** Contratante menos rentável (menor `totalNet`, ignora "sem contratante") ou null. */
+  worst: ContactProfitRow | null;
+}
+
+/**
+ * Agrega a rentabilidade (P&L) dos shows por **contratante** (quem paga o cachê)
+ * — respondendo "quais clientes realmente me dão dinheiro depois dos custos?".
+ * Complementa a rentabilidade por local/cidade (geografia) com a dimensão de
+ * relacionamento, e o ranking de contatos (volume bruto de cachê) com o líquido.
+ *
+ * - Cada show é atribuído a **um único** contratante via `getPayer` (tipicamente
+ *   `pickPayerContact`: prioriza papel BOOKER/PROMOTER, ver billing.ts). Assim o
+ *   resultado não é contado em duplicidade — `totalNet` reconcilia com a soma dos
+ *   P&L dos shows (ao contrário do ranking, em que um show conta para cada contato).
+ * - Shows sem contato atribuído caem no grupo "Sem contratante" (`contact: null`).
+ * - Reaproveita `computeShowPnL` (fonte única do cálculo por show).
+ * - Por padrão exclui shows `CANCELLED`; `opts.excludeStatuses` customiza.
+ * - Ordena por `totalNet` desc; empate por nº de shows, nome (pt-BR) e id; o grupo
+ *   sem contratante sempre por último. `best`/`worst` consideram só os identificados.
+ */
+export function rankContactsByProfit<S extends ShowLike>(
+  shows: S[],
+  txs: TxLike[],
+  getPayer: (show: S) => ContactProfitContact | null,
+  opts: { excludeStatuses?: string[] } = {},
+): ContactsProfitability {
+  const excluded = new Set(opts.excludeStatuses ?? ["CANCELLED"]);
+
+  interface Acc {
+    contact: ContactProfitContact | null;
+    showCount: number;
+    totalFee: number;
+    totalExtra: number;
+    totalExpenses: number;
+    totalNet: number;
+  }
+
+  const NO_CONTACT = " "; // chave reservada para o grupo sem contratante
+  const groups = new Map<string, Acc>();
+
+  for (const show of shows) {
+    if (show.status != null && excluded.has(show.status)) continue;
+
+    const contact = getPayer(show);
+    const key = contact ? contact.id : NO_CONTACT;
+
+    let acc = groups.get(key);
+    if (!acc) {
+      acc = {
+        contact,
+        showCount: 0,
+        totalFee: 0,
+        totalExtra: 0,
+        totalExpenses: 0,
+        totalNet: 0,
+      };
+      groups.set(key, acc);
+    }
+
+    const pnl = computeShowPnL(show, txs);
+    acc.showCount += 1;
+    acc.totalFee += pnl.fee;
+    acc.totalExtra += pnl.extraIncome;
+    acc.totalExpenses += pnl.expenses;
+    acc.totalNet += pnl.net;
+  }
+
+  const rows: ContactProfitRow[] = [...groups.values()].map((acc) => {
+    const gross = acc.totalFee + acc.totalExtra;
+    return {
+      contact: acc.contact,
+      showCount: acc.showCount,
+      totalFee: acc.totalFee,
+      totalExtra: acc.totalExtra,
+      totalExpenses: acc.totalExpenses,
+      totalNet: acc.totalNet,
+      avgNet: acc.showCount > 0 ? Math.round(acc.totalNet / acc.showCount) : 0,
+      margin: gross === 0 ? 0 : acc.totalNet / gross,
+    };
+  });
+
+  // Resultado desc; "sem contratante" sempre por último; empate determinístico.
+  rows.sort((a, b) => {
+    if (!a.contact !== !b.contact) return a.contact ? -1 : 1;
+    return (
+      b.totalNet - a.totalNet ||
+      b.showCount - a.showCount ||
+      (a.contact?.name ?? "").localeCompare(b.contact?.name ?? "", "pt-BR") ||
+      (a.contact?.id ?? "").localeCompare(b.contact?.id ?? "")
+    );
+  });
+
+  const identified = rows.filter((r) => r.contact);
+
+  return {
+    rows,
+    contactCount: identified.length,
+    count: rows.reduce((n, r) => n + r.showCount, 0),
+    totalNet: sum(rows.map((r) => r.totalNet)),
+    best: identified[0] ?? null,
+    worst: identified.length > 0 ? identified[identified.length - 1] : null,
+  };
+}
+
 // ── Agregações financeiras (F3 — dashboard) ─────────────────────────────────
 
 export interface FinanceSummary {
