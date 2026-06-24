@@ -9,8 +9,13 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **700 testes**
-verdes após a Sessão 105 (**card "próximo fim de semana livre" no Painel** —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **709 testes**
+verdes após a Sessão 106 (**janela parametrizável na página de fins de semana livres** —
+helper puro `parseWeekendWindow` em `src/lib/shows.ts` lê e saneia `?semanas=` (default 12,
+grampeado a 1–52, trunca fracionário, aceita query repetida) e a página
+`/shows/fins-de-semana-livres` ganhou pílulas de janela 4/8/12/26 semanas com a ativa em
+destaque; a lógica `findOpenWeekends` já aceitava `weeks`, só faltava expor o controle. +9 testes
+puros, ver D98; eram 700 na Sessão 105, **card "próximo fim de semana livre" no Painel** —
 `dashboard/page.tsx` reaproveita `findOpenWeekends` sobre os shows já carregados e exibe um
 banner-nudge "🎸 Fim de semana livre" com o próximo aberto + placar "N de M livres", linkando
 para `/shows/fins-de-semana-livres`; aparece só com agenda futura, para não virar ruído em conta
@@ -2313,8 +2318,10 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    oportunidade de booking, ver D96; **card "próximo fim de semana livre" no Painel** entregue na
    Sessão 105 — banner-nudge "🎸 Fim de semana livre" em `dashboard/page.tsx` reaproveitando
    `findOpenWeekends` + helpers `formatWeekendLabel`/`weekendKeyToDate` extraídos para `shows.ts`,
-   só com agenda futura, ver D97.) Próximo possível — parametrizar a janela (`?semanas=`) na página,
-   ou um mini-calendário de salto rápido na agenda.
+   só com agenda futura, ver D97; **janela parametrizável** entregue na Sessão 106 — `parseWeekendWindow`
+   em `shows.ts` + pílulas 4/8/12/26 semanas via `?semanas=` em `/shows/fins-de-semana-livres`, ver D98.)
+   Próximo possível — um mini-calendário de salto rápido na agenda, ou estimar a receita parada por fim de
+   semana livre (adiada na D96 por ser hipótese frágil).
 2b. **Funil de propostas — evoluções** (entregue na Sessão 51, `/shows/funil` + `showPipeline`,
    ver D42; **card do funil no Painel** entregue na Sessão 52 — cachê em aberto + taxa de
    concretização, ver D43): hoje é um retrato do estado atual. Próximo possível — registrar

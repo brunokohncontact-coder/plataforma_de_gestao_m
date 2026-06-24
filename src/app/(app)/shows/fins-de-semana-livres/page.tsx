@@ -4,15 +4,14 @@ import { prisma } from "@/lib/prisma";
 import {
   findOpenWeekends,
   formatWeekendLabel,
+  parseWeekendWindow,
+  WEEKEND_WINDOW_PRESETS,
   type ConflictShowLike,
 } from "@/lib/shows";
 import { formatMoney } from "@/lib/money";
 import { SHOW_STATUS_DOT, SHOW_STATUS_LABELS, type ShowStatus } from "@/lib/domain";
 
 export const dynamic = "force-dynamic";
-
-// Janela analisada: próximos ~3 meses de fins de semana.
-const WEEKS = 12;
 
 function formatTime(date: Date): string {
   return date.toLocaleTimeString("pt-BR", {
@@ -22,8 +21,14 @@ function formatTime(date: Date): string {
   });
 }
 
-export default async function OpenWeekendsPage() {
+export default async function OpenWeekendsPage({
+  searchParams,
+}: {
+  searchParams?: { semanas?: string };
+}) {
   const user = await requireUser();
+
+  const weeks = parseWeekendWindow(searchParams?.semanas);
 
   const shows = await prisma.show.findMany({
     where: { userId: user.id },
@@ -49,7 +54,7 @@ export default async function OpenWeekendsPage() {
     fee: s.fee,
   }));
 
-  const report = findOpenWeekends(weekendShows, { weeks: WEEKS });
+  const report = findOpenWeekends(weekendShows, { weeks });
 
   return (
     <div className="space-y-6">
@@ -57,9 +62,9 @@ export default async function OpenWeekendsPage() {
         <div>
           <h1 className="text-2xl font-bold">Fins de semana livres</h1>
           <p className="text-sm text-gray-500">
-            As próximas {WEEKS} noites de sexta a domingo e quais ainda estão sem nada
-            marcado. Fim de semana vazio é onde mora a receita que ficou na mesa — use a
-            lista para focar a prospecção nos abertos.
+            Os próximos {weeks} fins de semana de sexta a domingo e quais ainda estão sem
+            nada marcado. Fim de semana vazio é onde mora a receita que ficou na mesa — use
+            a lista para focar a prospecção nos abertos.
           </p>
         </div>
         <div className="flex gap-2">
@@ -70,6 +75,30 @@ export default async function OpenWeekendsPage() {
             ← Shows
           </Link>
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium uppercase tracking-wide text-gray-500">
+          Janela
+        </span>
+        {WEEKEND_WINDOW_PRESETS.map((preset) => {
+          const active = preset === weeks;
+          return (
+            <Link
+              key={preset}
+              href={`/shows/fins-de-semana-livres?semanas=${preset}`}
+              aria-current={active ? "page" : undefined}
+              className={
+                "rounded-full px-3 py-1 text-sm font-medium transition-colors " +
+                (active
+                  ? "bg-gray-900 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200")
+              }
+            >
+              {preset} sem.
+            </Link>
+          );
+        })}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
