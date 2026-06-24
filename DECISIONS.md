@@ -2681,3 +2681,42 @@ contexto, decisão, justificativa e alternativas consideradas.
   já chama atenção visual sem reordenar. (b) `summarizePromisesByContact` como função pura nova em `finance.ts`
   — descartado: seria um wrapper trivial de um `.map` + `summarizePaymentPromises` por grupo, sem regra própria
   a testar; manter a composição na página é mais simples e não cria superfície redundante.
+
+## D96 — Fins de semana livres (oportunidades de booking) (Sessão 104)
+- **Contexto:** todo o acervo de análise de agenda olhava para **trás** (rentabilidade, cadência, dias da
+  semana) ou para **conflitos** (dois shows no mesmo dia). Faltava a visão **para frente** mais acionável de um
+  músico que toca em bares/casas: *quais fins de semana ainda estão vazios?* A noite de sexta a domingo é onde
+  mora a maior parte do faturamento de gig; um fim de semana sem nada marcado é receita que ficou na mesa. Era
+  o complemento natural de `findScheduleConflicts` (mesma família "agenda").
+- **Decisão:** nova função pura `findOpenWeekends(shows, { now?, weeks? })` em `src/lib/shows.ts` + página
+  `/shows/fins-de-semana-livres` (janela padrão de 12 fins de semana). Definições:
+  - **Fim de semana = sexta + sábado + domingo** (ancorado na sexta). Cobre as três noites de gig.
+  - **Ocupado** se *qualquer* show não cancelado cai numa das três noites (mesma chave de dia UTC `dayKey` de
+    D20/conflitos — uma fonte de verdade para data). `CANCELLED` é ignorado (não ocupa a data).
+  - **Ancoragem da janela:** começa no fim de semana **corrente** enquanto seu domingo não passou, senão no
+    próximo. Implementado como "primeira sexta cujo domingo (sexta+2) ≥ hoje": `base = hoje − 2 dias`, depois a
+    próxima sexta a partir de `base`. Isso inclui o fim de semana em andamento (útil às quintas/sextas) e pula
+    automaticamente os já encerrados (segundas a quartas começam no próximo).
+  - **Saída:** lista ordenada do mais próximo ao mais distante, cada item com `friday`, as três `days`, os
+    `shows` (ordenados por horário, depois título sem acento) e `open`; mais `openCount`/`bookedCount` e
+    `nextOpenFriday` (sexta do primeiro livre, ou null). Genérica em `T extends ConflictShowLike` — reaproveita
+    o mesmo tipo de entrada de `findScheduleConflicts`, sem `ShowLike` novo.
+- **Por que em `shows.ts` e não `finance.ts`:** é lógica de agenda (datas/dias), não de dinheiro; fica ao lado
+  de `findScheduleConflicts`, com quem compartilha tipo de entrada, chave de dia e ordenação.
+- **DRY/escopo:** sem schema novo, sem dependência nova, sem server action (página é só leitura). A página
+  espelha a UI de `/shows/conflitos` (cards com borda âmbar nos livres, selo "Livre"/"N shows", `Stat`),
+  registrada no hub de relatórios (`REPORT_GROUPS`, subtema "Agenda & pipeline") para aparecer na busca e no
+  índice automaticamente (D53/D56/D59).
+- **DoD:** build de produção, typecheck e lint (0 avisos) verdes; **695 testes** verdes (+11 puros para
+  `findOpenWeekends`: janela vazia, ancoragem corrente/próxima, ocupação por sex/sáb/dom, dia de semana não
+  ocupa, cancelado ignorado, agrupamento ordenado, `nextOpenFriday` null, janela padrão de 8, imutabilidade);
+  smoke test (app sobe; a rota protegida redireciona p/ login — middleware de auth ok).
+- `npm audit` inalterado vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
+  postcss bundlado, correção só via upgrade quebrando para Next 16 — já rastreado nos bloqueios/D6); nenhuma
+  dependência nova introduzida.
+- **Alternativas consideradas:** (a) parametrizar a janela por query string (`?semanas=`) — adiado: 12 cobre
+  ~3 meses, suficiente para prospecção; dá para estender depois sem mudar a lógica pura. (b) definir fim de
+  semana só como sexta+sábado (excluir domingo) — descartado: muitos shows acontecem no domingo (matinê,
+  brunch), excluí-lo marcaria como "livre" um fim de semana já ocupado. (c) estimar a receita perdida por fim
+  de semana livre (cachê médio × livres) — descartado por ora: seria hipótese frágil (cachê médio histórico
+  pode não valer para a data futura); o sinal "N de M livres" já basta para priorizar.

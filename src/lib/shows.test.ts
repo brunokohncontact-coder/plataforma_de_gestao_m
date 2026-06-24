@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   filterShows,
   findScheduleConflicts,
+  findOpenWeekends,
   hasActiveShowFilter,
   isValidShowStatus,
   type ConflictShowLike,
@@ -246,6 +247,139 @@ describe("findScheduleConflicts", () => {
     ];
     const before = input.map((s) => s.date);
     findScheduleConflicts(input, { now: NOW });
+    expect(input.map((s) => s.date)).toEqual(before);
+  });
+});
+
+describe("findOpenWeekends", () => {
+  function gig(partial: Partial<ConflictShowLike>): ConflictShowLike {
+    return {
+      id: Math.random().toString(36).slice(2),
+      title: "Show",
+      status: "CONFIRMED",
+      date: "2026-03-13T22:00:00.000Z",
+      venue: null,
+      city: null,
+      ...partial,
+    };
+  }
+
+  // 2026-03-15 é domingo; as sextas de março/2026 caem em 06, 13, 20, 27.
+  const SUNDAY = "2026-03-15T12:00:00.000Z";
+  const WEDNESDAY = "2026-03-18T12:00:00.000Z";
+
+  it("sem shows, todos os fins de semana ficam livres", () => {
+    const r = findOpenWeekends([], { now: SUNDAY, weeks: 3 });
+    expect(r.total).toBe(3);
+    expect(r.openCount).toBe(3);
+    expect(r.bookedCount).toBe(0);
+    expect(r.weekends.map((w) => w.friday)).toEqual([
+      "2026-03-13",
+      "2026-03-20",
+      "2026-03-27",
+    ]);
+    expect(r.weekends.every((w) => w.open)).toBe(true);
+    expect(r.nextOpenFriday).toBe("2026-03-13");
+  });
+
+  it("inclui o fim de semana corrente enquanto o domingo não passou", () => {
+    // Domingo 03-15 ainda pertence ao fim de semana da sexta 03-13.
+    const r = findOpenWeekends([], { now: SUNDAY, weeks: 1 });
+    expect(r.weekends[0].days).toEqual([
+      "2026-03-13",
+      "2026-03-14",
+      "2026-03-15",
+    ]);
+  });
+
+  it("numa quarta, pula o fim de semana já passado e começa no próximo", () => {
+    const r = findOpenWeekends([], { now: WEDNESDAY, weeks: 2 });
+    expect(r.weekends[0].friday).toBe("2026-03-20");
+    expect(r.weekends[1].friday).toBe("2026-03-27");
+  });
+
+  it("um show no sábado ocupa aquele fim de semana", () => {
+    const s = gig({ date: "2026-03-21T23:00:00.000Z" }); // sábado do 2º fds
+    const r = findOpenWeekends([s], { now: SUNDAY, weeks: 3 });
+    expect(r.openCount).toBe(2);
+    expect(r.bookedCount).toBe(1);
+    expect(r.weekends[1].open).toBe(false);
+    expect(r.weekends[1].shows).toHaveLength(1);
+    expect(r.weekends[0].open).toBe(true);
+    // o primeiro livre continua sendo o fim de semana corrente
+    expect(r.nextOpenFriday).toBe("2026-03-13");
+  });
+
+  it("shows na sexta e no domingo também ocupam o fim de semana", () => {
+    const friday = findOpenWeekends([gig({ date: "2026-03-20T20:00:00.000Z" })], {
+      now: SUNDAY,
+      weeks: 3,
+    });
+    expect(friday.weekends[1].open).toBe(false);
+
+    const sunday = findOpenWeekends([gig({ date: "2026-03-22T18:00:00.000Z" })], {
+      now: SUNDAY,
+      weeks: 3,
+    });
+    expect(sunday.weekends[1].open).toBe(false);
+  });
+
+  it("show em dia de semana não ocupa nenhum fim de semana", () => {
+    const wed = gig({ date: "2026-03-18T20:00:00.000Z" }); // quarta
+    const r = findOpenWeekends([wed], { now: SUNDAY, weeks: 3 });
+    expect(r.openCount).toBe(3);
+    expect(r.weekends.every((w) => w.open)).toBe(true);
+  });
+
+  it("show cancelado não ocupa o fim de semana", () => {
+    const s = gig({ date: "2026-03-21T23:00:00.000Z", status: "CANCELLED" });
+    const r = findOpenWeekends([s], { now: SUNDAY, weeks: 3 });
+    expect(r.openCount).toBe(3);
+    expect(r.weekends[1].open).toBe(true);
+    expect(r.weekends[1].shows).toHaveLength(0);
+  });
+
+  it("agrupa vários shows do mesmo fim de semana em ordem cronológica", () => {
+    const r = findOpenWeekends(
+      [
+        gig({ title: "Tarde", date: "2026-03-21T16:00:00.000Z" }), // sábado
+        gig({ title: "Noite", date: "2026-03-20T23:00:00.000Z" }), // sexta
+        gig({ title: "Domingo", date: "2026-03-22T19:00:00.000Z" }),
+      ],
+      { now: SUNDAY, weeks: 3 },
+    );
+    expect(r.weekends[1].shows.map((s) => s.title)).toEqual([
+      "Noite",
+      "Tarde",
+      "Domingo",
+    ]);
+  });
+
+  it("nextOpenFriday é null quando todos os fins de semana estão ocupados", () => {
+    const r = findOpenWeekends(
+      [
+        gig({ date: "2026-03-13T22:00:00.000Z" }),
+        gig({ date: "2026-03-20T22:00:00.000Z" }),
+      ],
+      { now: SUNDAY, weeks: 2 },
+    );
+    expect(r.openCount).toBe(0);
+    expect(r.bookedCount).toBe(2);
+    expect(r.nextOpenFriday).toBeNull();
+  });
+
+  it("a janela tem 8 fins de semana por padrão", () => {
+    const r = findOpenWeekends([], { now: SUNDAY });
+    expect(r.total).toBe(8);
+  });
+
+  it("não muta o array de entrada", () => {
+    const input = [
+      gig({ date: "2026-03-21T22:00:00.000Z" }),
+      gig({ date: "2026-03-21T18:00:00.000Z" }),
+    ];
+    const before = input.map((s) => s.date);
+    findOpenWeekends(input, { now: SUNDAY, weeks: 3 });
     expect(input.map((s) => s.date)).toEqual(before);
   });
 });

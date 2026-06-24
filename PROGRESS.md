@@ -9,8 +9,11 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **684 testes**
-verdes após a Sessão 103 (promessas furadas no recorte por contratante — banner + selo ⚠ por
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **695 testes**
+verdes após a Sessão 104 (**fins de semana livres** — `findOpenWeekends` em `src/lib/shows.ts` +
+`/shows/fins-de-semana-livres`: lista os próximos 12 fins de semana sexta→domingo e marca os sem
+show como oportunidade de booking, registrado no hub de relatórios; +11 testes puros, ver D96; eram
+684 na Sessão 103, promessas furadas no recorte por contratante — banner + selo ⚠ por
 devedor e por show em `/shows/a-receber/por-contratante`, reaproveitando `summarizePaymentPromises`;
 mudança de UI, sem novos testes — eram 684 na Sessão 102, data prometida de pagamento + promessas
 furadas nos cachês a receber — campo `Show.paymentPromisedAt`; eram 668 na Sessão 101, cobrança consolidada por contratante —
@@ -2295,10 +2298,14 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    destacar a área/subtema visível ao rolar (scroll-spy) ou um contador de "novos" relatórios.
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)
-2. **Calendário — evoluções**: arrastar/soltar para remarcar; mini-calendário de salto rápido.
+2. **Calendário / agenda — evoluções**: arrastar/soltar para remarcar; mini-calendário de salto rápido.
    (visão semanal entregue na Sessão 19 — `/shows/semana`; link do dashboard para a agenda na
    Sessão 19; clicar num dia para criar show com a data na Sessão 13; exportação iCalendar
-   `.ics` na Sessão 15 — base em `src/lib/calendar.ts` e `src/lib/ics.ts`.)
+   `.ics` na Sessão 15 — base em `src/lib/calendar.ts` e `src/lib/ics.ts`;
+   **fins de semana livres** entregue na Sessão 104 — `findOpenWeekends` em `src/lib/shows.ts` +
+   `/shows/fins-de-semana-livres`: próximos 12 fins de semana sexta→domingo, marcando os vazios como
+   oportunidade de booking, ver D96.) Próximo possível — card "próximo fim de semana livre" no Painel
+   reaproveitando `findOpenWeekends.nextOpenFriday`, ou parametrizar a janela (`?semanas=`).
 2b. **Funil de propostas — evoluções** (entregue na Sessão 51, `/shows/funil` + `showPipeline`,
    ver D42; **card do funil no Painel** entregue na Sessão 52 — cachê em aberto + taxa de
    concretização, ver D43): hoje é um retrato do estado atual. Próximo possível — registrar

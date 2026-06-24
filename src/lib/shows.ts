@@ -159,3 +159,125 @@ export function findScheduleConflicts<T extends ConflictShowLike>(
 
   return { days, dayCount: days.length, upcomingDayCount, showCount };
 }
+
+// ── Fins de semana livres (oportunidades de booking) ────────────────────────
+// Para um músico que toca em bares/casas, a noite de fim de semana é onde mora
+// a maior parte do faturamento. Um fim de semana sem nada agendado é receita
+// que ficou na mesa. Este relatório olha para FRENTE: lista os próximos fins de
+// semana (sexta/sábado/domingo) e marca os que estão livres — onde vale focar a
+// prospecção. Espelha o backward-looking `findScheduleConflicts` (mesmo
+// `ConflictShowLike`, mesma chave de dia UTC). Pura.
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** "YYYY-MM-DD" (UTC) da meia-noite do dia local-UTC de `date`. */
+function utcDayKey(ms: number): string {
+  return dayKey(new Date(ms));
+}
+
+/** Um fim de semana (sexta→domingo) e os shows nele. */
+export interface OpenWeekend<T extends ConflictShowLike = ConflictShowLike> {
+  /** Chave "YYYY-MM-DD" (UTC) da sexta-feira que ancora o fim de semana. */
+  friday: string;
+  /** As três noites: [sexta, sábado, domingo], chaves "YYYY-MM-DD" (UTC). */
+  days: [string, string, string];
+  /** Shows não cancelados que caem no fim de semana, em ordem cronológica. */
+  shows: T[];
+  /** True quando não há nenhum show marcado — livre para agendar. */
+  open: boolean;
+}
+
+export interface OpenWeekendsReport<T extends ConflictShowLike = ConflictShowLike> {
+  /** Fins de semana da janela, do mais próximo ao mais distante. */
+  weekends: OpenWeekend<T>[];
+  /** Total de fins de semana analisados (= tamanho da janela). */
+  total: number;
+  /** Quantos estão livres (sem nenhum show). */
+  openCount: number;
+  /** Quantos já têm ao menos um show marcado. */
+  bookedCount: number;
+  /** Sexta-feira do primeiro fim de semana livre, ou null se todos ocupados. */
+  nextOpenFriday: string | null;
+}
+
+/**
+ * Lista os próximos `weeks` fins de semana e marca os livres (sem show). Um fim
+ * de semana = sexta + sábado + domingo; está "ocupado" se algum show não
+ * cancelado cai numa dessas três noites. A janela começa no fim de semana atual
+ * (incluído enquanto seu domingo não passou) e segue semana a semana. Shows
+ * `CANCELLED` são ignorados (não ocupam a data). Pura.
+ */
+export function findOpenWeekends<T extends ConflictShowLike>(
+  shows: T[],
+  options: { now?: Date | string; weeks?: number } = {},
+): OpenWeekendsReport<T> {
+  const weeks = Math.max(1, Math.floor(options.weeks ?? 8));
+
+  // Meia-noite UTC de hoje.
+  const nowDate =
+    typeof options.now === "string" || options.now instanceof Date
+      ? new Date(options.now)
+      : new Date();
+  const t0 = Date.UTC(
+    nowDate.getUTCFullYear(),
+    nowDate.getUTCMonth(),
+    nowDate.getUTCDate(),
+  );
+
+  // Primeira sexta cujo domingo (sexta+2) ainda não passou: ancora a janela no
+  // fim de semana corrente enquanto ele não terminou, senão no próximo.
+  const base = t0 - 2 * DAY_MS;
+  const baseDow = new Date(base).getUTCDay(); // 0=Dom … 5=Sex … 6=Sáb
+  const firstFriday = base + ((5 - baseDow + 7) % 7) * DAY_MS;
+
+  // Indexa os shows não cancelados por chave de dia (uma fonte de verdade).
+  const byDay = new Map<string, T[]>();
+  for (const show of shows) {
+    if (show.status === "CANCELLED") continue;
+    const key = dayKey(show.date);
+    const bucket = byDay.get(key);
+    if (bucket) bucket.push(show);
+    else byDay.set(key, [show]);
+  }
+
+  const weekends: OpenWeekend<T>[] = [];
+  let openCount = 0;
+  let nextOpenFriday: string | null = null;
+
+  for (let i = 0; i < weeks; i++) {
+    const friMs = firstFriday + i * 7 * DAY_MS;
+    const days: [string, string, string] = [
+      utcDayKey(friMs),
+      utcDayKey(friMs + DAY_MS),
+      utcDayKey(friMs + 2 * DAY_MS),
+    ];
+
+    const wkShows: T[] = [];
+    for (const d of days) {
+      const bucket = byDay.get(d);
+      if (bucket) wkShows.push(...bucket);
+    }
+    wkShows.sort((a, b) => {
+      const ta = new Date(a.date).getTime();
+      const tb = new Date(b.date).getTime();
+      if (ta !== tb) return ta - tb;
+      return normalizeText(a.title).localeCompare(normalizeText(b.title));
+    });
+
+    const open = wkShows.length === 0;
+    if (open) {
+      openCount += 1;
+      if (nextOpenFriday === null) nextOpenFriday = days[0];
+    }
+
+    weekends.push({ friday: days[0], days, shows: wkShows, open });
+  }
+
+  return {
+    weekends,
+    total: weekends.length,
+    openCount,
+    bookedCount: weekends.length - openCount,
+    nextOpenFriday,
+  };
+}
