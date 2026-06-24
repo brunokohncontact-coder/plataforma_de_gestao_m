@@ -10,7 +10,12 @@
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
 do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **717 testes**
-verdes após a Sessão 107 (**fôlego de caixa / runway** — helper puro `cashRunway` em
+verdes após a Sessão 108 (**card "Fôlego de caixa" no Painel** — banner-nudge em
+`dashboard/page.tsx` reaproveitando `cashRunway` (D99) sobre as transações já carregadas: mostra por
+quantos meses o caixa cobre os custos fixos, linkando para `/financas/folego-de-caixa`; só aparece
+quando o veredito morde (tight→âmbar 🛟 / critical→vermelho 🔴), para não virar ruído com fôlego saudável
+ou caixa zerado; mudança de UI, sem novos testes — ver D100; eram 717 na Sessão 107, **fôlego de caixa /
+runway** — helper puro `cashRunway` em
 `src/lib/finance.ts` cruza o caixa realizado (`summarizeFinances().cashBalance`) com o custo fixo
 mensal (`recurringExpenses().estimatedMonthlyFixedCost`, D39) → `runwayMonths = caixa / custo`, com
 veredito (no-cost/negative/critical/tight/healthy pelos limiares 3 e 6 meses) e data estimada de
@@ -2427,9 +2432,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
 7. **Resiliência / fôlego de caixa** (entregue na Sessão 107, `/financas/folego-de-caixa` + `cashRunway`,
    ver D99): cruza o caixa realizado com o custo fixo mensal (D39) → por quantos meses o caixa cobre os
    custos fixos se as receitas pararem, com veredito (limiares 3/6 meses, hipótese) e data de esgotamento.
-   Próximo possível — **card "Fôlego de caixa" no Painel** (reusa `cashRunway` sobre as transações já
-   carregadas no dashboard, só quando o veredito for tight/critical, para não virar ruído), ou tornar os
-   limiares 3/6 configuráveis pelo usuário.
+   **Card "Fôlego de caixa" no Painel** entregue na Sessão 108 — banner-nudge em `dashboard/page.tsx`
+   reaproveitando `cashRunway` sobre as transações já carregadas, exibido só quando o veredito é tight
+   (âmbar 🛟) ou critical (vermelho 🔴), linkando para a página completa, ver D100.
+   Próximo possível — tornar os limiares 3/6 configuráveis pelo usuário, ou usar o burn rate completo
+   (com custos variáveis) como cenário alternativo do fôlego.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

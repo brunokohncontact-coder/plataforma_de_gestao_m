@@ -2814,3 +2814,31 @@ contexto, decisão, justificativa e alternativas consideradas.
   cobrir mesmo sem tocar; o burn rate completo (incl. custos variáveis de show) varia com a agenda e mistura
   o que é discricionário. (c) card no Painel — próximo passo natural (reusa `cashRunway` sobre as transações
   já carregadas no dashboard), deixado para uma sessão seguinte para manter o escopo fechado.
+
+## D100 — Card "Fôlego de caixa apertado/crítico" no Painel (Sessão 108)
+- **Contexto:** a Sessão 107 (D99) entregou `/financas/folego-de-caixa`, mas o alerta de resiliência só
+  aparecia ao navegar até a página dedicada — exatamente o sinal que o autônomo precisa ver na primeira tela.
+  A própria D99 deixou o card do Painel como alternativa (c)/próximo passo natural. O Painel já é o hub de
+  banners-nudge acionáveis (pendências vencidas, cachês a receber, conflitos de agenda, custos fixos a lançar,
+  fim de semana livre); faltava o fôlego de caixa.
+- **Decisão:** banner-nudge "Fôlego de caixa" no `dashboard/page.tsx` reaproveitando `cashRunway` sobre as
+  **transações já carregadas** pelo dashboard (sem consulta extra). Mostra por quantos meses o caixa cobre os
+  custos fixos (`runwayMonths`, 1 casa decimal) e o custo fixo mensal, linkando para `/financas/folego-de-caixa`.
+  - **Gate anti-ruído:** só aparece quando o veredito **morde** — `tight` ou `critical`. Com fôlego `healthy`
+    (≥ 6 meses) o número não é acionável; com `no-cost` (sem custo fixo a medir) ou `negative` (caixa já no
+    vermelho, coberto pelo banner de pendências/saldo) o aviso seria ruído. Nesses dois vereditos exibidos
+    `runwayMonths` é sempre não-`null` (garantido pelo contrato de `cashRunway`), por isso o acesso com `!`.
+  - **Tom visual:** escala como os demais banners financeiros — âmbar para `tight` (🛟, atenção) e vermelho
+    para `critical` (🔴, urgência), no mesmo padrão dos cachês a receber (âmbar→vermelho ao encalhar).
+- **Sem novos helpers/testes:** mudança puramente de UI; toda a lógica e seus vereditos já são cobertos pelos
+  8 testes puros de `cashRunway` (D99). Nada a testar além da composição React, já validada pelo build/typecheck.
+- **DoD:** build de produção, typecheck e lint (0 avisos) verdes; **717 testes** verdes (inalterado — sem nova
+  lógica); smoke test (app sobe; `/login` → 200; rota protegida sem sessão → redirect).
+- `npm audit` inalterado vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
+  postcss bundlado; correção só via upgrade quebrando para Next 16 — já rastreado nos bloqueios/D6); nenhuma
+  dependência nova.
+- **Alternativas consideradas:** (a) mostrar o card também com fôlego `healthy` — descartado: vira ruído
+  permanente; o Painel mostra problema/oportunidade, não confirmação de normalidade (o número saudável está a
+  um clique na página). (b) incluir o veredito `negative` no banner — descartado: caixa negativo já é coberto
+  pelos cards de saldo/caixa e pelo banner de pendências; duplicar seria redundante. (c) tornar os limiares
+  3/6 configuráveis pelo usuário — adiável (continua como próximo possível em D99/próximos passos).
