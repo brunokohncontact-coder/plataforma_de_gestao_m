@@ -4,8 +4,11 @@ import { prisma } from "@/lib/prisma";
 import {
   reconcileShowFees,
   bucketReceivablesByAge,
+  summarizePaymentPromises,
+  paymentPromiseStatus,
   dayKey,
-  type ReceivableShowLike,
+  type PromisableShowLike,
+  type PaymentPromiseStatus,
   type TxLike,
 } from "@/lib/finance";
 import { buildShowBillings, type ShowBilling } from "@/lib/billing";
@@ -13,7 +16,21 @@ import { formatMoney } from "@/lib/money";
 import { formatDate } from "@/lib/format";
 import { BillingActions } from "@/components/BillingActions";
 import { SettleFeeButton } from "@/components/SettleFeeButton";
-import { settleShowFeeAction } from "../actions";
+import { PromiseButton } from "@/components/PromiseButton";
+import { settleShowFeeAction, setPaymentPromiseAction } from "../actions";
+
+/** Estado da promessa de um recebível, pronto para a UI (selo + input). */
+function promiseInfo(promisedAt: Date | string | null | undefined): {
+  status: PaymentPromiseStatus;
+  value: string;
+  label: string;
+} {
+  const status = paymentPromiseStatus(promisedAt ?? null);
+  if (status === "none") return { status, value: "", label: "" };
+  const value = dayKey(promisedAt as Date | string); // "YYYY-MM-DD"
+  const [y, m, d] = value.split("-");
+  return { status, value, label: `${d}/${m}/${y.slice(2)}` };
+}
 
 export const dynamic = "force-dynamic";
 
@@ -47,8 +64,9 @@ export default async function ShowReceivablesPage() {
     showId: t.showId,
   }));
 
-  const result = reconcileShowFees(shows as ReceivableShowLike[], txs);
+  const result = reconcileShowFees(shows as PromisableShowLike[], txs);
   const aging = bucketReceivablesByAge(result);
+  const promises = summarizePaymentPromises(result.rows);
   const daysByShow = new Map(
     aging.buckets.flatMap((b) => b.rows.map((a) => [a.row.show.id, a.daysOutstanding])),
   );
@@ -150,6 +168,41 @@ export default async function ShowReceivablesPage() {
             </div>
           </div>
 
+          {(promises.brokenCount > 0 || promises.pendingCount > 0) && (
+            <div
+              className={
+                "rounded-lg border px-4 py-3 text-sm " +
+                (promises.brokenCount > 0
+                  ? "border-red-200 bg-red-50 text-red-800"
+                  : "border-amber-200 bg-amber-50 text-amber-800")
+              }
+            >
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                <span className="font-semibold">🤝 Promessas de pagamento</span>
+                {promises.brokenCount > 0 && (
+                  <span className="font-semibold text-red-700">
+                    ⚠ {formatMoney(promises.brokenOutstanding)} em{" "}
+                    {promises.brokenCount}{" "}
+                    {promises.brokenCount === 1 ? "promessa vencida" : "promessas vencidas"}
+                  </span>
+                )}
+                {promises.pendingCount > 0 && (
+                  <span className={promises.brokenCount > 0 ? "text-red-600" : "text-amber-700"}>
+                    {formatMoney(promises.pendingOutstanding)} em{" "}
+                    {promises.pendingCount}{" "}
+                    {promises.pendingCount === 1 ? "promessa no prazo" : "promessas no prazo"}
+                  </span>
+                )}
+              </div>
+              {promises.brokenCount > 0 && (
+                <p className="mt-1 text-xs text-red-600">
+                  Quem prometeu e não pagou: volte a cobrar. As linhas com{" "}
+                  <span className="font-medium">⚠</span> abaixo já passaram da data prometida.
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="card overflow-x-auto p-0">
             <table className="w-full text-sm">
               <thead>
@@ -159,6 +212,7 @@ export default async function ShowReceivablesPage() {
                   <th className="px-4 py-3 text-right font-medium">Cachê</th>
                   <th className="px-4 py-3 text-right font-medium">Recebido</th>
                   <th className="px-4 py-3 text-right font-medium">A receber</th>
+                  <th className="px-4 py-3 font-medium">Promessa</th>
                   <th className="px-4 py-3 text-right font-medium">Ações</th>
                 </tr>
               </thead>
@@ -230,6 +284,21 @@ export default async function ShowReceivablesPage() {
                         {formatMoney(row.outstanding)}
                       </td>
                       <td className="px-4 py-3">
+                        {(() => {
+                          const info = promiseInfo(row.show.paymentPromisedAt);
+                          return (
+                            <PromiseButton
+                              action={setPaymentPromiseAction}
+                              id={row.show.id}
+                              promisedAt={info.value}
+                              status={info.status}
+                              label={info.label}
+                              today={today}
+                            />
+                          );
+                        })()}
+                      </td>
+                      <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1.5">
                           <BillingActions billings={billings} />
                           <SettleFeeButton
@@ -257,6 +326,7 @@ export default async function ShowReceivablesPage() {
                     {formatMoney(result.totalOutstanding)}
                   </td>
                   <td className="px-4 py-3" />
+                  <td className="px-4 py-3" />
                 </tr>
               </tfoot>
             </table>
@@ -274,6 +344,9 @@ export default async function ShowReceivablesPage() {
             alcançável, escolha no seletor <strong>quem cobrar</strong> antes de abrir a
             mensagem. O <strong>aging</strong> agrupa o que falta receber pela idade do atraso
             (dias desde o show), para você priorizar o dinheiro parado há mais tempo.
+            Em <strong>Promessa</strong> você registra a data em que o contratante prometeu
+            pagar: promessas vencidas (data já passou e o cachê continua em aberto) sobem
+            como <span className="text-red-600">⚠</span> para você voltar a cobrar.
           </p>
         </>
       )}

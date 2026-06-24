@@ -34,6 +34,7 @@ import {
   deleteShowAction,
   linkContactToShowAction,
   settleShowFeeAction,
+  setPaymentPromiseAction,
   unlinkContactFromShowAction,
   updateShowAction,
 } from "./actions";
@@ -319,6 +320,69 @@ describe("settleShowFeeAction — quita o cachê em aberto", () => {
     const t = txs[0].date.getTime();
     expect(t).toBeGreaterThanOrEqual(before);
     expect(t).toBeLessThanOrEqual(after);
+  });
+});
+
+describe("setPaymentPromiseAction — data prometida de pagamento", () => {
+  it("registra a data prometida (meia-noite UTC) num show do usuário", async () => {
+    const owner = await createUser("owner@example.com");
+    const show = await createShow(owner.id, { fee: 50000, status: "PLAYED" });
+
+    h.currentUser = owner;
+    const fd = new FormData();
+    fd.set("id", show.id);
+    fd.set("promisedAt", "2026-09-15");
+    await setPaymentPromiseAction(fd);
+
+    const fresh = await prisma.show.findUnique({ where: { id: show.id } });
+    expect(fresh?.paymentPromisedAt?.toISOString()).toBe("2026-09-15T00:00:00.000Z");
+  });
+
+  it("limpa a promessa quando a data vem vazia", async () => {
+    const owner = await createUser("owner@example.com");
+    const show = await createShow(owner.id, {
+      fee: 50000,
+      status: "PLAYED",
+      paymentPromisedAt: new Date("2026-09-15T00:00:00.000Z"),
+    });
+
+    h.currentUser = owner;
+    const fd = new FormData();
+    fd.set("id", show.id);
+    fd.set("promisedAt", "");
+    await setPaymentPromiseAction(fd);
+
+    const fresh = await prisma.show.findUnique({ where: { id: show.id } });
+    expect(fresh?.paymentPromisedAt).toBeNull();
+  });
+
+  it("ignora data inválida (limpa em vez de gravar lixo)", async () => {
+    const owner = await createUser("owner@example.com");
+    const show = await createShow(owner.id, { fee: 50000, status: "PLAYED" });
+
+    h.currentUser = owner;
+    const fd = new FormData();
+    fd.set("id", show.id);
+    fd.set("promisedAt", "15/09/2026");
+    await setPaymentPromiseAction(fd);
+
+    const fresh = await prisma.show.findUnique({ where: { id: show.id } });
+    expect(fresh?.paymentPromisedAt).toBeNull();
+  });
+
+  it("NÃO altera a promessa de um show de outro usuário", async () => {
+    const owner = await createUser("owner@example.com");
+    const attacker = await createUser("attacker@example.com");
+    const show = await createShow(owner.id, { fee: 50000, status: "PLAYED" });
+
+    h.currentUser = attacker;
+    const fd = new FormData();
+    fd.set("id", show.id);
+    fd.set("promisedAt", "2026-09-15");
+    await setPaymentPromiseAction(fd);
+
+    const fresh = await prisma.show.findUnique({ where: { id: show.id } });
+    expect(fresh?.paymentPromisedAt).toBeNull();
   });
 });
 

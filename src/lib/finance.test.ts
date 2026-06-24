@@ -44,6 +44,9 @@ import {
   RECEIVABLE_AGE_BUCKET_ORDER,
   resolveSettlementAmount,
   resolveReceivedDate,
+  resolvePromiseDate,
+  paymentPromiseStatus,
+  summarizePaymentPromises,
   computeDelta,
   compareSummaries,
   averageSummaries,
@@ -76,6 +79,7 @@ import {
   type VenueShowLike,
   type ReceivableShowLike,
   type BreakEvenShowLike,
+  type PromisableShowLike,
 } from "./finance";
 
 const show: ShowLike = { id: "show1", fee: 100_00, status: "CONFIRMED" };
@@ -2562,6 +2566,109 @@ describe("reconcileShowFees", () => {
     ];
     const r = reconcileShowFees(shows, [], { now });
     expect(r.rows.map((row) => row.show.id)).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("paymentPromiseStatus", () => {
+  const now = new Date("2026-03-15T12:00:00.000Z");
+
+  it("classifica como 'none' quando não há data prometida", () => {
+    expect(paymentPromiseStatus(null, now)).toBe("none");
+    expect(paymentPromiseStatus(undefined, now)).toBe("none");
+    expect(paymentPromiseStatus("", now)).toBe("none");
+  });
+
+  it("classifica como 'none' quando a data é inválida", () => {
+    expect(paymentPromiseStatus("não-é-data", now)).toBe("none");
+  });
+
+  it("classifica como 'pending' quando a data prometida é hoje ou no futuro", () => {
+    expect(paymentPromiseStatus("2026-03-15T00:00:00.000Z", now)).toBe("pending"); // hoje
+    expect(paymentPromiseStatus("2026-03-20T00:00:00.000Z", now)).toBe("pending"); // futuro
+  });
+
+  it("classifica como 'broken' quando a data prometida já passou", () => {
+    expect(paymentPromiseStatus("2026-03-14T00:00:00.000Z", now)).toBe("broken");
+    expect(paymentPromiseStatus(new Date("2026-01-01T00:00:00.000Z"), now)).toBe("broken");
+  });
+
+  it("compara por dia UTC, ignorando a hora do dia", () => {
+    // prometido para hoje, mas às 23h — ainda é 'pending' (não passou o dia)
+    expect(paymentPromiseStatus("2026-03-15T23:59:00.000Z", now)).toBe("pending");
+  });
+});
+
+describe("summarizePaymentPromises", () => {
+  const now = new Date("2026-03-15T12:00:00.000Z");
+
+  function gig(partial: Partial<PromisableShowLike>): PromisableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-02-01T20:00:00.000Z",
+      ...partial,
+    };
+  }
+
+  it("separa promessas furadas das no prazo, com totais por grupo", () => {
+    const shows = [
+      gig({ id: "furada", paymentPromisedAt: "2026-03-10T00:00:00.000Z" }), // passou
+      gig({ id: "noprazo", paymentPromisedAt: "2026-03-20T00:00:00.000Z" }), // futuro
+      gig({ id: "sempromessa" }), // ignorada
+    ];
+    const summary = summarizePaymentPromises(reconcileShowFees(shows, [], { now }).rows, now);
+    expect(summary.brokenCount).toBe(1);
+    expect(summary.pendingCount).toBe(1);
+    expect(summary.broken.map((e) => e.row.show.id)).toEqual(["furada"]);
+    expect(summary.pending.map((e) => e.row.show.id)).toEqual(["noprazo"]);
+    expect(summary.brokenOutstanding).toBe(100_00);
+    expect(summary.pendingOutstanding).toBe(100_00);
+  });
+
+  it("desconta o já recebido no total da promessa (usa o saldo em aberto)", () => {
+    const shows = [gig({ id: "furada", fee: 100_00, paymentPromisedAt: "2026-03-10T00:00:00.000Z" })];
+    const txs = [tx({ type: "INCOME", amount: 30_00, received: true, showId: "furada" })];
+    const summary = summarizePaymentPromises(reconcileShowFees(shows, txs, { now }).rows, now);
+    expect(summary.brokenOutstanding).toBe(70_00);
+  });
+
+  it("ordena as furadas da data prometida mais antiga à mais recente", () => {
+    const shows = [
+      gig({ id: "b", paymentPromisedAt: "2026-03-12T00:00:00.000Z" }),
+      gig({ id: "a", paymentPromisedAt: "2026-03-05T00:00:00.000Z" }),
+      gig({ id: "c", paymentPromisedAt: "2026-03-12T00:00:00.000Z" }),
+    ];
+    const summary = summarizePaymentPromises(reconcileShowFees(shows, [], { now }).rows, now);
+    expect(summary.broken.map((e) => e.row.show.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("retorna grupos vazios quando nenhum recebível tem promessa", () => {
+    const shows = [gig({ id: "g1" }), gig({ id: "g2" })];
+    const summary = summarizePaymentPromises(reconcileShowFees(shows, [], { now }).rows, now);
+    expect(summary.brokenCount).toBe(0);
+    expect(summary.pendingCount).toBe(0);
+    expect(summary.brokenOutstanding).toBe(0);
+    expect(summary.pendingOutstanding).toBe(0);
+  });
+});
+
+describe("resolvePromiseDate", () => {
+  it("retorna null para vazio/ausente/inválido (limpar a promessa)", () => {
+    expect(resolvePromiseDate(null)).toBeNull();
+    expect(resolvePromiseDate(undefined)).toBeNull();
+    expect(resolvePromiseDate("")).toBeNull();
+    expect(resolvePromiseDate("31/12/2026")).toBeNull();
+  });
+
+  it("converte 'YYYY-MM-DD' para a meia-noite UTC daquele dia", () => {
+    const d = resolvePromiseDate("2026-04-10");
+    expect(d?.toISOString()).toBe("2026-04-10T00:00:00.000Z");
+  });
+
+  it("aceita data no futuro (uma promessa é, por natureza, futura)", () => {
+    const d = resolvePromiseDate("2030-01-01");
+    expect(d?.toISOString()).toBe("2030-01-01T00:00:00.000Z");
   });
 });
 

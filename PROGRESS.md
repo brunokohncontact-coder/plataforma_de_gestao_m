@@ -9,8 +9,10 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **668 testes**
-verdes após a Sessão 101 (cobrança consolidada por contratante — e-mail/WhatsApp na página "por contratante";
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **684 testes**
+verdes após a Sessão 102 (data prometida de pagamento + promessas furadas nos cachês a receber —
+campo `Show.paymentPromisedAt`; eram 668 na Sessão 101, cobrança consolidada por contratante —
+e-mail/WhatsApp na página "por contratante";
 eram 660 na Sessão 100, cachês a receber por contratante — de quem cobrar primeiro; eram 655 na
 Sessão 99, contas fixas a lançar no mês; eram 648 na Sessão 98,
 variação por categoria; eram 125 na Sessão 14, exportação CSV das Finanças). Sessão 4 entregou
@@ -2239,6 +2241,43 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   inalterado (10 advisories: 4 moderate / 5 high / 1 critical; nenhuma dependência nova nem mudança de
   schema — ver D6/D8). Ver **DECISIONS.md D93**.
 
+### Sessão 102 — Data prometida de pagamento + promessas furadas (ver D94)
+- **O quê:** fechar o loop da cobrança — ao cobrar um cachê em aberto, o músico agora registra a **data
+  prometida de pagamento** pelo contratante, direto na lista `/shows/a-receber`. Quando a data passa e o
+  cachê continua em aberto, a promessa vira **furada** e sobe como sinal vermelho (⚠) para voltar a cobrar
+  quem prometeu e não pagou. Primeira informação editável persistida sobre um recebível (antes a página só
+  derivava de show + transações).
+- **Schema:** novo campo opcional `Show.paymentPromisedAt DateTime?` (portável p/ PostgreSQL; aplicado em dev
+  via `prisma db push`). Único campo novo; nenhuma migração destrutiva.
+- **Lógica pura (`src/lib/finance.ts`):** `paymentPromiseStatus(promisedAt, now)` → `"none" | "pending" |
+  "broken"` (compara por dia UTC; sem data/inválida → none; hoje/futuro → pending; passou → broken).
+  `summarizePaymentPromises(rows, now)` varre os recebíveis em aberto e separa furadas × no prazo, com
+  contagem e total em aberto por grupo, cada grupo ordenado pela data prometida (mais urgente primeiro).
+  `resolvePromiseDate(raw)` resolve "YYYY-MM-DD" → meia-noite UTC ou `null` (vazio/inválido = limpar);
+  diferente de `resolveReceivedDate`, **aceita data futura** (uma promessa é futura por natureza). Tipo novo
+  `PromisableShowLike` (= `ReceivableShowLike` + `paymentPromisedAt?`).
+- **Server action (`src/app/(app)/shows/actions.ts`):** `setPaymentPromiseAction(formData)` grava/limpa a
+  data prometida; confirma posse do show; resolve a data no servidor (nunca confia no cliente). Revalida
+  `/shows/a-receber`, `/shows/a-receber/por-contratante`, `/shows/[id]` e `/dashboard`.
+- **UI:** componente client `src/components/PromiseButton.tsx` (duas etapas, espelha `SettleFeeButton`):
+  fechado mostra o selo de estado (sem promessa → "+ promessa"; no prazo → 📅 data âmbar; furada → ⚠ data
+  vermelha); aberto, um `<input type="date">` com Salvar/Limpar/Cancelar (Limpar esvazia o campo no DOM e
+  submete via ref → servidor grava null). `/shows/a-receber` ganhou a coluna **Promessa** por linha e um card
+  de destaque "🤝 Promessas de pagamento" (furadas em vermelho, no prazo em âmbar). O Painel ganhou uma linha
+  "🤝 {valor} em N promessas vencidas" dentro do alerta de cachês a receber.
+- **DRY:** reaproveita `reconcileShowFees` (saldo em aberto), `utcMidnight`/`dayKey`/`isValidDateKey`,
+  `SubmitButton` e o padrão de ação inline do `SettleFeeButton`. Nenhuma regra nova de "o que entra/abate".
+- **Testes:** 12 casos puros novos (`paymentPromiseStatus` × 5, `summarizePaymentPromises` × 4,
+  `resolvePromiseDate` × 3) em `finance.test.ts` + 4 de integração de `setPaymentPromiseAction` (grava, limpa,
+  ignora data inválida, bloqueia show de outro usuário) em `shows/actions.test.ts`. **684 testes** verdes
+  (eram 668).
+- Definition of Done verde: build (`prisma generate && next build`) OK; typecheck (`tsc --noEmit`) limpo;
+  lint (0 warnings/erros); **684 testes** (`vitest run`); smoke test (`next start`) **autenticado** (sessão
+  semeada): `/login` → 200, `/shows/a-receber` → 200 renderizando a coluna Promessa + card de promessas +
+  ⚠ furadas, `/dashboard` → 200 com a linha "promessa vencida", sem erro no log. `npm audit` inalterado
+  (10 advisories: 4 moderate / 5 high / 1 critical; **nenhuma dependência nova** — só um campo de schema —
+  ver D6/D8). Ver **DECISIONS.md D94**.
+
 ## Próximos passos (priorizados para a próxima sessão)
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
@@ -2292,9 +2331,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    **atalhos de cobrança por contratante** embutidos na Sessão 101 — `buildContactDunning`/
    `buildContactBilling` + botões ✉ E-mail / WhatsApp em `/shows/a-receber/por-contratante`, com **uma
    mensagem consolidada** cobrindo todos os shows em aberto do contratante, ver D93):
-   próximo possível — lembrar a última escolha de contato por show, registrar a data prometida de
-   pagamento na própria cobrança, ou a mediana do prazo por contratante (adiada na D57: com poucos shows
-   por contratante fica ruidosa).
+   **data prometida de pagamento + promessas furadas** entregue na Sessão 102 — campo
+   `Show.paymentPromisedAt` + `paymentPromiseStatus`/`summarizePaymentPromises`/`resolvePromiseDate` +
+   `setPaymentPromiseAction` + `PromiseButton`; coluna "Promessa" e card de promessas em `/shows/a-receber`,
+   linha "promessas vencidas" no Painel, ver D94):
+   próximo possível — lembrar a última escolha de contato por show, **promessas furadas no recorte por
+   contratante** (agregar `summarizePaymentPromises` em `/shows/a-receber/por-contratante`), ou a mediana
+   do prazo por contratante (adiada na D57: com poucos shows por contratante fica ruidosa).
 4. **Sessões/segurança**: invalidação ao trocar a senha entregue na Sessão 26
    (`passwordChangedAt` + `isSessionFresh`, ver D17). Evoluções possíveis: "encerrar sessão
    específica" (lista de sessões revogáveis) e recuperação de senha por e-mail — adiáveis.
