@@ -9,8 +9,13 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **736 testes**
-verdes após a Sessão 110 (**seletor de janela `?meses=` no fôlego de caixa** — helper puro `parseBurnWindow`
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **741 testes**
+verdes após a Sessão 111 (**card "Ritmo de gasto" (burn rate) no Painel** — helper puro `cashBurnHeadline`
+em `src/lib/finance.ts` (espelha `paymentLagHeadline`/D70) deriva de um `cashBurnRunway` já computado se o
+nudge deve aparecer e com que urgência; `dashboard/page.tsx` ganhou um segundo banner-nudge 🔥/🔴 logo após o
+de custo fixo (D100), surgindo só quando o caixa de fato queima no ritmo real (`tight`/`critical`), linkando
+para `/financas/folego-de-caixa`. +5 testes puros, ver D103; eram 736 na Sessão 110,
+**seletor de janela `?meses=` no fôlego de caixa** — helper puro `parseBurnWindow`
 em `src/lib/finance.ts` espelha `parseWeekendWindow` e reaproveita `sanitizeBurnWindow` (clamp 1–24); a página
 `/financas/folego-de-caixa` ganhou pílulas 3m/6m/12m/24m (`BURN_WINDOW_PRESETS`) que passam `{ months }` a
 `cashBurnRunway`, lendo `?meses=` saneado. +8 testes puros, ver D102; eram 728 na Sessão 109,
@@ -2453,7 +2458,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    **Seletor de janela (`?meses=`)** entregue na Sessão 110 — `parseBurnWindow` em `src/lib/finance.ts`
    (espelha `parseWeekendWindow`, reaproveita `sanitizeBurnWindow`) + pílulas 3m/6m/12m/24m
    (`BURN_WINDOW_PRESETS`) no card "Cenário alternativo" de `/financas/folego-de-caixa`, ver D102.
-   Próximo possível — tornar os limiares 3/6 configuráveis pelo usuário; ou um card de burn rate no Painel.
+   **Card "Ritmo de gasto" (burn rate) no Painel** entregue na Sessão 111 — `cashBurnHeadline` em
+   `src/lib/finance.ts` (espelha `paymentLagHeadline`/D70) deriva a decisão de Painel de um `cashBurnRunway`
+   já computado; segundo banner-nudge 🔥/🔴 em `dashboard/page.tsx`, logo após o de custo fixo (D100),
+   surgindo só quando o caixa queima no ritmo real (`tight`/`critical`), ver D103.
+   Próximo possível — tornar os limiares 3/6 configuráveis pelo usuário; ou um seletor de janela `?meses=`
+   também no recorte do Painel (hoje o card usa a janela default de 6 meses).
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

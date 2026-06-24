@@ -27,6 +27,8 @@ import {
   quarterlyGoalProgress,
   monthlyGoalProgress,
   cashRunway,
+  cashBurnRunway,
+  cashBurnHeadline,
   type TxLike,
   type QuarterGoalStatus,
   type ReceivableShowLike,
@@ -224,6 +226,13 @@ export default async function DashboardPage() {
   const showRunway = runway.verdict === "tight" || runway.verdict === "critical";
   const runwayCritical = runway.verdict === "critical";
 
+  // Fôlego de caixa pelo burn rate realizado (D101): "ao meu ritmo real de gasto dos
+  // últimos meses, por quantos meses o caixa me sustenta?". Complementa o nudge acima
+  // (que cobre só o custo fixo) incluindo custos variáveis e descontando a receita que
+  // entrou — só dispara quando o músico de fato queima caixa no ritmo recente. Mesma
+  // disciplina: vira nudge só quando o fôlego morde (tight/critical), via cashBurnHeadline.
+  const burnHeadline = cashBurnHeadline(cashBurnRunway(txs));
+
   // Rentabilidade: top shows realizados por resultado
   const playedShows = shows.filter((s) => s.status === "PLAYED");
   const showPnls = playedShows
@@ -384,6 +393,35 @@ export default async function DashboardPage() {
             de custos fixos ({formatMoney(runway.monthlyFixedCost)}/mês)
           </span>
           <span className={runwayCritical ? "text-red-600" : "text-amber-600"}>Ver →</span>
+        </Link>
+      )}
+
+      {/* Fôlego de caixa pelo ritmo real de gasto (D101): inclui custos variáveis e
+          desconta a receita que entrou — só aparece quando o caixa de fato queima
+          (tight/critical). Escala para vermelho no crítico (< 3 meses). */}
+      {burnHeadline.show && (
+        <Link
+          href="/financas/folego-de-caixa"
+          className={
+            "flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3 text-sm transition " +
+            (burnHeadline.critical
+              ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100")
+          }
+        >
+          <span className="font-semibold">
+            {burnHeadline.critical ? "🔴" : "🔥"} Ritmo de gasto{" "}
+            {burnHeadline.critical ? "crítico" : "apertado"}
+          </span>
+          <span>
+            No ritmo real o caixa dura{" "}
+            <strong>
+              {burnHeadline.runwayMonths!.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}{" "}
+              {burnHeadline.runwayMonths === 1 ? "mês" : "meses"}
+            </strong>{" "}
+            (queima de {formatMoney(burnHeadline.monthlyBurn)}/mês)
+          </span>
+          <span className={burnHeadline.critical ? "text-red-600" : "text-amber-600"}>Ver →</span>
         </Link>
       )}
 
