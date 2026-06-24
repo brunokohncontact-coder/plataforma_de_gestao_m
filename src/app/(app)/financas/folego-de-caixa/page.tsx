@@ -3,9 +3,12 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   cashRunway,
+  cashBurnRunway,
   CRITICAL_RUNWAY_MONTHS,
   HEALTHY_RUNWAY_MONTHS,
   type RunwayVerdict,
+  type BurnRunwayVerdict,
+  type CashBurnRunway,
   type TxLike,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
@@ -46,6 +49,10 @@ export default async function CashRunwayPage() {
 
   const runway = cashRunway(txs);
   const { currentCash, monthlyFixedCost, runwayMonths, depletionDate, verdict } = runway;
+
+  // Cenário alternativo (completo): fôlego pelo ritmo de gasto real dos últimos meses,
+  // incluindo custos variáveis e descontando a receita que de fato entrou (D101).
+  const burn = cashBurnRunway(txs);
 
   return (
     <div className="space-y-6">
@@ -167,6 +174,13 @@ export default async function CashRunwayPage() {
           </p>
         </>
       )}
+
+      {/*
+        Cenário alternativo (sempre visível): fôlego pelo ritmo de gasto real, que
+        independe de haver custo fixo recorrente detectado — é útil justamente quando o
+        número de cima não tem o que medir (sem custo fixo) ou para a foto completa.
+      */}
+      <BurnRunwayCard burn={burn} />
     </div>
   );
 }
@@ -178,5 +192,93 @@ function Stat({ label, value, hint }: { label: string; value: string; hint: stri
       <p className="mt-1 text-xl font-bold text-gray-900">{value}</p>
       <p className="mt-1 text-xs text-gray-500">{hint}</p>
     </div>
+  );
+}
+
+const BURN_VERDICT_STYLE: Record<
+  Exclude<BurnRunwayVerdict, "negative">,
+  { box: string; emoji: string; label: string }
+> = {
+  surplus: { box: "bg-green-50 text-green-800", emoji: "📈", label: "Caixa crescendo" },
+  healthy: { box: "bg-green-50 text-green-800", emoji: "✅", label: "Fôlego confortável" },
+  tight: { box: "bg-amber-50 text-amber-800", emoji: "🟡", label: "Fôlego apertado" },
+  critical: { box: "bg-red-50 text-red-800", emoji: "🔴", label: "Fôlego crítico" },
+};
+
+/**
+ * Cenário alternativo: fôlego pelo ritmo de gasto real (burn rate), incluindo custos
+ * variáveis e descontando a receita já recebida na janela. Complementa o número de
+ * cima (que só cobre o custo fixo) com a foto completa do caixa.
+ */
+function BurnRunwayCard({ burn }: { burn: CashBurnRunway }) {
+  const {
+    windowMonths,
+    avgMonthlyNet,
+    monthlyBurn,
+    currentCash,
+    runwayMonths,
+    depletionDate,
+    verdict,
+  } = burn;
+
+  return (
+    <section className="card">
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+        Cenário alternativo · ritmo de gasto real
+      </p>
+      <p className="mt-1 text-sm text-gray-500">
+        Olhando os últimos {windowMonths} meses fechados — gastos variáveis incluídos e a receita
+        que de fato entrou descontada — qual foi a queima média de caixa?
+      </p>
+
+      {verdict === "surplus" ? (
+        <div className={"mt-4 rounded-lg px-4 py-3 text-sm " + BURN_VERDICT_STYLE.surplus.box}>
+          {BURN_VERDICT_STYLE.surplus.emoji}{" "}
+          <strong>{BURN_VERDICT_STYLE.surplus.label}.</strong> No período, entrou em média{" "}
+          <strong>{formatMoney(avgMonthlyNet)}/mês</strong> a mais do que saiu. No ritmo atual você
+          não está queimando caixa — o fôlego, por este cenário, é ilimitado.
+        </div>
+      ) : verdict === "negative" ? (
+        <div className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
+          🔴 O caixa atual ({formatMoney(currentCash)}) está no zero ou negativo. Mesmo com uma
+          queima de {formatMoney(monthlyBurn)}/mês, não há reserva a medir até recompor o caixa.
+        </div>
+      ) : (
+        <>
+          <p className="mt-3 text-3xl font-bold text-gray-900">
+            {formatMonths(runwayMonths!)}
+            <span className="ml-2 text-base font-normal text-gray-500">
+              {runwayMonths === 1 ? "mês" : "meses"}
+            </span>
+          </p>
+          <p className="mt-2 text-sm text-gray-500">
+            Queimando <strong>{formatMoney(monthlyBurn)}/mês</strong> em média, os{" "}
+            {formatMoney(currentCash)} em caixa duram esse tempo se nada mudar.
+          </p>
+          <div className={"mt-4 rounded-lg px-4 py-3 text-sm " + BURN_VERDICT_STYLE[verdict].box}>
+            {BURN_VERDICT_STYLE[verdict].emoji} <strong>{BURN_VERDICT_STYLE[verdict].label}.</strong>{" "}
+            {verdict === "healthy" ? (
+              <>São {HEALTHY_RUNWAY_MONTHS} meses ou mais de reserva no seu ritmo de gasto real.</>
+            ) : verdict === "tight" ? (
+              <>
+                Entre {CRITICAL_RUNWAY_MONTHS} e {HEALTHY_RUNWAY_MONTHS} meses no ritmo atual — atenção
+                aos gastos variáveis, não só aos fixos.
+              </>
+            ) : (
+              <>
+                Menos de {CRITICAL_RUNWAY_MONTHS} meses no ritmo atual. O gasto total (não só o fixo)
+                está consumindo o caixa rápido.
+              </>
+            )}
+          </div>
+          {depletionDate && (
+            <p className="mt-3 text-sm text-gray-500">
+              Mantido esse ritmo, o caixa zeraria por volta de{" "}
+              <strong>{formatDate(depletionDate)}</strong>.
+            </p>
+          )}
+        </>
+      )}
+    </section>
   );
 }

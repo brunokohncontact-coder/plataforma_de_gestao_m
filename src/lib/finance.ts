@@ -3787,6 +3787,139 @@ export function cashRunway(
   return { currentCash, monthlyFixedCost, runwayMonths, depletionDate, verdict };
 }
 
+// ── Fôlego de caixa pelo burn rate realizado (gasto líquido recente) ─────────
+
+/**
+ * Janela padrão (meses completos anteriores ao mês corrente) usada para medir o
+ * burn rate. 6 meses suaviza a sazonalidade de quem tem renda irregular sem
+ * diluir demais uma virada recente de patamar.
+ */
+export const DEFAULT_BURN_WINDOW_MONTHS = 6;
+
+/**
+ * Veredito do fôlego pelo burn rate:
+ * - `surplus`: no período observado o caixa **cresceu** (entrou mais do que saiu) —
+ *   não há queima a sustentar; o fôlego é, na prática, ilimitado.
+ * - `negative`: caixa atual ≤ 0 — já no vermelho, não há fôlego a medir.
+ * - `critical` / `tight` / `healthy`: mesmos limiares de `cashRunway`
+ *   (`CRITICAL_RUNWAY_MONTHS` / `HEALTHY_RUNWAY_MONTHS`).
+ */
+export type BurnRunwayVerdict = "healthy" | "tight" | "critical" | "surplus" | "negative";
+
+export interface CashBurnRunway {
+  /** Caixa realizado atual (recebido − pago), em centavos. Pode ser negativo. */
+  currentCash: number;
+  /** Nº de meses completos observados na janela (entrada saneada). */
+  windowMonths: number;
+  /** Receita recebida no caixa dentro da janela (centavos). */
+  windowReceivedIncome: number;
+  /** Despesa paga no caixa dentro da janela (centavos). */
+  windowPaidExpense: number;
+  /**
+   * Fluxo de caixa líquido médio por mês na janela (centavos): pode ser positivo
+   * (caixa cresce) ou negativo (caixa queima). `(received − paid) / windowMonths`.
+   */
+  avgMonthlyNet: number;
+  /**
+   * Queima média de caixa por mês (centavos, ≥ 0): `max(0, -avgMonthlyNet)`.
+   * Zero quando o caixa não queima (média de fluxo ≥ 0).
+   */
+  monthlyBurn: number;
+  /**
+   * Por quantos meses o caixa atual cobre a queima média: `currentCash / monthlyBurn`.
+   * Número não arredondado (≥ 0). `null` quando não há o que medir:
+   * - `monthlyBurn <= 0` (caixa não queima — verdict `surplus`), ou
+   * - `currentCash <= 0` (caixa já zerado/negativo — verdict `negative`).
+   */
+  runwayMonths: number | null;
+  /**
+   * Data estimada em que o caixa zera (`now` + `runwayMonths` meses). `null` quando
+   * `runwayMonths` é `null`. Aproximada (planejamento, não contabilidade).
+   */
+  depletionDate: Date | null;
+  /** Veredito de saúde do fôlego (ver `BurnRunwayVerdict`). */
+  verdict: BurnRunwayVerdict;
+}
+
+/**
+ * Fôlego de caixa pelo **burn rate realizado**: "ao meu ritmo real de gasto dos
+ * últimos meses, por quantos meses o caixa atual me sustenta?".
+ *
+ * Diferente de `cashRunway` (que cobre só o custo fixo recorrente, D99), aqui o
+ * denominador é o fluxo de caixa líquido médio efetivo da janela — **inclui custos
+ * variáveis e desconta a receita que de fato entrou**. É o cenário "completo": se o
+ * músico já cobre os gastos com a renda corrente, o caixa não queima (`surplus`) e o
+ * fôlego é ilimitado; se queima, mede quanto tempo o colchão dura nesse ritmo.
+ *
+ * Janela = os `months` meses **completos** anteriores ao mês corrente (exclui o mês
+ * em curso, ainda parcial, para não subestimar/superestimar a queima). Considera só o
+ * caixa realizado (`received === true`), em paridade com `currentCash`. Pura; `now` e
+ * o tamanho da janela são injetáveis.
+ */
+export function cashBurnRunway(
+  txs: TxLike[],
+  options: { now?: Date | string; months?: number } = {},
+): CashBurnRunway {
+  const now = typeof options.now === "string" ? new Date(options.now) : (options.now ?? new Date());
+  const windowMonths = sanitizeBurnWindow(options.months);
+  const currentCash = summarizeFinances(txs).cashBalance;
+
+  // Janela: [primeiro dia de (mês corrente − windowMonths), primeiro dia do mês corrente).
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  const windowEndMs = Date.UTC(y, m, 1);
+  const windowStartMs = Date.UTC(y, m - windowMonths, 1);
+
+  let windowReceivedIncome = 0;
+  let windowPaidExpense = 0;
+  for (const t of txs) {
+    if (!t.received) continue;
+    const ts = txTime(t);
+    if (ts < windowStartMs || ts >= windowEndMs) continue;
+    if (t.type === "INCOME") windowReceivedIncome += t.amount;
+    else windowPaidExpense += t.amount;
+  }
+
+  const avgMonthlyNet = Math.round((windowReceivedIncome - windowPaidExpense) / windowMonths);
+  const monthlyBurn = Math.max(0, -avgMonthlyNet);
+
+  const base = {
+    currentCash,
+    windowMonths,
+    windowReceivedIncome,
+    windowPaidExpense,
+    avgMonthlyNet,
+    monthlyBurn,
+  };
+
+  if (monthlyBurn <= 0) {
+    return { ...base, runwayMonths: null, depletionDate: null, verdict: "surplus" };
+  }
+  if (currentCash <= 0) {
+    return { ...base, runwayMonths: null, depletionDate: null, verdict: "negative" };
+  }
+
+  const runwayMonths = currentCash / monthlyBurn;
+  const depletionDate = new Date(now.getTime() + runwayMonths * AVG_DAYS_PER_MONTH * 86_400_000);
+  const verdict: BurnRunwayVerdict =
+    runwayMonths < CRITICAL_RUNWAY_MONTHS
+      ? "critical"
+      : runwayMonths < HEALTHY_RUNWAY_MONTHS
+        ? "tight"
+        : "healthy";
+
+  return { ...base, runwayMonths, depletionDate, verdict };
+}
+
+/** Sanitiza a janela de burn rate: inteiro em [1, 24], default `DEFAULT_BURN_WINDOW_MONTHS`. */
+function sanitizeBurnWindow(months: number | undefined): number {
+  if (months === undefined || !Number.isFinite(months)) return DEFAULT_BURN_WINDOW_MONTHS;
+  const n = Math.trunc(months);
+  if (n < 1) return 1;
+  if (n > 24) return 24;
+  return n;
+}
+
 // ── Reserva para impostos (guardar parte do que entra) ──────────────────────
 
 /**
