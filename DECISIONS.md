@@ -2973,3 +2973,38 @@ contexto, decisão, justificativa e alternativas consideradas.
   commit `605197351a3c8bdd595af2d2a9bc3025bca48ea2`) com `curl` para `node_modules/@prisma/engines/`, e rodar
   `prisma generate`/`db push` com `PRISMA_QUERY_ENGINE_LIBRARY`/`PRISMA_SCHEMA_ENGINE_BINARY` apontando para eles +
   `NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt`. Não afeta o CI (rede liberada). Anotado para a próxima sessão.
+
+## D105 — Rentabilidade por contratante (P&L agrupado por quem paga) (Sessão 113)
+- **Contexto:** a rentabilidade (P&L líquido) já era fatiada por **show** (D17), **local** (D19) e **cidade** (D48),
+  e os contatos tinham um **ranking** por cachê **bruto** (D18). Faltava a dimensão de relacionamento sobre o
+  **líquido**: "quais clientes realmente dão dinheiro depois dos custos?" — distinta do ranking (bruto, e que conta
+  um show para cada contato vinculado) e da geografia.
+- **Decisão:** novo helper puro **`rankContactsByProfit(shows, txs, getPayer, opts?)`** em `src/lib/finance.ts`.
+  Atribui cada show a **um único** contratante via callback `getPayer` (a UI passa `pickPayerContact` de
+  `billing.ts` — prioriza papel BOOKER/PROMOTER/VENUE…, D30/D52), agrega o `computeShowPnL` por contato (cachê,
+  extras, despesas, líquido, média/show, margem) e devolve as linhas ordenadas por `totalNet` desc. Como cada show
+  pesa para **um** contratante, o `totalNet` **reconcilia** com a soma dos P&L dos shows (ao contrário do ranking).
+  Shows sem contato vão para o grupo "Sem contratante" (`contact: null`), sempre **por último** na ordenação;
+  `best`/`worst` consideram só os **identificados**. Exclui `CANCELLED` por padrão (como os demais rankings de P&L).
+- **Por que um helper dedicado (e não generalizar `aggregateShowProfit`):** a forma da linha é diferente — carrega
+  um objeto `contact` ({id,name,role}) em vez de uma grafia/`key` de texto, e a atribuição vem de um callback
+  (many-to-many resolvido por papel), não de um campo do próprio show. Mesmo padrão já adotado em
+  `outstandingByContact` (D92), que também recebe `getPayer`. Reaproveita `computeShowPnL` (fonte única do cálculo).
+- **UI:** página `/contatos/rentabilidade` espelhando o layout de `/shows/locais` (cards de destaque + tabela com
+  cachê/extras/despesas/resultado colorido/média), registrada no **hub de Relatórios** (`reports.ts`, área Contatos,
+  subtopic "Quem move a carreira", ícone 💸 — D53). Carrega os shows com os contatos vinculados via `select` aninhado
+  (`contacts.contact`) e resolve o pagador na página, mantendo `finance.ts` sem dependência de `billing`.
+- **Testes:** 6 casos puros novos em `finance.test.ts` (`rankContactsByProfit`): vazio; soma do P&L por contratante
+  sem dupla contagem (reconcilia com a soma dos shows); grupo "sem contratante" à parte e por último; ordenação por
+  resultado e best/worst só entre identificados; margem agregada; exclusão de cancelados. **753 testes** verdes
+  (eram 747).
+- **DoD:** build de produção (rota `/contatos/rentabilidade` gerada), typecheck e lint (0 avisos) verdes; **753
+  testes**; smoke test — `npm start`: `/login` → 200, `/` → 200, `/contatos/rentabilidade` sem sessão → 307, e
+  **render autenticado verificado** (HTTP 200, cards e tabela com os contratantes + grupo "Sem contratante"). `npm
+  audit` inalterado vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss
+  bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) atribuir o show a **todos** os contatos vinculados (como o ranking, D18) —
+  descartado: dupla contagem do líquido e número que não fecha com o total; o foco aqui é "de qual cliente vem o
+  lucro", que pede um único dono. (b) incluir "Sem contratante" em best/worst — descartado: não é um cliente
+  acionável; melhor/pior devem comparar relacionamentos reais. (c) **cachê médio por contratante** (nível de preço)
+  em vez do líquido — adiável: lente útil mas distinta; o líquido responde a decisão de "vale a pena este cliente?".

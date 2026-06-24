@@ -4,6 +4,7 @@ import {
   rankShowsByProfit,
   rankVenuesByProfit,
   rankCitiesByProfit,
+  rankContactsByProfit,
   summarizeFinances,
   totalsByCategory,
   categoryReport,
@@ -390,6 +391,98 @@ describe("rankCitiesByProfit", () => {
     const recife = r.rows.find((row) => row.key === "recife");
     expect(recife!.showCount).toBe(2);
     expect(recife!.totalNet).toBe(260_00);
+  });
+});
+
+describe("rankContactsByProfit", () => {
+  // Atribuição de pagador: por id do contato. Quem paga é resolvido fora (getPayer),
+  // aqui um mapa simples showId -> contratante simula o pickPayerContact da UI.
+  const ZE = { id: "ze", name: "Zé Produções", role: "PROMOTER" };
+  const ANA = { id: "ana", name: "Ana Booking", role: "BOOKER" };
+  const shows: ShowLike[] = [
+    { id: "a", fee: 100_00, status: "PLAYED" }, // Zé, -40 -> net 60
+    { id: "b", fee: 200_00, status: "CONFIRMED" }, // Zé, +25 extra -> net 225
+    { id: "c", fee: 50_00, status: "CONFIRMED" }, // Ana -> net 50
+    { id: "d", fee: 30_00, status: "CONFIRMED" }, // sem contratante -> net 30
+  ];
+  const payers: Record<string, { id: string; name: string; role: string } | null> = {
+    a: ZE,
+    b: ZE,
+    c: ANA,
+    d: null,
+  };
+  const getPayer = (s: ShowLike) => payers[s.id] ?? null;
+  const txs: TxLike[] = [
+    tx({ type: "EXPENSE", amount: 40_00, showId: "a" }),
+    tx({ type: "INCOME", amount: 25_00, showId: "b" }),
+  ];
+
+  it("retorna estrutura vazia quando não há shows", () => {
+    const r = rankContactsByProfit([], txs, getPayer);
+    expect(r.count).toBe(0);
+    expect(r.contactCount).toBe(0);
+    expect(r.rows).toEqual([]);
+    expect(r.totalNet).toBe(0);
+    expect(r.best).toBeNull();
+    expect(r.worst).toBeNull();
+  });
+
+  it("soma o P&L por contratante sem dupla contagem (reconcilia com a soma dos shows)", () => {
+    const r = rankContactsByProfit(shows, txs, getPayer);
+    const ze = r.rows.find((row) => row.contact?.id === "ze");
+    expect(ze!.showCount).toBe(2);
+    // cachês 100 + 200 = 300; despesa 40; extra 25 -> net 285
+    expect(ze!.totalFee).toBe(300_00);
+    expect(ze!.totalExtra).toBe(25_00);
+    expect(ze!.totalExpenses).toBe(40_00);
+    expect(ze!.totalNet).toBe(285_00);
+    expect(ze!.avgNet).toBe(142_50);
+    // total reconcilia: 285 (Zé) + 50 (Ana) + 30 (sem) = 365
+    expect(r.totalNet).toBe(365_00);
+    expect(r.count).toBe(4);
+  });
+
+  it("agrupa shows sem contratante à parte (contact null) e o coloca por último", () => {
+    const r = rankContactsByProfit(shows, txs, getPayer);
+    const semContratante = r.rows.find((row) => row.contact === null);
+    expect(semContratante).toBeDefined();
+    expect(semContratante!.totalNet).toBe(30_00);
+    expect(r.rows[r.rows.length - 1]).toBe(semContratante);
+  });
+
+  it("ordena por resultado desc e aponta melhor/pior só entre identificados", () => {
+    const r = rankContactsByProfit(shows, txs, getPayer);
+    // nets: Zé=285, Ana=50, sem=30 -> sem contratante nunca é best/worst
+    expect(r.rows.map((row) => row.contact?.id ?? "—")).toEqual(["ze", "ana", "—"]);
+    expect(r.best?.contact?.id).toBe("ze");
+    expect(r.worst?.contact?.id).toBe("ana");
+    expect(r.contactCount).toBe(2);
+  });
+
+  it("calcula a margem agregada por contratante", () => {
+    const r = rankContactsByProfit(shows, txs, getPayer);
+    const ana = r.rows.find((row) => row.contact?.id === "ana");
+    // bruto 50, net 50 -> margem 1
+    expect(ana!.margin).toBeCloseTo(1);
+    const ze = r.rows.find((row) => row.contact?.id === "ze");
+    // bruto 325, net 285 -> ~0.877
+    expect(ze!.margin).toBeCloseTo(285 / 325);
+  });
+
+  it("exclui shows cancelados por padrão", () => {
+    const withCancelled: ShowLike[] = [
+      ...shows,
+      { id: "x", fee: 999_00, status: "CANCELLED" },
+    ];
+    const payersX = { ...payers, x: ZE };
+    const r = rankContactsByProfit(
+      withCancelled,
+      txs,
+      (s: ShowLike) => payersX[s.id as keyof typeof payersX] ?? null,
+    );
+    const ze = r.rows.find((row) => row.contact?.id === "ze");
+    expect(ze!.showCount).toBe(2);
+    expect(ze!.totalNet).toBe(285_00);
   });
 });
 
