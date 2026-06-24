@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import {
   cashRunway,
   cashBurnRunway,
+  cashFlowByMonth,
   parseBurnWindow,
   BURN_WINDOW_PRESETS,
   CRITICAL_RUNWAY_MONTHS,
@@ -11,6 +12,7 @@ import {
   type RunwayVerdict,
   type BurnRunwayVerdict,
   type CashBurnRunway,
+  type CashFlowMonth,
   type TxLike,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
@@ -62,6 +64,8 @@ export default async function CashRunwayPage({
   // incluindo custos variáveis e descontando a receita que de fato entrou (D101). A
   // janela é parametrizável via ?meses= (saneada por parseBurnWindow, D102).
   const burn = cashBurnRunway(txs, { months: burnWindow });
+  // Detalhamento mês a mês da mesma janela: revela a tendência que a média esconde (D104).
+  const burnMonths = cashFlowByMonth(txs, { months: burnWindow });
 
   return (
     <div className="space-y-6">
@@ -189,7 +193,7 @@ export default async function CashRunwayPage({
         independe de haver custo fixo recorrente detectado — é útil justamente quando o
         número de cima não tem o que medir (sem custo fixo) ou para a foto completa.
       */}
-      <BurnRunwayCard burn={burn} window={burnWindow} />
+      <BurnRunwayCard burn={burn} window={burnWindow} months={burnMonths} />
     </div>
   );
 }
@@ -219,7 +223,15 @@ const BURN_VERDICT_STYLE: Record<
  * variáveis e descontando a receita já recebida na janela. Complementa o número de
  * cima (que só cobre o custo fixo) com a foto completa do caixa.
  */
-function BurnRunwayCard({ burn, window }: { burn: CashBurnRunway; window: number }) {
+function BurnRunwayCard({
+  burn,
+  window,
+  months,
+}: {
+  burn: CashBurnRunway;
+  window: number;
+  months: CashFlowMonth[];
+}) {
   const {
     windowMonths,
     avgMonthlyNet,
@@ -261,6 +273,8 @@ function BurnRunwayCard({ burn, window }: { burn: CashBurnRunway; window: number
         Olhando os últimos {windowMonths} meses fechados — gastos variáveis incluídos e a receita
         que de fato entrou descontada — qual foi a queima média de caixa?
       </p>
+
+      <MonthlyFlowStrip months={months} />
 
       {verdict === "surplus" ? (
         <div className={"mt-4 rounded-lg px-4 py-3 text-sm " + BURN_VERDICT_STYLE.surplus.box}>
@@ -311,5 +325,66 @@ function BurnRunwayCard({ burn, window }: { burn: CashBurnRunway; window: number
         </>
       )}
     </section>
+  );
+}
+
+/** Rótulo curto "mmm" (pt-BR) de uma chave "YYYY-MM". */
+function monthShortLabel(monthKey: string): string {
+  const [y, m] = monthKey.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 1, 1));
+  return d.toLocaleDateString("pt-BR", { month: "short", timeZone: "UTC" }).replace(".", "");
+}
+
+/**
+ * Tira mês a mês do fluxo de caixa realizado na janela (D104) — a textura por trás da
+ * média de queima. Cada coluna é o líquido do mês: barra para cima (verde, o caixa
+ * cresceu) ou para baixo (vermelho, queimou), com altura proporcional ao maior |líquido|
+ * da janela. Some quando não há nenhum movimento no período, para não virar uma régua
+ * vazia.
+ */
+function MonthlyFlowStrip({ months }: { months: CashFlowMonth[] }) {
+  const hasMovement = months.some((m) => m.received !== 0 || m.paid !== 0);
+  if (!hasMovement) return null;
+
+  const maxAbs = Math.max(1, ...months.map((m) => Math.abs(m.net)));
+
+  return (
+    <figure className="mt-4">
+      <div
+        className="flex items-stretch gap-1 overflow-x-auto"
+        role="img"
+        aria-label="Fluxo de caixa líquido mês a mês na janela analisada"
+      >
+        {months.map((m) => {
+          const pct = Math.round((Math.abs(m.net) / maxAbs) * 100);
+          const positive = m.net >= 0;
+          return (
+            <div
+              key={m.monthKey}
+              className="flex min-w-[1.75rem] flex-1 flex-col items-center gap-1"
+              title={`${monthShortLabel(m.monthKey)}: ${formatMoney(m.net)}`}
+            >
+              <div className="flex h-8 w-full items-end justify-center">
+                {positive && (
+                  <div className="w-2.5 rounded-t bg-green-400" style={{ height: `${pct}%` }} />
+                )}
+              </div>
+              <div className="h-px w-full bg-gray-200" />
+              <div className="flex h-8 w-full items-start justify-center">
+                {!positive && (
+                  <div className="w-2.5 rounded-b bg-red-400" style={{ height: `${pct}%` }} />
+                )}
+              </div>
+              <span className="text-[10px] leading-none text-gray-400">
+                {monthShortLabel(m.monthKey)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <figcaption className="mt-1 text-xs text-gray-400">
+        Líquido por mês (recebido − pago): acima da linha o caixa cresceu, abaixo queimou.
+      </figcaption>
+    </figure>
   );
 }

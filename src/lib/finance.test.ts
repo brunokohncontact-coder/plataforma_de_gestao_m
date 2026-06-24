@@ -56,6 +56,7 @@ import {
   cashRunway,
   cashBurnRunway,
   cashBurnHeadline,
+  cashFlowByMonth,
   parseBurnWindow,
   DEFAULT_BURN_WINDOW_MONTHS,
   BURN_WINDOW_MIN,
@@ -3826,6 +3827,85 @@ describe("cashBurnHeadline", () => {
     expect(h.show).toBe(true);
     expect(h.critical).toBe(true);
     expect(h.runwayMonths).toBeCloseTo(100 / 150, 5);
+  });
+});
+
+describe("cashFlowByMonth", () => {
+  const NOW = "2026-06-15T00:00:00.000Z"; // junho/2026 → janela = dez/2025..mai/2026 (6 meses)
+
+  it("devolve uma entrada por mês da janela, em ordem cronológica", () => {
+    const months = cashFlowByMonth([], { now: NOW });
+    expect(months).toHaveLength(6);
+    expect(months.map((m) => m.monthKey)).toEqual([
+      "2025-12",
+      "2026-01",
+      "2026-02",
+      "2026-03",
+      "2026-04",
+      "2026-05",
+    ]);
+    // Mês sem movimento vem zerado.
+    expect(months.every((m) => m.received === 0 && m.paid === 0 && m.net === 0)).toBe(true);
+  });
+
+  it("agrega receita recebida e despesa paga por mês, calculando o líquido", () => {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 1000_00, received: true, date: "2026-03-05T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 400_00, received: true, date: "2026-03-20T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 250_00, received: true, date: "2026-04-10T00:00:00.000Z" }),
+    ];
+    const byKey = Object.fromEntries(
+      cashFlowByMonth(txs, { now: NOW }).map((m) => [m.monthKey, m]),
+    );
+    expect(byKey["2026-03"]).toMatchObject({ received: 1000_00, paid: 400_00, net: 600_00 });
+    expect(byKey["2026-04"]).toMatchObject({ received: 0, paid: 250_00, net: -250_00 });
+    expect(byKey["2026-01"]).toMatchObject({ received: 0, paid: 0, net: 0 });
+  });
+
+  it("é consistente com cashBurnRunway: soma dos net / janela = avgMonthlyNet", () => {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 1800_00, received: true, date: "2026-02-10T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 300_00, received: true, date: "2026-01-10T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 300_00, received: true, date: "2026-05-10T00:00:00.000Z" }),
+    ];
+    const months = cashFlowByMonth(txs, { now: NOW });
+    const sumNet = months.reduce((acc, m) => acc + m.net, 0);
+    const burn = cashBurnRunway(txs, { now: NOW });
+    expect(Math.round(sumNet / burn.windowMonths)).toBe(burn.avgMonthlyNet);
+  });
+
+  it("ignora o mês corrente (parcial) e o que está fora da janela", () => {
+    const txs: TxLike[] = [
+      tx({ type: "EXPENSE", amount: 999_00, received: true, date: "2026-06-10T00:00:00.000Z" }), // mês em curso
+      tx({ type: "EXPENSE", amount: 888_00, received: true, date: "2025-11-10T00:00:00.000Z" }), // antes da janela
+      tx({ type: "EXPENSE", amount: 100_00, received: true, date: "2026-02-10T00:00:00.000Z" }),
+    ];
+    const months = cashFlowByMonth(txs, { now: NOW });
+    const total = months.reduce((acc, m) => acc + m.paid, 0);
+    expect(total).toBe(100_00); // só fev entra
+    expect(months.some((m) => m.monthKey === "2026-06")).toBe(false);
+    expect(months.some((m) => m.monthKey === "2025-11")).toBe(false);
+  });
+
+  it("ignora pendências (received = false)", () => {
+    const txs: TxLike[] = [
+      tx({ type: "EXPENSE", amount: 500_00, received: false, date: "2026-03-10T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 700_00, received: false, date: "2026-03-12T00:00:00.000Z" }),
+    ];
+    const months = cashFlowByMonth(txs, { now: NOW });
+    expect(months.every((m) => m.received === 0 && m.paid === 0)).toBe(true);
+  });
+
+  it("respeita uma janela customizada e a saneia", () => {
+    expect(cashFlowByMonth([], { now: NOW, months: 3 })).toHaveLength(3);
+    expect(cashFlowByMonth([], { now: NOW, months: 3 }).map((m) => m.monthKey)).toEqual([
+      "2026-03",
+      "2026-04",
+      "2026-05",
+    ]);
+    expect(cashFlowByMonth([], { now: NOW, months: 0 })).toHaveLength(1); // piso
+    expect(cashFlowByMonth([], { now: NOW, months: 100 })).toHaveLength(24); // teto
+    expect(cashFlowByMonth([], { now: NOW })).toHaveLength(DEFAULT_BURN_WINDOW_MONTHS);
   });
 });
 
