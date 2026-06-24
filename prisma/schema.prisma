@@ -73,6 +73,11 @@ model Show {
   fee       Int        @default(0) // cachê acordado, em centavos
   notes     String?
 
+  // Data prometida de pagamento de um cachê em aberto (promise-to-pay). Registrada
+  // na cobrança para priorizar o follow-up: promessas furadas (data já passou e o
+  // cachê continua em aberto) sobem ao topo da fila de cobrança. Ver DECISIONS.md D94.
+  paymentPromisedAt DateTime?
+
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 

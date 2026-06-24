@@ -10,6 +10,7 @@ import {
   projectCashflow,
   reconcileShowFees,
   bucketReceivablesByAge,
+  summarizePaymentPromises,
   paymentLag,
   paymentLagHeadline,
   showPipeline,
@@ -28,6 +29,7 @@ import {
   type TxLike,
   type QuarterGoalStatus,
   type ReceivableShowLike,
+  type PromisableShowLike,
   type ShowLike,
   type YearEndShowLike,
   type MetricDelta,
@@ -177,11 +179,13 @@ export default async function DashboardPage() {
     pessimistic.droppedTentative > 0 &&
     pessimistic.estimatedRemainingFixedCost > 0;
   const pipeline = showPipeline(shows as ShowLike[]);
-  const receivables = reconcileShowFees(shows as ReceivableShowLike[], txs);
+  const receivables = reconcileShowFees(shows as PromisableShowLike[], txs);
   const receivablesAging = bucketReceivablesByAge(receivables);
   // Recebível "encalhado": parado há mais de 90 dias (balde "older" do aging).
   const staleReceivables = receivablesAging.buckets.find((b) => b.key === "older");
   const hasStaleReceivables = staleReceivables != null && staleReceivables.count > 0;
+  // Promessas de pagamento furadas: contratante prometeu pagar e a data passou.
+  const receivablePromises = summarizePaymentPromises(receivables.rows);
 
   // Prazo de recebimento realizado (DSO): sobre o cachê que JÁ entrou, em quantos
   // dias depois do show o dinheiro caiu no caixa. Reaproveita os shows/transações
@@ -252,6 +256,18 @@ export default async function DashboardPage() {
               <span className="font-normal text-red-500">
                 {" "}
                 ({staleReceivables!.count})
+              </span>
+            </span>
+          )}
+          {receivablePromises.brokenCount > 0 && (
+            <span className="font-semibold text-red-700">
+              🤝 {formatMoney(receivablePromises.brokenOutstanding)} em{" "}
+              {receivablePromises.brokenCount === 1
+                ? "promessa vencida"
+                : "promessas vencidas"}
+              <span className="font-normal text-red-500">
+                {" "}
+                ({receivablePromises.brokenCount})
               </span>
             </span>
           )}

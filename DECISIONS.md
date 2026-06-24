@@ -2599,3 +2599,51 @@ contexto, decisão, justificativa e alternativas consideradas.
   cobrança — segue adiado (próximo passo do item 5 do PROGRESS).
 - `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
   nenhuma dependência nova; nenhuma mudança de schema.
+
+## D94 — Data prometida de pagamento + promessas furadas (Sessão 102)
+- **Contexto:** o produto investe pesado em **cobrar o dinheiro que ficou na mesa** (aging D31/D32, DSO D51,
+  por contratante D92, cobrança consolidada D93). Faltava o passo humano do follow-up: quando o músico cobra,
+  o contratante diz *"pago dia X"* — e isso precisa virar um lembrete. Sem registrar a **promessa**, o
+  recebível some na lista por data do show e o "ele disse que pagaria semana passada" se perde. Era o próximo
+  passo do item 5 do PROGRESS, adiado na D93.
+- **Decisão:** registrar a **data prometida de pagamento** por show e destacar as promessas **furadas** (data
+  passou, cachê ainda em aberto). Persistência mínima: um campo opcional `Show.paymentPromisedAt DateTime?`
+  (em vez de uma entidade "promessa" própria — um recebível tem no máximo uma promessa viva; quando paga, o
+  recebível sai da lista e a promessa deixa de importar). Lógica pura em `src/lib/finance.ts`:
+  - `paymentPromiseStatus(promisedAt, now)` → `"none" | "pending" | "broken"`. Compara por **dia UTC** (igual
+    a `resolveReceivedDate`/aging): sem data ou inválida → none; hoje/futuro → pending; passou → broken. Como
+    `reconcileShowFees` só devolve linhas **em aberto**, "broken" basta a data ter passado (não precisa
+    rechecar saldo).
+  - `summarizePaymentPromises(rows, now)` separa furadas × no prazo com contagem e total em aberto por grupo,
+    cada grupo ordenado pela data prometida (mais urgente primeiro), desempatando por id. Ignora linhas sem
+    promessa.
+  - `resolvePromiseDate(raw)` resolve "YYYY-MM-DD" → meia-noite UTC, ou `null` (vazio/inválido = **limpar**).
+    Diferente de `resolveReceivedDate`, **aceita data futura** — uma promessa é, por natureza, futura.
+  - Tipo `PromisableShowLike` = `ReceivableShowLike` + `paymentPromisedAt?` (o genérico de `reconcileShowFees`
+    propaga o campo às linhas sem alterar a assinatura existente).
+- **Server action:** `setPaymentPromiseAction` grava/limpa a data; confirma posse do show; resolve a data no
+  servidor (parse nunca confia no cliente). Revalida a-receber (as duas visões), o show e o Painel.
+- **UI:** componente cliente `PromiseButton` (duas etapas, espelha `SettleFeeButton` — sem diálogo
+  bloqueante): fechado mostra o selo do estado ("+ promessa" / 📅 data âmbar / ⚠ data vermelha); aberto, um
+  `<input type="date">` com Salvar / Limpar / Cancelar. **Limpar** esvazia o input no DOM via `ref` e chama
+  `form.requestSubmit()` — o `FormData` leva `promisedAt=""` de forma **determinística** (sem corrida de
+  estado React). `/shows/a-receber` ganhou a coluna "Promessa" e o card "🤝 Promessas de pagamento"; o Painel
+  ganhou a linha "🤝 {valor} em N promessas vencidas" no alerta de cachês a receber.
+- **Por que não nas Finanças/transação:** a promessa é sobre o **cachê do show** (a unidade que a página de
+  cobrança opera), não sobre uma transação específica — o saldo em aberto pode nem ter transação lançada
+  (`unregistered`). Pôr no show mantém uma fonte única e some naturalmente quando o show é quitado.
+- **DRY:** reaproveita `reconcileShowFees`, `utcMidnight`/`dayKey`/`isValidDateKey`, `SubmitButton` e o padrão
+  de ação inline do `SettleFeeButton`. Nenhuma regra nova de "o que entra/abate".
+- **Testes:** 12 puros (`paymentPromiseStatus` ×5, `summarizePaymentPromises` ×4, `resolvePromiseDate` ×3) +
+  4 de integração da action (grava meia-noite UTC, limpa com vazio, ignora data inválida, bloqueia show de
+  outro usuário). **684 testes** verdes (eram 668). Build/typecheck/lint verdes; smoke test **autenticado**
+  (sessão semeada) renderiza a coluna/card/⚠ em `/shows/a-receber` e a linha no Painel.
+- **Hipótese a validar:** que o músico vai de fato registrar a data prometida na hora da cobrança (fricção de
+  um clique extra). Se a adoção for baixa, um caminho é capturar a promessa **junto** do atalho ✉/WhatsApp
+  (registrar ao abrir a mensagem). Adiado até ter sinal de uso.
+- **Alternativas consideradas:** (a) entidade `PaymentPromise` própria com histórico de promessas — descartado
+  por ora: over-engineering p/ um recebível com no máximo uma promessa viva; dá pra evoluir se precisar de log.
+  (b) promessa por transação pendente — descartado: o saldo em aberto pode não ter transação. (c) só um alerta
+  no Painel sem editar na lista — descartado: o registro precisa estar onde se cobra.
+- `npm audit` inalterado (10 advisories — 4 moderate / 5 high / 1 critical), mesma postura de D6/D8;
+  nenhuma dependência nova; **um** campo de schema novo (aditivo, opcional, portável p/ PostgreSQL).

@@ -4,7 +4,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { resolveSettlementAmount, resolveReceivedDate } from "@/lib/finance";
+import {
+  resolveSettlementAmount,
+  resolveReceivedDate,
+  resolvePromiseDate,
+} from "@/lib/finance";
 import { parseMoneyToCents, showSchema } from "@/lib/validation";
 
 export interface FormState {
@@ -183,6 +187,34 @@ export async function settleShowFeeAction(formData: FormData): Promise<void> {
   revalidatePath("/financas/agenda");
   revalidatePath("/financas/relatorio");
   revalidatePath("/financas/anual");
+  revalidatePath("/dashboard");
+}
+
+/**
+ * Registra (ou limpa) a DATA PROMETIDA de pagamento de um cachê em aberto, direto
+ * da lista de "Cachês a receber". O campo `promisedAt` ("YYYY-MM-DD") é resolvido
+ * no servidor por `resolvePromiseDate`: vazio/inválido → `null` (limpa a promessa);
+ * data válida (inclusive futura) → meia-noite UTC daquele dia. Nunca confia no
+ * cliente. Só atua sobre show do próprio usuário. Ver D94.
+ */
+export async function setPaymentPromiseAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const id = String(formData.get("id"));
+
+  // confirma posse antes de gravar
+  const show = await prisma.show.findFirst({ where: { id, userId: user.id } });
+  if (!show) return;
+
+  const rawPromisedAt = formData.get("promisedAt");
+  const promisedAt = resolvePromiseDate(
+    typeof rawPromisedAt === "string" ? rawPromisedAt : null,
+  );
+
+  await prisma.show.update({ where: { id }, data: { paymentPromisedAt: promisedAt } });
+
+  revalidatePath("/shows/a-receber");
+  revalidatePath("/shows/a-receber/por-contratante");
+  revalidatePath(`/shows/${id}`);
   revalidatePath("/dashboard");
 }
 

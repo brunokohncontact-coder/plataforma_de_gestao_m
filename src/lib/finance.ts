@@ -2649,6 +2649,99 @@ export function bucketReceivablesByAge<S extends ReceivableShowLike>(
   };
 }
 
+// ── Promessas de pagamento (priorizar o follow-up das promessas furadas) ────
+//
+// Ao cobrar um cachê em aberto, o músico pode registrar a DATA PROMETIDA de
+// pagamento pelo contratante. Esta lógica classifica cada promessa e separa as
+// FURADAS (data já passou e o cachê continua em aberto) das ainda no prazo, para
+// que a cobrança volte a quem prometeu e não cumpriu. Ver DECISIONS.md D94.
+
+/** Um show carregado com a data prometida de pagamento (opcional). */
+export interface PromisableShowLike extends ReceivableShowLike {
+  paymentPromisedAt?: Date | string | null;
+}
+
+export type PaymentPromiseStatus = "none" | "pending" | "broken";
+
+/**
+ * Classifica a promessa de pagamento de um recebível em aberto:
+ *  - "none": sem data prometida registrada (ou data inválida);
+ *  - "pending": data prometida é hoje ou no futuro — ainda dentro do prazo;
+ *  - "broken": data prometida já passou — promessa furada.
+ * Como `reconcileShowFees` só devolve linhas em aberto, basta comparar a data
+ * prometida com hoje (meia-noite UTC) para saber se a promessa foi quebrada.
+ */
+export function paymentPromiseStatus(
+  promisedAt: Date | string | null | undefined,
+  now: Date | string = new Date(),
+): PaymentPromiseStatus {
+  if (promisedAt == null || promisedAt === "") return "none";
+  const promisedMs = utcMidnight(promisedAt);
+  if (Number.isNaN(promisedMs)) return "none";
+  return promisedMs < utcMidnight(now) ? "broken" : "pending";
+}
+
+export interface ReceivablePromiseRow<S extends ReceivableShowLike = ReceivableShowLike> {
+  row: ShowReceivableRow<S>;
+  status: Exclude<PaymentPromiseStatus, "none">;
+  /** Data prometida normalizada à meia-noite UTC. */
+  promisedAt: Date;
+}
+
+export interface PaymentPromiseSummary<S extends ReceivableShowLike = ReceivableShowLike> {
+  /** Promessas furadas (data passou), da mais antiga à mais recente. */
+  broken: ReceivablePromiseRow<S>[];
+  /** Promessas no prazo (hoje/futuro), da mais próxima à mais distante. */
+  pending: ReceivablePromiseRow<S>[];
+  brokenCount: number;
+  pendingCount: number;
+  /** Total em aberto coberto por promessas furadas (centavos). */
+  brokenOutstanding: number;
+  /** Total em aberto coberto por promessas no prazo (centavos). */
+  pendingOutstanding: number;
+}
+
+/**
+ * Varre os recebíveis em aberto e separa os que têm promessa de pagamento em
+ * furadas × no prazo, com totais por grupo. Linhas sem promessa são ignoradas.
+ * Cada grupo sai ordenado pela data prometida (mais urgente primeiro) e, em
+ * empate, pelo id do show — determinístico para a UI e os testes.
+ */
+export function summarizePaymentPromises<S extends PromisableShowLike>(
+  rows: ShowReceivableRow<S>[],
+  now: Date | string = new Date(),
+): PaymentPromiseSummary<S> {
+  const broken: ReceivablePromiseRow<S>[] = [];
+  const pending: ReceivablePromiseRow<S>[] = [];
+
+  for (const row of rows) {
+    const status = paymentPromiseStatus(row.show.paymentPromisedAt, now);
+    if (status === "none") continue;
+    const ms = utcMidnight(row.show.paymentPromisedAt as Date | string);
+    const entry: ReceivablePromiseRow<S> = {
+      row,
+      status,
+      promisedAt: new Date(ms),
+    };
+    (status === "broken" ? broken : pending).push(entry);
+  }
+
+  const byDate = (a: ReceivablePromiseRow<S>, b: ReceivablePromiseRow<S>) =>
+    a.promisedAt.getTime() - b.promisedAt.getTime() ||
+    a.row.show.id.localeCompare(b.row.show.id);
+  broken.sort(byDate);
+  pending.sort(byDate);
+
+  return {
+    broken,
+    pending,
+    brokenCount: broken.length,
+    pendingCount: pending.length,
+    brokenOutstanding: sum(broken.map((e) => e.row.outstanding)),
+    pendingOutstanding: sum(pending.map((e) => e.row.outstanding)),
+  };
+}
+
 // ── Cachês a receber por contratante (de quem cobrar primeiro) ──────────────
 //
 // O aging (`bucketReceivablesByAge`) responde "qual dinheiro está parado há mais
@@ -3216,6 +3309,18 @@ export function resolveReceivedDate(
   const parsed = new Date(Date.UTC(y, m - 1, d));
   const nowDay = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   return parsed.getTime() > nowDay ? now : parsed;
+}
+
+/**
+ * Resolve a data prometida de pagamento ("YYYY-MM-DD") para um `Date` à meia-noite
+ * UTC, ou `null` quando vazia/inválida (sinal de "limpar a promessa"). Diferente de
+ * `resolveReceivedDate`, datas no FUTURO são válidas — uma promessa é, por natureza,
+ * uma data futura. O servidor usa isto para nunca confiar num valor cru do cliente.
+ */
+export function resolvePromiseDate(raw: string | null | undefined): Date | null {
+  if (!isValidDateKey(raw)) return null;
+  const [y, m, d] = raw.trim().split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d));
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
