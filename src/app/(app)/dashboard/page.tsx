@@ -26,6 +26,7 @@ import {
   goalRunRate,
   quarterlyGoalProgress,
   monthlyGoalProgress,
+  cashRunway,
   type TxLike,
   type QuarterGoalStatus,
   type ReceivableShowLike,
@@ -214,6 +215,15 @@ export default async function DashboardPage() {
       : undefined;
   const showOpenWeekend = nextOpenWeekend != null && upcoming.length > 0;
 
+  // Fôlego de caixa (D99): "se as receitas parassem hoje, por quantos meses o caixa
+  // realizado cobre os custos fixos?". Reaproveita as transações já carregadas (sem
+  // I/O extra). Só vira nudge quando o veredito morde (tight/critical) — com fôlego
+  // saudável ou sem custo fixo a medir o aviso seria ruído, não alerta. Nesses dois
+  // vereditos `runwayMonths` é sempre um número (não-null).
+  const runway = cashRunway(txs);
+  const showRunway = runway.verdict === "tight" || runway.verdict === "critical";
+  const runwayCritical = runway.verdict === "critical";
+
   // Rentabilidade: top shows realizados por resultado
   const playedShows = shows.filter((s) => s.status === "PLAYED");
   const showPnls = playedShows
@@ -346,6 +356,34 @@ export default async function DashboardPage() {
             {fixedCostsDue.pending.length === 1 ? "conta" : "contas"} ainda sem lançamento neste mês
           </span>
           <span className="text-amber-600">Lançar →</span>
+        </Link>
+      )}
+
+      {/* Fôlego de caixa apertado/crítico: por quantos meses o caixa cobre os custos
+          fixos (D99). Escala para vermelho quando o fôlego é crítico (< 3 meses). */}
+      {showRunway && (
+        <Link
+          href="/financas/folego-de-caixa"
+          className={
+            "flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3 text-sm transition " +
+            (runwayCritical
+              ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100")
+          }
+        >
+          <span className="font-semibold">
+            {runwayCritical ? "🔴" : "🛟"} Fôlego de caixa{" "}
+            {runwayCritical ? "crítico" : "apertado"}
+          </span>
+          <span>
+            O caixa cobre{" "}
+            <strong>
+              {runway.runwayMonths!.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}{" "}
+              {runway.runwayMonths === 1 ? "mês" : "meses"}
+            </strong>{" "}
+            de custos fixos ({formatMoney(runway.monthlyFixedCost)}/mês)
+          </span>
+          <span className={runwayCritical ? "text-red-600" : "text-amber-600"}>Ver →</span>
         </Link>
       )}
 
