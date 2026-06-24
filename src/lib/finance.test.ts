@@ -54,6 +54,8 @@ import {
   pendingFixedCosts,
   computeBreakEven,
   cashRunway,
+  cashBurnRunway,
+  DEFAULT_BURN_WINDOW_MONTHS,
   taxReserve,
   DEFAULT_TAX_RATE,
   showPipeline,
@@ -3620,6 +3622,139 @@ describe("cashRunway", () => {
     expect(r.currentCash).toBe(300_00);
     expect(r.runwayMonths).toBe(3);
     expect(r.verdict).toBe("tight");
+  });
+});
+
+describe("cashBurnRunway", () => {
+  const NOW = "2026-06-15T00:00:00.000Z"; // junho/2026 → janela = dez/2025..mai/2026 (6 meses fechados)
+
+  // Renda recebida ANTES da janela (nov/2025): entra no caixa atual, mas não no burn.
+  const preWindowIncome = (amount: number): TxLike =>
+    tx({ type: "INCOME", amount, received: true, date: "2025-11-15T00:00:00.000Z" });
+
+  // 6 despesas mensais de `each` dentro da janela (dez/2025 → mai/2026).
+  const windowExpenses = (each: number): TxLike[] =>
+    [
+      "2025-12-10",
+      "2026-01-10",
+      "2026-02-10",
+      "2026-03-10",
+      "2026-04-10",
+      "2026-05-10",
+    ].map((d) => tx({ type: "EXPENSE", amount: each, received: true, date: `${d}T00:00:00.000Z` }));
+
+  it("usa a janela padrão de 6 meses fechados", () => {
+    const r = cashBurnRunway([preWindowIncome(2000_00), ...windowExpenses(100_00)], { now: NOW });
+    expect(r.windowMonths).toBe(DEFAULT_BURN_WINDOW_MONTHS);
+    expect(r.windowMonths).toBe(6);
+  });
+
+  it("marca surplus quando o caixa cresceu na janela (entrou mais do que saiu)", () => {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 1200_00, received: true, date: "2026-03-10T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 600_00, received: true, date: "2026-03-15T00:00:00.000Z" }),
+    ];
+    const r = cashBurnRunway(txs, { now: NOW });
+    // (120000 − 60000) / 6 = +100,00/mês → não queima.
+    expect(r.avgMonthlyNet).toBe(100_00);
+    expect(r.monthlyBurn).toBe(0);
+    expect(r.runwayMonths).toBeNull();
+    expect(r.depletionDate).toBeNull();
+    expect(r.verdict).toBe("surplus");
+  });
+
+  it("calcula runwayMonths = caixa / queima mensal média (verdict healthy)", () => {
+    const r = cashBurnRunway([preWindowIncome(2000_00), ...windowExpenses(100_00)], { now: NOW });
+    // queima = 600,00/6 = 100,00/mês; caixa = 2000 − 600 = 1400,00; runway = 14 → healthy.
+    expect(r.monthlyBurn).toBe(100_00);
+    expect(r.currentCash).toBe(1400_00);
+    expect(r.runwayMonths).toBe(14);
+    expect(r.verdict).toBe("healthy");
+  });
+
+  it("marca verdict crítico quando o fôlego é menor que 3 meses", () => {
+    const r = cashBurnRunway([preWindowIncome(1000_00), ...windowExpenses(150_00)], { now: NOW });
+    // queima = 900/6 = 150,00/mês; caixa = 1000 − 900 = 100,00; runway = 0,67 → crítico.
+    expect(r.monthlyBurn).toBe(150_00);
+    expect(r.currentCash).toBe(100_00);
+    expect(r.runwayMonths).toBeCloseTo(100 / 150, 5);
+    expect(r.verdict).toBe("critical");
+  });
+
+  it("marca negative quando há queima mas o caixa atual é <= 0", () => {
+    const r = cashBurnRunway(windowExpenses(100_00), { now: NOW });
+    expect(r.monthlyBurn).toBe(100_00);
+    expect(r.currentCash).toBe(-600_00);
+    expect(r.runwayMonths).toBeNull();
+    expect(r.depletionDate).toBeNull();
+    expect(r.verdict).toBe("negative");
+  });
+
+  it("ignora o mês corrente (parcial) ao medir a queima, mas conta no caixa atual", () => {
+    const txs: TxLike[] = [
+      preWindowIncome(10000_00),
+      ...windowExpenses(100_00),
+      // Despesa pesada no mês em curso (junho) — reduz o caixa, mas não infla o burn.
+      tx({ type: "EXPENSE", amount: 5000_00, received: true, date: "2026-06-10T00:00:00.000Z" }),
+    ];
+    const r = cashBurnRunway(txs, { now: NOW });
+    expect(r.monthlyBurn).toBe(100_00); // só a janela fechada conta
+    expect(r.currentCash).toBe(10000_00 - 600_00 - 5000_00);
+    expect(r.verdict).toBe("healthy");
+  });
+
+  it("ignora transações anteriores à janela", () => {
+    const txs: TxLike[] = [
+      preWindowIncome(2000_00),
+      // Despesa de jun/2025, bem antes da janela de 6 meses → não conta no burn.
+      tx({ type: "EXPENSE", amount: 600_00, received: true, date: "2025-06-10T00:00:00.000Z" }),
+    ];
+    const r = cashBurnRunway(txs, { now: NOW });
+    expect(r.windowPaidExpense).toBe(0);
+    expect(r.monthlyBurn).toBe(0);
+    expect(r.verdict).toBe("surplus");
+  });
+
+  it("ignora pendências (received = false) no cálculo da queima", () => {
+    const txs: TxLike[] = [
+      preWindowIncome(2000_00),
+      tx({ type: "EXPENSE", amount: 600_00, received: false, date: "2026-03-10T00:00:00.000Z" }),
+    ];
+    const r = cashBurnRunway(txs, { now: NOW });
+    expect(r.windowPaidExpense).toBe(0);
+    expect(r.monthlyBurn).toBe(0);
+    expect(r.verdict).toBe("surplus");
+  });
+
+  it("respeita uma janela customizada de meses", () => {
+    const txs: TxLike[] = [
+      preWindowIncome(2000_00),
+      tx({ type: "EXPENSE", amount: 600_00, received: true, date: "2026-01-10T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 300_00, received: true, date: "2026-04-10T00:00:00.000Z" }),
+    ];
+    // Janela 6: jan + abr na janela → 900/6 = 150,00/mês.
+    const r6 = cashBurnRunway(txs, { now: NOW, months: 6 });
+    expect(r6.windowMonths).toBe(6);
+    expect(r6.monthlyBurn).toBe(150_00);
+    // Janela 3 (mar/abr/mai): só abr na janela → 300/3 = 100,00/mês.
+    const r3 = cashBurnRunway(txs, { now: NOW, months: 3 });
+    expect(r3.windowMonths).toBe(3);
+    expect(r3.monthlyBurn).toBe(100_00);
+  });
+
+  it("sanitiza a janela: pisos, tetos, fração e ausência", () => {
+    const base = [preWindowIncome(2000_00), ...windowExpenses(100_00)];
+    expect(cashBurnRunway(base, { now: NOW, months: 0 }).windowMonths).toBe(1);
+    expect(cashBurnRunway(base, { now: NOW, months: 100 }).windowMonths).toBe(24);
+    expect(cashBurnRunway(base, { now: NOW, months: 4.9 }).windowMonths).toBe(4);
+    expect(cashBurnRunway(base, { now: NOW }).windowMonths).toBe(DEFAULT_BURN_WINDOW_MONTHS);
+  });
+
+  it("projeta a data de esgotamento a partir de now + runwayMonths meses", () => {
+    const r = cashBurnRunway([preWindowIncome(2000_00), ...windowExpenses(100_00)], { now: NOW });
+    // runway = 14 meses ≈ 14 × 30,4375 dias após 2026-06-15.
+    const expected = new Date(new Date(NOW).getTime() + 14 * (365.25 / 12) * 86_400_000);
+    expect(r.depletionDate?.getTime()).toBe(expected.getTime());
   });
 });
 

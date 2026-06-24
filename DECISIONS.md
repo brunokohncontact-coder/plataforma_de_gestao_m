@@ -2842,3 +2842,38 @@ contexto, decisão, justificativa e alternativas consideradas.
   um clique na página). (b) incluir o veredito `negative` no banner — descartado: caixa negativo já é coberto
   pelos cards de saldo/caixa e pelo banner de pendências; duplicar seria redundante. (c) tornar os limiares
   3/6 configuráveis pelo usuário — adiável (continua como próximo possível em D99/próximos passos).
+
+## D101 — Fôlego de caixa pelo burn rate realizado (cenário "completo") (Sessão 109)
+- **Contexto:** `cashRunway` (D99) mede o fôlego cobrindo **só o custo fixo recorrente** — um piso deliberado,
+  mas que ignora os gastos variáveis e a receita que de fato entra. Os próximos passos (item 7) já apontavam
+  "usar o burn rate completo (com custos variáveis) como cenário alternativo do fôlego". Para o autônomo, a
+  pergunta complementar é: "ao meu ritmo real de gasto líquido dos últimos meses, por quantos meses o caixa
+  dura?" — número mais realista quando há despesas variáveis pesadas, e que também responde algo quando não há
+  custo fixo recorrente detectado (onde `cashRunway` retorna `no-cost`).
+- **Decisão:** novo helper puro `cashBurnRunway(txs, { now?, months? })` em `src/lib/finance.ts`, ao lado de
+  `cashRunway`. Mede o **fluxo de caixa líquido médio** (recebido − pago) sobre uma janela de `months` meses
+  **completos anteriores ao mês corrente** (default `DEFAULT_BURN_WINDOW_MONTHS = 6`):
+  - `avgMonthlyNet = round((windowReceivedIncome − windowPaidExpense) / windowMonths)`; `monthlyBurn = max(0, −avgMonthlyNet)`.
+  - `runwayMonths = currentCash / monthlyBurn`, com `currentCash` = caixa realizado de `summarizeFinances` (paridade com `cashRunway`).
+  - Vereditos: `surplus` (caixa cresceu na janela → não queima → fôlego ilimitado, `runwayMonths = null`),
+    `negative` (caixa atual ≤ 0), e `critical`/`tight`/`healthy` reusando os **mesmos limiares** 3/6 meses de
+    `cashRunway` (`CRITICAL_RUNWAY_MONTHS`/`HEALTHY_RUNWAY_MONTHS`), para consistência conceitual entre os dois cenários.
+  - **Por que excluir o mês corrente:** o mês em curso é parcial; contá-lo distorceria a média (uma conta grande
+    ainda não compensada por receita do mês inflaria a queima). A janela usa só meses fechados.
+  - **Janela saneada** (`sanitizeBurnWindow`): inteiro em [1, 24], trunca fração, default 6 — pronta para um
+    seletor de janela na UI no futuro, sem virar premissa rígida agora.
+  - Considera só caixa realizado (`received === true`), em paridade com `currentCash` (pendências não contam).
+- **UI:** card "Cenário alternativo · ritmo de gasto real" em `/financas/folego-de-caixa`, **sempre visível**
+  (fora do `switch` de veredito do custo fixo) — é útil justamente quando o número de cima é `no-cost`/`negative`.
+  Reaproveita `formatMoney`/`formatDate`/`formatMonths` e o mesmo vocabulário visual (âmbar/vermelho/verde).
+- **Testes:** 11 casos puros novos (`cashBurnRunway`) em `finance.test.ts` cobrindo janela default/custom,
+  saneamento, `surplus`/`negative`/`healthy`/`critical`, exclusão do mês corrente e de transações fora da janela,
+  pendências ignoradas e data de esgotamento. **728 testes** verdes (eram 717).
+- **DoD:** build de produção, typecheck e lint (0 avisos) verdes; **728 testes**; smoke test **autenticado**
+  (sessão semeada): `/login` → 200; `/financas/folego-de-caixa` → 200 renderizando o card "Cenário alternativo"
+  (veredito `surplus`/"Caixa crescendo" nos dados do seed). `npm audit` inalterado vs. baseline (10 advisories —
+  4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) somar custos variáveis ao custo fixo num único denominador em `cashRunway`
+  — descartado: misturaria dois conceitos (piso de resiliência × ritmo real) num número ambíguo; mantê-los como
+  dois cards distintos é mais honesto. (b) incluir o mês corrente na janela — descartado pela distorção do mês
+  parcial. (c) card no Painel — adiável (próximo possível); manter o escopo da sessão fechado na página dedicada.

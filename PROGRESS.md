@@ -9,8 +9,14 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **717 testes**
-verdes após a Sessão 108 (**card "Fôlego de caixa" no Painel** — banner-nudge em
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **728 testes**
+verdes após a Sessão 109 (**fôlego de caixa pelo burn rate realizado** — helper puro `cashBurnRunway`
+em `src/lib/finance.ts` mede o fluxo de caixa líquido médio dos últimos 6 meses fechados (gastos variáveis
+incluídos, receita recebida descontada) → por quantos meses o caixa dura no ritmo real; veredito
+`surplus`/`negative`/`critical`/`tight`/`healthy` (limiares 3/6 reusados de `cashRunway`); card "Cenário
+alternativo · ritmo de gasto real" sempre visível em `/financas/folego-de-caixa`, útil até quando não há
+custo fixo detectado (onde `cashRunway` é `no-cost`). +11 testes puros, ver D101; eram 717 na Sessão 108,
+**card "Fôlego de caixa" no Painel** — banner-nudge em
 `dashboard/page.tsx` reaproveitando `cashRunway` (D99) sobre as transações já carregadas: mostra por
 quantos meses o caixa cobre os custos fixos, linkando para `/financas/folego-de-caixa`; só aparece
 quando o veredito morde (tight→âmbar 🛟 / critical→vermelho 🔴), para não virar ruído com fôlego saudável
@@ -2435,8 +2441,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    **Card "Fôlego de caixa" no Painel** entregue na Sessão 108 — banner-nudge em `dashboard/page.tsx`
    reaproveitando `cashRunway` sobre as transações já carregadas, exibido só quando o veredito é tight
    (âmbar 🛟) ou critical (vermelho 🔴), linkando para a página completa, ver D100.
-   Próximo possível — tornar os limiares 3/6 configuráveis pelo usuário, ou usar o burn rate completo
-   (com custos variáveis) como cenário alternativo do fôlego.
+   **Burn rate completo (cenário alternativo)** entregue na Sessão 109 — `cashBurnRunway` em
+   `src/lib/finance.ts` cruza o caixa realizado com o fluxo de caixa líquido médio dos últimos 6 meses
+   fechados (custos variáveis incluídos, receita recebida descontada) → por quantos meses o caixa dura no
+   ritmo real; card "Cenário alternativo · ritmo de gasto real" sempre visível em `/financas/folego-de-caixa`,
+   ver D101.
+   Próximo possível — tornar os limiares 3/6 configuráveis pelo usuário; expor um seletor de janela
+   (`?meses=`, já saneada por `sanitizeBurnWindow` 1–24) na página; ou um card de burn rate no Painel.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)
