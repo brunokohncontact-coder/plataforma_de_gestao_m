@@ -3,6 +3,9 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   rankContactsByProfit,
+  showProfitYears,
+  parseProfitYear,
+  filterShowsByYear,
   type TxLike,
   type ShowLike,
   type ContactProfitContact,
@@ -13,11 +16,19 @@ import { CONTACT_ROLE_LABELS, type ContactRole } from "@/lib/domain";
 
 export const dynamic = "force-dynamic";
 
+type SearchParams = { [key: string]: string | string[] | undefined };
+
 function roleLabel(role: string): string {
   return CONTACT_ROLE_LABELS[role as ContactRole] ?? CONTACT_ROLE_LABELS.OTHER;
 }
 
-export default async function ContactProfitabilityPage() {
+const CANCELLED = "CANCELLED";
+
+export default async function ContactProfitabilityPage({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
   const user = await requireUser();
 
   // Shows com os contatos vinculados (para resolver o pagador) e as transações
@@ -30,6 +41,7 @@ export default async function ContactProfitabilityPage() {
         id: true,
         fee: true,
         status: true,
+        date: true,
         contacts: {
           select: { contact: { select: { id: true, name: true, role: true } } },
         },
@@ -42,6 +54,14 @@ export default async function ContactProfitabilityPage() {
   ]);
 
   type ShowRow = (typeof shows)[number];
+
+  // Anos disponíveis no seletor de período: apenas dos shows que entram na
+  // agregação (não cancelados), para não oferecer um ano que ficaria vazio.
+  const availableYears = showProfitYears(
+    shows.filter((s) => s.status !== CANCELLED).map((s) => s.date),
+  );
+  const yearFilter = parseProfitYear(searchParams?.ano, availableYears);
+  const periodShows = filterShowsByYear(shows, yearFilter);
 
   const txs: TxLike[] = transactions.map((t) => ({
     type: t.type as TxLike["type"],
@@ -58,10 +78,12 @@ export default async function ContactProfitabilityPage() {
   };
 
   const report = rankContactsByProfit(
-    shows as (ShowLike & ShowRow)[],
+    periodShows as (ShowLike & ShowRow)[],
     txs,
     getPayer as (s: ShowLike & ShowRow) => ContactProfitContact | null,
   );
+
+  const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
 
   return (
     <div className="space-y-6">
@@ -83,15 +105,36 @@ export default async function ContactProfitabilityPage() {
         </div>
       </div>
 
+      {availableYears.length > 0 && (
+        <PeriodPicker years={availableYears} active={yearFilter} />
+      )}
+
       {report.count === 0 ? (
         <div className="card text-center text-gray-500">
-          <p>Nenhum show para analisar.</p>
-          <p className="mt-1 text-sm">
-            Vincule contatos aos seus shows na tela de detalhe do show para ver a rentabilidade por contratante.
-          </p>
-          <Link href="/shows" className="mt-3 inline-block text-brand-700 hover:underline">
-            Ver shows
-          </Link>
+          {yearFilter === "all" ? (
+            <>
+              <p>Nenhum show para analisar.</p>
+              <p className="mt-1 text-sm">
+                Vincule contatos aos seus shows na tela de detalhe do show para ver a rentabilidade por contratante.
+              </p>
+              <Link href="/shows" className="mt-3 inline-block text-brand-700 hover:underline">
+                Ver shows
+              </Link>
+            </>
+          ) : (
+            <>
+              <p>Nenhum show em {periodLabel}.</p>
+              <p className="mt-1 text-sm">
+                Escolha outro período acima para ver a rentabilidade por contratante.
+              </p>
+              <Link
+                href="/contatos/rentabilidade"
+                className="mt-3 inline-block text-brand-700 hover:underline"
+              >
+                Ver todos os anos
+              </Link>
+            </>
+          )}
         </div>
       ) : (
         <>
@@ -208,6 +251,44 @@ export default async function ContactProfitabilityPage() {
         </>
       )}
     </div>
+  );
+}
+
+/** Seletor de período: "Todos" + uma pílula por ano com shows (mais recente primeiro). */
+function PeriodPicker({
+  years,
+  active,
+}: {
+  years: number[];
+  active: number | "all";
+}) {
+  const base =
+    "rounded-full px-3 py-1 text-sm font-medium transition-colors";
+  const on = "bg-brand-600 text-white";
+  const off = "bg-gray-100 text-gray-600 hover:bg-gray-200";
+  return (
+    <nav aria-label="Período" className="flex flex-wrap items-center gap-2">
+      <span className="text-xs font-medium uppercase tracking-wide text-gray-500">
+        Período
+      </span>
+      <Link
+        href="/contatos/rentabilidade"
+        className={base + " " + (active === "all" ? on : off)}
+        aria-current={active === "all" ? "page" : undefined}
+      >
+        Todos
+      </Link>
+      {years.map((y) => (
+        <Link
+          key={y}
+          href={`/contatos/rentabilidade?ano=${y}`}
+          className={base + " " + (active === y ? on : off)}
+          aria-current={active === y ? "page" : undefined}
+        >
+          {y}
+        </Link>
+      ))}
+    </nav>
   );
 }
 

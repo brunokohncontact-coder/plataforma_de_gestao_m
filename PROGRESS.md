@@ -9,8 +9,14 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **760 testes**
-verdes após a Sessão 115 (**cachê médio por contratante** — campo puro `avgFee` em `ContactProfitRow`
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **770 testes**
+verdes após a Sessão 116 (**recorte por período (ano) na rentabilidade por contratante** — três helpers
+puros em `src/lib/finance.ts`: `showProfitYears` (anos UTC presentes, desc/dedup), `parseProfitYear`
+(`?ano=` → `number | "all"`; vazio/"todos"/ano ausente → "all") e `filterShowsByYear` (filtra shows pelo ano
+UTC antes de agregar, `"all"` = lista intacta); `/contatos/rentabilidade` ganhou um `PeriodPicker` (pílula
+"Todos" + uma por ano com shows não cancelados, estilo do seletor de fôlego D102) que recorta o P&L por
+contratante sem tocar a regra "um pagador por show" (D105); estado vazio período-ciente. +10 testes puros,
+ver D108; eram 760 na Sessão 115, **cachê médio por contratante** — campo puro `avgFee` em `ContactProfitRow`
 (`src/lib/finance.ts`, calculado em `rankContactsByProfit` = `round(totalFee / showCount)`) expõe o **nível de
 preço** praticado por contratante, distinto do líquido (`avgNet`); nova coluna "Cachê médio" em
 `/contatos/rentabilidade` (entre Despesas e Resultado) deixa visível quem paga caro mas é caro de atender.
@@ -2498,9 +2504,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `src/lib/contacts.ts` + card "Rentabilidade" em `/contatos/[id]` (líquido/despesas/média/margem dos shows do
    contato), ver D106; **cachê médio por contratante** entregue na Sessão 115 — campo `avgFee` em
    `ContactProfitRow` (`rankContactsByProfit`) + coluna "Cachê médio" em `/contatos/rentabilidade`, o nível de
-   preço praticado distinto do líquido (`avgNet`), ver D107. Próximo possível — um recorte por período (filtrar
-   os shows por ano, espelhando `?meses=`/`?semanas=`) na rentabilidade por contratante; ou o cachê **mediano**
-   por contratante (robusto a outlier — adiável: ruidoso com poucos shows, mesma razão da D57).
+   preço praticado distinto do líquido (`avgNet`), ver D107; **recorte por período (ano)** entregue na Sessão 116 —
+   `showProfitYears`/`parseProfitYear`/`filterShowsByYear` em `src/lib/finance.ts` + `PeriodPicker` (Todos + pílula
+   por ano) em `/contatos/rentabilidade`, recortando o P&L por contratante por ano UTC antes de agregar, ver D108.
+   Próximo possível — o cachê **mediano** por contratante (robusto a outlier — adiável: ruidoso com poucos shows,
+   mesma razão da D57); um recorte por período análogo na rentabilidade por local/cidade e no detalhe do contato
+   (reusando os três helpers); ou comparar dois anos lado a lado (Δ por contratante, espelhando D33).
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

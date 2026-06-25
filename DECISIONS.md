@@ -3067,3 +3067,34 @@ contexto, decisão, justificativa e alternativas consideradas.
   "cachê" no domínio é o fee contratado; extras (venda de produto, ajuda de custo) não são preço do contratante.
   (b) também o cachê mediano (robusto a outlier) — adiável: com poucos shows por contratante a mediana fica
   ruidosa (mesma razão da D57); a média basta como leitura de nível de preço.
+
+## D108 — Recorte por período (ano) na rentabilidade por contratante (Sessão 116)
+- **Contexto:** `/contatos/rentabilidade` (D105–D107) agregava o P&L por contratante sobre **todos** os shows
+  de uma vez, sem como responder "quem deu dinheiro **neste ano**?". Comparar contratantes ao longo do tempo
+  (este ano × ano passado) e isolar o desempenho recente eram impossíveis. O recorte por período era o "próximo
+  possível" explícito do passo 8 do PROGRESS ("filtrar os shows por ano, espelhando `?meses=`/`?semanas=`").
+- **Decisão:** três helpers puros novos em `finance.ts` — `showProfitYears(dates)` (anos UTC presentes, desc,
+  dedup), `parseProfitYear(raw, availableYears)` (`?ano=` → `number | "all"`; vazio/"todos"/ano ausente → `"all"`,
+  aceita query repetida) e `filterShowsByYear(shows, year)` (filtra por ano UTC; `"all"` devolve a lista intacta).
+  A página filtra os shows **antes** de chamar `rankContactsByProfit`, mantendo a regra "um pagador por show" e
+  o P&L intocados. UI: `PeriodPicker` com pílula "Todos" + uma por ano com shows (não cancelados), no estilo do
+  seletor de janela de fôlego de caixa (D102). Estado vazio passa a ser período-ciente (ano sem shows → link
+  "Ver todos os anos").
+- **Justificativa:** filtrar fora da função pura mantém o agregador agnóstico ao recorte (uma responsabilidade),
+  e os três helpers são triviais de testar isoladamente. Anos derivados só dos shows não cancelados evitam
+  oferecer um período que ficaria vazio após a exclusão. Convenção **UTC** alinhada às demais agregações
+  financeiras (D29 etc.). Zero consulta nova além de `date` no `select`; zero dependência nova.
+- **Testes:** 10 casos puros novos em `finance.test.ts` (`showProfitYears`, `parseProfitYear`, `filterShowsByYear`):
+  anos desc/dedup/UTC, parse de vazio/"todos"/ano válido/ano ausente/inválido/query repetida, filtro por ano e
+  ano vazio. **770 testes** verdes (eram 760).
+- **DoD:** build de produção (rota `/contatos/rentabilidade` ok), typecheck e lint (0 avisos) verdes; **770
+  testes**; smoke test — `npm start`: `/` → 200, `/contatos/rentabilidade?ano=2025` → 307 `/login` (sem 500).
+  `npm audit` inalterado vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
+  postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) navegação ←/→ por ano (como `/financas/anual`) — descartado: o caso de uso
+  é **comparar** contratantes entre períodos, então "Todos + pílulas" expõe os anos disponíveis de relance e
+  permite voltar à visão completa num clique, ao contrário do prev/next. (b) recorte por janela de meses
+  (`?meses=`) espelhando o fôlego — descartado aqui: a rentabilidade por contratante é uma leitura por
+  exercício/temporada, e o ano é a unidade natural (fechamento fiscal, comparação anual). (c) filtrar dentro de
+  `rankContactsByProfit` via `opts` — descartado: acoplaria recorte temporal ao agregador; filtrar antes é mais
+  simples e reusável.
