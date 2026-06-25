@@ -10,7 +10,16 @@
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
 do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **792 testes**
-verdes após a Sessão 124 (**concentração por casa na rentabilidade por local** — `/shows/locais` ganhou o card
+verdes após a Sessão 125 (**recorte por período (ano) na rentabilidade do detalhe do contato** — o card
+"Rentabilidade" de `/contatos/[id]` (D106) ganhou um `ProfitPeriodPicker` (pílula "Todos" + uma por ano com shows
+não cancelados) ancorado no próprio contato (`/contatos/{id}?ano=`), **reaproveitando os três helpers puros da D108**
+(`showProfitYears`/`parseProfitYear`/`filterShowsByYear` em `src/lib/finance.ts`): os shows são filtrados por ano UTC
+**antes** de `summarizeContactProfit`, sem tocar a regra de P&L nem a exclusão de cancelados (D106). O recorte afeta
+**só** a rentabilidade — o "Histórico de shows" e a lista "Shows vinculados" seguem mostrando o relacionamento
+inteiro (CRM é cumulativo). O seletor fica visível mesmo num ano vazio, com atalho "Ver todos os anos", e o card só
+aparece com ≥1 show não cancelado. A consulta de transações não mudou (`computeShowPnL` já filtra por `showId`). Sem
+testes novos — wiring de UI sobre helpers já cobertos (como D111/D115); ver D117; eram 792 na Sessão 124
+(**concentração por casa na rentabilidade por local** — `/shows/locais` ganhou o card
 "Concentração por casa" (selo 🔴/🟡/🟢, participação da maior casa, das 3 maiores, casas efetivas e nota acionável
 "prospectar novos palcos"), **reaproveitando o mesmo helper puro `geoConcentration`** (D113) sobre as linhas já
 produzidas por `rankVenuesByProfit` (recortadas pelo `PeriodPicker`/`?ano=` da D111) — é o recorte mais granular do
@@ -2578,11 +2587,14 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `PeriodPicker`/`?ano=` da rentabilidade por contratante, **reutilizando os três helpers da D108**
    (`showProfitYears`/`parseProfitYear`/`filterShowsByYear`): inclui `date` na consulta e filtra por ano UTC antes de
    `rankVenuesByProfit`, sem tocar a regra de agrupamento por local nem o P&L; estado vazio período-ciente, ver D111.
-   Próximo possível — o cachê **mediano** por contratante (robusto a outlier — adiável: ruidoso com poucos shows,
-   mesma razão da D57); o **mesmo recorte por período no detalhe do contato** (`summarizeContactProfit` em
-   `contacts.ts`, reusando os três helpers — caminho mais direto agora); comparar dois anos lado a lado (Δ por
-   contratante/local, espelhando D33); ou um recorte por período (`?ano=`) também no nudge de concentração do Painel
-   (hoje usa o retrato corrente, todos os anos).
+   **Recorte por período (ano) no detalhe do contato** entregue na Sessão 125 — `/contatos/[id]` ganhou um
+   `ProfitPeriodPicker` (`?ano=` ancorado no contato) que recorta **só** o card "Rentabilidade" (D106) reusando os
+   três helpers da D108 (`showProfitYears`/`parseProfitYear`/`filterShowsByYear`); filtra os shows por ano UTC antes
+   de `summarizeContactProfit`, deixando o histórico e a lista de shows intactos; estado vazio período-ciente, ver
+   D117. Próximo possível — o cachê **mediano** por contratante (robusto a outlier — adiável: ruidoso com poucos
+   shows, mesma razão da D57); comparar dois anos lado a lado (Δ por contratante/local, espelhando D33); ou um
+   recorte por período (`?ano=`) também no nudge de concentração do Painel (hoje usa o retrato corrente, todos os
+   anos).
 
 9. **Rentabilidade geográfica — evoluções** (rentabilidade por local entregue na Sessão 28, `/shows/locais` +
    `rankVenuesByProfit`; atuação por cidade na Sessão 57, `/shows/cidades` + `rankCitiesByProfit`; recorte por

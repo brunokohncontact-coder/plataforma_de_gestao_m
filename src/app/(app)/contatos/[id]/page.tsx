@@ -3,6 +3,12 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { summarizeContactShows, summarizeContactProfit } from "@/lib/contacts";
+import {
+  showProfitYears,
+  parseProfitYear,
+  filterShowsByYear,
+  type ProfitYearFilter,
+} from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { formatDateTime } from "@/lib/format";
 import {
@@ -18,7 +24,13 @@ import { DeleteButton } from "@/components/DeleteButton";
 
 export const dynamic = "force-dynamic";
 
-export default async function ContactDetailPage({ params }: { params: { id: string } }) {
+export default async function ContactDetailPage({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams?: { [key: string]: string | string[] | undefined };
+}) {
   const user = await requireUser();
 
   const contact = await prisma.contact.findFirst({
@@ -39,9 +51,20 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
   const shows = contact.shows.map((cs) => cs.show);
   const summary = summarizeContactShows(shows);
 
-  // Rentabilidade: P&L líquido dos shows deste contato, depois dos custos.
-  // Busca só as transações vinculadas aos shows do contato (receitas extras e
-  // despesas) — `summarizeContactProfit` reaproveita `computeShowPnL` (D106).
+  // Recorte por período (ano) — afeta SÓ a rentabilidade (D117), reusando os
+  // três helpers da D108. O histórico e a lista de shows seguem mostrando tudo.
+  // Anos vêm dos shows não cancelados (os que entram no P&L), para não oferecer
+  // um ano que ficaria vazio na rentabilidade.
+  const availableYears = showProfitYears(
+    shows.filter((s) => s.status !== "CANCELLED").map((s) => s.date),
+  );
+  const yearFilter = parseProfitYear(searchParams?.ano, availableYears);
+  const periodShows = filterShowsByYear(shows, yearFilter);
+
+  // Rentabilidade: P&L líquido dos shows deste contato (no período), depois dos
+  // custos. Busca só as transações vinculadas aos shows do contato (receitas
+  // extras e despesas) — `summarizeContactProfit` reaproveita `computeShowPnL`
+  // (D106), filtrando por `showId` internamente, então passar todas é seguro.
   const showIds = shows.map((s) => s.id);
   const showTxs =
     showIds.length > 0
@@ -51,7 +74,7 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
         })
       : [];
   const profit = summarizeContactProfit(
-    shows,
+    periodShows,
     showTxs.map((t) => ({ ...t, type: t.type as "INCOME" | "EXPENSE" })),
   );
 
@@ -106,33 +129,51 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
         </dl>
       </section>
 
-      {/* Rentabilidade — quanto este contato deixa depois dos custos */}
-      {profit.showCount > 0 && (
+      {/* Rentabilidade — quanto este contato deixa depois dos custos.
+          Só aparece com ≥1 show não cancelado (em qualquer ano); o seletor de
+          período recorta o P&L sem mexer no histórico/lista acima. */}
+      {availableYears.length > 0 && (
         <section className="card">
-          <div className="mb-3 flex items-center justify-between">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-semibold">Rentabilidade</h2>
             <Link href="/contatos/rentabilidade" className="text-xs text-brand-700 hover:underline">
               Comparar contratantes →
             </Link>
           </div>
-          <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Stat
-              label="Resultado líquido"
-              value={formatMoney(profit.totalNet)}
-              valueClassName={profit.totalNet >= 0 ? "text-emerald-600" : "text-red-600"}
-            />
-            <Stat label="Despesas" value={profit.totalExpenses > 0 ? "−" + formatMoney(profit.totalExpenses) : "—"} />
-            <Stat label="Líquido médio/show" value={formatMoney(profit.avgNet)} />
-            <Stat
-              label="Margem"
-              value={profit.totalFee + profit.totalExtra > 0 ? `${(profit.margin * 100).toFixed(0)}%` : "—"}
-            />
-          </dl>
-          <p className="mt-3 text-xs text-gray-400">
-            Líquido = cachê {profit.totalExtra > 0 ? "+ receitas extras " : ""}− despesas vinculadas aos{" "}
-            {profit.showCount} show{profit.showCount > 1 ? "s" : ""} não cancelado
-            {profit.showCount > 1 ? "s" : ""} deste contato.
-          </p>
+
+          <ProfitPeriodPicker contactId={contact.id} years={availableYears} active={yearFilter} />
+
+          {profit.showCount > 0 ? (
+            <>
+              <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <Stat
+                  label="Resultado líquido"
+                  value={formatMoney(profit.totalNet)}
+                  valueClassName={profit.totalNet >= 0 ? "text-emerald-600" : "text-red-600"}
+                />
+                <Stat label="Despesas" value={profit.totalExpenses > 0 ? "−" + formatMoney(profit.totalExpenses) : "—"} />
+                <Stat label="Líquido médio/show" value={formatMoney(profit.avgNet)} />
+                <Stat
+                  label="Margem"
+                  value={profit.totalFee + profit.totalExtra > 0 ? `${(profit.margin * 100).toFixed(0)}%` : "—"}
+                />
+              </dl>
+              <p className="mt-3 text-xs text-gray-400">
+                Líquido = cachê {profit.totalExtra > 0 ? "+ receitas extras " : ""}− despesas vinculadas aos{" "}
+                {profit.showCount} show{profit.showCount > 1 ? "s" : ""} não cancelado
+                {profit.showCount > 1 ? "s" : ""} deste contato
+                {yearFilter === "all" ? "" : ` em ${yearFilter}`}.
+              </p>
+            </>
+          ) : (
+            <p className="mt-3 text-sm text-gray-400">
+              Nenhum show não cancelado em {yearFilter}.{" "}
+              <Link href={`/contatos/${contact.id}`} className="text-brand-700 hover:underline">
+                Ver todos os anos
+              </Link>
+              .
+            </p>
+          )}
         </section>
       )}
 
@@ -156,6 +197,47 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
         )}
       </section>
     </div>
+  );
+}
+
+/**
+ * Seletor de período da rentabilidade: "Todos" + uma pílula por ano com shows
+ * (mais recente primeiro). Espelha o PeriodPicker de `/contatos/rentabilidade`,
+ * mas ancora os links no detalhe deste contato (`/contatos/{id}?ano=`).
+ */
+function ProfitPeriodPicker({
+  contactId,
+  years,
+  active,
+}: {
+  contactId: string;
+  years: number[];
+  active: ProfitYearFilter;
+}) {
+  const base = "rounded-full px-3 py-1 text-sm font-medium transition-colors";
+  const on = "bg-brand-600 text-white";
+  const off = "bg-gray-100 text-gray-600 hover:bg-gray-200";
+  return (
+    <nav aria-label="Período da rentabilidade" className="flex flex-wrap items-center gap-2">
+      <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Período</span>
+      <Link
+        href={`/contatos/${contactId}`}
+        className={base + " " + (active === "all" ? on : off)}
+        aria-current={active === "all" ? "page" : undefined}
+      >
+        Todos
+      </Link>
+      {years.map((y) => (
+        <Link
+          key={y}
+          href={`/contatos/${contactId}?ano=${y}`}
+          className={base + " " + (active === y ? on : off)}
+          aria-current={active === y ? "page" : undefined}
+        >
+          {y}
+        </Link>
+      ))}
+    </nav>
   );
 }
 

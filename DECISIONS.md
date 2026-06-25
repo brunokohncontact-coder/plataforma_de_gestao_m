@@ -3378,3 +3378,38 @@ contexto, decisão, justificativa e alternativas consideradas.
   ali; somar um por casa inflaria o Painel com um sinal muito correlato. (c) renomear os campos genéricos de
   `GeoConcentration` (`places`→`groups`) para refletir o uso multi-eixo — descartado: mexeria em D113/D114/D115 sem
   ganho funcional; os nomes `places`/`placeCount` já leem bem para "casas" e "cidades".
+
+## D117 — Recorte por período (ano) na rentabilidade do detalhe do contato (Sessão 125)
+- **Contexto:** o card **"Rentabilidade"** do detalhe do contato (`/contatos/[id]`, D106) somava o P&L de **todos**
+  os shows não cancelados do contato, sem como isolar uma temporada — diferente da rentabilidade por contratante
+  (D108), por local (D111) e da atuação por cidade (D115), que já tinham `PeriodPicker`. O item 8 dos próximos
+  passos do PROGRESS apontava este recorte como "o caminho mais direto agora", reusando os três helpers da D108
+  sobre o `summarizeContactProfit` já existente.
+- **Decisão:** `/contatos/[id]` passou a aceitar `searchParams.ano` e ganhou um `ProfitPeriodPicker` (pílula
+  "Todos" + uma por ano com shows não cancelados) **ancorado neste contato** (`/contatos/{id}?ano=`),
+  **reaproveitando os três helpers puros da D108** em `finance.ts`: `showProfitYears` (anos UTC dos shows não
+  cancelados), `parseProfitYear` (`?ano=` → `number | "all"`, saneado contra os anos disponíveis) e
+  `filterShowsByYear` (filtra pelo ano UTC). Os shows são filtrados **antes** de `summarizeContactProfit`, então a
+  regra de P&L e a exclusão de cancelados (D106) seguem intocadas. O recorte afeta **só** o card de rentabilidade;
+  o "Histórico de shows" e a lista "Shows vinculados" continuam mostrando o relacionamento inteiro (o CRM é sobre
+  todo o histórico, não sobre um ano). A consulta de transações (`prisma.transaction.findMany` por `showId`) não
+  mudou — `computeShowPnL` já filtra por `showId` internamente, então passar todas as txs é seguro com o recorte.
+- **Justificativa:** é o mesmo padrão validado em três telas (D108/D111/D115) — reusar os helpers puros evita lógica
+  nova e mantém o comportamento de período idêntico. Recortar **só** a rentabilidade (e não o histórico/lista)
+  reflete a diferença de intenção: a ficha de relacionamento é cumulativa, mas "este cliente deu dinheiro **neste
+  ano**?" é a pergunta acionável de rentabilidade. O card só aparece com ≥1 show não cancelado (em qualquer ano), e
+  o seletor fica visível mesmo quando o ano escolhido fica vazio, com um atalho "Ver todos os anos" — para o
+  usuário não ficar preso num período sem dados.
+- **Testes:** nenhum novo — wiring de UI sobre helpers já cobertos (`showProfitYears`/`parseProfitYear`/
+  `filterShowsByYear` têm testes desde a D108; `summarizeContactProfit` desde a D106), mesmo critério da D111/D115.
+  **792 testes** verdes (inalterado).
+- **DoD:** build de produção (rota `/contatos/[id]` ok), typecheck e lint (0 avisos) verdes; **792 testes**; smoke
+  test — `npm start`: `/login` → 200 (app sobe). `npm audit` inalterado vs. baseline (10 advisories — 4 moderate /
+  5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) recortar **também** o histórico e a lista de shows pelo ano — descartado: a
+  ficha de CRM é sobre todo o relacionamento; esconder shows de outros anos da lista confundiria mais que ajudaria.
+  (b) recorte por **mês** — descartado: poucos shows por contato deixariam quase todo mês vazio; o ano é a
+  granularidade das telas irmãs. (c) **extrair** o `ProfitPeriodPicker` para um componente compartilhado com o
+  `PeriodPicker` de `/contatos/rentabilidade` — adiável: as cópias são pequenas e a única diferença real é o
+  `href` base; se surgir um quarto uso com a mesma assinatura, vale consolidar num componente parametrizado pelo
+  caminho base.
