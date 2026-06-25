@@ -7,6 +7,7 @@ import {
   rankContactsByProfit,
   clientConcentration,
   clientConcentrationHeadline,
+  geoConcentration,
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
@@ -684,6 +685,96 @@ describe("clientConcentrationHeadline", () => {
     expect(h.show).toBe(false);
     expect(h.critical).toBe(false);
     expect(h.level).toBe("diversified");
+  });
+});
+
+describe("geoConcentration", () => {
+  // Constrói as linhas via rankCitiesByProfit para refletir a entrada real da UI.
+  const rowsFor = (shows: VenueShowLike[], txs: TxLike[] = []) =>
+    rankCitiesByProfit(shows, txs).rows;
+
+  it("retorna estrutura vazia quando não há cidades com receita", () => {
+    const c = geoConcentration([]);
+    expect(c.places).toEqual([]);
+    expect(c.total).toBe(0);
+    expect(c.placeCount).toBe(0);
+    expect(c.top).toBeNull();
+    expect(c.topShare).toBe(0);
+    expect(c.top3Share).toBe(0);
+    expect(c.hhi).toBe(0);
+    expect(c.effectivePlaces).toBe(0);
+    expect(c.level).toBe("concentrated");
+  });
+
+  it("calcula participação sobre a receita bruta e ignora o grupo sem cidade", () => {
+    const shows: VenueShowLike[] = [
+      { id: "a", fee: 600_00, status: "PLAYED", venue: "Bar", city: "Recife" },
+      { id: "b", fee: 300_00, status: "CONFIRMED", venue: "Café", city: "Olinda" },
+      { id: "c", fee: 100_00, status: "CONFIRMED", venue: "Teatro", city: "Caruaru" },
+      { id: "d", fee: 999_00, status: "CONFIRMED", venue: "Estúdio", city: "" }, // sem cidade: não conta
+    ];
+    const c = geoConcentration(rowsFor(shows));
+    // total = 600+300+100 = 1000 (a cidade vazia de 999 não entra)
+    expect(c.total).toBe(1000_00);
+    expect(c.placeCount).toBe(3);
+    expect(c.top?.key).toBe("recife");
+    expect(c.topShare).toBeCloseTo(0.6);
+    expect(c.places.map((p) => p.key)).toEqual(["recife", "olinda", "caruaru"]);
+    // HHI = 0,6² + 0,3² + 0,1² = 0,46
+    expect(c.hhi).toBeCloseTo(0.46);
+    expect(c.effectivePlaces).toBeCloseTo(1 / 0.46);
+    expect(c.level).toBe("concentrated");
+  });
+
+  it("inclui extras na receita bruta da cidade", () => {
+    const shows: VenueShowLike[] = [
+      { id: "a", fee: 100_00, status: "PLAYED", venue: "Bar", city: "Recife" },
+    ];
+    const txs: TxLike[] = [tx({ type: "INCOME", amount: 50_00, showId: "a" })];
+    const c = geoConcentration(rowsFor(shows, txs));
+    // receita bruta = cachê 100 + extra 50 = 150 (independe das despesas)
+    expect(c.total).toBe(150_00);
+    expect(c.top?.revenue).toBe(150_00);
+  });
+
+  it("descarta cidades sem receita bruta positiva", () => {
+    // Recife tem receita; uma cidade só com despesa (cachê 0) não vira fatia.
+    const shows: VenueShowLike[] = [
+      { id: "a", fee: 100_00, status: "PLAYED", venue: "Bar", city: "Recife" },
+      { id: "b", fee: 0, status: "PLAYED", venue: "Praça", city: "Olinda" },
+    ];
+    const txs: TxLike[] = [tx({ type: "EXPENSE", amount: 20_00, showId: "b" })];
+    const c = geoConcentration(rowsFor(shows, txs));
+    expect(c.placeCount).toBe(1);
+    expect(c.places.map((p) => p.key)).toEqual(["recife"]);
+  });
+
+  it("uma única cidade é sempre concentrada (HHI 1)", () => {
+    const shows: VenueShowLike[] = [
+      { id: "a", fee: 500_00, status: "PLAYED", venue: "Bar", city: "Recife" },
+    ];
+    const c = geoConcentration(rowsFor(shows));
+    expect(c.topShare).toBe(1);
+    expect(c.hhi).toBe(1);
+    expect(c.effectivePlaces).toBe(1);
+    expect(c.level).toBe("concentrated");
+  });
+
+  it("atuação bem espalhada entre muitas cidades é diversificada", () => {
+    // 5 cidades de 100 cada -> HHI 0,2 (< 0,25) -> diversificada
+    const ids = ["c1", "c2", "c3", "c4", "c5"];
+    const shows: VenueShowLike[] = ids.map((id) => ({
+      id,
+      fee: 100_00,
+      status: "PLAYED",
+      venue: `Casa ${id}`,
+      city: `Cidade ${id}`,
+    }));
+    const c = geoConcentration(rowsFor(shows));
+    expect(c.placeCount).toBe(5);
+    expect(c.hhi).toBeCloseTo(0.2);
+    expect(c.level).toBe("diversified");
+    expect(c.top3Share).toBeCloseTo(0.6);
   });
 });
 

@@ -1,7 +1,14 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { rankCitiesByProfit, type TxLike, type VenueShowLike } from "@/lib/finance";
+import {
+  rankCitiesByProfit,
+  geoConcentration,
+  type TxLike,
+  type VenueShowLike,
+  type GeoConcentration,
+  type DiversificationLevel,
+} from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 
 export const dynamic = "force-dynamic";
@@ -40,6 +47,8 @@ export default async function CityProfitabilityPage() {
   const report = rankCitiesByProfit(cityShows, txs);
   // Maior resultado positivo, para dimensionar as barras de participação.
   const maxNet = Math.max(0, ...report.rows.map((r) => r.totalNet));
+  // Risco de depender de poucas cidades (sobre a receita bruta, ignora "Sem cidade").
+  const concentration = geoConcentration(report.rows);
 
   return (
     <div className="space-y-6">
@@ -101,6 +110,10 @@ export default async function CityProfitabilityPage() {
                 tone={report.worst.totalNet >= 0 ? "brand" : "red"}
               />
             </div>
+          )}
+
+          {concentration.placeCount > 0 && (
+            <GeoConcentrationCard concentration={concentration} />
           )}
 
           <div className="card overflow-x-auto p-0">
@@ -174,6 +187,85 @@ export default async function CityProfitabilityPage() {
           </p>
         </>
       )}
+    </div>
+  );
+}
+
+/** Rótulo + tom (cor/emoji) do veredito de concentração geográfica. */
+const GEO_VERDICT: Record<
+  DiversificationLevel,
+  { label: string; emoji: string; classes: string; note: string }
+> = {
+  concentrated: {
+    label: "Concentrada",
+    emoji: "🔴",
+    classes: "border-red-200 bg-red-50 text-red-800",
+    note: "Boa parte da receita vem de poucas cidades — se a cena de uma esfriar, o baque é grande. Vale abrir praças novas.",
+  },
+  moderate: {
+    label: "Moderada",
+    emoji: "🟡",
+    classes: "border-amber-200 bg-amber-50 text-amber-800",
+    note: "A receita depende de um punhado de cidades. Tocar em novas praças reduz o risco geográfico.",
+  },
+  diversified: {
+    label: "Diversificada",
+    emoji: "🟢",
+    classes: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    note: "A atuação está bem espalhada entre várias cidades — pouca dependência de uma única praça.",
+  },
+};
+
+/** Formata uma participação 0..1 como porcentagem inteira (ex.: 0,6 → "60%"). */
+function pct(share: number): string {
+  return `${Math.round(share * 100)}%`;
+}
+
+/**
+ * Card "Concentração geográfica": mede o risco de a carreira depender de poucas
+ * cidades (sobre a receita bruta, distinto da rentabilidade líquida). Espelha o
+ * card de concentração de clientes em /contatos/rentabilidade, num eixo de praça.
+ */
+function GeoConcentrationCard({
+  concentration,
+}: {
+  concentration: GeoConcentration;
+}) {
+  const verdict = GEO_VERDICT[concentration.level];
+  const { top, placeCount } = concentration;
+  return (
+    <div className={"card border " + verdict.classes}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide opacity-80">
+          Concentração geográfica
+        </p>
+        <span className="badge bg-white/70 font-semibold">
+          {verdict.emoji} {verdict.label}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-4 sm:grid-cols-3">
+        <div>
+          <p className="text-2xl font-bold">{pct(concentration.topShare)}</p>
+          <p className="text-xs opacity-80">
+            da receita vem de {top ? top.name : "—"} (maior praça)
+          </p>
+        </div>
+        <div>
+          <p className="text-2xl font-bold">{pct(concentration.top3Share)}</p>
+          <p className="text-xs opacity-80">
+            nas 3 maiores de {placeCount} {placeCount === 1 ? "cidade" : "cidades"}
+          </p>
+        </div>
+        <div>
+          <p className="text-2xl font-bold">
+            {concentration.effectivePlaces.toFixed(1)}
+          </p>
+          <p className="text-xs opacity-80">
+            cidades efetivas (como se fossem N de mesmo tamanho)
+          </p>
+        </div>
+      </div>
+      <p className="mt-3 text-xs opacity-90">{verdict.note}</p>
     </div>
   );
 }

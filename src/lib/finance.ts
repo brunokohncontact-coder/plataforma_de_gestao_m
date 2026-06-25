@@ -231,6 +231,88 @@ export function rankCitiesByProfit(
   );
 }
 
+// ── Concentração geográfica (risco de depender de poucas cidades) ────────────
+
+export interface GeoShareSlice {
+  /** Chave normalizada da cidade (nunca vazia — "sem cidade" é excluída). */
+  key: string;
+  /** Nome de exibição da cidade (grafia original do agrupamento). */
+  name: string;
+  /** Receita bruta da cidade = cachê + extras (centavos). */
+  revenue: number;
+  /** Participação na receita total das cidades identificadas (0..1). */
+  share: number;
+}
+
+export interface GeoConcentration {
+  /** Cidades por receita decrescente (empate por nome pt-BR, depois chave). */
+  places: GeoShareSlice[];
+  /** Receita somada das cidades identificadas (centavos). */
+  total: number;
+  /** Nº de cidades identificadas com receita > 0. */
+  placeCount: number;
+  /** Maior cidade por receita, ou null se não há receita. */
+  top: GeoShareSlice | null;
+  /** Participação da maior cidade (0..1). */
+  topShare: number;
+  /** Participação acumulada das 3 maiores cidades (0..1). */
+  top3Share: number;
+  /**
+   * Índice de Herfindahl–Hirschman (HHI): soma dos quadrados das participações
+   * (0..1). 1 = uma única cidade; quanto menor, mais espalhada a atuação.
+   */
+  hhi: number;
+  /** Nº efetivo de cidades (1/HHI, índice de Simpson); 0 se não há receita. */
+  effectivePlaces: number;
+  /** Veredito de concentração (mesmos limiares de `incomeMix`, ver D45). */
+  level: DiversificationLevel;
+}
+
+/**
+ * Deriva a **concentração geográfica** a partir das linhas de `rankCitiesByProfit`:
+ * mede o risco de a carreira depender de poucas cidades. Considera só cidades
+ * **identificadas** (descarta o grupo "Sem cidade", chave "") com receita bruta
+ * positiva (cachê + extras); usa a receita bruta — não o líquido, que pode ser
+ * negativo. Reaproveita os mesmos limiares de diversificação de `incomeMix` /
+ * `clientConcentration` (`diversificationLevel`). Pura, espelha `clientConcentration`
+ * (D109) num eixo geográfico em vez de por contratante.
+ */
+export function geoConcentration(rows: VenueProfitRow[]): GeoConcentration {
+  const placesRaw = rows
+    .filter((r) => r.key !== "")
+    .map((r) => ({ key: r.key, name: r.name, revenue: r.totalFee + r.totalExtra }))
+    .filter((p) => p.revenue > 0);
+
+  const total = placesRaw.reduce((acc, p) => acc + p.revenue, 0);
+
+  const places: GeoShareSlice[] = placesRaw
+    .map((p) => ({
+      ...p,
+      share: total === 0 ? 0 : p.revenue / total,
+    }))
+    .sort(
+      (a, b) =>
+        b.revenue - a.revenue ||
+        a.name.localeCompare(b.name, "pt-BR") ||
+        a.key.localeCompare(b.key),
+    );
+
+  const hhi = places.reduce((acc, p) => acc + p.share * p.share, 0);
+  const top3Share = places.slice(0, 3).reduce((acc, p) => acc + p.share, 0);
+
+  return {
+    places,
+    total,
+    placeCount: places.length,
+    top: places[0] ?? null,
+    topShare: places[0]?.share ?? 0,
+    top3Share,
+    hhi,
+    effectivePlaces: hhi === 0 ? 0 : 1 / hhi,
+    level: diversificationLevel(hhi, places.length),
+  };
+}
+
 /**
  * Agregador genérico do P&L dos shows por um grupo arbitrário (local, cidade…).
  * `keyer` extrai a chave de agrupamento (normalizada) e a grafia original do

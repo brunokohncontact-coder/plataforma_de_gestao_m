@@ -3238,3 +3238,41 @@ contexto, decisão, justificativa e alternativas consideradas.
   plataforma e versão; poluiriam o git e quebrariam ao bumpar o Prisma. (c) exportar as env vars só na sessão —
   não sobrevive ao subprocesso de `npm run build`; por isso a fixação no `.env`. (d) trocar o provider/engine
   (`binaryTargets`, engine `binary`) — mudança de stack desproporcional a um problema de ambiente.
+
+## D113 — Concentração geográfica na atuação por cidade (risco de depender de poucas praças) (Sessão 121)
+- **Contexto:** `/shows/cidades` (Atuação por cidade) já dizia **quais cidades valem a turnê** pelo resultado
+  líquido. Faltava a leitura de **risco geográfico**: o quanto a receita depende de **poucas** cidades — a
+  pergunta de carreira "e se a cena da cidade que responde por metade dos meus shows esfriar?". É o análogo
+  geográfico da concentração de clientes (D109): mesma matemática de **dispersão** (HHI), outro eixo (praça em
+  vez de contratante).
+- **Decisão:** novo helper puro **`geoConcentration(rows)`** em `finance.ts` que recebe as linhas já produzidas
+  por `rankCitiesByProfit` e deriva a concentração da **receita bruta** (cachê + extras) entre as cidades
+  **identificadas** (descarta o grupo "Sem cidade", chave `""`). Devolve as fatias com participação (`share`), o
+  `topShare`, o `top3Share`, o **HHI**, as **cidades efetivas** (1/HHI) e o veredito
+  `concentrated|moderate|diversified` reaproveitando os mesmos limiares de `incomeMix`/`clientConcentration`
+  (`diversificationLevel`, D45). UI: card "Concentração geográfica" na página, com selo 🔴/🟡/🟢, os três
+  números-chave e uma nota acionável ("abrir praças novas"); só aparece quando há ≥1 cidade identificada com receita.
+- **Justificativa — por que receita BRUTA e não o líquido:** idêntica à D109 — a dependência é sobre de onde o
+  dinheiro **entra**; o líquido pode ser negativo (HHI indefinido) e mede margem, não dependência de praça. Base
+  `totalFee + totalExtra` (≥ 0), descartando cidades sem receita positiva. **Por que reusar as linhas do ranking**
+  (e não reagrupar): `rankCitiesByProfit` já resolveu o rollup por cidade e a exclusão de cancelados; derivar a
+  concentração das linhas evita duplicar essa lógica e mantém consistência com a tabela. **Por que reusar
+  `diversificationLevel`:** mantém uma linguagem única de "concentração" entre fontes de renda (D45), clientes
+  (D109) e agora cidades. **Por que ignorar "Sem cidade":** não é uma praça acionável — o risco que importa é o
+  de concentrar a agenda numa região real.
+- **Testes:** 6 casos puros novos em `finance.test.ts` (`geoConcentration`): vazio (veredito concentrado e zeros);
+  participação sobre a receita bruta ignorando o grupo sem cidade; extras somados à receita; descarte de cidade
+  sem receita positiva; cidade única → HHI 1/concentrada; atuação pulverizada em 5 cidades → diversificada.
+  **787 testes** verdes (eram 781).
+- **DoD:** build de produção (rota `/shows/cidades` ok), typecheck e lint (0 avisos) verdes; **787 testes**;
+  smoke test — `npm start`: `/` → 200, `/shows/cidades` sem sessão → 307 → `/login` (app sobe, auth ativa).
+  `npm audit` inalterado vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
+  postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) concentração por **local** (`rankVenuesByProfit`) em vez de cidade — adiável:
+  a cidade é o eixo de risco mais natural (um músico abre praça nova mudando de cidade, não só de casa) e a página
+  de cidades é onde a lente cabe; o mesmo helper aceitaria linhas de local no futuro, pois opera sobre
+  `VenueProfitRow`. (b) **nudge no Painel** (espelhando D110) — adiável a uma sessão própria para não inflar o
+  Painel sem antes ver o card na página. (c) recorte por **período (ano)** como na D108/D111 — adiável: a página
+  de cidades ainda não tem `PeriodPicker`; quando ganhar, `geoConcentration` recompõe sobre as linhas já filtradas
+  sem mudança no helper. (d) classificar pelo `topShare` em vez do HHI — descartado pela mesma razão da D109
+  (o HHI capta toda a distribuição e unifica o critério entre telas).

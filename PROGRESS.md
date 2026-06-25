@@ -9,8 +9,15 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **781 testes**
-verdes após a Sessão 120 (**setup resiliente a proxy — fallback dos engines do Prisma via curl** —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **787 testes**
+verdes após a Sessão 121 (**concentração geográfica na atuação por cidade — risco de depender de poucas praças** —
+helper puro `geoConcentration(rows)` em `src/lib/finance.ts` deriva, das linhas de `rankCitiesByProfit`, o risco de
+a receita depender de **poucas cidades**: participação da maior praça, das 3 maiores, HHI, cidades efetivas (1/HHI)
+e veredito `concentrated|moderate|diversified` reaproveitando os limiares de `incomeMix`/`clientConcentration`
+(`diversificationLevel`, D45); usa **receita bruta** (cachê + extras) e ignora o grupo "Sem cidade". Card
+"Concentração geográfica" (selo 🔴/🟡/🟢 + nota acionável "abrir praças novas") em `/shows/cidades`, só com ≥1
+cidade identificada com receita. É o análogo geográfico da concentração de clientes (D109). +6 testes puros, ver
+D113; eram 781 na Sessão 120, **setup resiliente a proxy — fallback dos engines do Prisma via curl** —
 `scripts/session-setup.sh` deixou de quebrar quando o downloader embutido do Prisma esbarra no proxy das sessões
 remotas (`ECONNRESET` ao baixar `libquery_engine`/`schema-engine`): instala deps com `--ignore-scripts`, tenta o
 `prisma generate` normal e **só no fallback** baixa os engines via `curl` (que respeita o proxy/CA) para
@@ -2553,6 +2560,18 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `contacts.ts`, reusando os três helpers — caminho mais direto agora); comparar dois anos lado a lado (Δ por
    contratante/local, espelhando D33); ou um recorte por período (`?ano=`) também no nudge de concentração do Painel
    (hoje usa o retrato corrente, todos os anos).
+
+9. **Rentabilidade geográfica — evoluções** (rentabilidade por local entregue na Sessão 28, `/shows/locais` +
+   `rankVenuesByProfit`; atuação por cidade na Sessão 57, `/shows/cidades` + `rankCitiesByProfit`; recorte por
+   período no local na Sessão 119, ver D111): **concentração geográfica (risco de depender de poucas cidades)**
+   entregue na Sessão 121 — `geoConcentration(rows)` em `src/lib/finance.ts` deriva das linhas de
+   `rankCitiesByProfit` a dispersão da receita bruta entre cidades (topShare, top3Share, HHI, cidades efetivas,
+   veredito reusando `diversificationLevel`/D45, ignorando "Sem cidade") + card "Concentração geográfica" em
+   `/shows/cidades`, ver D113. Próximo possível — **nudge de concentração geográfica no Painel** (espelhando
+   `clientConcentrationHeadline`/D110, um `geoConcentrationHeadline` que só morde quando `concentrated`); o
+   **recorte por período (`?ano=`)** também em `/shows/cidades` (adiar a concentração às linhas já filtradas — o
+   helper não muda); ou estender `geoConcentration` às linhas de **local** (`rankVenuesByProfit`) para um card de
+   concentração por casa em `/shows/locais`.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)
