@@ -3276,3 +3276,39 @@ contexto, decisão, justificativa e alternativas consideradas.
   de cidades ainda não tem `PeriodPicker`; quando ganhar, `geoConcentration` recompõe sobre as linhas já filtradas
   sem mudança no helper. (d) classificar pelo `topShare` em vez do HHI — descartado pela mesma razão da D109
   (o HHI capta toda a distribuição e unifica o critério entre telas).
+
+## D114 — Concentração geográfica no Painel (nudge de risco de depender de poucas praças) (Sessão 122)
+- **Contexto:** a concentração geográfica (D113) vivia só em `/shows/cidades` — quem não abrisse a página de
+  atuação por cidade não via o risco. A própria D113 (alternativa b) já tinha **adiado o nudge no Painel a uma
+  sessão própria**. O padrão do app é levar o sinal acionável ao Painel quando ele **morde**, via um helper de
+  "headline" puro que decide a exibição (custo fixo D100, burn rate D103, DSO D70, clientes D110). Faltava o
+  análogo geográfico do nudge de clientes (D110).
+- **Decisão:** novo helper puro **`geoConcentrationHeadline(concentration)`** em `finance.ts` (espelha
+  `clientConcentrationHeadline`/D110) que recebe uma `geoConcentration` já computada e devolve
+  `{ show, critical, topShare, top, placeCount, level }`. **`show`** só é `true` quando o veredito é
+  `concentrated` e há ≥1 cidade com receita; **`critical`** marca o caso extremo — **uma única** cidade
+  (placeCount 1) ou a maior praça sozinha com **≥ 2/3** da receita — para o Painel subir o tom. UI: novo
+  banner-nudge no `dashboard/page.tsx`, logo após o de concentração de clientes (D110), 🔴 (crítico, vermelho) /
+  🟠 (concentrado, âmbar), mostrando "X% da receita vem de {maior cidade} (de N cidades)" e linkando para
+  `/shows/cidades`. A concentração é derivada de `rankCitiesByProfit(shows, txs).rows` → `geoConcentration` sobre
+  os shows e transações **já carregados** no dashboard (a consulta `prisma.show.findMany` não tem `select`, então
+  `city`/`fee`/`status` já vêm) — sem round-trip novo.
+- **Justificativa:** centralizar a **regra de exibição** no helper puro (testável, sem I/O) mantém o dashboard
+  como mero consumidor, como nos nudges anteriores. Disparar só em `concentrated` (e não em `moderate`/
+  `diversified`) evita nagar quem já abriu praças — disciplina dos D100/D103/D110. O corte `critical` em **cidade
+  única OU maior ≥ 2/3** distingue o "tudo numa praça só" do meramente concentrado, sem inventar veredito novo
+  (reusa o `level` da D113). Reusar `rankCitiesByProfit` + `geoConcentration` garante consistência com o card da
+  página e com a regra de agrupamento/exclusão de cancelados; reaproveitar os shows já carregados evita custo extra.
+- **Testes:** 5 casos puros novos em `finance.test.ts` (`geoConcentrationHeadline`): base vazia → não mostra;
+  cidade única → mostra crítico (topShare 1); maior praça domina ≥ 2/3 com várias cidades → crítico; concentrado
+  mas maior < 2/3 → mostra não-crítico; atuação espalhada → não mostra. **792 testes** verdes (eram 787).
+- **DoD:** build de produção (rota `/dashboard` ok), typecheck e lint (0 avisos) verdes; **792 testes**; smoke
+  test — `npm start`: `/login` → 200, `/dashboard` sem sessão → 307 (app sobe). `npm audit` inalterado vs.
+  baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver
+  D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) mostrar também `moderate` no Painel — descartado: vira ruído permanente, e o
+  detalhe já está na página. (b) classificar `critical` pelo HHI em vez do `topShare` — descartado pela mesma
+  razão da D110: o HHI já define o veredito (gate de exibição); para a **urgência** do nudge o `topShare` ("uma
+  praça carrega quase tudo") é a leitura mais direta. (c) unir os dois nudges de concentração (clientes + cidades)
+  num único banner — adiável: são eixos de risco distintos e o usuário pode estar concentrado num sem estar no
+  outro; mostrá-los separados deixa claro qual frente abrir.

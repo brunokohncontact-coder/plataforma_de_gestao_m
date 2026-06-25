@@ -32,6 +32,9 @@ import {
   rankContactsByProfit,
   clientConcentration,
   clientConcentrationHeadline,
+  rankCitiesByProfit,
+  geoConcentration,
+  geoConcentrationHeadline,
   type TxLike,
   type ContactProfitContact,
   type QuarterGoalStatus,
@@ -262,6 +265,16 @@ export default async function DashboardPage() {
     ),
   );
 
+  // Concentração geográfica (D113): "quanto da minha receita depende de poucas
+  // cidades?". Análogo geográfico do nudge de clientes acima — reaproveita os
+  // shows (com cidade) e transações já carregados, agrega o P&L por cidade
+  // (rankCitiesByProfit) e mede a dispersão da receita bruta entre praças. Vira
+  // nudge só quando a atuação está de fato concentrada (geoConcentrationHeadline);
+  // o detalhe completo está em /shows/cidades.
+  const geoHeadline = geoConcentrationHeadline(
+    geoConcentration(rankCitiesByProfit(shows, txs).rows),
+  );
+
   // Rentabilidade: top shows realizados por resultado
   const playedShows = shows.filter((s) => s.status === "PLAYED");
   const showPnls = playedShows
@@ -485,6 +498,37 @@ export default async function DashboardPage() {
             className={
               concentrationHeadline.critical ? "text-red-600" : "text-amber-600"
             }
+          >
+            Ver →
+          </span>
+        </Link>
+      )}
+
+      {geoHeadline.show && (
+        <Link
+          href="/shows/cidades"
+          className={
+            "flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3 text-sm transition " +
+            (geoHeadline.critical
+              ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100")
+          }
+        >
+          <span className="font-semibold">
+            {geoHeadline.critical ? "🔴" : "🟠"} Atuação{" "}
+            {geoHeadline.critical ? "muito concentrada" : "concentrada"}
+          </span>
+          <span>
+            <strong>{Math.round(geoHeadline.topShare * 100)}%</strong> da receita
+            vem de{" "}
+            <strong>{geoHeadline.top ? geoHeadline.top.name : "uma única cidade"}</strong>
+            {geoHeadline.placeCount > 1
+              ? ` (de ${geoHeadline.placeCount} cidades)`
+              : ""}{" "}
+            — abrir praças novas reduz o risco
+          </span>
+          <span
+            className={geoHeadline.critical ? "text-red-600" : "text-amber-600"}
           >
             Ver →
           </span>

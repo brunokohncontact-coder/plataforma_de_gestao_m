@@ -313,6 +313,56 @@ export function geoConcentration(rows: VenueProfitRow[]): GeoConcentration {
   };
 }
 
+export interface GeoConcentrationHeadline {
+  /**
+   * Deve aparecer no Painel? Só quando a atuação está **concentrada**
+   * (veredito `concentrated`) — uma única praça ou poucas dominando a receita.
+   * Com `moderate`/`diversified` o aviso seria ruído, não alerta (mesma
+   * disciplina de `clientConcentrationHeadline`/`cashBurnHeadline`: o nudge só
+   * surge quando o veredito morde).
+   */
+  show: boolean;
+  /**
+   * Caso extremo: **uma única** cidade responde por toda a receita, ou a maior
+   * praça sozinha carrega ≥ 2/3 dela. Permite ao Painel subir o tom (🔴 vs 🟠).
+   */
+  critical: boolean;
+  /** Participação da maior cidade na receita bruta (0..1). */
+  topShare: number;
+  /** Maior cidade (chave/nome/receita/participação), ou null se não há receita. */
+  top: GeoShareSlice | null;
+  /** Nº de cidades identificadas com receita bruta positiva. */
+  placeCount: number;
+  /** Veredito completo de concentração (para quem quiser o detalhe). */
+  level: DiversificationLevel;
+}
+
+/**
+ * Resumo de Painel da **concentração geográfica**: deriva, de uma
+ * `geoConcentration` já computada, se o nudge de risco de depender de poucas
+ * praças deve aparecer e com que urgência. Pura, sem I/O — análogo geográfico
+ * de `clientConcentrationHeadline` (D110): a regra de exibição vive aqui, o
+ * dashboard só consome. Só dispara quando a atuação está de fato concentrada
+ * (`concentrated`), para não nagar quem já abriu praças; o caso `critical`
+ * (cidade única ou uma dominante ≥ 2/3) merece o tom mais forte.
+ */
+export function geoConcentrationHeadline(
+  concentration: GeoConcentration,
+): GeoConcentrationHeadline {
+  const show =
+    concentration.level === "concentrated" && concentration.placeCount > 0;
+  const critical =
+    show && (concentration.placeCount === 1 || concentration.topShare >= 2 / 3);
+  return {
+    show,
+    critical,
+    topShare: concentration.topShare,
+    top: concentration.top,
+    placeCount: concentration.placeCount,
+    level: concentration.level,
+  };
+}
+
 /**
  * Agregador genérico do P&L dos shows por um grupo arbitrário (local, cidade…).
  * `keyer` extrai a chave de agrupamento (normalizada) e a grafia original do

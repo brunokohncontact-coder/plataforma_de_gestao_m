@@ -8,6 +8,7 @@ import {
   clientConcentration,
   clientConcentrationHeadline,
   geoConcentration,
+  geoConcentrationHeadline,
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
@@ -775,6 +776,80 @@ describe("geoConcentration", () => {
     expect(c.hhi).toBeCloseTo(0.2);
     expect(c.level).toBe("diversified");
     expect(c.top3Share).toBeCloseTo(0.6);
+  });
+});
+
+describe("geoConcentrationHeadline", () => {
+  // Constrói a concentração a partir das linhas reais (mesma cadeia da UI).
+  const headlineFor = (shows: VenueShowLike[], txs: TxLike[] = []) =>
+    geoConcentrationHeadline(
+      geoConcentration(rankCitiesByProfit(shows, txs).rows),
+    );
+
+  it("não mostra quando não há cidade com receita (base vazia)", () => {
+    const h = geoConcentrationHeadline(geoConcentration([]));
+    // Sem receita o veredito é "concentrated", mas placeCount 0 → sem nudge.
+    expect(h.show).toBe(false);
+    expect(h.critical).toBe(false);
+    expect(h.top).toBeNull();
+    expect(h.placeCount).toBe(0);
+  });
+
+  it("mostra como crítico quando uma única cidade carrega tudo", () => {
+    const h = headlineFor([
+      { id: "a", fee: 500_00, status: "PLAYED", venue: "Bar", city: "Recife" },
+    ]);
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(true);
+    expect(h.topShare).toBe(1);
+    expect(h.top?.key).toBe("recife");
+    expect(h.placeCount).toBe(1);
+    expect(h.level).toBe("concentrated");
+  });
+
+  it("mostra como crítico quando a maior praça domina ≥ 2/3 mesmo com várias cidades", () => {
+    // Recife 800, outras 4 = 50 cada (200) → topShare 0,8 ≥ 2/3.
+    const h = headlineFor([
+      { id: "a", fee: 800_00, status: "PLAYED", venue: "Bar", city: "Recife" },
+      { id: "b", fee: 50_00, status: "PLAYED", venue: "Café", city: "Olinda" },
+      { id: "c", fee: 50_00, status: "PLAYED", venue: "Teatro", city: "Caruaru" },
+      { id: "d", fee: 50_00, status: "PLAYED", venue: "Praça", city: "Jaboatão" },
+      { id: "e", fee: 50_00, status: "PLAYED", venue: "Clube", city: "Paulista" },
+    ]);
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(true);
+    expect(h.topShare).toBeCloseTo(0.8);
+    expect(h.top?.key).toBe("recife");
+  });
+
+  it("mostra sem ser crítico quando concentrado mas a maior fica abaixo de 2/3", () => {
+    // 600/300/100 → concentrada (HHI 0,46) mas topShare 0,6 < 2/3 e >1 cidade.
+    const h = headlineFor([
+      { id: "a", fee: 600_00, status: "PLAYED", venue: "Bar", city: "Recife" },
+      { id: "b", fee: 300_00, status: "PLAYED", venue: "Café", city: "Olinda" },
+      { id: "c", fee: 100_00, status: "PLAYED", venue: "Teatro", city: "Caruaru" },
+    ]);
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(false);
+    expect(h.topShare).toBeCloseTo(0.6);
+    expect(h.placeCount).toBe(3);
+  });
+
+  it("não mostra quando a atuação está espalhada", () => {
+    // 5 cidades de 100 cada → HHI 0,2 → diversificada.
+    const ids = ["c1", "c2", "c3", "c4", "c5"];
+    const h = headlineFor(
+      ids.map((id) => ({
+        id,
+        fee: 100_00,
+        status: "PLAYED",
+        venue: `Casa ${id}`,
+        city: `Cidade ${id}`,
+      })),
+    );
+    expect(h.show).toBe(false);
+    expect(h.critical).toBe(false);
+    expect(h.level).toBe("diversified");
   });
 });
 
