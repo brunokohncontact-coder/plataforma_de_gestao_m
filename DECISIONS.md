@@ -3312,3 +3312,34 @@ contexto, decisão, justificativa e alternativas consideradas.
   praça carrega quase tudo") é a leitura mais direta. (c) unir os dois nudges de concentração (clientes + cidades)
   num único banner — adiável: são eixos de risco distintos e o usuário pode estar concentrado num sem estar no
   outro; mostrá-los separados deixa claro qual frente abrir.
+
+## D115 — Recorte por período (ano) na atuação por cidade (Sessão 123)
+- **Contexto:** `/shows/cidades` (D113) somava o P&L por cidade sobre **todos** os anos, sem como isolar uma
+  temporada — diferente da rentabilidade por contratante (D108) e por local (D111), que já tinham `PeriodPicker`.
+  A própria D113 (alternativa c) e a D114 já apontavam este recorte como o próximo passo natural, notando que
+  `geoConcentration` recompõe sobre as linhas já filtradas **sem mudança no helper**.
+- **Decisão:** a página passou a aceitar `searchParams.ano` e ganhou o mesmo `PeriodPicker` (pílula "Todos" + uma
+  por ano com shows não cancelados) das outras telas de rentabilidade, **reaproveitando os três helpers puros da
+  D108** em `finance.ts`: `showProfitYears` (anos UTC presentes, desc/dedup), `parseProfitYear` (`?ano=` →
+  `number | "all"`, saneado contra os anos disponíveis) e `filterShowsByYear` (filtra pelo ano UTC). A consulta
+  `prisma.show.findMany` passou a incluir `date`; os shows são filtrados por ano **antes** de `rankCitiesByProfit`,
+  então a regra de agrupamento por cidade, o P&L e a exclusão de cancelados seguem intocados. O **card de
+  concentração geográfica** (D113), por derivar de `report.rows`, passou a refletir o risco **dentro do período**
+  selecionado, de graça. Estado vazio período-ciente ("Nenhum show em {ano}" + atalho "Ver todos os anos").
+- **Justificativa:** é o mesmo padrão já validado em duas telas (D108/D111) — reusar os helpers puros evita lógica
+  nova e mantém o comportamento de período idêntico entre as telas de rentabilidade. Filtrar **antes** de agregar
+  é o ponto de corte correto: nenhuma regra de negócio (agrupamento, P&L, concentração) precisa saber do recorte.
+  Recompor a concentração sobre as linhas filtradas responde "estou dependente de poucas praças **neste ano**?",
+  que é mais acionável que a leitura histórica acumulada.
+- **Testes:** nenhum novo — é wiring de UI sobre helpers já cobertos (`showProfitYears`/`parseProfitYear`/
+  `filterShowsByYear` têm testes desde a D108; `geoConcentration` desde a D113), mesmo critério da D111. **792
+  testes** verdes (inalterado).
+- **DoD:** build de produção (rota `/shows/cidades` ok), typecheck e lint (0 avisos) verdes; **792 testes**; smoke
+  test — `npm start`: `/login` → 200, `/shows/cidades` e `/shows/cidades?ano=2025` sem sessão → 307 (app sobe).
+  `npm audit` inalterado vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
+  postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) recorte por **mês** em vez de ano — descartado: o volume de shows por cidade
+  é baixo, um corte mensal deixaria quase tudo vazio; o ano é a granularidade já adotada nas telas irmãs. (b) um
+  helper de período próprio para cidades — desnecessário: os três da D108 são genéricos (`filterShowsByYear`
+  opera sobre `{ date: Date }`). (c) **não** recompor a concentração no recorte (mantê-la histórica) — descartado:
+  seria incoerente com a tabela período-ciente logo abaixo e menos útil que a leitura por temporada.
