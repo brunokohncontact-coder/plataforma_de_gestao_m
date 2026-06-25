@@ -3,11 +3,14 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   rankVenuesByProfit,
+  geoConcentration,
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
   type TxLike,
   type VenueShowLike,
+  type GeoConcentration,
+  type DiversificationLevel,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 
@@ -65,6 +68,10 @@ export default async function VenueProfitabilityPage({
   }));
 
   const report = rankVenuesByProfit(periodShows, txs);
+  // Risco de depender de poucas casas (sobre a receita bruta, ignora "Sem local").
+  // Reaproveita o mesmo `geoConcentration` da atuação por cidade (D113), aqui num
+  // eixo de casa/local em vez de cidade — ver D116.
+  const concentration = geoConcentration(report.rows);
 
   const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
 
@@ -147,6 +154,10 @@ export default async function VenueProfitabilityPage({
                 tone={report.worst.totalNet >= 0 ? "brand" : "red"}
               />
             </div>
+          )}
+
+          {concentration.placeCount > 0 && (
+            <VenueConcentrationCard concentration={concentration} />
           )}
 
           <div className="card overflow-x-auto p-0">
@@ -246,6 +257,87 @@ function PeriodPicker({
         </Link>
       ))}
     </nav>
+  );
+}
+
+/** Rótulo + tom (cor/emoji) do veredito de concentração por casa/local. */
+const VENUE_VERDICT: Record<
+  DiversificationLevel,
+  { label: string; emoji: string; classes: string; note: string }
+> = {
+  concentrated: {
+    label: "Concentrada",
+    emoji: "🔴",
+    classes: "border-red-200 bg-red-50 text-red-800",
+    note: "Boa parte da receita vem de poucas casas — se um contratante esfriar ou uma casa fechar, o baque é grande. Vale prospectar novos palcos.",
+  },
+  moderate: {
+    label: "Moderada",
+    emoji: "🟡",
+    classes: "border-amber-200 bg-amber-50 text-amber-800",
+    note: "A receita depende de um punhado de casas. Tocar em novos palcos reduz o risco de depender de poucos.",
+  },
+  diversified: {
+    label: "Diversificada",
+    emoji: "🟢",
+    classes: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    note: "A receita está bem espalhada entre várias casas — pouca dependência de um único palco.",
+  },
+};
+
+/** Formata uma participação 0..1 como porcentagem inteira (ex.: 0,6 → "60%"). */
+function pct(share: number): string {
+  return `${Math.round(share * 100)}%`;
+}
+
+/**
+ * Card "Concentração por casa": mede o risco de a receita depender de poucas
+ * casas/locais (sobre a receita bruta, distinto da rentabilidade líquida).
+ * Reaproveita `geoConcentration` (D113) num eixo de casa em vez de cidade —
+ * é o recorte mais granular do mesmo risco geográfico (D116). Ignora o grupo
+ * "Sem local" (chave "").
+ */
+function VenueConcentrationCard({
+  concentration,
+}: {
+  concentration: GeoConcentration;
+}) {
+  const verdict = VENUE_VERDICT[concentration.level];
+  const { top, placeCount } = concentration;
+  return (
+    <div className={"card border " + verdict.classes}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide opacity-80">
+          Concentração por casa
+        </p>
+        <span className="badge bg-white/70 font-semibold">
+          {verdict.emoji} {verdict.label}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-4 sm:grid-cols-3">
+        <div>
+          <p className="text-2xl font-bold">{pct(concentration.topShare)}</p>
+          <p className="text-xs opacity-80">
+            da receita vem de {top ? top.name : "—"} (maior casa)
+          </p>
+        </div>
+        <div>
+          <p className="text-2xl font-bold">{pct(concentration.top3Share)}</p>
+          <p className="text-xs opacity-80">
+            nas 3 maiores de {placeCount} {placeCount === 1 ? "casa" : "casas"}
+          </p>
+        </div>
+        <div>
+          <p className="text-2xl font-bold">
+            {concentration.effectivePlaces.toFixed(1)}
+          </p>
+          <p className="text-xs opacity-80">
+            casas efetivas (como se fossem N de mesmo tamanho)
+          </p>
+        </div>
+      </div>
+      <p className="mt-3 text-xs opacity-90">{verdict.note}</p>
+    </div>
   );
 }
 

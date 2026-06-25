@@ -3343,3 +3343,38 @@ contexto, decisão, justificativa e alternativas consideradas.
   helper de período próprio para cidades — desnecessário: os três da D108 são genéricos (`filterShowsByYear`
   opera sobre `{ date: Date }`). (c) **não** recompor a concentração no recorte (mantê-la histórica) — descartado:
   seria incoerente com a tabela período-ciente logo abaixo e menos útil que a leitura por temporada.
+
+## D116 — Concentração por casa na rentabilidade por local (risco de depender de poucos palcos) (Sessão 124)
+- **Contexto:** `/shows/cidades` ganhou o card de **concentração geográfica** (D113) — risco de a receita depender
+  de poucas **cidades**. `/shows/locais` (rentabilidade por local) já dizia **quais casas valem a pena** pelo
+  resultado líquido, mas não tinha a leitura de risco no eixo mais granular: depender de **poucas casas/palcos**.
+  A própria D113 (alternativa a) já antecipava que o mesmo `geoConcentration` aceitaria linhas de **local** sem
+  mudança, por operar sobre `VenueProfitRow`; o item 9 dos próximos passos do PROGRESS apontava exatamente este
+  recorte como o passo natural.
+- **Decisão:** `/shows/locais` passou a computar **`geoConcentration(report.rows)`** sobre as linhas já produzidas
+  por `rankVenuesByProfit` (mesmas linhas da tabela, recortadas pelo `PeriodPicker`/`?ano=` da D111) e a renderizar
+  um card **"Concentração por casa"** (selo 🔴/🟡/🟢, `topShare`/`top3Share`/casas efetivas, nota acionável
+  "prospectar novos palcos"), só quando há ≥1 casa identificada com receita (`placeCount > 0`). **Nenhuma mudança
+  no helper** — `geoConcentration` já descarta o grupo de chave `""` ("Sem local") e deriva tudo da receita bruta
+  (`totalFee + totalExtra`). A única diferença vs. `/shows/cidades` é a **moldura textual** do card (componente
+  `VenueConcentrationCard` + mapa `VENUE_VERDICT` local à página, falando em "casa"/"palco" em vez de "praça"/
+  "cidade"); o tipo `GeoConcentration` é genérico (campos `places`/`placeCount`/`top`), então serve aos dois eixos.
+- **Justificativa:** o local é o recorte mais granular do mesmo risco geográfico — um músico pode estar
+  diversificado entre cidades mas dependente de **uma casa** dentro delas (ou vice-versa). Reusar o helper já
+  testado (D113) e as linhas já agregadas (com período aplicado) evita lógica nova, mantém consistência com a
+  tabela e dá o recorte de graça quando o usuário troca o ano. Manter o veredito por **HHI** e a base **bruta**
+  preserva a linguagem única de concentração entre fontes de renda (D45), clientes (D109) e cidades (D113).
+- **Testes:** nenhum novo — wiring de UI sobre um helper já coberto (`geoConcentration` tem 6 casos puros desde a
+  D113, agnósticos quanto a o eixo ser cidade ou local), mesmo critério da D111/D115. **792 testes** verdes
+  (inalterado).
+- **DoD:** build de produção (rota `/shows/locais` ok), typecheck e lint (0 avisos) verdes; **792 testes**; smoke
+  test — `npm start`: `/login` → 200 (app sobe). `npm audit` inalterado vs. baseline (10 advisories — 4 moderate /
+  5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) **extrair** `VenueConcentrationCard`/`GeoConcentrationCard` para um componente
+  compartilhado parametrizado pelo rótulo ("casa" × "cidade") — adiável: as duas cópias são pequenas e o texto
+  acionável difere o bastante (prospectar palcos × abrir praças) para uma parametrização não simplificar de fato;
+  se surgir um terceiro eixo, vale consolidar. (b) **nudge no Painel** para concentração por casa (espelhando D114)
+  — descartado por ora: o Painel já tem o nudge geográfico por **cidade** (D114), que é o eixo de risco mais legível
+  ali; somar um por casa inflaria o Painel com um sinal muito correlato. (c) renomear os campos genéricos de
+  `GeoConcentration` (`places`→`groups`) para refletir o uso multi-eixo — descartado: mexeria em D113/D114/D115 sem
+  ganho funcional; os nomes `places`/`placeCount` já leem bem para "casas" e "cidades".
