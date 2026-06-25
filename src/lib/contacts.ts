@@ -1,7 +1,7 @@
 // Lógica de negócio do CRM de contatos (pura, sem dependência de banco/UI).
 // Testada em contacts.test.ts. Valores monetários em CENTAVOS (inteiros).
 
-import { normalizeText } from "./finance";
+import { normalizeText, computeShowPnL, type TxLike } from "./finance";
 import { CONTACT_ROLES, SHOW_STATUSES, type ContactRole, type ShowStatus } from "./domain";
 
 /** Forma mínima de show exigida pela agregação por contato. */
@@ -82,6 +82,72 @@ export function summarizeContactShows<T extends ContactShowLike>(
     byStatus,
     totalFee,
     nextShow,
+  };
+}
+
+// ── Rentabilidade do contato (P&L dos shows que ele traz) ───────────────────
+// Complementa `summarizeContactShows` (volume bruto de cachê) com o líquido
+// depois dos custos, respondendo "este cliente dá dinheiro de verdade?" já no
+// detalhe do contato. Reaproveita `computeShowPnL` (fonte única do P&L por show).
+
+export interface ContactProfitSummary {
+  /** Nº de shows considerados (não cancelados). */
+  showCount: number;
+  /** Cachê somado dos shows considerados (centavos). */
+  totalFee: number;
+  /** Receitas extras vinculadas somadas (centavos). */
+  totalExtra: number;
+  /** Despesas vinculadas somadas (centavos). */
+  totalExpenses: number;
+  /** Resultado líquido = cachê + extras − despesas (centavos). */
+  totalNet: number;
+  /** Resultado líquido médio por show (centavos, arredondado; 0 sem shows). */
+  avgNet: number;
+  /** Margem agregada (net / receita bruta), 0 se receita bruta 0. */
+  margin: number;
+}
+
+/**
+ * Agrega o P&L dos shows de UM contato (os já vinculados a ele), para exibir a
+ * rentabilidade no detalhe do contato. Diferente de `rankContactsByProfit`
+ * (finance.ts), que atribui cada show a um único pagador para reconciliar o
+ * total: aqui o recorte já é "os shows deste contato", então somamos o P&L de
+ * todos eles diretamente.
+ *
+ * Regras (espelham `summarizeContactShows.totalFee`):
+ * - Exclui shows CANCELLED (cachê que não vai/foi acontecer).
+ * - `txs` deve conter as transações vinculadas aos shows (filtradas por `showId`
+ *   dentro de `computeShowPnL`); transações soltas não atrapalham.
+ */
+export function summarizeContactProfit<T extends ContactShowLike>(
+  shows: T[],
+  txs: TxLike[],
+): ContactProfitSummary {
+  let showCount = 0;
+  let totalFee = 0;
+  let totalExtra = 0;
+  let totalExpenses = 0;
+  let totalNet = 0;
+
+  for (const show of shows) {
+    if (show.status === "CANCELLED") continue;
+    const pnl = computeShowPnL(show, txs);
+    showCount += 1;
+    totalFee += pnl.fee;
+    totalExtra += pnl.extraIncome;
+    totalExpenses += pnl.expenses;
+    totalNet += pnl.net;
+  }
+
+  const gross = totalFee + totalExtra;
+  return {
+    showCount,
+    totalFee,
+    totalExtra,
+    totalExpenses,
+    totalNet,
+    avgNet: showCount > 0 ? Math.round(totalNet / showCount) : 0,
+    margin: gross === 0 ? 0 : totalNet / gross,
   };
 }
 
