@@ -10,7 +10,16 @@
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
 do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **781 testes**
-verdes após a Sessão 119 (**recorte por período (ano) na rentabilidade por local** — a página `/shows/locais`
+verdes após a Sessão 120 (**setup resiliente a proxy — fallback dos engines do Prisma via curl** —
+`scripts/session-setup.sh` deixou de quebrar quando o downloader embutido do Prisma esbarra no proxy das sessões
+remotas (`ECONNRESET` ao baixar `libquery_engine`/`schema-engine`): instala deps com `--ignore-scripts`, tenta o
+`prisma generate` normal e **só no fallback** baixa os engines via `curl` (que respeita o proxy/CA) para
+`node_modules/@prisma/engines/`, derivando commit (`@prisma/engines-version`) e alvo
+(`@prisma/get-platform`/`getBinaryTargetForCurrentPlatform`) sem hardcode, e fixa
+`PRISMA_QUERY_ENGINE_LIBRARY`/`PRISMA_SCHEMA_ENGINE_BINARY` no `.env` (dev-only) para que o `generate` de
+`npm run build` também ache os engines offline; idempotente. Mantém a `main` buildável no container efêmero.
+Sem testes novos (infra/shell), validado do zero manualmente; ver D112; segue 781 da Sessão 119
+(**recorte por período (ano) na rentabilidade por local** — a página `/shows/locais`
 ganhou o mesmo `PeriodPicker` (pílula "Todos" + uma por ano com shows não cancelados) da rentabilidade por
 contratante, **reutilizando os três helpers puros da D108** (`showProfitYears`/`parseProfitYear`/`filterShowsByYear`
 em `src/lib/finance.ts`): a consulta passou a incluir `date`, os shows são filtrados por ano UTC **antes** de
