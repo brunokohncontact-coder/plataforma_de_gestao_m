@@ -141,6 +141,7 @@ export default async function ContactProfitabilityPage() {
                   <th className="px-4 py-3 text-right font-medium">Cachê</th>
                   <th className="px-4 py-3 text-right font-medium">Extras</th>
                   <th className="px-4 py-3 text-right font-medium">Despesas</th>
+                  <th className="px-4 py-3 text-right font-medium">Cachê médio</th>
                   <th className="px-4 py-3 text-right font-medium">Resultado</th>
                   <th className="px-4 py-3 text-right font-medium">Média/show</th>
                 </tr>
@@ -177,6 +178,9 @@ export default async function ContactProfitabilityPage() {
                     <td className="px-4 py-3 text-right text-gray-700">
                       {row.totalExpenses > 0 ? "−" + formatMoney(row.totalExpenses) : "—"}
                     </td>
+                    <td className="px-4 py-3 text-right text-gray-700">
+                      {row.showCount > 0 ? formatMoney(row.avgFee) : "—"}
+                    </td>
                     <td
                       className={
                         "px-4 py-3 text-right font-semibold " +
@@ -198,6 +202,8 @@ export default async function ContactProfitabilityPage() {
             Quem paga é escolhido por papel (contratante/produtor antes da casa), um por show, para
             o resultado não ser contado em dobro. Shows sem contato vinculado aparecem como “Sem
             contratante”. Diferente do ranking, que mede o cachê bruto e conta um show para cada contato.
+            O <strong>cachê médio</strong> mostra o nível de preço praticado (cachê ÷ shows), antes de
+            extras e custos — distinto da <strong>média/show</strong>, que é o líquido por show.
           </p>
         </>
       )}

@@ -3041,3 +3041,29 @@ contexto, decisão, justificativa e alternativas consideradas.
   atribuição por papel esconderia shows em que o contato não é o pagador escolhido, subnotificando o relacionamento.
   (b) mostrar também a quebra por status — adiável: a ficha já lista os shows; o card é o número-resumo. (c) cachê
   médio (preço) ao lado do líquido — adiável (mesma lente de preço já adiada na D105).
+
+## D107 — Cachê médio por contratante na rentabilidade (nível de preço × líquido) (Sessão 115)
+- **Contexto:** `/contatos/rentabilidade` (D105) já mostra cachê somado, despesas, resultado líquido e
+  média/show (líquido) por contratante, mas faltava o **nível de preço** praticado: dois contratantes podem
+  fechar o mesmo líquido total com cachês muito diferentes (um paga caro mas exige muita despesa; outro paga
+  pouco mas é barato de atender). O "cachê médio por contratante" era um "próximo possível" explícito do
+  passo 8 do PROGRESS e a alternativa (c) adiada na D106 ("cachê médio (preço) ao lado do líquido").
+- **Decisão:** novo campo **`avgFee`** em `ContactProfitRow` (finance.ts) = `round(totalFee / showCount)` —
+  o cachê bruto médio por show no grupo, **antes** de extras e despesas. Distinto de `avgNet` (líquido por
+  show). Calculado no mesmo `rankContactsByProfit`, zero consulta nova, zero dependência. Nova coluna "Cachê
+  médio" na tabela de `/contatos/rentabilidade` (entre "Despesas" e "Resultado") e nota de rodapé contrastando
+  cachê médio (preço) × média/show (líquido).
+- **Justificativa:** preço e rentabilidade são lentes diferentes — separar o cachê (o que o contratante paga)
+  do líquido (o que sobra) deixa visível quem é "caro de atender" (cachê alto, líquido baixo). Reusa `totalFee`
+  já agregado; não toca a regra de atribuição (um pagador por show, D105).
+- **Testes:** 1 caso puro novo em `finance.test.ts` (`rankContactsByProfit`): cachê médio ≠ líquido quando há
+  extras/despesas (Zé: 150 vs avgNet 142,50), cachê médio = líquido quando não há (Ana: 50=50), e grupo "sem
+  contratante" (30). **760 testes** verdes (eram 759).
+- **DoD:** build de produção (rota `/contatos/rentabilidade` ok), typecheck e lint (0 avisos) verdes; **760
+  testes**; smoke test — `npm start`: `/login` → 200, `/` → 200, app sobe. `npm audit` inalterado vs. baseline
+  (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios);
+  **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) cachê médio bruto incluindo extras (cachê+extras ÷ shows) — descartado:
+  "cachê" no domínio é o fee contratado; extras (venda de produto, ajuda de custo) não são preço do contratante.
+  (b) também o cachê mediano (robusto a outlier) — adiável: com poucos shows por contratante a mediana fica
+  ruidosa (mesma razão da D57); a média basta como leitura de nível de preço.

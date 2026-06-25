@@ -9,8 +9,12 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **759 testes**
-verdes após a Sessão 114 (**rentabilidade no detalhe do contato** — helper puro `summarizeContactProfit`
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **760 testes**
+verdes após a Sessão 115 (**cachê médio por contratante** — campo puro `avgFee` em `ContactProfitRow`
+(`src/lib/finance.ts`, calculado em `rankContactsByProfit` = `round(totalFee / showCount)`) expõe o **nível de
+preço** praticado por contratante, distinto do líquido (`avgNet`); nova coluna "Cachê médio" em
+`/contatos/rentabilidade` (entre Despesas e Resultado) deixa visível quem paga caro mas é caro de atender.
++1 teste puro, ver D107; eram 759 na Sessão 114, **rentabilidade no detalhe do contato** — helper puro `summarizeContactProfit`
 em `src/lib/contacts.ts` soma o `computeShowPnL` dos shows não cancelados do contato (cachê/extras/despesas/
 líquido/média/margem) e o card "Rentabilidade" em `/contatos/[id]` mostra o líquido depois dos custos já na
 ficha do cliente — diferente da D105 (que atribui cada show a um pagador para comparar contratantes), aqui o
@@ -2492,8 +2496,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `rankContactsByProfit` + `/contatos/rentabilidade`, P&L líquido somado por quem paga (um show → um contratante),
    ver D105; **rentabilidade no detalhe do contato** entregue na Sessão 114 — `summarizeContactProfit` em
    `src/lib/contacts.ts` + card "Rentabilidade" em `/contatos/[id]` (líquido/despesas/média/margem dos shows do
-   contato), ver D106. Próximo possível — **cachê médio por contratante** (nível de preço, distinto do líquido;
-   adiado na D105/D106); ou um recorte por período (filtrar os shows por ano) na rentabilidade por contratante.
+   contato), ver D106; **cachê médio por contratante** entregue na Sessão 115 — campo `avgFee` em
+   `ContactProfitRow` (`rankContactsByProfit`) + coluna "Cachê médio" em `/contatos/rentabilidade`, o nível de
+   preço praticado distinto do líquido (`avgNet`), ver D107. Próximo possível — um recorte por período (filtrar
+   os shows por ano, espelhando `?meses=`/`?semanas=`) na rentabilidade por contratante; ou o cachê **mediano**
+   por contratante (robusto a outlier — adiável: ruidoso com poucos shows, mesma razão da D57).
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

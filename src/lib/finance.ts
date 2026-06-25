@@ -367,6 +367,12 @@ export interface ContactProfitRow {
   totalNet: number;
   /** Resultado líquido médio por show no grupo (centavos, arredondado). */
   avgNet: number;
+  /**
+   * Cachê médio por show no grupo (centavos, arredondado) — o **nível de preço**
+   * praticado com este contratante, distinto do líquido (`avgNet`): mede quanto
+   * o contratante paga por show antes de extras e custos.
+   */
+  avgFee: number;
   /** Margem agregada (net / receita bruta), 0 se receita bruta 0. */
   margin: number;
 }
@@ -459,6 +465,7 @@ export function rankContactsByProfit<S extends ShowLike>(
       totalExpenses: acc.totalExpenses,
       totalNet: acc.totalNet,
       avgNet: acc.showCount > 0 ? Math.round(acc.totalNet / acc.showCount) : 0,
+      avgFee: acc.showCount > 0 ? Math.round(acc.totalFee / acc.showCount) : 0,
       margin: gross === 0 ? 0 : acc.totalNet / gross,
     };
   });
