@@ -582,6 +582,56 @@ export function clientConcentration(rows: ContactProfitRow[]): ClientConcentrati
   };
 }
 
+export interface ClientConcentrationHeadline {
+  /**
+   * Deve aparecer no Painel? Só quando a carteira está **concentrada**
+   * (veredito `concentrated`) — um único contratante ou poucos dominando a
+   * receita. Com `moderate`/`diversified` o aviso seria ruído, não alerta
+   * (mesma disciplina de `cashBurnHeadline`/`paymentLagHeadline`: o nudge só
+   * surge quando o veredito morde).
+   */
+  show: boolean;
+  /**
+   * Caso extremo: **um único** contratante responde por toda a receita, ou o
+   * maior sozinho carrega ≥ 2/3 dela. Permite ao Painel subir o tom (🔴 vs 🟠).
+   */
+  critical: boolean;
+  /** Participação do maior contratante na receita bruta (0..1). */
+  topShare: number;
+  /** Maior contratante (id/nome/papel), ou null se não há receita. */
+  top: ContactProfitContact | null;
+  /** Nº de contratantes identificados com receita bruta positiva. */
+  clientCount: number;
+  /** Veredito completo de concentração (para quem quiser o detalhe). */
+  level: DiversificationLevel;
+}
+
+/**
+ * Resumo de Painel da **concentração de clientes**: deriva, de uma
+ * `clientConcentration` já computada, se o nudge de risco de dependência deve
+ * aparecer e com que urgência. Pura, sem I/O — espelha `cashBurnHeadline` (D103)
+ * e `paymentLagHeadline` (D70): a regra de exibição vive aqui, o dashboard só
+ * consome. Só dispara quando a carteira está de fato concentrada (`concentrated`),
+ * para não nagar quem já diversificou; o caso `critical` (cliente único ou um
+ * dominante ≥ 2/3) merece o tom mais forte.
+ */
+export function clientConcentrationHeadline(
+  concentration: ClientConcentration,
+): ClientConcentrationHeadline {
+  const show =
+    concentration.level === "concentrated" && concentration.clientCount > 0;
+  const critical =
+    show && (concentration.clientCount === 1 || concentration.topShare >= 2 / 3);
+  return {
+    show,
+    critical,
+    topShare: concentration.topShare,
+    top: concentration.top?.contact ?? null,
+    clientCount: concentration.clientCount,
+    level: concentration.level,
+  };
+}
+
 // ── Recorte por período (ano) da rentabilidade por contratante ──────────────
 
 /** Valor do seletor de período: um ano específico ou "all" (sem recorte). */
