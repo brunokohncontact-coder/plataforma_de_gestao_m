@@ -493,6 +493,95 @@ export function rankContactsByProfit<S extends ShowLike>(
   };
 }
 
+// ── Concentração de clientes (risco de dependência de contratante) ──────────
+// Mede o quanto a receita se concentra em poucos contratantes — o risco de
+// carreira de depender de um único cliente ("e se o contratante que paga metade
+// do meu faturamento sumir?"). Distinto da rentabilidade (líquido por
+// contratante, D105): aqui o foco é a **receita bruta** (cachê + extras) que se
+// perderia se o contratante saísse, não a margem. Usa receita bruta — e não o
+// líquido — porque a dependência é sobre de onde o dinheiro **entra**; o líquido
+// pode ser negativo e não forma participações válidas (que precisam somar 1).
+// Espelha o vocabulário de concentração de `incomeMix` (HHI, nº efetivo, nível),
+// mas sobre contratantes em vez de categorias de receita. Ignora o grupo "sem
+// contratante" (não é um cliente acionável).
+
+export interface ClientShareSlice {
+  /** Contratante da fatia (sempre identificado). */
+  contact: ContactProfitContact;
+  /** Receita bruta do contratante = cachê + extras (centavos). */
+  revenue: number;
+  /** Participação na receita total dos contratantes identificados (0..1). */
+  share: number;
+}
+
+export interface ClientConcentration {
+  /** Contratantes por receita decrescente (empate por nome pt-BR, depois id). */
+  clients: ClientShareSlice[];
+  /** Receita somada dos contratantes identificados (centavos). */
+  total: number;
+  /** Nº de contratantes identificados com receita > 0. */
+  clientCount: number;
+  /** Maior contratante, ou null se não há receita. */
+  top: ClientShareSlice | null;
+  /** Participação do maior contratante (0..1). */
+  topShare: number;
+  /** Participação acumulada dos 3 maiores contratantes (0..1). */
+  top3Share: number;
+  /**
+   * Índice de Herfindahl–Hirschman (HHI): soma dos quadrados das participações
+   * (0..1). 1 = um único contratante; quanto menor, mais distribuído.
+   */
+  hhi: number;
+  /** Nº efetivo de clientes (1/HHI, índice de Simpson); 0 se não há receita. */
+  effectiveClients: number;
+  /** Veredito de concentração (mesmos limiares de `incomeMix`, ver D45). */
+  level: DiversificationLevel;
+}
+
+/**
+ * Deriva a concentração de clientes a partir das linhas de `rankContactsByProfit`.
+ * Considera apenas contratantes **identificados** com receita bruta positiva
+ * (cachê + extras); o grupo "sem contratante" e quem só teve despesa são
+ * ignorados. Reaproveita os mesmos limiares de diversificação de `incomeMix`
+ * (`diversificationLevel`). Pura.
+ */
+export function clientConcentration(rows: ContactProfitRow[]): ClientConcentration {
+  const clientsRaw = rows
+    .filter((r) => r.contact !== null)
+    .map((r) => ({ contact: r.contact!, revenue: r.totalFee + r.totalExtra }))
+    .filter((c) => c.revenue > 0);
+
+  const total = clientsRaw.reduce((acc, c) => acc + c.revenue, 0);
+
+  const clients: ClientShareSlice[] = clientsRaw
+    .map((c) => ({
+      contact: c.contact,
+      revenue: c.revenue,
+      share: total === 0 ? 0 : c.revenue / total,
+    }))
+    .sort(
+      (a, b) =>
+        b.revenue - a.revenue ||
+        a.contact.name.localeCompare(b.contact.name, "pt-BR") ||
+        a.contact.id.localeCompare(b.contact.id),
+    );
+
+  const hhi = clients.reduce((acc, c) => acc + c.share * c.share, 0);
+  const top3Share = clients.slice(0, 3).reduce((acc, c) => acc + c.share, 0);
+
+  return {
+    clients,
+    total,
+    clientCount: clients.length,
+    top: clients[0] ?? null,
+    topShare: clients[0]?.share ?? 0,
+    top3Share,
+    hhi,
+    effectiveClients: hhi === 0 ? 0 : 1 / hhi,
+    level: diversificationLevel(hhi, clients.length),
+  };
+}
+
 // ── Recorte por período (ano) da rentabilidade por contratante ──────────────
 
 /** Valor do seletor de período: um ano específico ou "all" (sem recorte). */

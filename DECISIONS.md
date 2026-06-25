@@ -3098,3 +3098,43 @@ contexto, decisão, justificativa e alternativas consideradas.
   exercício/temporada, e o ano é a unidade natural (fechamento fiscal, comparação anual). (c) filtrar dentro de
   `rankContactsByProfit` via `opts` — descartado: acoplaria recorte temporal ao agregador; filtrar antes é mais
   simples e reusável.
+
+## D109 — Concentração de clientes na rentabilidade por contratante (risco de dependência) (Sessão 117)
+- **Contexto:** `/contatos/rentabilidade` (D105–D108) já dizia **quanto** cada contratante rende (líquido) e por
+  qual **período** (ano). Faltava a leitura de **risco**: o quanto a receita depende de **poucos** contratantes —
+  a pergunta de carreira "e se o cliente que paga metade do meu faturamento sumir?". É uma lente distinta da
+  rentabilidade (que ranqueia por valor): mede **dispersão**, não tamanho.
+- **Decisão:** novo helper puro **`clientConcentration(rows)`** em `finance.ts` que recebe as linhas já
+  produzidas por `rankContactsByProfit` e deriva a concentração da **receita bruta** (cachê + extras) entre os
+  contratantes **identificados**. Devolve as fatias com participação (`share`), o `topShare`, o `top3Share`, o
+  **HHI** (Herfindahl–Hirschman), os **clientes efetivos** (1/HHI) e um veredito `concentrated|moderate|diversified`
+  reaproveitando os mesmos limiares de `incomeMix` (`diversificationLevel`, D45). UI: card "Concentração de
+  clientes" na página, com selo de veredito (🔴/🟡/🟢), os três números-chave e uma nota acionável; só aparece
+  quando há ≥1 contratante identificado com receita.
+- **Justificativa — por que receita BRUTA e não o líquido:** a dependência é sobre de onde o dinheiro **entra**;
+  se o contratante sair, perde-se o faturamento, não a margem. Além disso o líquido pode ser **negativo**, e
+  participações negativas não somam 1 nem formam um HHI válido. Por isso a base é `totalFee + totalExtra`,
+  sempre ≥ 0, e descartam-se contratantes sem receita bruta positiva. **Por que reusar as linhas do ranking** (e
+  não reagrupar): `rankContactsByProfit` já resolveu "um pagador por show" (D105) e a exclusão de cancelados;
+  derivar a concentração das linhas evita duplicar essa lógica e garante consistência com a tabela. **Por que
+  reusar `diversificationLevel`:** o vocabulário de concentração (HHI/nº efetivo/nível) já existe para fontes de
+  renda (D45); aplicá-lo a contratantes mantém uma linguagem única de "concentração" no app. **Por que ignorar
+  "sem contratante":** não é um cliente acionável — o risco que importa é o de depender de um **relacionamento** real.
+- **Testes:** 6 casos puros novos em `finance.test.ts` (`clientConcentration`): vazio (veredito concentrado e
+  zeros); participação sobre a receita bruta ignorando o grupo sem contratante; extras somados à receita; descarte
+  de contratante sem receita positiva; contratante único → HHI 1/concentrado; receita pulverizada em 5
+  contratantes → diversificada. **776 testes** verdes (eram 770).
+- **DoD:** build de produção (rota `/contatos/rentabilidade` ok), typecheck e lint (0 avisos) verdes; **776
+  testes**; smoke test — `npm start`: `/login` → 200, `/` → 200, `/contatos/rentabilidade` sem sessão → 307, e
+  **render autenticado verificado** (token de sessão mintado p/ o usuário demo): página 200 e, com dois
+  contratantes vinculados, o card "Concentração de clientes" renderiza com veredito "Concentrada", "maior
+  contratante", "nos 3 maiores" e "clientes efetivos". `npm audit` inalterado vs. baseline (10 advisories —
+  4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma
+  dependência nova**.
+- **Alternativas consideradas:** (a) concentração sobre o **líquido** — descartado: pode ser negativo (HHI
+  indefinido) e mede margem, não dependência de faturamento. (b) **incluir "sem contratante"** na base —
+  descartado: dilui o sinal com receita não atribuível a um cliente acionável. (c) um **gráfico de Pareto/curva
+  ABC** — adiável: as barras CSS bastam para o MVP e o trio topShare/top3Share/HHI já comunica a dispersão sem
+  somar superfície de UI. (d) classificar pelo `topShare` (regra "1 cliente > 50% = risco") em vez do HHI —
+  descartado: o HHI captura toda a distribuição (dois clientes de 40%+40% também é risco) e já é o critério de
+  `incomeMix`; manter um só método evita vereditos divergentes entre telas.
