@@ -3204,3 +3204,37 @@ contexto, decisão, justificativa e alternativas consideradas.
   separada hoje (`rankCitiesByProfit` existe mas sem rota); fica para quando a página existir, reusando o mesmo
   padrão. (b) comparar dois anos lado a lado (Δ por local) — mais escopo; adiável (espelharia D33). (c) um seletor
   de período também no detalhe do contato (`summarizeContactProfit`) — próximo passo natural, mesmos três helpers.
+
+## D112 — Setup resiliente a proxy: fallback de engines do Prisma via curl (Sessão 120)
+- **Contexto:** em sessões remotas o tráfego HTTPS sai por um proxy que reescreve TLS. O downloader
+  embutido do Prisma (`@prisma/fetch-engine`) **não** respeita esse proxy: a baixa dos engines
+  (`libquery_engine` e `schema-engine` de `binaries.prisma.sh`) falha com `ECONNRESET`. Como `npm install`
+  dispara o postinstall do `@prisma/engines`, a instalação inteira abortava e o container ficava **sem
+  `node_modules` e sem client gerado** — `build`/`test`/`run` impossíveis na sessão. O mesmo host baixa
+  normalmente via `curl` (HTTP 200), confirmando que o problema é só o cliente HTTP do Prisma, não a política
+  de egress. Em CI (GitHub Actions, rede aberta) nada disso ocorre: o `session-setup.sh` nem roda lá.
+- **Decisão:** tornar `scripts/session-setup.sh` resiliente, sem mudar a stack nem o schema:
+  1. instalar deps com `npm install --ignore-scripts` (pula o postinstall que falha);
+  2. tentar `npx prisma generate`; **só** se falhar, baixar os engines via `curl` (respeita proxy/CA) para
+     `node_modules/@prisma/engines/` com os nomes que o Prisma espera (`libquery_engine-<target>.so.node`,
+     `schema-engine-<target>`), derivando o commit de `@prisma/engines-version` e o alvo de
+     `@prisma/get-platform` (`getBinaryTargetForCurrentPlatform`) — sem hardcode;
+  3. fixar `PRISMA_QUERY_ENGINE_LIBRARY`/`PRISMA_SCHEMA_ENGINE_BINARY` no `.env` (dev-only, fora do git), que o
+     próprio Prisma carrega — assim o `prisma generate` de `npm run build` também acha os engines **sem rede**;
+  4. `prisma db push` para o SQLite de dev. Tudo idempotente (só baixa o que falta, só anexa a env var uma vez).
+- **Justificativa:** o mandato de infra exige que o container efêmero suba pronto para build a cada sessão; o
+  hook estava quebrado neste ambiente. O fallback via `curl` usa exatamente o canal que funciona, e fixar os
+  caminhos no `.env` (e não exportar em shell volátil) garante que o `generate` embutido no `build` herde a
+  correção. Em máquinas/CI com rede aberta o caminho normal vence e o fallback nem executa — zero regressão.
+- **Testes:** mudança de infra (shell), sem testes de unidade. Validado manualmente do zero: com os engines
+  removidos, `session-setup.sh` cai no fallback, baixa os dois engines, fixa o `.env`, gera o client e sincroniza
+  o banco; re-execução é no-op (sem duplicar linhas no `.env`); `npm run build` passa **offline** lendo o `.env`.
+- **DoD:** build de produção, typecheck e lint (0 avisos) verdes; **781 testes**; smoke test — `npm start`:
+  `/login` → 200, `/dashboard` sem sessão → 307 (app sobe). `npm audit` inalterado vs. baseline (10 advisories —
+  4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma
+  dependência nova**.
+- **Alternativas consideradas:** (a) `PRISMA_ENGINES_MIRROR` apontando para um mirror — mesmo host/cliente HTTP do
+  Prisma, não resolveria o `ECONNRESET`. (b) commitar os binários no repo — pesados (~35 MB), específicos de
+  plataforma e versão; poluiriam o git e quebrariam ao bumpar o Prisma. (c) exportar as env vars só na sessão —
+  não sobrevive ao subprocesso de `npm run build`; por isso a fixação no `.env`. (d) trocar o provider/engine
+  (`binaryTargets`, engine `binary`) — mudança de stack desproporcional a um problema de ambiente.
