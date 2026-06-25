@@ -10,7 +10,15 @@
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
 do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **792 testes**
-verdes após a Sessão 123 (**recorte por período (ano) na atuação por cidade** — a página `/shows/cidades`
+verdes após a Sessão 124 (**concentração por casa na rentabilidade por local** — `/shows/locais` ganhou o card
+"Concentração por casa" (selo 🔴/🟡/🟢, participação da maior casa, das 3 maiores, casas efetivas e nota acionável
+"prospectar novos palcos"), **reaproveitando o mesmo helper puro `geoConcentration`** (D113) sobre as linhas já
+produzidas por `rankVenuesByProfit` (recortadas pelo `PeriodPicker`/`?ano=` da D111) — é o recorte mais granular do
+mesmo risco geográfico já visível por cidade: depender de **poucos palcos**. `geoConcentration` opera sobre
+`VenueProfitRow` e já descarta o grupo "Sem local" (chave ""), então **nenhuma mudança no helper** foi precisa — só
+a moldura textual do card (`VenueConcentrationCard`/`VENUE_VERDICT`, "casa/palco" em vez de "praça/cidade"). Card só
+aparece com ≥1 casa identificada com receita; recompõe ao trocar o ano, de graça. Sem testes novos — wiring de UI
+sobre helper já coberto (como D111/D115); ver D116; eram 792 na Sessão 123 (**recorte por período (ano) na atuação por cidade** — a página `/shows/cidades`
 ganhou o mesmo `PeriodPicker` (pílula "Todos" + uma por ano com shows não cancelados) da rentabilidade por
 local/contratante, **reutilizando os três helpers puros da D108** (`showProfitYears`/`parseProfitYear`/`filterShowsByYear`
 em `src/lib/finance.ts`): a consulta passou a incluir `date`, os shows são filtrados por ano UTC **antes** de
@@ -2589,8 +2597,14 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    **recorte por período (`?ano=`) na atuação por cidade** entregue na Sessão 123 — `PeriodPicker` em
    `/shows/cidades` reaproveitando `showProfitYears`/`parseProfitYear`/`filterShowsByYear` (D108); filtra os shows
    por ano UTC antes de `rankCitiesByProfit`, e a concentração geográfica recompõe sobre as linhas já filtradas,
-   ver D115. Próximo possível — estender `geoConcentration` às linhas de **local** (`rankVenuesByProfit`) para um
-   card de concentração por casa em `/shows/locais`.
+   ver D115; **concentração por casa na rentabilidade por local** entregue na Sessão 124 — `/shows/locais` ganhou o
+   card "Concentração por casa" reaproveitando o mesmo `geoConcentration` (D113) sobre as linhas de
+   `rankVenuesByProfit` (recortadas pelo `?ano=` da D111), sem mudança no helper (opera sobre `VenueProfitRow` e
+   ignora "Sem local"); só a moldura textual difere ("casa/palco"), ver D116. Próximo possível — extrair um
+   componente único de card de concentração parametrizado pelo rótulo se surgir um terceiro eixo (adiado na D116
+   alt. a por as cópias serem pequenas e os textos acionáveis divergirem); comparar a concentração entre dois anos
+   lado a lado (espelhando D33); ou o cachê **mediano** por casa (robusto a outlier, adiável: ruidoso com poucos
+   shows por casa, mesma razão da D57).
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)
