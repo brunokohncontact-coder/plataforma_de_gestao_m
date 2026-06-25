@@ -1,18 +1,33 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { rankVenuesByProfit, type TxLike, type VenueShowLike } from "@/lib/finance";
+import {
+  rankVenuesByProfit,
+  showProfitYears,
+  parseProfitYear,
+  filterShowsByYear,
+  type TxLike,
+  type VenueShowLike,
+} from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 
 export const dynamic = "force-dynamic";
 
-export default async function VenueProfitabilityPage() {
+type SearchParams = { [key: string]: string | string[] | undefined };
+
+const CANCELLED = "CANCELLED";
+
+export default async function VenueProfitabilityPage({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
   const user = await requireUser();
 
   const [shows, transactions] = await Promise.all([
     prisma.show.findMany({
       where: { userId: user.id },
-      select: { id: true, fee: true, status: true, venue: true, city: true },
+      select: { id: true, fee: true, status: true, venue: true, city: true, date: true },
     }),
     prisma.transaction.findMany({
       where: { userId: user.id, showId: { not: null } },
@@ -20,13 +35,25 @@ export default async function VenueProfitabilityPage() {
     }),
   ]);
 
-  const venueShows: VenueShowLike[] = shows.map((s) => ({
+  // Inclui `date` para recortar por ano antes de agregar (mesmo padrão da
+  // rentabilidade por contratante, ver D108). O recorte é só uma filtragem
+  // prévia — a regra de agrupamento por local e o P&L seguem intocados.
+  const venueShows: (VenueShowLike & { date: Date })[] = shows.map((s) => ({
     id: s.id,
     fee: s.fee,
     status: s.status,
     venue: s.venue,
     city: s.city,
+    date: s.date,
   }));
+
+  // Anos disponíveis no seletor: apenas dos shows que entram na agregação
+  // (não cancelados), para não oferecer um ano que ficaria vazio.
+  const availableYears = showProfitYears(
+    venueShows.filter((s) => s.status !== CANCELLED).map((s) => s.date),
+  );
+  const yearFilter = parseProfitYear(searchParams?.ano, availableYears);
+  const periodShows = filterShowsByYear(venueShows, yearFilter);
 
   const txs: TxLike[] = transactions.map((t) => ({
     type: t.type as TxLike["type"],
@@ -37,7 +64,9 @@ export default async function VenueProfitabilityPage() {
     showId: t.showId,
   }));
 
-  const report = rankVenuesByProfit(venueShows, txs);
+  const report = rankVenuesByProfit(periodShows, txs);
+
+  const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
 
   return (
     <div className="space-y-6">
@@ -54,12 +83,36 @@ export default async function VenueProfitabilityPage() {
         </Link>
       </div>
 
+      {availableYears.length > 0 && (
+        <PeriodPicker years={availableYears} active={yearFilter} />
+      )}
+
       {report.count === 0 ? (
         <div className="card text-center text-gray-500">
-          <p>Nenhum show para analisar.</p>
-          <Link href="/shows/novo" className="mt-3 inline-block text-brand-700 hover:underline">
-            Cadastrar um show
-          </Link>
+          {yearFilter === "all" ? (
+            <>
+              <p>Nenhum show para analisar.</p>
+              <Link
+                href="/shows/novo"
+                className="mt-3 inline-block text-brand-700 hover:underline"
+              >
+                Cadastrar um show
+              </Link>
+            </>
+          ) : (
+            <>
+              <p>Nenhum show em {periodLabel}.</p>
+              <p className="mt-1 text-sm">
+                Escolha outro período acima para ver a rentabilidade por local.
+              </p>
+              <Link
+                href="/shows/locais"
+                className="mt-3 inline-block text-brand-700 hover:underline"
+              >
+                Ver todos os anos
+              </Link>
+            </>
+          )}
         </div>
       ) : (
         <>
@@ -156,6 +209,43 @@ export default async function VenueProfitabilityPage() {
         </>
       )}
     </div>
+  );
+}
+
+/** Seletor de período: "Todos" + uma pílula por ano com shows (mais recente primeiro). */
+function PeriodPicker({
+  years,
+  active,
+}: {
+  years: number[];
+  active: number | "all";
+}) {
+  const base = "rounded-full px-3 py-1 text-sm font-medium transition-colors";
+  const on = "bg-brand-600 text-white";
+  const off = "bg-gray-100 text-gray-600 hover:bg-gray-200";
+  return (
+    <nav aria-label="Período" className="flex flex-wrap items-center gap-2">
+      <span className="text-xs font-medium uppercase tracking-wide text-gray-500">
+        Período
+      </span>
+      <Link
+        href="/shows/locais"
+        className={base + " " + (active === "all" ? on : off)}
+        aria-current={active === "all" ? "page" : undefined}
+      >
+        Todos
+      </Link>
+      {years.map((y) => (
+        <Link
+          key={y}
+          href={`/shows/locais?ano=${y}`}
+          className={base + " " + (active === y ? on : off)}
+          aria-current={active === y ? "page" : undefined}
+        >
+          {y}
+        </Link>
+      ))}
+    </nav>
   );
 }
 
