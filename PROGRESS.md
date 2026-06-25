@@ -10,7 +10,14 @@
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
 do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **792 testes**
-verdes após a Sessão 122 (**concentração geográfica no Painel — nudge de risco de depender de poucas praças** —
+verdes após a Sessão 123 (**recorte por período (ano) na atuação por cidade** — a página `/shows/cidades`
+ganhou o mesmo `PeriodPicker` (pílula "Todos" + uma por ano com shows não cancelados) da rentabilidade por
+local/contratante, **reutilizando os três helpers puros da D108** (`showProfitYears`/`parseProfitYear`/`filterShowsByYear`
+em `src/lib/finance.ts`): a consulta passou a incluir `date`, os shows são filtrados por ano UTC **antes** de
+`rankCitiesByProfit` (agrupamento por cidade e P&L intactos) e, de quebra, a **concentração geográfica** (D113)
+recompõe sobre as linhas já filtradas — vendo o risco de depender de poucas praças por ano. Estado vazio
+período-ciente. Sem testes novos — wiring de UI sobre helpers já cobertos (como D111); ver D115; eram 792 na Sessão 122
+(**concentração geográfica no Painel — nudge de risco de depender de poucas praças** —
 helper puro `geoConcentrationHeadline(concentration)` em `src/lib/finance.ts` (espelha `clientConcentrationHeadline`/D110)
 decide, de uma `geoConcentration` já computada, se o nudge aparece (`show` só quando o veredito é `concentrated` e há
 ≥1 cidade com receita) e com que urgência (`critical` quando uma única cidade carrega tudo ou a maior tem ≥ 2/3 da
@@ -2578,10 +2585,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `/shows/cidades`, ver D113; **nudge de concentração geográfica no Painel** entregue na Sessão 122 —
    `geoConcentrationHeadline(concentration)` em `src/lib/finance.ts` (espelha `clientConcentrationHeadline`/D110)
    decide a exibição (só quando `concentrated`, `critical` quando cidade única ou maior ≥ 2/3) + banner-nudge 🔴/🟠
-   em `dashboard/page.tsx` linkando para `/shows/cidades`, reaproveitando os shows já carregados, ver D114.
-   Próximo possível — o **recorte por período (`?ano=`)** também em `/shows/cidades` (aplicar a concentração às
-   linhas já filtradas — o helper não muda); ou estender `geoConcentration` às linhas de **local**
-   (`rankVenuesByProfit`) para um card de concentração por casa em `/shows/locais`.
+   em `dashboard/page.tsx` linkando para `/shows/cidades`, reaproveitando os shows já carregados, ver D114;
+   **recorte por período (`?ano=`) na atuação por cidade** entregue na Sessão 123 — `PeriodPicker` em
+   `/shows/cidades` reaproveitando `showProfitYears`/`parseProfitYear`/`filterShowsByYear` (D108); filtra os shows
+   por ano UTC antes de `rankCitiesByProfit`, e a concentração geográfica recompõe sobre as linhas já filtradas,
+   ver D115. Próximo possível — estender `geoConcentration` às linhas de **local** (`rankVenuesByProfit`) para um
+   card de concentração por casa em `/shows/locais`.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)
