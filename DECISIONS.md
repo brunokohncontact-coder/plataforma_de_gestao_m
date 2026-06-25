@@ -3008,3 +3008,36 @@ contexto, decisão, justificativa e alternativas consideradas.
   lucro", que pede um único dono. (b) incluir "Sem contratante" em best/worst — descartado: não é um cliente
   acionável; melhor/pior devem comparar relacionamentos reais. (c) **cachê médio por contratante** (nível de preço)
   em vez do líquido — adiável: lente útil mas distinta; o líquido responde a decisão de "vale a pena este cliente?".
+
+## D106 — Rentabilidade no detalhe do contato (P&L dos shows que ele traz) (Sessão 114)
+- **Contexto:** a rentabilidade por contratante (D105) compara clientes lado a lado em `/contatos/rentabilidade`,
+  mas ao abrir UM contato (`/contatos/[id]`) só havia o **cachê bruto total** (`summarizeContactShows.totalFee`) —
+  faltava o **líquido depois dos custos** já na ficha do cliente, respondendo "este contato dá dinheiro de verdade?"
+  no contexto em que a pessoa está olhando (era um "próximo possível" explícito do passo 8 do PROGRESS).
+- **Decisão:** novo helper puro **`summarizeContactProfit(shows, txs)`** em `src/lib/contacts.ts`. Recebe os shows
+  **já vinculados ao contato** (o recorte da própria ficha) + as transações vinculadas a esses shows e soma o
+  `computeShowPnL` (finance.ts, fonte única) de cada show **não cancelado** → `totalFee`, `totalExtra`,
+  `totalExpenses`, `totalNet`, `avgNet`, `margin`. Exclui `CANCELLED` espelhando o `totalFee` de
+  `summarizeContactShows` (consistência na mesma tela).
+- **Por que NÃO reusar `rankContactsByProfit` (D105):** aquele atribui cada show a **um único** pagador (via
+  `getPayer`) para reconciliar o total entre contratantes — necessário numa visão comparativa. Aqui o recorte já é
+  "os shows deste contato", então a soma direta é a leitura correta (e mais simples); um show co-atribuído a vários
+  contatos conta o líquido na ficha de **cada** um — o número responde "quanto este relacionamento rende", não
+  "fatie o lucro total entre clientes". Decisões distintas, helpers distintos; ambos reaproveitam `computeShowPnL`.
+- **UI:** card "Rentabilidade" em `/contatos/[id]` (entre "Histórico de shows" e "Shows vinculados"), com 4 Stats —
+  resultado líquido (colorido verde/vermelho), despesas, líquido médio/show e margem (`(margin*100).toFixed(0)%`,
+  mesmo formato de `/shows/[id]` e `/shows/rentabilidade`), nota de rodapé explicando a fórmula, e link "Comparar
+  contratantes →" para `/contatos/rentabilidade`. Só aparece com ≥1 show não cancelado. A página passou a buscar as
+  transações dos shows do contato (`transaction.findMany` por `showId in [...]`), sem consulta extra quando o contato
+  não tem shows.
+- **Testes:** 6 casos puros novos em `contacts.test.ts` (`summarizeContactProfit`): vazio; soma do net com despesas
+  vinculadas (média/show); receita extra + margem sobre a bruta; exclusão de cancelados (e da despesa do cancelado);
+  filtro por `showId` (ignora transações de outros shows); margem 0 com bruta 0 (prejuízo possível). **759 testes**
+  verdes (eram 753).
+- **DoD:** build de produção (rota `/contatos/[id]` ok), typecheck e lint (0 avisos) verdes; **759 testes**; smoke
+  test — `npm start`: `/login` → 200, `/` → 200, app sobe. `npm audit` inalterado vs. baseline (10 advisories — 4
+  moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) reaproveitar `rankContactsByProfit` filtrando por um contato — descartado: a
+  atribuição por papel esconderia shows em que o contato não é o pagador escolhido, subnotificando o relacionamento.
+  (b) mostrar também a quebra por status — adiável: a ficha já lista os shows; o card é o número-resumo. (c) cachê
+  médio (preço) ao lado do líquido — adiável (mesma lente de preço já adiada na D105).

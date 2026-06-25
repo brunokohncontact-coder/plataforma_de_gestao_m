@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { summarizeContactShows } from "@/lib/contacts";
+import { summarizeContactShows, summarizeContactProfit } from "@/lib/contacts";
 import { formatMoney } from "@/lib/money";
 import { formatDateTime } from "@/lib/format";
 import {
@@ -38,6 +38,22 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
 
   const shows = contact.shows.map((cs) => cs.show);
   const summary = summarizeContactShows(shows);
+
+  // Rentabilidade: P&L líquido dos shows deste contato, depois dos custos.
+  // Busca só as transações vinculadas aos shows do contato (receitas extras e
+  // despesas) — `summarizeContactProfit` reaproveita `computeShowPnL` (D106).
+  const showIds = shows.map((s) => s.id);
+  const showTxs =
+    showIds.length > 0
+      ? await prisma.transaction.findMany({
+          where: { userId: user.id, showId: { in: showIds } },
+          select: { type: true, amount: true, category: true, date: true, received: true, showId: true },
+        })
+      : [];
+  const profit = summarizeContactProfit(
+    shows,
+    showTxs.map((t) => ({ ...t, type: t.type as "INCOME" | "EXPENSE" })),
+  );
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -90,6 +106,36 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
         </dl>
       </section>
 
+      {/* Rentabilidade — quanto este contato deixa depois dos custos */}
+      {profit.showCount > 0 && (
+        <section className="card">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-semibold">Rentabilidade</h2>
+            <Link href="/contatos/rentabilidade" className="text-xs text-brand-700 hover:underline">
+              Comparar contratantes →
+            </Link>
+          </div>
+          <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Stat
+              label="Resultado líquido"
+              value={formatMoney(profit.totalNet)}
+              valueClassName={profit.totalNet >= 0 ? "text-emerald-600" : "text-red-600"}
+            />
+            <Stat label="Despesas" value={profit.totalExpenses > 0 ? "−" + formatMoney(profit.totalExpenses) : "—"} />
+            <Stat label="Líquido médio/show" value={formatMoney(profit.avgNet)} />
+            <Stat
+              label="Margem"
+              value={profit.totalFee + profit.totalExtra > 0 ? `${(profit.margin * 100).toFixed(0)}%` : "—"}
+            />
+          </dl>
+          <p className="mt-3 text-xs text-gray-400">
+            Líquido = cachê {profit.totalExtra > 0 ? "+ receitas extras " : ""}− despesas vinculadas aos{" "}
+            {profit.showCount} show{profit.showCount > 1 ? "s" : ""} não cancelado
+            {profit.showCount > 1 ? "s" : ""} deste contato.
+          </p>
+        </section>
+      )}
+
       {/* Lista de shows vinculados */}
       <section className="card">
         <div className="mb-3 flex items-center justify-between">
@@ -113,11 +159,19 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({
+  label,
+  value,
+  valueClassName,
+}: {
+  label: string;
+  value: string;
+  valueClassName?: string;
+}) {
   return (
     <div>
       <dt className="text-xs uppercase tracking-wide text-gray-500">{label}</dt>
-      <dd className="mt-0.5 font-medium text-gray-900">{value}</dd>
+      <dd className={"mt-0.5 font-medium " + (valueClassName ?? "text-gray-900")}>{value}</dd>
     </div>
   );
 }

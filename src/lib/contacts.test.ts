@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { summarizeContactShows, type ContactShowLike } from "./contacts";
+import {
+  summarizeContactShows,
+  summarizeContactProfit,
+  type ContactShowLike,
+} from "./contacts";
+import type { TxLike } from "./finance";
 
 const NOW = new Date("2026-06-17T12:00:00Z");
 
@@ -584,5 +589,93 @@ describe("clientConcentration", () => {
     ]);
     expect(r.hhi).toBeCloseTo(0.3125);
     expect(r.level).toBe("moderate");
+  });
+});
+
+describe("summarizeContactProfit", () => {
+  const sh = (over: Partial<ContactShowLike> & { id: string }): ContactShowLike => ({
+    title: "Show",
+    date: "2026-06-01T20:00:00Z",
+    status: "PLAYED",
+    fee: 100_00,
+    ...over,
+  });
+  const tx = (over: Partial<TxLike>): TxLike => ({
+    type: "EXPENSE",
+    amount: 0,
+    category: "Transporte",
+    date: "2026-06-01T20:00:00Z",
+    received: true,
+    showId: null,
+    ...over,
+  });
+
+  it("trata lista vazia", () => {
+    const r = summarizeContactProfit([], []);
+    expect(r).toEqual({
+      showCount: 0,
+      totalFee: 0,
+      totalExtra: 0,
+      totalExpenses: 0,
+      totalNet: 0,
+      avgNet: 0,
+      margin: 0,
+    });
+  });
+
+  it("soma cachê e desconta despesas vinculadas (net por show)", () => {
+    const shows = [sh({ id: "s1", fee: 100_00 }), sh({ id: "s2", fee: 200_00 })];
+    const txs = [
+      tx({ showId: "s1", type: "EXPENSE", amount: 30_00 }),
+      tx({ showId: "s2", type: "EXPENSE", amount: 50_00 }),
+    ];
+    const r = summarizeContactProfit(shows, txs);
+    expect(r.showCount).toBe(2);
+    expect(r.totalFee).toBe(300_00);
+    expect(r.totalExpenses).toBe(80_00);
+    expect(r.totalNet).toBe(220_00);
+    expect(r.avgNet).toBe(110_00);
+  });
+
+  it("inclui receita extra vinculada e calcula margem sobre a bruta", () => {
+    const shows = [sh({ id: "s1", fee: 100_00 })];
+    const txs = [
+      tx({ showId: "s1", type: "INCOME", amount: 50_00 }), // merch
+      tx({ showId: "s1", type: "EXPENSE", amount: 30_00 }),
+    ];
+    const r = summarizeContactProfit(shows, txs);
+    expect(r.totalExtra).toBe(50_00);
+    expect(r.totalExpenses).toBe(30_00);
+    expect(r.totalNet).toBe(120_00); // 100 + 50 - 30
+    expect(r.margin).toBeCloseTo(120_00 / 150_00); // net / (fee + extra)
+  });
+
+  it("ignora shows cancelados (espelha totalFee de summarizeContactShows)", () => {
+    const shows = [
+      sh({ id: "s1", fee: 100_00, status: "PLAYED" }),
+      sh({ id: "s2", fee: 999_00, status: "CANCELLED" }),
+    ];
+    const txs = [tx({ showId: "s2", type: "EXPENSE", amount: 10_00 })];
+    const r = summarizeContactProfit(shows, txs);
+    expect(r.showCount).toBe(1);
+    expect(r.totalFee).toBe(100_00);
+    expect(r.totalExpenses).toBe(0); // despesa do cancelado não entra
+    expect(r.totalNet).toBe(100_00);
+  });
+
+  it("ignora transações de outros shows (filtro por showId)", () => {
+    const shows = [sh({ id: "s1", fee: 100_00 })];
+    const txs = [tx({ showId: "outro", type: "EXPENSE", amount: 80_00 })];
+    const r = summarizeContactProfit(shows, txs);
+    expect(r.totalExpenses).toBe(0);
+    expect(r.totalNet).toBe(100_00);
+  });
+
+  it("margem 0 quando receita bruta é 0", () => {
+    const shows = [sh({ id: "s1", fee: 0 })];
+    const txs = [tx({ showId: "s1", type: "EXPENSE", amount: 40_00 })];
+    const r = summarizeContactProfit(shows, txs);
+    expect(r.margin).toBe(0);
+    expect(r.totalNet).toBe(-40_00); // prejuízo possível
   });
 });

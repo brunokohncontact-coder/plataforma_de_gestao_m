@@ -9,8 +9,13 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **753 testes**
-verdes após a Sessão 113 (**rentabilidade por contratante** — helper puro `rankContactsByProfit`
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **759 testes**
+verdes após a Sessão 114 (**rentabilidade no detalhe do contato** — helper puro `summarizeContactProfit`
+em `src/lib/contacts.ts` soma o `computeShowPnL` dos shows não cancelados do contato (cachê/extras/despesas/
+líquido/média/margem) e o card "Rentabilidade" em `/contatos/[id]` mostra o líquido depois dos custos já na
+ficha do cliente — diferente da D105 (que atribui cada show a um pagador para comparar contratantes), aqui o
+recorte já é "os shows deste contato", então a soma é direta; link "Comparar contratantes →". +6 testes puros,
+ver D106; eram 753 na Sessão 113, **rentabilidade por contratante** — helper puro `rankContactsByProfit`
 em `src/lib/finance.ts` atribui cada show a **um único** contratante (via `pickPayerContact`, por papel) e agrega o
 `computeShowPnL` por quem paga: cachê/extras/despesas/líquido/média/margem, ordenado por resultado, com grupo "Sem
 contratante" por último; como cada show pesa para um só contratante, o `totalNet` reconcilia com a soma dos P&L dos
@@ -2485,9 +2490,10 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
 8. **Contatos / relacionamento — evoluções** (ranking por cachê bruto, Sessão 27; concentração/HHI; fidelização,
    Sessão 56; reativar dormentes, Sessão 30): **rentabilidade por contratante** entregue na Sessão 113 —
    `rankContactsByProfit` + `/contatos/rentabilidade`, P&L líquido somado por quem paga (um show → um contratante),
-   ver D105. Próximo possível — **cachê médio por contratante** (nível de preço, distinto do líquido; adiado na
-   D105); levar a rentabilidade por contratante ao detalhe do contato (`/contatos/[id]`) como um card; ou um
-   recorte por período (filtrar os shows por ano).
+   ver D105; **rentabilidade no detalhe do contato** entregue na Sessão 114 — `summarizeContactProfit` em
+   `src/lib/contacts.ts` + card "Rentabilidade" em `/contatos/[id]` (líquido/despesas/média/margem dos shows do
+   contato), ver D106. Próximo possível — **cachê médio por contratante** (nível de preço, distinto do líquido;
+   adiado na D105/D106); ou um recorte por período (filtrar os shows por ano) na rentabilidade por contratante.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)
