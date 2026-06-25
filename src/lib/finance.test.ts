@@ -5,6 +5,9 @@ import {
   rankVenuesByProfit,
   rankCitiesByProfit,
   rankContactsByProfit,
+  showProfitYears,
+  parseProfitYear,
+  filterShowsByYear,
   summarizeFinances,
   totalsByCategory,
   categoryReport,
@@ -498,6 +501,80 @@ describe("rankContactsByProfit", () => {
     const ze = r.rows.find((row) => row.contact?.id === "ze");
     expect(ze!.showCount).toBe(2);
     expect(ze!.totalNet).toBe(285_00);
+  });
+});
+
+describe("showProfitYears", () => {
+  const d = (iso: string) => new Date(iso);
+
+  it("devolve os anos UTC presentes, decrescente e sem duplicar", () => {
+    const years = showProfitYears([
+      d("2024-03-01T00:00:00Z"),
+      d("2026-12-31T00:00:00Z"),
+      d("2024-08-15T00:00:00Z"),
+      d("2025-01-01T00:00:00Z"),
+    ]);
+    expect(years).toEqual([2026, 2025, 2024]);
+  });
+
+  it("usa o ano UTC mesmo perto da virada (não escorrega de fuso)", () => {
+    // 2025-12-31 23:00Z ainda é 2025 em UTC (em -03:00 pareceria 2025 também,
+    // mas o ponto é fixar a convenção UTC do módulo).
+    const years = showProfitYears([d("2025-12-31T23:00:00Z")]);
+    expect(years).toEqual([2025]);
+  });
+
+  it("devolve lista vazia sem datas", () => {
+    expect(showProfitYears([])).toEqual([]);
+  });
+});
+
+describe("parseProfitYear", () => {
+  const available = [2026, 2025, 2024];
+
+  it("trata vazio/ausente/'todos' como recorte completo ('all')", () => {
+    expect(parseProfitYear(undefined, available)).toBe("all");
+    expect(parseProfitYear("", available)).toBe("all");
+    expect(parseProfitYear("  ", available)).toBe("all");
+    expect(parseProfitYear("todos", available)).toBe("all");
+    expect(parseProfitYear("TODOS", available)).toBe("all");
+  });
+
+  it("aceita um ano de quatro dígitos presente nos disponíveis", () => {
+    expect(parseProfitYear("2025", available)).toBe(2025);
+    expect(parseProfitYear(" 2024 ", available)).toBe(2024);
+  });
+
+  it("cai em 'all' quando o ano não está nos disponíveis ou é inválido", () => {
+    expect(parseProfitYear("2020", available)).toBe("all");
+    expect(parseProfitYear("20255", available)).toBe("all");
+    expect(parseProfitYear("abc", available)).toBe("all");
+  });
+
+  it("usa o primeiro valor quando a query vem repetida", () => {
+    expect(parseProfitYear(["2026", "2024"], available)).toBe(2026);
+    expect(parseProfitYear(["todos", "2024"], available)).toBe("all");
+  });
+});
+
+describe("filterShowsByYear", () => {
+  const shows = [
+    { id: "a", date: new Date("2024-05-01T00:00:00Z") },
+    { id: "b", date: new Date("2025-02-01T00:00:00Z") },
+    { id: "c", date: new Date("2025-11-30T00:00:00Z") },
+  ];
+
+  it("devolve a lista inalterada quando 'all'", () => {
+    expect(filterShowsByYear(shows, "all")).toBe(shows);
+  });
+
+  it("mantém só os shows do ano UTC pedido", () => {
+    expect(filterShowsByYear(shows, 2025).map((s) => s.id)).toEqual(["b", "c"]);
+    expect(filterShowsByYear(shows, 2024).map((s) => s.id)).toEqual(["a"]);
+  });
+
+  it("devolve vazio para um ano sem shows", () => {
+    expect(filterShowsByYear(shows, 2030)).toEqual([]);
   });
 });
 

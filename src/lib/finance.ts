@@ -493,6 +493,56 @@ export function rankContactsByProfit<S extends ShowLike>(
   };
 }
 
+// ── Recorte por período (ano) da rentabilidade por contratante ──────────────
+
+/** Valor do seletor de período: um ano específico ou "all" (sem recorte). */
+export type ProfitYearFilter = number | "all";
+
+/**
+ * Anos (decrescente) presentes nas datas dos shows — para montar o seletor de
+ * período da rentabilidade por contratante. Usa o ano **UTC**, consistente com
+ * as demais agregações financeiras (que normalizam por UTC), e deduplica.
+ */
+export function showProfitYears(dates: Date[]): number[] {
+  const years = new Set<number>();
+  for (const d of dates) years.add(d.getUTCFullYear());
+  return [...years].sort((a, b) => b - a);
+}
+
+/**
+ * Resolve o parâmetro `?ano=` no recorte de período da rentabilidade:
+ * - vazio, "todos" ou ano fora dos disponíveis → `"all"` (sem recorte);
+ * - "YYYY" presente em `availableYears` → aquele ano.
+ * Aceita query repetida (usa o primeiro valor), espelhando `parseBurnWindow`.
+ */
+export function parseProfitYear(
+  raw: string | string[] | undefined,
+  availableYears: number[],
+): ProfitYearFilter {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (value == null) return "all";
+  const trimmed = value.trim();
+  if (trimmed === "" || trimmed.toLowerCase() === "todos") return "all";
+  if (/^\d{4}$/.test(trimmed)) {
+    const y = Number(trimmed);
+    if (availableYears.includes(y)) return y;
+  }
+  return "all";
+}
+
+/**
+ * Filtra shows pelo ano (UTC) da `date`; `"all"` devolve a lista inalterada.
+ * Mantém `rankContactsByProfit` agnóstico ao recorte — filtra-se **antes** de
+ * agregar, então a regra "um pagador por show" e o P&L seguem intocados.
+ */
+export function filterShowsByYear<S extends { date: Date }>(
+  shows: S[],
+  year: ProfitYearFilter,
+): S[] {
+  if (year === "all") return shows;
+  return shows.filter((s) => s.date.getUTCFullYear() === year);
+}
+
 // ── Agregações financeiras (F3 — dashboard) ─────────────────────────────────
 
 export interface FinanceSummary {
