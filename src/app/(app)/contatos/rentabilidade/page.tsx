@@ -3,12 +3,14 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   rankContactsByProfit,
+  clientConcentration,
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
   type TxLike,
   type ShowLike,
   type ContactProfitContact,
+  type ClientConcentration,
 } from "@/lib/finance";
 import { pickPayerContact } from "@/lib/billing";
 import { formatMoney } from "@/lib/money";
@@ -82,6 +84,8 @@ export default async function ContactProfitabilityPage({
     txs,
     getPayer as (s: ShowLike & ShowRow) => ContactProfitContact | null,
   );
+
+  const concentration = clientConcentration(report.rows);
 
   const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
 
@@ -174,6 +178,10 @@ export default async function ContactProfitabilityPage({
                 />
               </div>
             )}
+
+          {concentration.clientCount > 0 && (
+            <ConcentrationCard concentration={concentration} />
+          )}
 
           <div className="card overflow-x-auto p-0">
             <table className="w-full text-sm">
@@ -289,6 +297,93 @@ function PeriodPicker({
         </Link>
       ))}
     </nav>
+  );
+}
+
+/** Rótulo + tom (cor/emoji) do veredito de concentração de clientes. */
+const CONCENTRATION_VERDICT: Record<
+  ClientConcentration["level"],
+  { label: string; emoji: string; classes: string; note: string }
+> = {
+  concentrated: {
+    label: "Concentrada",
+    emoji: "🔴",
+    classes: "border-red-200 bg-red-50 text-red-800",
+    note: "Boa parte da receita vem de poucos contratantes — se um sair, o baque é grande. Vale diversificar a carteira.",
+  },
+  moderate: {
+    label: "Moderada",
+    emoji: "🟡",
+    classes: "border-amber-200 bg-amber-50 text-amber-800",
+    note: "A receita depende de um punhado de contratantes. Conquistar novos clientes reduz o risco.",
+  },
+  diversified: {
+    label: "Diversificada",
+    emoji: "🟢",
+    classes: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    note: "A receita está bem distribuída entre vários contratantes — pouca dependência de um único cliente.",
+  },
+};
+
+/** Formata uma participação 0..1 como porcentagem inteira (ex.: 0,6 → "60%"). */
+function pct(share: number): string {
+  return `${Math.round(share * 100)}%`;
+}
+
+/**
+ * Card "Concentração de clientes": mede o risco de depender de poucos
+ * contratantes (sobre a receita bruta, distinto da rentabilidade líquida).
+ */
+function ConcentrationCard({
+  concentration,
+}: {
+  concentration: ClientConcentration;
+}) {
+  const verdict = CONCENTRATION_VERDICT[concentration.level];
+  const { top, clientCount } = concentration;
+  return (
+    <div className={"card border " + verdict.classes}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide opacity-80">
+          Concentração de clientes
+        </p>
+        <span className="badge bg-white/70 font-semibold">
+          {verdict.emoji} {verdict.label}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-4 sm:grid-cols-3">
+        <div>
+          <p className="text-2xl font-bold">{pct(concentration.topShare)}</p>
+          <p className="text-xs opacity-80">
+            da receita vem de{" "}
+            {top ? (
+              <Link href={`/contatos/${top.contact.id}`} className="underline">
+                {top.contact.name}
+              </Link>
+            ) : (
+              "—"
+            )}{" "}
+            (maior contratante)
+          </p>
+        </div>
+        <div>
+          <p className="text-2xl font-bold">{pct(concentration.top3Share)}</p>
+          <p className="text-xs opacity-80">
+            nos 3 maiores de {clientCount}{" "}
+            {clientCount === 1 ? "contratante" : "contratantes"}
+          </p>
+        </div>
+        <div>
+          <p className="text-2xl font-bold">
+            {concentration.effectiveClients.toFixed(1)}
+          </p>
+          <p className="text-xs opacity-80">
+            clientes efetivos (como se fossem N de mesmo tamanho)
+          </p>
+        </div>
+      </div>
+      <p className="mt-3 text-xs opacity-90">{verdict.note}</p>
+    </div>
   );
 }
 

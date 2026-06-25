@@ -5,6 +5,7 @@ import {
   rankVenuesByProfit,
   rankCitiesByProfit,
   rankContactsByProfit,
+  clientConcentration,
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
@@ -501,6 +502,103 @@ describe("rankContactsByProfit", () => {
     const ze = r.rows.find((row) => row.contact?.id === "ze");
     expect(ze!.showCount).toBe(2);
     expect(ze!.totalNet).toBe(285_00);
+  });
+});
+
+describe("clientConcentration", () => {
+  const ZE = { id: "ze", name: "Zé Produções", role: "PROMOTER" };
+  const ANA = { id: "ana", name: "Ana Booking", role: "BOOKER" };
+  const LIA = { id: "lia", name: "Lia Eventos", role: "VENUE" };
+
+  // Constrói as linhas via rankContactsByProfit para refletir a entrada real da UI.
+  function rowsFrom(
+    shows: ShowLike[],
+    payers: Record<string, { id: string; name: string; role: string } | null>,
+    txs: TxLike[] = [],
+  ) {
+    return rankContactsByProfit(shows, txs, (s: ShowLike) => payers[s.id] ?? null).rows;
+  }
+
+  it("retorna estrutura vazia quando não há contratantes com receita", () => {
+    const c = clientConcentration([]);
+    expect(c.clients).toEqual([]);
+    expect(c.total).toBe(0);
+    expect(c.clientCount).toBe(0);
+    expect(c.top).toBeNull();
+    expect(c.topShare).toBe(0);
+    expect(c.top3Share).toBe(0);
+    expect(c.hhi).toBe(0);
+    expect(c.effectiveClients).toBe(0);
+    expect(c.level).toBe("concentrated");
+  });
+
+  it("calcula participação sobre a receita bruta e ignora o grupo sem contratante", () => {
+    const shows: ShowLike[] = [
+      { id: "a", fee: 600_00, status: "PLAYED" }, // Zé
+      { id: "b", fee: 300_00, status: "CONFIRMED" }, // Ana
+      { id: "c", fee: 100_00, status: "CONFIRMED" }, // Lia
+      { id: "d", fee: 999_00, status: "CONFIRMED" }, // sem contratante (não conta)
+    ];
+    const c = clientConcentration(
+      rowsFrom(shows, { a: ZE, b: ANA, c: LIA, d: null }),
+    );
+    // total = 600+300+100 = 1000 (o show sem contratante de 999 não entra)
+    expect(c.total).toBe(1000_00);
+    expect(c.clientCount).toBe(3);
+    expect(c.top?.contact.id).toBe("ze");
+    expect(c.topShare).toBeCloseTo(0.6);
+    expect(c.clients.map((s) => s.contact.id)).toEqual(["ze", "ana", "lia"]);
+    // HHI = 0,6² + 0,3² + 0,1² = 0,46
+    expect(c.hhi).toBeCloseTo(0.46);
+    expect(c.effectiveClients).toBeCloseTo(1 / 0.46);
+  });
+
+  it("inclui extras na receita bruta do contratante", () => {
+    const shows: ShowLike[] = [{ id: "a", fee: 100_00, status: "PLAYED" }];
+    const txs: TxLike[] = [tx({ type: "INCOME", amount: 50_00, showId: "a" })];
+    const c = clientConcentration(rowsFrom(shows, { a: ZE }, txs));
+    // receita bruta = cachê 100 + extra 50 = 150
+    expect(c.total).toBe(150_00);
+    expect(c.top?.revenue).toBe(150_00);
+  });
+
+  it("descarta contratantes sem receita bruta positiva", () => {
+    // Zé tem receita; um contratante só com despesa (cachê 0) não vira fatia.
+    const shows: ShowLike[] = [
+      { id: "a", fee: 100_00, status: "PLAYED" },
+      { id: "b", fee: 0, status: "PLAYED" },
+    ];
+    const txs: TxLike[] = [tx({ type: "EXPENSE", amount: 20_00, showId: "b" })];
+    const c = clientConcentration(rowsFrom(shows, { a: ZE, b: ANA }, txs));
+    expect(c.clientCount).toBe(1);
+    expect(c.clients.map((s) => s.contact.id)).toEqual(["ze"]);
+  });
+
+  it("um único contratante é sempre concentrado (HHI 1)", () => {
+    const shows: ShowLike[] = [{ id: "a", fee: 500_00, status: "PLAYED" }];
+    const c = clientConcentration(rowsFrom(shows, { a: ZE }));
+    expect(c.topShare).toBe(1);
+    expect(c.hhi).toBe(1);
+    expect(c.effectiveClients).toBe(1);
+    expect(c.level).toBe("concentrated");
+  });
+
+  it("receita bem distribuída entre muitos contratantes é diversificada", () => {
+    // 5 contratantes de 100 cada -> HHI 0,2 (< 0,25) -> diversificada
+    const ids = ["c1", "c2", "c3", "c4", "c5"];
+    const shows: ShowLike[] = ids.map((id) => ({
+      id,
+      fee: 100_00,
+      status: "PLAYED",
+    }));
+    const payers = Object.fromEntries(
+      ids.map((id) => [id, { id, name: id.toUpperCase(), role: "BOOKER" }]),
+    );
+    const c = clientConcentration(rowsFrom(shows, payers));
+    expect(c.clientCount).toBe(5);
+    expect(c.hhi).toBeCloseTo(0.2);
+    expect(c.level).toBe("diversified");
+    expect(c.top3Share).toBeCloseTo(0.6);
   });
 });
 
