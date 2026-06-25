@@ -9,8 +9,16 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **776 testes**
-verdes após a Sessão 117 (**concentração de clientes na rentabilidade por contratante** — helper puro
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **781 testes**
+verdes após a Sessão 118 (**concentração de clientes no Painel (nudge de risco de dependência)** — helper puro
+`clientConcentrationHeadline(concentration)` em `src/lib/finance.ts` (espelha `cashBurnHeadline`/D103) decide, de uma
+`clientConcentration` já computada, se o nudge aparece (`show` só quando o veredito é `concentrated` e há ≥1
+contratante) e com que urgência (`critical` quando um único contratante carrega tudo ou o maior tem ≥ 2/3 da
+receita); segundo banner-nudge 🔴/🟠 em `dashboard/page.tsx`, após o de ritmo de gasto, "X% da receita vem de
+{maior contratante} (de N contratantes)" linkando para `/contatos/rentabilidade`. A consulta `prisma.show.findMany`
+do dashboard passou a incluir os `contacts` para resolver o pagador (`pickPayerContact`) e derivar a concentração de
+`rankContactsByProfit(...).rows`. +5 testes puros, ver D110; eram 776 na Sessão 117,
+**concentração de clientes na rentabilidade por contratante** — helper puro
 `clientConcentration(rows)` em `src/lib/finance.ts` deriva, das linhas de `rankContactsByProfit`, o **risco de
 dependência** de poucos contratantes sobre a **receita bruta** (cachê + extras): participação do maior, dos 3
 maiores, HHI, clientes efetivos (1/HHI) e veredito `concentrated|moderate|diversified` reaproveitando os limiares
@@ -2517,11 +2525,14 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    **concentração de clientes (risco de dependência)** entregue na Sessão 117 — `clientConcentration(rows)` em
    `src/lib/finance.ts` deriva das linhas do ranking a dispersão da receita bruta entre contratantes (topShare,
    top3Share, HHI, clientes efetivos, veredito reusando `diversificationLevel`/D45) + card "Concentração de
-   clientes" em `/contatos/rentabilidade`, ver D109.
+   clientes" em `/contatos/rentabilidade`, ver D109; **concentração de clientes no Painel** entregue na Sessão 118 —
+   `clientConcentrationHeadline(concentration)` em `src/lib/finance.ts` (espelha `cashBurnHeadline`/D103) + segundo
+   banner-nudge 🔴/🟠 em `dashboard/page.tsx` (após o de ritmo de gasto), surgindo só quando a carteira está
+   `concentrated`; a consulta de shows do dashboard passou a incluir `contacts` p/ resolver o pagador, ver D110.
    Próximo possível — o cachê **mediano** por contratante (robusto a outlier — adiável: ruidoso com poucos shows,
    mesma razão da D57); um recorte por período análogo na rentabilidade por local/cidade e no detalhe do contato
-   (reusando os três helpers); comparar dois anos lado a lado (Δ por contratante, espelhando D33); ou levar a
-   concentração de clientes ao Painel como nudge quando o veredito morder (`concentrated`, espelhando D100/D103).
+   (reusando os três helpers); comparar dois anos lado a lado (Δ por contratante, espelhando D33); ou um recorte por
+   período (`?ano=`) também no nudge de concentração do Painel (hoje usa o retrato corrente, todos os anos).
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

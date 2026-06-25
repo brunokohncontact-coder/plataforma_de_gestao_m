@@ -3138,3 +3138,37 @@ contexto, decisão, justificativa e alternativas consideradas.
   somar superfície de UI. (d) classificar pelo `topShare` (regra "1 cliente > 50% = risco") em vez do HHI —
   descartado: o HHI captura toda a distribuição (dois clientes de 40%+40% também é risco) e já é o critério de
   `incomeMix`; manter um só método evita vereditos divergentes entre telas.
+
+## D110 — Concentração de clientes no Painel (nudge de risco de dependência) (Sessão 118)
+- **Contexto:** a concentração de clientes (D109) vivia só em `/contatos/rentabilidade` — quem não abrisse a
+  página de rentabilidade não via o risco. O padrão do app é levar o sinal acionável ao Painel quando ele
+  **morde** (custo fixo D100, burn rate D103, DSO D70), via um helper de "headline" puro que decide a exibição.
+  Faltava esse atalho para o risco de depender de poucos contratantes.
+- **Decisão:** novo helper puro **`clientConcentrationHeadline(concentration)`** em `finance.ts` (espelha
+  `cashBurnHeadline`/D103 e `paymentLagHeadline`/D70) que recebe uma `clientConcentration` já computada e devolve
+  `{ show, critical, topShare, top, clientCount, level }`. **`show`** só é `true` quando o veredito é
+  `concentrated` e há ≥1 contratante com receita; **`critical`** marca o caso extremo — **um único** contratante
+  (clientCount 1) ou o maior sozinho com **≥ 2/3** da receita — para o Painel subir o tom. UI: segundo
+  banner-nudge no `dashboard/page.tsx`, logo após o de ritmo de gasto (D103), 🔴 (crítico, vermelho) / 🟠
+  (concentrado, âmbar), mostrando "X% da receita vem de {maior contratante} (de N contratantes)" e linkando para
+  `/contatos/rentabilidade`. A consulta `prisma.show.findMany` do dashboard passou a incluir os `contacts`
+  (id/nome/papel) para resolver o pagador via `pickPayerContact` (mesma cadeia da página de rentabilidade); a
+  concentração é derivada de `rankContactsByProfit(...).rows` → `clientConcentration` sobre os shows já carregados.
+- **Justificativa:** centralizar a **regra de exibição** no helper puro (testável, sem I/O) mantém o dashboard
+  como mero consumidor, como nos nudges anteriores. Disparar só em `concentrated` (e não em `moderate`/
+  `diversified`) evita nagar quem já diversificou — disciplina dos D100/D103. O corte `critical` em **cliente
+  único OU maior ≥ 2/3** distingue o "ovos numa cesta só" do meramente concentrado, sem inventar um novo veredito
+  (reusa o `level` da D109). Reusar `pickPayerContact` + `rankContactsByProfit` garante consistência com a página
+  e com a regra "um pagador por show" (D105); incluir `contacts` na consulta existente evita um round-trip extra.
+- **Testes:** 5 casos puros novos em `finance.test.ts` (`clientConcentrationHeadline`): base vazia → não mostra;
+  contratante único → mostra crítico (topShare 1); maior domina ≥ 2/3 com vários clientes → crítico; concentrado
+  mas maior < 2/3 → mostra não-crítico; receita diversificada → não mostra. **781 testes** verdes (eram 776).
+- **DoD:** build de produção (rota `/dashboard` ok), typecheck e lint (0 avisos) verdes; **781 testes**; smoke
+  test — `npm start`: `/login` → 200, `/dashboard` sem sessão → 307 (app sobe). `npm audit` inalterado vs.
+  baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver
+  D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) mostrar também `moderate` no Painel — descartado: vira ruído permanente, e o
+  detalhe já está na página. (b) classificar `critical` pelo HHI em vez do `topShare` — descartado: o HHI já
+  define o veredito `concentrated` (gate de exibição); para a **urgência** do nudge o `topShare` ("um cliente
+  carrega quase tudo") é a leitura mais direta e humana. (c) um seletor de período (`?ano=`) no nudge, como na
+  página — adiável: o Painel usa o retrato corrente (todos os anos), coerente com os demais nudges.

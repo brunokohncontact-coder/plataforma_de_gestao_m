@@ -29,7 +29,11 @@ import {
   cashRunway,
   cashBurnRunway,
   cashBurnHeadline,
+  rankContactsByProfit,
+  clientConcentration,
+  clientConcentrationHeadline,
   type TxLike,
+  type ContactProfitContact,
   type QuarterGoalStatus,
   type ReceivableShowLike,
   type PromisableShowLike,
@@ -44,6 +48,7 @@ import {
   formatWeekendLabel,
   type ConflictShowLike,
 } from "@/lib/shows";
+import { pickPayerContact } from "@/lib/billing";
 import { formatMoney } from "@/lib/money";
 import { formatDate, formatMonthKey } from "@/lib/format";
 import { SHOW_STATUS_LABELS, SHOW_STATUS_COLORS, type ShowStatus } from "@/lib/domain";
@@ -67,7 +72,14 @@ export default async function DashboardPage() {
   const currentYear = new Date().getFullYear();
   const [transactions, shows, upcoming, revenueGoal] = await Promise.all([
     prisma.transaction.findMany({ where: { userId: user.id } }),
-    prisma.show.findMany({ where: { userId: user.id } }),
+    prisma.show.findMany({
+      where: { userId: user.id },
+      include: {
+        contacts: {
+          select: { contact: { select: { id: true, name: true, role: true } } },
+        },
+      },
+    }),
     prisma.show.findMany({
       where: { userId: user.id, date: { gte: new Date() }, status: { not: "CANCELLED" } },
       orderBy: { date: "asc" },
@@ -232,6 +244,23 @@ export default async function DashboardPage() {
   // entrou — só dispara quando o músico de fato queima caixa no ritmo recente. Mesma
   // disciplina: vira nudge só quando o fôlego morde (tight/critical), via cashBurnHeadline.
   const burnHeadline = cashBurnHeadline(cashBurnRunway(txs));
+
+  // Concentração de clientes (D109): "quanto da minha receita depende de poucos
+  // contratantes?". Reaproveita os shows (com contatos) e transações já carregados;
+  // atribui cada show a um pagador (pickPayerContact) e mede a dispersão da receita
+  // bruta entre contratantes. Vira nudge só quando a carteira está de fato
+  // concentrada (clientConcentrationHeadline) — com receita diversificada o aviso
+  // seria ruído. O detalhe completo está em /contatos/rentabilidade.
+  const getPayer = (show: (typeof shows)[number]): ContactProfitContact | null => {
+    const picked = pickPayerContact(show.contacts.map((cs) => cs.contact));
+    return picked ? { id: picked.id, name: picked.name, role: picked.role } : null;
+  };
+  const concentrationHeadline = clientConcentrationHeadline(
+    clientConcentration(
+      rankContactsByProfit(shows as ShowLike[], txs, getPayer as (s: ShowLike) => ContactProfitContact | null)
+        .rows,
+    ),
+  );
 
   // Rentabilidade: top shows realizados por resultado
   const playedShows = shows.filter((s) => s.status === "PLAYED");
@@ -422,6 +451,43 @@ export default async function DashboardPage() {
             (queima de {formatMoney(burnHeadline.monthlyBurn)}/mês)
           </span>
           <span className={burnHeadline.critical ? "text-red-600" : "text-amber-600"}>Ver →</span>
+        </Link>
+      )}
+
+      {concentrationHeadline.show && (
+        <Link
+          href="/contatos/rentabilidade"
+          className={
+            "flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3 text-sm transition " +
+            (concentrationHeadline.critical
+              ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100")
+          }
+        >
+          <span className="font-semibold">
+            {concentrationHeadline.critical ? "🔴" : "🟠"} Carteira{" "}
+            {concentrationHeadline.critical ? "muito concentrada" : "concentrada"}
+          </span>
+          <span>
+            <strong>{Math.round(concentrationHeadline.topShare * 100)}%</strong> da
+            receita vem de{" "}
+            <strong>
+              {concentrationHeadline.top
+                ? concentrationHeadline.top.name
+                : "um único contratante"}
+            </strong>
+            {concentrationHeadline.clientCount > 1
+              ? ` (de ${concentrationHeadline.clientCount} contratantes)`
+              : ""}{" "}
+            — diversificar a carteira reduz o risco
+          </span>
+          <span
+            className={
+              concentrationHeadline.critical ? "text-red-600" : "text-amber-600"
+            }
+          >
+            Ver →
+          </span>
         </Link>
       )}
 

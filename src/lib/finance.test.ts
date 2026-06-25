@@ -6,6 +6,7 @@ import {
   rankCitiesByProfit,
   rankContactsByProfit,
   clientConcentration,
+  clientConcentrationHeadline,
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
@@ -599,6 +600,90 @@ describe("clientConcentration", () => {
     expect(c.hhi).toBeCloseTo(0.2);
     expect(c.level).toBe("diversified");
     expect(c.top3Share).toBeCloseTo(0.6);
+  });
+});
+
+describe("clientConcentrationHeadline", () => {
+  const mk = (
+    ids: { id: string; revenue: number }[],
+  ): ShowLike[] => ids.map((c) => ({ id: c.id, fee: c.revenue, status: "PLAYED" }));
+  const payersOf = (ids: string[]) =>
+    Object.fromEntries(
+      ids.map((id) => [id, { id, name: id.toUpperCase(), role: "BOOKER" }]),
+    );
+  // Constrói a concentração a partir das linhas reais (mesma cadeia da UI).
+  const concentrationFor = (ids: { id: string; revenue: number }[]) =>
+    clientConcentration(
+      rankContactsByProfit(
+        mk(ids),
+        [],
+        (s: ShowLike) => payersOf(ids.map((c) => c.id))[s.id] ?? null,
+      ).rows,
+    );
+
+  it("não mostra quando não há contratante com receita (base vazia)", () => {
+    const h = clientConcentrationHeadline(clientConcentration([]));
+    // Sem receita o veredito é "concentrated", mas clientCount 0 → sem nudge.
+    expect(h.show).toBe(false);
+    expect(h.critical).toBe(false);
+    expect(h.top).toBeNull();
+    expect(h.clientCount).toBe(0);
+  });
+
+  it("mostra como crítico quando um único contratante carrega tudo", () => {
+    const h = clientConcentrationHeadline(
+      concentrationFor([{ id: "ze", revenue: 500_00 }]),
+    );
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(true);
+    expect(h.topShare).toBe(1);
+    expect(h.top?.id).toBe("ze");
+    expect(h.clientCount).toBe(1);
+    expect(h.level).toBe("concentrated");
+  });
+
+  it("mostra como crítico quando o maior domina ≥ 2/3 mesmo com vários clientes", () => {
+    // Zé = 800, outros 4 = 50 cada (200) → topShare 0,8 ≥ 2/3.
+    const h = clientConcentrationHeadline(
+      concentrationFor([
+        { id: "ze", revenue: 800_00 },
+        { id: "a", revenue: 50_00 },
+        { id: "b", revenue: 50_00 },
+        { id: "c", revenue: 50_00 },
+        { id: "d", revenue: 50_00 },
+      ]),
+    );
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(true);
+    expect(h.topShare).toBeCloseTo(0.8);
+    expect(h.top?.id).toBe("ze");
+  });
+
+  it("mostra sem ser crítico quando concentrado mas o maior fica abaixo de 2/3", () => {
+    // 600/300/100 → concentrada (HHI 0,46) mas topShare 0,6 < 2/3 e >1 cliente.
+    const h = clientConcentrationHeadline(
+      concentrationFor([
+        { id: "ze", revenue: 600_00 },
+        { id: "ana", revenue: 300_00 },
+        { id: "lia", revenue: 100_00 },
+      ]),
+    );
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(false);
+    expect(h.topShare).toBeCloseTo(0.6);
+    expect(h.clientCount).toBe(3);
+  });
+
+  it("não mostra quando a receita está diversificada", () => {
+    // 5 contratantes de 100 cada → HHI 0,2 → diversificada.
+    const h = clientConcentrationHeadline(
+      concentrationFor(
+        ["c1", "c2", "c3", "c4", "c5"].map((id) => ({ id, revenue: 100_00 })),
+      ),
+    );
+    expect(h.show).toBe(false);
+    expect(h.critical).toBe(false);
+    expect(h.level).toBe("diversified");
   });
 });
 
