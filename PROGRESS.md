@@ -9,8 +9,16 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **787 testes**
-verdes após a Sessão 121 (**concentração geográfica na atuação por cidade — risco de depender de poucas praças** —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **792 testes**
+verdes após a Sessão 122 (**concentração geográfica no Painel — nudge de risco de depender de poucas praças** —
+helper puro `geoConcentrationHeadline(concentration)` em `src/lib/finance.ts` (espelha `clientConcentrationHeadline`/D110)
+decide, de uma `geoConcentration` já computada, se o nudge aparece (`show` só quando o veredito é `concentrated` e há
+≥1 cidade com receita) e com que urgência (`critical` quando uma única cidade carrega tudo ou a maior tem ≥ 2/3 da
+receita); novo banner-nudge 🔴/🟠 em `dashboard/page.tsx`, após o de concentração de clientes, "X% da receita vem de
+{maior cidade} (de N cidades)" linkando para `/shows/cidades`. A concentração é derivada de
+`rankCitiesByProfit(shows, txs).rows` sobre os shows (com `city`) e transações já carregados no dashboard — sem
+round-trip novo. Fecha o item adiado da D113 (alternativa b). +5 testes puros, ver D114; eram 787 na Sessão 121
+(**concentração geográfica na atuação por cidade — risco de depender de poucas praças** —
 helper puro `geoConcentration(rows)` em `src/lib/finance.ts` deriva, das linhas de `rankCitiesByProfit`, o risco de
 a receita depender de **poucas cidades**: participação da maior praça, das 3 maiores, HHI, cidades efetivas (1/HHI)
 e veredito `concentrated|moderate|diversified` reaproveitando os limiares de `incomeMix`/`clientConcentration`
@@ -2567,11 +2575,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    entregue na Sessão 121 — `geoConcentration(rows)` em `src/lib/finance.ts` deriva das linhas de
    `rankCitiesByProfit` a dispersão da receita bruta entre cidades (topShare, top3Share, HHI, cidades efetivas,
    veredito reusando `diversificationLevel`/D45, ignorando "Sem cidade") + card "Concentração geográfica" em
-   `/shows/cidades`, ver D113. Próximo possível — **nudge de concentração geográfica no Painel** (espelhando
-   `clientConcentrationHeadline`/D110, um `geoConcentrationHeadline` que só morde quando `concentrated`); o
-   **recorte por período (`?ano=`)** também em `/shows/cidades` (adiar a concentração às linhas já filtradas — o
-   helper não muda); ou estender `geoConcentration` às linhas de **local** (`rankVenuesByProfit`) para um card de
-   concentração por casa em `/shows/locais`.
+   `/shows/cidades`, ver D113; **nudge de concentração geográfica no Painel** entregue na Sessão 122 —
+   `geoConcentrationHeadline(concentration)` em `src/lib/finance.ts` (espelha `clientConcentrationHeadline`/D110)
+   decide a exibição (só quando `concentrated`, `critical` quando cidade única ou maior ≥ 2/3) + banner-nudge 🔴/🟠
+   em `dashboard/page.tsx` linkando para `/shows/cidades`, reaproveitando os shows já carregados, ver D114.
+   Próximo possível — o **recorte por período (`?ano=`)** também em `/shows/cidades` (aplicar a concentração às
+   linhas já filtradas — o helper não muda); ou estender `geoConcentration` às linhas de **local**
+   (`rankVenuesByProfit`) para um card de concentração por casa em `/shows/locais`.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)
