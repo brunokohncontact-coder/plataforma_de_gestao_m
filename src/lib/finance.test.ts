@@ -442,6 +442,21 @@ describe("rankContactsByProfit", () => {
     expect(r.count).toBe(4);
   });
 
+  it("calcula o cachê médio (nível de preço) por contratante, distinto do líquido", () => {
+    const r = rankContactsByProfit(shows, txs, getPayer);
+    const ze = r.rows.find((row) => row.contact?.id === "ze");
+    // cachês 100 + 200 = 300 em 2 shows -> 150/show (≠ avgNet 142,50, que é líquido)
+    expect(ze!.avgFee).toBe(150_00);
+    expect(ze!.avgFee).not.toBe(ze!.avgNet);
+    const ana = r.rows.find((row) => row.contact?.id === "ana");
+    // único show de 50 -> cachê médio 50 = líquido (sem extras/custos)
+    expect(ana!.avgFee).toBe(50_00);
+    expect(ana!.avgFee).toBe(ana!.avgNet);
+    // grupo sem contratante: 1 show de 30
+    const sem = r.rows.find((row) => row.contact === null);
+    expect(sem!.avgFee).toBe(30_00);
+  });
+
   it("agrupa shows sem contratante à parte (contact null) e o coloca por último", () => {
     const r = rankContactsByProfit(shows, txs, getPayer);
     const semContratante = r.rows.find((row) => row.contact === null);
