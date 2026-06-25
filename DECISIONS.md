@@ -3172,3 +3172,35 @@ contexto, decisão, justificativa e alternativas consideradas.
   define o veredito `concentrated` (gate de exibição); para a **urgência** do nudge o `topShare` ("um cliente
   carrega quase tudo") é a leitura mais direta e humana. (c) um seletor de período (`?ano=`) no nudge, como na
   página — adiável: o Painel usa o retrato corrente (todos os anos), coerente com os demais nudges.
+
+## D111 — Recorte por período (ano) na rentabilidade por local (Sessão 119)
+- **Contexto:** o recorte por período (ano) via `?ano=` já existia na rentabilidade **por contratante**
+  (`/contatos/rentabilidade`, D108) com três helpers puros reutilizáveis — `showProfitYears` (anos UTC presentes,
+  desc/dedup), `parseProfitYear` (`?ano=` → `number | "all"`, saneado contra os anos disponíveis) e
+  `filterShowsByYear` (filtra shows pela `date` UTC antes de agregar). A rentabilidade **por local**
+  (`/shows/locais`, `rankVenuesByProfit`) ainda mostrava só o retrato acumulado de todos os anos, sem responder
+  "quais casas valeram a pena **neste ano**?". O próprio PROGRESS já listava como próximo possível "um recorte por
+  período análogo na rentabilidade por local/cidade (reusando os três helpers)".
+- **Decisão:** estender o recorte por período à página `/shows/locais` **reutilizando os três helpers da D108**,
+  sem lógica nova: a consulta `prisma.show.findMany` passou a incluir `date`; os shows recebem `date` no objeto
+  (`VenueShowLike & { date: Date }`) e são filtrados por `filterShowsByYear` **antes** de `rankVenuesByProfit`,
+  mantendo intactas a regra de agrupamento por local (venue → city → "Sem local") e o P&L. UI: um `PeriodPicker`
+  (pílula "Todos" + uma por ano com shows não cancelados, idêntico ao da D108) acima da tabela; estado vazio
+  período-ciente ("Nenhum show em {ano}" com link "Ver todos os anos"). Os anos do seletor saem só dos shows que
+  entram na agregação (não cancelados), para não oferecer um ano que ficaria vazio.
+- **Justificativa:** a pergunta "quais casas valem a pena?" é naturalmente período-dependente (uma casa pode ter
+  sido ótima em 2024 e ruim em 2025); o recorte anual torna a comparação justa. Reutilizar os helpers já testados
+  (D108) evita duplicar lógica e garante consistência de semântica (ano UTC, saneamento do `?ano=`) entre as duas
+  páginas de rentabilidade. Filtrar **antes** de agregar mantém `rankVenuesByProfit` agnóstico ao recorte (mesma
+  disciplina da D108).
+- **Testes:** nenhum teste novo — a mudança é wiring de UI sobre helpers puros já cobertos (`showProfitYears`/
+  `parseProfitYear`/`filterShowsByYear` têm os 10 casos da D108; `rankVenuesByProfit` é coberto à parte). **781
+  testes** verdes (precedente de mudança só-de-UI: D100/D103).
+- **DoD:** build de produção (rota `/shows/locais` ok), typecheck e lint (0 avisos) verdes; **781 testes**; smoke
+  test — `npm start`: `/` → 200, `/shows/locais` sem sessão → 307 → `/login` (app sobe, auth ativa). `npm audit`
+  inalterado vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado;
+  ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) recorte também na rentabilidade **por cidade** — não há página de cidade
+  separada hoje (`rankCitiesByProfit` existe mas sem rota); fica para quando a página existir, reusando o mesmo
+  padrão. (b) comparar dois anos lado a lado (Δ por local) — mais escopo; adiável (espelharia D33). (c) um seletor
+  de período também no detalhe do contato (`summarizeContactProfit`) — próximo passo natural, mesmos três helpers.

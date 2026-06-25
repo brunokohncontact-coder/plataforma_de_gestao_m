@@ -10,7 +10,13 @@
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
 do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **781 testes**
-verdes após a Sessão 118 (**concentração de clientes no Painel (nudge de risco de dependência)** — helper puro
+verdes após a Sessão 119 (**recorte por período (ano) na rentabilidade por local** — a página `/shows/locais`
+ganhou o mesmo `PeriodPicker` (pílula "Todos" + uma por ano com shows não cancelados) da rentabilidade por
+contratante, **reutilizando os três helpers puros da D108** (`showProfitYears`/`parseProfitYear`/`filterShowsByYear`
+em `src/lib/finance.ts`): a consulta passou a incluir `date`, os shows são filtrados por ano UTC **antes** de
+`rankVenuesByProfit` (regra de agrupamento por local e P&L intactos), com estado vazio período-ciente. Sem testes
+novos — wiring de UI sobre helpers já cobertos; ver D111; segue 781 da Sessão 118,
+**concentração de clientes no Painel (nudge de risco de dependência)** — helper puro
 `clientConcentrationHeadline(concentration)` em `src/lib/finance.ts` (espelha `cashBurnHeadline`/D103) decide, de uma
 `clientConcentration` já computada, se o nudge aparece (`show` só quando o veredito é `concentrated` e há ≥1
 contratante) e com que urgência (`critical` quando um único contratante carrega tudo ou o maior tem ≥ 2/3 da
@@ -2529,10 +2535,15 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `clientConcentrationHeadline(concentration)` em `src/lib/finance.ts` (espelha `cashBurnHeadline`/D103) + segundo
    banner-nudge 🔴/🟠 em `dashboard/page.tsx` (após o de ritmo de gasto), surgindo só quando a carteira está
    `concentrated`; a consulta de shows do dashboard passou a incluir `contacts` p/ resolver o pagador, ver D110.
+   **Recorte por período (ano) na rentabilidade por local** entregue na Sessão 119 — `/shows/locais` ganhou o mesmo
+   `PeriodPicker`/`?ano=` da rentabilidade por contratante, **reutilizando os três helpers da D108**
+   (`showProfitYears`/`parseProfitYear`/`filterShowsByYear`): inclui `date` na consulta e filtra por ano UTC antes de
+   `rankVenuesByProfit`, sem tocar a regra de agrupamento por local nem o P&L; estado vazio período-ciente, ver D111.
    Próximo possível — o cachê **mediano** por contratante (robusto a outlier — adiável: ruidoso com poucos shows,
-   mesma razão da D57); um recorte por período análogo na rentabilidade por local/cidade e no detalhe do contato
-   (reusando os três helpers); comparar dois anos lado a lado (Δ por contratante, espelhando D33); ou um recorte por
-   período (`?ano=`) também no nudge de concentração do Painel (hoje usa o retrato corrente, todos os anos).
+   mesma razão da D57); o **mesmo recorte por período no detalhe do contato** (`summarizeContactProfit` em
+   `contacts.ts`, reusando os três helpers — caminho mais direto agora); comparar dois anos lado a lado (Δ por
+   contratante/local, espelhando D33); ou um recorte por período (`?ano=`) também no nudge de concentração do Painel
+   (hoje usa o retrato corrente, todos os anos).
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)
