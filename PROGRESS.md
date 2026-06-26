@@ -9,8 +9,17 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **831 testes**
-verdes após a Sessão 135 (**exportação CSV do ranking de contatos por atividade em `/contatos/ranking`** — estende o
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **838 testes**
+verdes após a Sessão 136 (**exportação CSV dos cachês a receber em `/shows/a-receber`** — estende o botão "⬇ CSV" das
+D125/D127 à tela de dinheiro na mesa: serializador puro novo `receivablesToCsv` em `src/lib/csv.ts` na mesma convenção
+pt-BR (delimitador `;`, decimal com vírgula, datas UTC, BOM), consumindo uma forma mínima local `ReceivableCsvRow` (não
+importa `ShowReceivableRow` de `@/lib/finance`, que não carrega título/local). Colunas Show/Data/Local/Cidade/**Dias em
+atraso**/Cachê/Recebido/A receber/**Situação**/Promessa/**Status promessa**: "Situação" consolida os textos da tela
+(não lançada / lançada pendente / parcial) e "Status promessa" mapeia `paymentPromiseStatus` (Vencida/No prazo/vazio).
+Route `shows/a-receber/export/route.ts` espelha a query da página e reusa `reconcileShowFees`/`bucketReceivablesByAge`/
+`paymentPromiseStatus`, ordenando pelo **atraso mais longo** (fila de cobrança, não a ordem cronológica da tabela);
+arquivo `caches-a-receber.csv` (ASCII no header). Botão só com `result.count > 0`. **+7 testes**; validado por smoke
+test autenticado (200 + CSV correto). Ver D128; segue 831 da Sessão 135 (**exportação CSV do ranking de contatos por atividade em `/contatos/ranking`** — estende o
 botão "⬇ CSV" da D125 (rentabilidade) à primeira tela tabular de **CRM**: serializador puro novo `contactActivityToCsv`
 em `src/lib/csv.ts` na mesma convenção pt-BR (delimitador `;`, decimal com vírgula, datas UTC via `csvDate`, BOM UTF-8),
 consumindo uma forma mínima local `ContactActivityCsvRow` (não importa `ContactRankRow` de `@/lib/contacts` — evita
@@ -2565,7 +2574,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    na Sessão 103 — banner geral + selo "⚠ N promessas vencidas" por devedor (tabela e detalhe) e "⚠ promessa
    vencida" / "📅 promete {data}" por show em `/shows/a-receber/por-contratante`, reaproveitando
    `summarizePaymentPromises`/`paymentPromiseStatus` por grupo, ver D95):
-   próximo possível — lembrar a última escolha de contato por show, ou a mediana
+   **exportação CSV dos cachês a receber** entregue na Sessão 136 — `receivablesToCsv` em `src/lib/csv.ts` +
+   `/shows/a-receber/export` (Show/Data/Local/Cidade/dias em atraso/cachê/recebido/a receber/situação/promessa/status),
+   ordenado pelo atraso mais longo (fila de cobrança), botão "⬇ CSV" só com recebíveis em aberto, ver D128.
+   Próximo possível — estender a exportação CSV à visão **por contratante** (`/shows/a-receber/por-contratante`, forma de
+   linha agregada por devedor); lembrar a última escolha de contato por show; ou a mediana
    do prazo por contratante (adiada na D57: com poucos shows por contratante fica ruidosa).
 4. **Sessões/segurança**: invalidação ao trocar a senha entregue na Sessão 26
    (`passwordChangedAt` + `isSessionFresh`, ver D17). Evoluções possíveis: "encerrar sessão
