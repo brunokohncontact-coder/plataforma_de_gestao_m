@@ -10,7 +10,15 @@
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
 do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **792 testes**
-verdes após a Sessão 126 (**recorte por período (ano) na rentabilidade por show** — a página
+verdes após a Sessão 127 (**`PeriodPicker` compartilhado — DRY das cinco cópias do seletor de período** — extraído
+`src/components/PeriodPicker.tsx` (server component puro, só `Link`s) parametrizado por `basePath` (href de "Todos";
+cada ano → `${basePath}?ano=${y}`) e `ariaLabel` opcional; as cinco telas de rentabilidade que repetiam o mesmo
+seletor (`/shows/locais`, `/shows/cidades`, `/shows/rentabilidade`, `/contatos/rentabilidade`, `/contatos/[id]`)
+passaram a importá-lo, removendo as definições locais `PeriodPicker`/`ProfitPeriodPicker` — markup idêntico (mesmas
+classes, `href`, `aria-current`), **−180 linhas líquidas**, sem mudança de comportamento. Fecha o item de DRY
+sinalizado na D118 (alt. b)/D116 (alt. a)/D117 (alt. c). Sem testes novos — consolidação de UI sem nova lógica (não
+há infra de render de componente; ambiente `node`); helpers de período seguem cobertos desde a D108; ver D119; segue
+792 da Sessão 126 (**recorte por período (ano) na rentabilidade por show** — a página
 `/shows/rentabilidade` (ranking de P&L por show, F4) ganhou o mesmo `PeriodPicker` (pílula "Todos" + uma por ano com
 shows não cancelados) das telas de rentabilidade irmãs, **reaproveitando os três helpers puros da D108**
 (`showProfitYears`/`parseProfitYear`/`filterShowsByYear` em `src/lib/finance.ts`): a consulta já trazia `date`, os
@@ -2629,9 +2637,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    componente único de card de concentração parametrizado pelo rótulo se surgir um terceiro eixo (adiado na D116
    alt. a por as cópias serem pequenas e os textos acionáveis divergirem); comparar a concentração entre dois anos
    lado a lado (espelhando D33); ou o cachê **mediano** por casa (robusto a outlier, adiável: ruidoso com poucos
-   shows por casa, mesma razão da D57). **DRY do `PeriodPicker`:** cinco telas agora repetem o mesmo seletor
-   (contratante/local/cidade/detalhe do contato/show) — diferindo só no `href` base; consolidar num componente
-   compartilhado parametrizado pelo caminho base já tem massa crítica (ver D118 alt. b).
+   shows por casa, mesma razão da D57). **DRY do `PeriodPicker`:** ENTREGUE na Sessão 127 — extraído
+   `src/components/PeriodPicker.tsx` (server component puro, `basePath` + `ariaLabel`); as cinco telas
+   (contratante/local/cidade/detalhe do contato/show) importam o componente compartilhado, −180 linhas, markup
+   idêntico, ver D119. Próximo possível de DRY — unificar os cards de concentração permanece **adiado** (D116 alt. a):
+   os textos acionáveis divergem de verdade ("prospectar palcos" × "abrir praças" × "diversificar clientes").
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

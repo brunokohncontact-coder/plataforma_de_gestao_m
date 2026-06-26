@@ -11,6 +11,7 @@ import {
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { formatDateTime } from "@/lib/format";
+import { PeriodPicker } from "@/components/PeriodPicker";
 import {
   CONTACT_ROLE_LABELS,
   SHOW_STATUS_LABELS,
@@ -141,7 +142,12 @@ export default async function ContactDetailPage({
             </Link>
           </div>
 
-          <ProfitPeriodPicker contactId={contact.id} years={availableYears} active={yearFilter} />
+          <PeriodPicker
+            years={availableYears}
+            active={yearFilter}
+            basePath={`/contatos/${contact.id}`}
+            ariaLabel="Período da rentabilidade"
+          />
 
           {profit.showCount > 0 ? (
             <>
@@ -197,47 +203,6 @@ export default async function ContactDetailPage({
         )}
       </section>
     </div>
-  );
-}
-
-/**
- * Seletor de período da rentabilidade: "Todos" + uma pílula por ano com shows
- * (mais recente primeiro). Espelha o PeriodPicker de `/contatos/rentabilidade`,
- * mas ancora os links no detalhe deste contato (`/contatos/{id}?ano=`).
- */
-function ProfitPeriodPicker({
-  contactId,
-  years,
-  active,
-}: {
-  contactId: string;
-  years: number[];
-  active: ProfitYearFilter;
-}) {
-  const base = "rounded-full px-3 py-1 text-sm font-medium transition-colors";
-  const on = "bg-brand-600 text-white";
-  const off = "bg-gray-100 text-gray-600 hover:bg-gray-200";
-  return (
-    <nav aria-label="Período da rentabilidade" className="flex flex-wrap items-center gap-2">
-      <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Período</span>
-      <Link
-        href={`/contatos/${contactId}`}
-        className={base + " " + (active === "all" ? on : off)}
-        aria-current={active === "all" ? "page" : undefined}
-      >
-        Todos
-      </Link>
-      {years.map((y) => (
-        <Link
-          key={y}
-          href={`/contatos/${contactId}?ano=${y}`}
-          className={base + " " + (active === y ? on : off)}
-          aria-current={active === y ? "page" : undefined}
-        >
-          {y}
-        </Link>
-      ))}
-    </nav>
   );
 }
 

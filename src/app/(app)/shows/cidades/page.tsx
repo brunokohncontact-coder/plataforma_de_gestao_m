@@ -13,6 +13,7 @@ import {
   type DiversificationLevel,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
+import { PeriodPicker } from "@/components/PeriodPicker";
 
 export const dynamic = "force-dynamic";
 
@@ -97,7 +98,7 @@ export default async function CityProfitabilityPage({
       </div>
 
       {availableYears.length > 0 && (
-        <PeriodPicker years={availableYears} active={yearFilter} />
+        <PeriodPicker years={availableYears} active={yearFilter} basePath="/shows/cidades" />
       )}
 
       {report.count === 0 ? (
@@ -238,43 +239,6 @@ export default async function CityProfitabilityPage({
         </>
       )}
     </div>
-  );
-}
-
-/** Seletor de período: "Todos" + uma pílula por ano com shows (mais recente primeiro). */
-function PeriodPicker({
-  years,
-  active,
-}: {
-  years: number[];
-  active: number | "all";
-}) {
-  const base = "rounded-full px-3 py-1 text-sm font-medium transition-colors";
-  const on = "bg-brand-600 text-white";
-  const off = "bg-gray-100 text-gray-600 hover:bg-gray-200";
-  return (
-    <nav aria-label="Período" className="flex flex-wrap items-center gap-2">
-      <span className="text-xs font-medium uppercase tracking-wide text-gray-500">
-        Período
-      </span>
-      <Link
-        href="/shows/cidades"
-        className={base + " " + (active === "all" ? on : off)}
-        aria-current={active === "all" ? "page" : undefined}
-      >
-        Todos
-      </Link>
-      {years.map((y) => (
-        <Link
-          key={y}
-          href={`/shows/cidades?ano=${y}`}
-          className={base + " " + (active === y ? on : off)}
-          aria-current={active === y ? "page" : undefined}
-        >
-          {y}
-        </Link>
-      ))}
-    </nav>
   );
 }
 

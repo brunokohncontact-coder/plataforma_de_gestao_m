@@ -3443,3 +3443,34 @@ contexto, decisão, justificativa e alternativas consideradas.
   têm — adiável pela mesma razão da D117 alt. (c): as cópias são pequenas e diferem só no `href` base; com cinco
   usos idênticos, porém, a consolidação num componente parametrizado pelo caminho base já tem massa crítica — fica
   registrado como o próximo passo natural de DRY.
+
+## D119 — `PeriodPicker` compartilhado (consolidar as cinco cópias do seletor de período) (Sessão 127)
+- **Contexto:** após D108/D111/D115/D117/D118, cinco telas de rentabilidade passaram a repetir **a mesma** pílula
+  de período (`/shows/locais`, `/shows/cidades`, `/shows/rentabilidade`, `/contatos/rentabilidade` e
+  `/contatos/[id]`). As cópias eram byte-a-byte idênticas exceto pelo `href` base e, no detalhe do contato, pelo
+  `aria-label` ("Período da rentabilidade", por haver outro contexto de período na ficha). A D116 (alt. a), a D117
+  (alt. c) e a D118 (alt. b) adiaram a extração "até surgir massa crítica" — com cinco usos idênticos, ela chegou.
+- **Decisão:** extrair `src/components/PeriodPicker.tsx` — server component puro (só renderiza `Link`s, sem estado
+  nem hooks) parametrizado por `basePath` (o href de "Todos"; cada ano vira `${basePath}?ano=${y}`) e um
+  `ariaLabel` opcional (default `"Período"`). As cinco páginas passaram a importar e renderizar o componente
+  compartilhado, removendo as definições locais de `PeriodPicker`/`ProfitPeriodPicker`. O `ProfitYearFilter`
+  (`number | "all"`) tipa o `active`. Nenhuma mudança de comportamento: mesmas classes Tailwind, mesmos `href`,
+  mesmo `aria-current` — markup idêntico ao das cópias. Saldo: **−180 linhas** líquidas.
+- **Justificativa:** a única variação real entre as cópias era o caminho base, exatamente o eixo que um parâmetro
+  resolve; a divergência de texto que motivou adiar (os cards de concentração com notas acionáveis distintas) **não**
+  está no seletor — ele sempre foi idêntico. Centralizar evita que um ajuste futuro de estilo/acessibilidade precise
+  ser replicado em cinco arquivos (e esquecido em um). Novas telas de rentabilidade já recebem o seletor com um
+  import.
+- **Testes:** nenhum novo — o projeto testa lógica de negócio pura (ambiente `node`, sem testing-library; não há
+  infra para renderizar componentes), e esta é uma consolidação de UI sem nova lógica; os helpers de período
+  (`showProfitYears`/`parseProfitYear`/`filterShowsByYear`) seguem cobertos desde a D108. **792 testes** verdes
+  (inalterado).
+- **DoD:** build de produção (as cinco rotas compilam), typecheck e lint (0 avisos — sem imports órfãos) verdes;
+  **792 testes**; smoke test — `npm start`: `/login` → 200, rotas protegidas → 307 (app sobe e roteia). `npm audit`
+  inalterado vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado;
+  ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) deixar como estava — descartado: cinco cópias idênticas são exatamente o que a
+  D118 sinalizou consolidar. (b) também unificar os cards de concentração (`geoConcentration`/`clientConcentration`)
+  num componente único — **mantido adiado** (D116 alt. a): ali os textos acionáveis divergem de verdade
+  ("prospectar palcos" × "abrir praças" × "diversificar clientes"), então o ganho é menor e o acoplamento, maior.
+  (c) embutir o `?ano=` numa querystring genérica com mais filtros — fora de escopo; hoje o único eixo é o ano.
