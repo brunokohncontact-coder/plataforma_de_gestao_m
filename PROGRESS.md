@@ -9,8 +9,17 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **827 testes**
-verdes após a Sessão 134 (**veredito de tendência da queima de caixa em `/financas/folego-de-caixa`** — novo helper
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **831 testes**
+verdes após a Sessão 135 (**exportação CSV do ranking de contatos por atividade em `/contatos/ranking`** — estende o
+botão "⬇ CSV" da D125 (rentabilidade) à primeira tela tabular de **CRM**: serializador puro novo `contactActivityToCsv`
+em `src/lib/csv.ts` na mesma convenção pt-BR (delimitador `;`, decimal com vírgula, datas UTC via `csvDate`, BOM UTF-8),
+consumindo uma forma mínima local `ContactActivityCsvRow` (não importa `ContactRankRow` de `@/lib/contacts` — evita
+acoplar `csv.ts` ao CRM, como `CsvTransaction`/`CsvShow`; estruturalmente compatível). Colunas
+Contato/Papel/**Shows ativos**/**Shows (total)**/Próximos/Cachê total/Último show — a célula "ativos / total" da tela
+vira duas colunas separadas no CSV (mais útil p/ ordenar/filtrar em planilha); papel via `contactRoleLabel`, último show
+vazio quando `null`. Route fino `contatos/ranking/export/route.ts` espelha a query e a ordenação da página
+(`rankContactsByActivity`), sem `?ano=` (a tela não tem recorte por período); botão só com `ranking.count > 0`. **+4
+testes**; ver D127; segue 827 da Sessão 134 (**veredito de tendência da queima de caixa em `/financas/folego-de-caixa`** — novo helper
 puro `cashFlowTrend` em `src/lib/finance.ts` parte a janela do `cashFlowByMonth` em metade antiga × metade recente e
 compara o fluxo líquido médio mensal de cada uma, classificando em acelerando/aliviando/estável (ou `insufficient` se
 a janela for curta demais para duas metades de ≥ 2 meses; descarta o mês do meio quando ímpar). O limiar é relativo
@@ -477,9 +486,10 @@ adicionar um relatório novo passa a ser registrá-lo num único lugar (ver D53)
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias, estados de erro
 inline dos server actions), evoluções de calendário (arrastar/soltar para remarcar), ou ligar os
 relatórios novos ao hub à medida que surgirem. **Exportação CSV** entregue para as quatro telas de
-rentabilidade na Sessão 133 (D125); próximo possível no mesmo tema — estender o botão "⬇ CSV" às
-demais telas tabulares que ainda não exportam (ex.: ranking de contatos, sazonalidade, fontes de
-renda, retenção), reaproveitando a mesma disciplina serializador-puro + route fino.
+rentabilidade na Sessão 133 (D125) e estendida ao **ranking de contatos** (`/contatos/ranking`) na
+Sessão 135 (D127); próximo possível no mesmo tema — levar o botão "⬇ CSV" às demais telas tabulares
+que ainda não exportam (ex.: sazonalidade, fontes de renda, retenção/fidelização, faixas de cachê,
+prazo de recebimento), reaproveitando a mesma disciplina serializador-puro + route fino.
 
 ## Modelo de branches (a partir de 2026-06-16)
 O repositório tem um tronco **`main`** (ver DECISIONS.md D7), já definido como **default
