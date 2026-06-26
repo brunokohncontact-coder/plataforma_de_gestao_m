@@ -3671,3 +3671,33 @@ contexto, decisão, justificativa e alternativas consideradas.
   espelhar o que a tela mostra para não confundir (um número "típico" com 1 show engana tanto na planilha quanto na tela).
   (c) reaproveitar `showsToCsv` para a rentabilidade por show — descartado: aquele serializa o **cadastro** do show
   (local/cidade/observações), não o **P&L** (cachê/extras/despesas/resultado/margem).
+
+## D126 — Veredito de tendência da queima de caixa em `/financas/folego-de-caixa` (Sessão 134)
+- **Contexto:** o card "Cenário alternativo · ritmo de gasto real" (D101) reduz a janela de burn rate a **um número**
+  (`avgMonthlyNet`/runway), e a tira mês a mês (`MonthlyFlowStrip`/D104) mostra a textura, mas ambos deixam a **direção**
+  implícita: um caixa que estava positivo e despencou no fim da janela tem a mesma média de outro que vem se recompondo.
+  O item ficara adiado na D104 "por ser mais hipótese"; revisto: comparar duas sub-janelas é um cálculo **factual** (não
+  uma premissa de mercado), bastando uma moldura textual honesta.
+- **Decisão:** novo helper **puro** `cashFlowTrend(months: CashFlowMonth[])` em `src/lib/finance.ts` que consome a saída
+  de `cashFlowByMonth` (cronológica), parte a janela em **metade antiga × metade recente** (descarta o mês do meio quando
+  o nº é ímpar, p/ manter as metades simétricas) e compara o fluxo líquido médio mensal de cada uma. Classifica em
+  `accelerating` (recente ≥ `EPSILON` abaixo da antiga — queima piorando), `easing` (recente ≥ `EPSILON` acima — caixa
+  recompondo), `stable` (dentro do limiar) ou `insufficient` (< 2 meses em alguma metade → janela curta demais). O limiar
+  é **relativo** (`CASH_FLOW_TREND_EPSILON = 0,15`) sobre a maior das duas médias em módulo, com **piso**
+  `CASH_FLOW_TREND_FLOOR = R$ 500/mês` no denominador p/ não estourar a razão sobre médias quase nulas. Surface: badge
+  `CashFlowTrendBadge` no card do Cenário alternativo, logo abaixo da tira (some quando `insufficient`).
+- **Justificativa:** mantém a disciplina do acervo (lógica pura/testável em `finance.ts`, UI fina na página) e espelha a
+  mecânica de limiar de `concentrationTrend` (`GEO_TREND_EPSILON`/D120), aqui adaptada a centavos via razão relativa com
+  piso (concentração compara frações 0..1; fluxo compara dinheiro, daí o piso). Reusa o `cashFlowByMonth` já computado na
+  página — zero consulta nova, mesma janela `?meses=` (D102), então o veredito acompanha o recorte que o usuário escolhe.
+- **Testes:** **+7** em `finance.test.ts` (acelerando/aliviando/estável, piso sobre médias quase nulas, descarte do mês do
+  meio em janela ímpar, `insufficient` p/ janela curta, integração com `cashFlowByMonth`). **827 testes** verdes (eram 820).
+- **DoD:** build de produção, typecheck e lint (0 avisos) verdes; **827 testes**; smoke test (`npm start`): a página
+  responde e, sem sessão, 307 → `/login` (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate
+  / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) regressão linear sobre os meses (slope) — descartada por overkill: duas médias de
+  sub-janela são mais legíveis e robustas a um mês-outlier no meio. (b) limiar absoluto em centavos (ex.: R$ 1.000) —
+  descartado: não escala entre um músico que move R$ 2 mil/mês e outro que move R$ 30 mil/mês; o relativo+piso cobre os
+  dois. (c) também levar o veredito ao nudge de burn do Painel (D103) — adiado: o Painel já tem dois nudges de caixa; um
+  terceiro eixo de texto ali pede um corte de relevância à parte (só quando `accelerating` e o fôlego morde), fica p/ uma
+  próxima sessão.

@@ -9,8 +9,17 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **820 testes**
-verdes após a Sessão 133 (**exportação CSV das quatro telas de rentabilidade** — três serializadores puros novos em
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **827 testes**
+verdes após a Sessão 134 (**veredito de tendência da queima de caixa em `/financas/folego-de-caixa`** — novo helper
+puro `cashFlowTrend` em `src/lib/finance.ts` parte a janela do `cashFlowByMonth` em metade antiga × metade recente e
+compara o fluxo líquido médio mensal de cada uma, classificando em acelerando/aliviando/estável (ou `insufficient` se
+a janela for curta demais para duas metades de ≥ 2 meses; descarta o mês do meio quando ímpar). O limiar é relativo
+(`CASH_FLOW_TREND_EPSILON`=15% sobre a maior das médias em módulo) com piso (`CASH_FLOW_TREND_FLOOR`=R$500/mês no
+denominador) para não acusar tendência sobre médias quase nulas — espelha a mecânica de `concentrationTrend`/`GEO_TREND_EPSILON`
+(D120) adaptada a centavos. Badge `CashFlowTrendBadge` abaixo da tira `MonthlyFlowStrip` no card "Cenário alternativo",
+reusando o `cashFlowByMonth` já computado (zero consulta nova, mesmo recorte `?meses=`). Dá a **direção** que a média de
+burn esconde (um caixa que despencou no fim tem a mesma média de outro se recompondo). **+7 testes**; ver D126; segue 820
+da Sessão 133 (**exportação CSV das quatro telas de rentabilidade** — três serializadores puros novos em
 `src/lib/csv.ts` na mesma convenção pt-BR das exportações anteriores (delimitador `;`, decimal com vírgula, datas UTC,
 BOM): `showProfitToCsv` (`ShowProfitRow[]`: Show/Data/Status/Cachê/Extras/Despesas/Resultado/Margem), `venueProfitToCsv`
 (`VenueProfitRow[]`, **serve local e cidade** — mesmo tipo — com a 1ª coluna rotulada por `groupLabel` "Local"/"Cidade")
@@ -2623,9 +2632,15 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    de caixa realizado (received/paid/net) por mês na mesma janela de `cashBurnRunway` (consistente: soma dos `net`
    ÷ janela = `avgMonthlyNet`) + tira `MonthlyFlowStrip` (barras ↑/↓ por mês) no card "Cenário alternativo" de
    `/financas/folego-de-caixa`, mostrando a tendência que a média esconde, ver D104.
+   **Veredito de tendência da queima** entregue na Sessão 134 — `cashFlowTrend` em `src/lib/finance.ts` parte a
+   janela do `cashFlowByMonth` em metade antiga × metade recente e compara o fluxo líquido médio de cada uma
+   (limiar relativo `CASH_FLOW_TREND_EPSILON`=15% com piso `CASH_FLOW_TREND_FLOOR`=R$500; descarta o mês do meio
+   se ímpar; `insufficient` < 2 meses por metade), classificando em acelerando/aliviando/estável; badge
+   `CashFlowTrendBadge` abaixo da tira no card "Cenário alternativo", ver D126.
    Próximo possível — tornar os limiares 3/6 configuráveis pelo usuário; um seletor de janela `?meses=`
-   também no recorte do Painel (hoje o card usa a janela default de 6 meses); ou um veredito automático de
-   tendência (queima acelerando × estabilizando) cruzando sub-janelas (adiado na D104 por ser mais hipótese).
+   também no recorte do Painel (hoje o card usa a janela default de 6 meses); ou levar o veredito de tendência
+   também ao nudge de burn do Painel (só quando `accelerating` e o fôlego morde — adiado na D126 por o Painel já
+   ter dois nudges de caixa).
 8. **Contatos / relacionamento — evoluções** (ranking por cachê bruto, Sessão 27; concentração/HHI; fidelização,
    Sessão 56; reativar dormentes, Sessão 30): **rentabilidade por contratante** entregue na Sessão 113 —
    `rankContactsByProfit` + `/contatos/rentabilidade`, P&L líquido somado por quem paga (um show → um contratante),

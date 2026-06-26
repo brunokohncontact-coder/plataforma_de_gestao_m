@@ -67,6 +67,7 @@ import {
   cashBurnRunway,
   cashBurnHeadline,
   cashFlowByMonth,
+  cashFlowTrend,
   parseBurnWindow,
   DEFAULT_BURN_WINDOW_MONTHS,
   BURN_WINDOW_MIN,
@@ -4684,6 +4685,86 @@ describe("cashFlowByMonth", () => {
     expect(cashFlowByMonth([], { now: NOW, months: 0 })).toHaveLength(1); // piso
     expect(cashFlowByMonth([], { now: NOW, months: 100 })).toHaveLength(24); // teto
     expect(cashFlowByMonth([], { now: NOW })).toHaveLength(DEFAULT_BURN_WINDOW_MONTHS);
+  });
+});
+
+describe("cashFlowTrend", () => {
+  // Constrói uma janela cronológica de meses a partir de uma lista de líquidos (centavos).
+  // received/paid não importam para o veredito (só o net é lido), mas mantemos um net válido.
+  const monthsFromNets = (nets: number[]) =>
+    nets.map((net, i) => ({
+      monthKey: `2026-${String(i + 1).padStart(2, "0")}`,
+      received: net >= 0 ? net : 0,
+      paid: net < 0 ? -net : 0,
+      net,
+    }));
+
+  it("acusa queima ACELERANDO quando a metade recente piora além do limiar", () => {
+    // antiga: +2000/mês em média; recente: −2000/mês → delta muito negativo.
+    const t = cashFlowTrend(monthsFromNets([2000_00, 2000_00, -2000_00, -2000_00]));
+    expect(t.direction).toBe("accelerating");
+    expect(t.olderAvgNet).toBe(2000_00);
+    expect(t.recentAvgNet).toBe(-2000_00);
+    expect(t.delta).toBe(-4000_00);
+    expect(t.recentMonths).toBe(2);
+    expect(t.olderMonths).toBe(2);
+  });
+
+  it("acusa queima ALIVIANDO quando a metade recente melhora além do limiar", () => {
+    const t = cashFlowTrend(monthsFromNets([-2000_00, -2000_00, 1000_00, 1000_00]));
+    expect(t.direction).toBe("easing");
+    expect(t.delta).toBe(3000_00);
+  });
+
+  it("é ESTÁVEL quando a variação fica dentro do limiar relativo", () => {
+    // antiga: 1000/mês; recente: 1050/mês → +5%, abaixo de 15%.
+    const t = cashFlowTrend(monthsFromNets([1000_00, 1000_00, 1100_00, 1000_00]));
+    expect(t.direction).toBe("stable");
+  });
+
+  it("usa o piso para não acusar tendência sobre médias quase nulas", () => {
+    // antiga: 0; recente: +300/mês. Sem piso a razão seria infinita; com piso (R$500)
+    // a razão é 300/500 = 0,6 → ainda passaria. Use uma diferença pequena de verdade:
+    const t = cashFlowTrend(monthsFromNets([0, 0, 50_00, 0]));
+    // recente média = 2500 centavos; razão = 2500/50000 = 0,05 < 0,15 → estável.
+    expect(t.recentAvgNet).toBe(25_00);
+    expect(t.olderAvgNet).toBe(0);
+    expect(t.direction).toBe("stable");
+  });
+
+  it("descarta o mês do meio quando a janela tem nº ímpar de meses", () => {
+    // 5 meses: metade = 2; antiga = [0,1], recente = [3,4]; o índice 2 (meio) é ignorado.
+    const t = cashFlowTrend(monthsFromNets([2000_00, 2000_00, 9999_00, -1000_00, -1000_00]));
+    expect(t.olderMonths).toBe(2);
+    expect(t.recentMonths).toBe(2);
+    expect(t.olderAvgNet).toBe(2000_00);
+    expect(t.recentAvgNet).toBe(-1000_00);
+    expect(t.direction).toBe("accelerating");
+  });
+
+  it("devolve insufficient quando a janela é curta demais para duas metades", () => {
+    expect(cashFlowTrend(monthsFromNets([])).direction).toBe("insufficient");
+    expect(cashFlowTrend(monthsFromNets([100_00])).direction).toBe("insufficient");
+    expect(cashFlowTrend(monthsFromNets([100_00, -100_00])).direction).toBe("insufficient"); // half=1
+    expect(cashFlowTrend(monthsFromNets([1, 2, 3])).direction).toBe("insufficient"); // half=1
+  });
+
+  it("integra com cashFlowByMonth: queima recente vira accelerating", () => {
+    const NOW = "2026-06-15T00:00:00.000Z"; // janela dez/2025..mai/2026 (6 meses)
+    const txs: TxLike[] = [
+      // metade antiga (dez,jan,fev): caixa positivo
+      tx({ type: "INCOME", amount: 3000_00, received: true, date: "2025-12-10T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 3000_00, received: true, date: "2026-01-10T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 3000_00, received: true, date: "2026-02-10T00:00:00.000Z" }),
+      // metade recente (mar,abr,mai): só gasto
+      tx({ type: "EXPENSE", amount: 2000_00, received: true, date: "2026-03-10T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 2000_00, received: true, date: "2026-04-10T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 2000_00, received: true, date: "2026-05-10T00:00:00.000Z" }),
+    ];
+    const t = cashFlowTrend(cashFlowByMonth(txs, { now: NOW }));
+    expect(t.direction).toBe("accelerating");
+    expect(t.olderAvgNet).toBeGreaterThan(0);
+    expect(t.recentAvgNet).toBeLessThan(0);
   });
 });
 

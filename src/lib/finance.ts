@@ -4691,6 +4691,97 @@ export function cashFlowByMonth(
   return months;
 }
 
+/**
+ * Limiar relativo (15%) para a tendência de queima: a metade recente da janela só
+ * conta como "acelerando" ou "aliviando" se o seu fluxo líquido médio mensal divergir
+ * em ≥ 15% (em módulo, sobre a maior das duas médias ou o piso `CASH_FLOW_TREND_FLOOR`)
+ * da metade antiga. Abaixo disso é ruído → `stable`. Espelha o papel de
+ * `GEO_TREND_EPSILON` na concentração (D120), aqui aplicado a centavos via razão.
+ */
+export const CASH_FLOW_TREND_EPSILON = 0.15;
+
+/**
+ * Piso (R$ 500/mês em centavos) para o denominador da razão de tendência: evita que
+ * uma diferença minúscula entre duas médias quase nulas estoure o limiar relativo e
+ * vire um falso "acelerando/aliviando".
+ */
+export const CASH_FLOW_TREND_FLOOR = 500_00;
+
+export type CashFlowTrendDirection = "accelerating" | "easing" | "stable" | "insufficient";
+
+export interface CashFlowTrend {
+  /**
+   * Para onde aponta a queima ao longo da janela, comparando a metade recente com a
+   * metade antiga do fluxo líquido mensal:
+   * - `accelerating`: o caixa piorou — a metade recente líquida é ≥ `EPSILON` abaixo
+   *   da antiga (queima acelerando / superávit encolhendo).
+   * - `easing`: o caixa melhorou — a metade recente é ≥ `EPSILON` acima da antiga
+   *   (queima desacelerando / superávit crescendo).
+   * - `stable`: variação dentro do limiar — a média conta a história toda.
+   * - `insufficient`: janela curta demais para partir em duas metades comparáveis
+   *   (< 2 meses em alguma metade).
+   */
+  direction: CashFlowTrendDirection;
+  /** Fluxo líquido médio mensal da metade **recente** (centavos). */
+  recentAvgNet: number;
+  /** Fluxo líquido médio mensal da metade **antiga** (centavos). */
+  olderAvgNet: number;
+  /**
+   * `recentAvgNet − olderAvgNet` (centavos). Positivo = caixa melhorando (easing),
+   * negativo = piorando (accelerating). É a diferença que sustenta o veredito.
+   */
+  delta: number;
+  /** Nº de meses na metade recente comparada. */
+  recentMonths: number;
+  /** Nº de meses na metade antiga comparada. */
+  olderMonths: number;
+}
+
+/**
+ * Veredito de **tendência** da queima de caixa: a média de `cashBurnRunway`/`cashFlowByMonth`
+ * é um número só e esconde a direção — um caixa que estava positivo e despencou no fim da
+ * janela tem a mesma média que um que vem se recuperando. Este helper parte a janela em
+ * metade antiga × metade recente e compara o fluxo líquido médio mensal de cada uma, dizendo
+ * se a queima está **acelerando**, **aliviando** ou **estável**.
+ *
+ * Recebe a saída de `cashFlowByMonth` (cronológica, mês mais antigo primeiro). Com um nº
+ * ímpar de meses, descarta o mês do meio (o pivô) para manter as metades simétricas. Exige
+ * ≥ 2 meses em cada metade (janela efetiva ≥ 4 ou ≥ 5) — abaixo disso devolve `insufficient`,
+ * pois 1 mês por lado é ruído puro. Pura, sem I/O; espelha a mecânica de limiar de
+ * `concentrationTrend` (D120), adaptada a centavos via razão relativa com piso.
+ */
+export function cashFlowTrend(months: CashFlowMonth[]): CashFlowTrend {
+  const half = Math.floor(months.length / 2);
+  const older = months.slice(0, half);
+  const recent = months.slice(months.length - half); // descarta o mês do meio se ímpar
+
+  const olderAvgNet = half > 0 ? Math.round(sum(older.map((m) => m.net)) / half) : 0;
+  const recentAvgNet = half > 0 ? Math.round(sum(recent.map((m) => m.net)) / half) : 0;
+  const delta = recentAvgNet - olderAvgNet;
+
+  if (half < 2) {
+    return {
+      direction: "insufficient",
+      recentAvgNet,
+      olderAvgNet,
+      delta,
+      recentMonths: recent.length,
+      olderMonths: older.length,
+    };
+  }
+
+  const denom = Math.max(Math.abs(olderAvgNet), Math.abs(recentAvgNet), CASH_FLOW_TREND_FLOOR);
+  const ratio = delta / denom;
+  const direction: CashFlowTrendDirection =
+    ratio >= CASH_FLOW_TREND_EPSILON
+      ? "easing"
+      : ratio <= -CASH_FLOW_TREND_EPSILON
+        ? "accelerating"
+        : "stable";
+
+  return { direction, recentAvgNet, olderAvgNet, delta, recentMonths: half, olderMonths: half };
+}
+
 // ── Reserva para impostos (guardar parte do que entra) ──────────────────────
 
 /**
