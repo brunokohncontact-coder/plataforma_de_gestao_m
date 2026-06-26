@@ -3773,3 +3773,43 @@ contexto, decisão, justificativa e alternativas consideradas.
   — adiado: redundante com "Dias em atraso", que já permite recortar; mantém o cabeçalho enxuto. (d) também exportar
   a visão por contratante (`/shows/a-receber/por-contratante`) nesta sessão — adiado: forma de linha distinta (agregada
   por devedor), merece seu próprio serializador + testes; uma tela por sessão mantém o escopo fechado.
+
+## D129 — Exportação CSV dos cachês a receber por contratante em `/shows/a-receber/por-contratante` (Sessão 137)
+- **Contexto:** a D128 trouxe a exportação CSV dos **cachês a receber** (`/shows/a-receber`, visão por show) e deixou
+  explícito na alternativa (d) que a visão **por contratante** (`/shows/a-receber/por-contratante`, D92/D93/D95) ficaria
+  para uma sessão própria por ter forma de linha distinta (agregada por **devedor**, não por show). Esta é a tela de
+  "de quem cobrar primeiro": uma linha por contratante com o saldo em aberto, nº de shows, pior atraso, atraso médio
+  ponderado e promessas vencidas. É exatamente o recorte que um músico quer levar para uma planilha para montar a régua
+  de cobrança por cliente. Era a última tela de recebíveis sem exportação.
+- **Decisão:** serializador **puro** novo `receivablesByContactToCsv` em `src/lib/csv.ts`, na mesma convenção pt-BR já
+  firmada (delimitador `;`, decimal com vírgula, BOM UTF-8 prefixado na camada HTTP). Consome uma forma mínima
+  `ReceivableByContactCsvRow` (`{ contact: { name, role } | null, outstanding, showCount, maxDaysOutstanding,
+  weightedAvgDays, share, brokenCount, brokenOutstanding }`) declarada em `csv.ts` — **não** importa
+  `ContactReceivableRow` de `@/lib/finance`, mantendo o mesmo padrão de desacoplamento dos demais serializadores (como
+  `ReceivableCsvRow`/D128, `ContactActivityCsvRow`/D127). Colunas: Contratante/**Papel**/A receber/Shows/**Pior atraso
+  (dias)**/**Atraso médio (dias)**/**Participação**/**Promessas vencidas**/**A receber vencido**. O grupo "Sem
+  contratante" (`contact: null`) sai com nome fixo e papel em branco (como `contactProfitToCsv`/D125); a participação
+  vira porcentagem inteira (`csvShare`, espelha o `pct` da página). O route `por-contratante/export/route.ts` espelha a
+  query da página (shows PLAYED/CONFIRMED + `contacts` + receitas INCOME vinculadas) e reusa **toda** a camada pura já
+  testada: `reconcileShowFees` → `pickPayerContact` (atribuição por papel) → `outstandingByContact` (agregação por
+  devedor, que já ordena pelo maior saldo e joga "Sem contratante" por último) e `summarizePaymentPromises` por grupo
+  para `brokenCount`/`brokenOutstanding`. Arquivo `caches-a-receber-por-contratante.csv` (ASCII no header HTTP). A página
+  ganhou o botão "⬇ CSV" (só com `byContact.count > 0`).
+- **Justificativa:** mantém a disciplina serializador-puro + route fino das D125/D127/D128 (lógica testável em `csv.ts`,
+  I/O no route). A ordenação por maior devedor (herdada de `outstandingByContact`, sem reordenar no route) torna o CSV
+  imediatamente acionável como fila de cobrança por cliente. Levar pior atraso, atraso médio ponderado, participação e
+  promessas vencidas em colunas próprias dá numa planilha o que na tela está espalhado em selos/subtextos.
+- **Testes:** **+6** em `csv.test.ts` (só-cabeçalho; formatação pt-BR com atrasos/participação/papel; arredondamento da
+  participação; grupo "Sem contratante" com papel em branco; promessas vencidas contagem+valor; preservação de ordem
+  maior→menor). **844 testes** verdes (eram 838).
+- **DoD:** build de produção (a rota `/shows/a-receber/por-contratante/export` aparece no manifesto), typecheck
+  (`tsc --noEmit`) e lint (0 avisos) verdes; **844 testes**; smoke test (`npm start`): sem sessão a rota → 307 para
+  `/login`; **com** sessão forjada (lib própria) sobre o seed, o route devolve 200 + `text/csv` + CSV correto (cabeçalho
+  + linha "Sem contratante;;1250,00;1;10;10;100%;0;0,00"). `npm audit` **inalterado** vs. baseline (10 advisories — 4
+  moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) reordenar as linhas no route — descartado: `outstandingByContact` já entrega a
+  ordem certa (maior devedor primeiro, "Sem contratante" por último), espelhando a tabela; preservar a ordem mantém o
+  route fino e o CSV idêntico à tela. (b) incluir uma coluna por show (detalhe) — descartado: essa granularidade já é a
+  da exportação por show (D128); aqui o valor é a linha **agregada por devedor**. (c) uma coluna de balde de aging em vez
+  de "Pior atraso (dias)" — descartado: os dias permitem recortar/ordenar na planilha e são mais precisos que o rótulo
+  do balde.

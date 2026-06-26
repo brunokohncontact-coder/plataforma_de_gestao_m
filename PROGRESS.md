@@ -9,8 +9,18 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **838 testes**
-verdes após a Sessão 136 (**exportação CSV dos cachês a receber em `/shows/a-receber`** — estende o botão "⬇ CSV" das
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **844 testes**
+verdes após a Sessão 137 (**exportação CSV dos cachês a receber por contratante em `/shows/a-receber/por-contratante`** —
+fecha a alternativa (d) adiada na D128: estende o botão "⬇ CSV" à visão "de quem cobrar primeiro" (agregada por **devedor**,
+não por show). Serializador puro novo `receivablesByContactToCsv` em `src/lib/csv.ts` na mesma convenção pt-BR (delimitador
+`;`, decimal com vírgula, BOM), consumindo uma forma mínima local `ReceivableByContactCsvRow` (não importa
+`ContactReceivableRow` de `@/lib/finance`). Colunas Contratante/**Papel**/A receber/Shows/**Pior atraso (dias)**/**Atraso
+médio (dias)**/**Participação**/**Promessas vencidas**/**A receber vencido**; "Sem contratante" com papel em branco,
+participação em % inteira. Route `por-contratante/export/route.ts` espelha a query da página e reusa **toda** a camada pura
+testada: `reconcileShowFees`→`pickPayerContact`→`outstandingByContact` (que já ordena pelo maior devedor e joga "Sem
+contratante" por último) + `summarizePaymentPromises` por grupo; arquivo `caches-a-receber-por-contratante.csv`. Botão só
+com `byContact.count > 0`. **+6 testes**; validado por smoke test autenticado (200 + CSV correto). Ver D129; segue 838 da
+Sessão 136 (**exportação CSV dos cachês a receber em `/shows/a-receber`** — estende o botão "⬇ CSV" das
 D125/D127 à tela de dinheiro na mesa: serializador puro novo `receivablesToCsv` em `src/lib/csv.ts` na mesma convenção
 pt-BR (delimitador `;`, decimal com vírgula, datas UTC, BOM), consumindo uma forma mínima local `ReceivableCsvRow` (não
 importa `ShowReceivableRow` de `@/lib/finance`, que não carrega título/local). Colunas Show/Data/Local/Cidade/**Dias em
@@ -2576,9 +2586,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `summarizePaymentPromises`/`paymentPromiseStatus` por grupo, ver D95):
    **exportação CSV dos cachês a receber** entregue na Sessão 136 — `receivablesToCsv` em `src/lib/csv.ts` +
    `/shows/a-receber/export` (Show/Data/Local/Cidade/dias em atraso/cachê/recebido/a receber/situação/promessa/status),
-   ordenado pelo atraso mais longo (fila de cobrança), botão "⬇ CSV" só com recebíveis em aberto, ver D128.
-   Próximo possível — estender a exportação CSV à visão **por contratante** (`/shows/a-receber/por-contratante`, forma de
-   linha agregada por devedor); lembrar a última escolha de contato por show; ou a mediana
+   ordenado pelo atraso mais longo (fila de cobrança), botão "⬇ CSV" só com recebíveis em aberto, ver D128;
+   **exportação CSV da visão por contratante** entregue na Sessão 137 — `receivablesByContactToCsv` em `src/lib/csv.ts` +
+   `/shows/a-receber/por-contratante/export` (Contratante/Papel/a receber/shows/pior atraso/atraso médio/participação/
+   promessas vencidas/a receber vencido), uma linha por devedor na ordem do maior saldo, botão "⬇ CSV" só com devedores,
+   ver D129.
+   Próximo possível — lembrar a última escolha de contato por show; ou a mediana
    do prazo por contratante (adiada na D57: com poucos shows por contratante fica ruidosa).
 4. **Sessões/segurança**: invalidação ao trocar a senha entregue na Sessão 26
    (`passwordChangedAt` + `isSessionFresh`, ver D17). Evoluções possíveis: "encerrar sessão

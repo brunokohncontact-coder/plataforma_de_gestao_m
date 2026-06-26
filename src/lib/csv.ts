@@ -562,3 +562,73 @@ export function receivablesToCsv(
   }
   return toCsv(out, delimiter);
 }
+
+// ── Cachês a receber por contratante (de quem cobrar primeiro) ───────────────
+
+export const RECEIVABLE_BY_CONTACT_CSV_HEADERS = [
+  "Contratante",
+  "Papel",
+  "A receber (R$)",
+  "Shows",
+  "Pior atraso (dias)",
+  "Atraso médio (dias)",
+  "Participação",
+  "Promessas vencidas",
+  "A receber vencido (R$)",
+] as const;
+
+/**
+ * Forma mínima de uma linha agregada por devedor para a exportação (desacoplada
+ * de `ContactReceivableRow` de `@/lib/finance` para não acoplar `csv.ts` ao
+ * núcleo de recebíveis; estruturalmente compatível). É a visão "por contratante"
+ * dos cachês a receber: uma linha por devedor, não por show. `brokenCount`/
+ * `brokenOutstanding` vêm de `summarizePaymentPromises` sobre os shows do grupo,
+ * mantendo o serializador puro.
+ */
+export interface ReceivableByContactCsvRow {
+  /** Contratante devedor; `null` agrega os shows sem contato vinculado. */
+  contact: { name: string; role: string } | null;
+  outstanding: number; // centavos a receber
+  showCount: number;
+  maxDaysOutstanding: number; // pior atraso (dias) entre os shows do devedor
+  weightedAvgDays: number; // atraso médio ponderado pelo valor em aberto
+  share: number; // participação no total a receber (0..1)
+  brokenCount: number; // promessas vencidas do devedor
+  brokenOutstanding: number; // centavos em promessas vencidas
+}
+
+/** Participação (0..1) -> porcentagem inteira ("37%"). Espelha o `pct` da página. */
+function csvShare(share: number): string {
+  return `${Math.round(share * 100)}%`;
+}
+
+/**
+ * Serializa os cachês a receber agrupados por contratante (de quem cobrar
+ * primeiro) em CSV, pronto para download. Uma linha por devedor, espelhando a
+ * tabela de `/shows/a-receber/por-contratante`: total a receber, nº de shows,
+ * pior atraso, atraso médio ponderado, participação no total e as promessas
+ * vencidas (contagem + valor). Mesma convenção pt-BR de `transactionsToCsv`. O
+ * grupo "Sem contratante" (`contact: null`) sai com nome fixo e papel em branco.
+ * A ordem das linhas é preservada (a página ordena pelo maior saldo devedor,
+ * "Sem contratante" por último). Pura.
+ */
+export function receivablesByContactToCsv(
+  rows: ReceivableByContactCsvRow[],
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(RECEIVABLE_BY_CONTACT_CSV_HEADERS)];
+  for (const row of rows) {
+    out.push([
+      row.contact ? row.contact.name : "Sem contratante",
+      row.contact ? contactRoleLabel(row.contact.role) : "",
+      centsToCsvAmount(row.outstanding),
+      String(row.showCount),
+      String(row.maxDaysOutstanding),
+      String(row.weightedAvgDays),
+      csvShare(row.share),
+      String(row.brokenCount),
+      centsToCsvAmount(row.brokenOutstanding),
+    ]);
+  }
+  return toCsv(out, delimiter);
+}
