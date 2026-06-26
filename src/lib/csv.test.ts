@@ -13,6 +13,7 @@ import {
   venueProfitToCsv,
   contactProfitToCsv,
   contactActivityToCsv,
+  receivablesToCsv,
   TRANSACTION_CSV_HEADERS,
   SHOW_CSV_HEADERS,
   ANNUAL_SUMMARY_CSV_HEADERS,
@@ -20,10 +21,12 @@ import {
   SHOW_PROFIT_CSV_HEADERS,
   CONTACT_PROFIT_CSV_HEADERS,
   CONTACT_ACTIVITY_CSV_HEADERS,
+  RECEIVABLE_CSV_HEADERS,
   type CsvTransaction,
   type CsvShow,
   type CsvProfitShow,
   type ContactActivityCsvRow,
+  type ReceivableCsvRow,
 } from "./csv";
 import {
   annualSummary,
@@ -476,5 +479,79 @@ describe("contactActivityToCsv", () => {
     const lines = csv.split("\r\n");
     expect(lines[1].startsWith("Casa A;")).toBe(true);
     expect(lines[2].startsWith("Casa B;")).toBe(true);
+  });
+});
+
+describe("receivablesToCsv", () => {
+  const row = (over: Partial<ReceivableCsvRow> = {}): ReceivableCsvRow => ({
+    show: {
+      title: "Festival de Verão",
+      date: new Date("2026-01-15T20:00:00Z"),
+      venue: "Teatro Municipal",
+      city: "Curitiba",
+    },
+    fee: 200000,
+    collected: 50000,
+    outstanding: 150000,
+    daysOutstanding: 45,
+    unregistered: false,
+    registeredPending: 0,
+    promiseStatus: "none",
+    promisedAt: null,
+    ...over,
+  });
+
+  it("emite só o cabeçalho quando não há linhas", () => {
+    expect(receivablesToCsv([])).toBe(RECEIVABLE_CSV_HEADERS.join(";"));
+  });
+
+  it("serializa um recebível com valores em reais, dias e situação", () => {
+    const csv = receivablesToCsv([row()]);
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(
+      "Show;Data;Local;Cidade;Dias em atraso;Cachê (R$);Recebido (R$);A receber (R$);Situação;Promessa;Status promessa",
+    );
+    expect(lines[1]).toBe(
+      "Festival de Verão;15/01/2026;Teatro Municipal;Curitiba;45;2000,00;500,00;1500,00;Parcial recebido;;",
+    );
+  });
+
+  it("marca 'Receita não lançada' quando nada foi lançado", () => {
+    const csv = receivablesToCsv([
+      row({ unregistered: true, collected: 0, registeredPending: 0 }),
+    ]);
+    expect(csv.split("\r\n")[1].split(";")[8]).toBe("Receita não lançada");
+  });
+
+  it("marca 'Lançada pendente' quando há receita lançada mas não recebida", () => {
+    const csv = receivablesToCsv([
+      row({ unregistered: false, collected: 0, registeredPending: 80000 }),
+    ]);
+    expect(csv.split("\r\n")[1].split(";")[8]).toBe("Lançada pendente");
+  });
+
+  it("serializa a data e o status da promessa (vencida)", () => {
+    const csv = receivablesToCsv([
+      row({ promiseStatus: "broken", promisedAt: new Date("2026-02-10T12:00:00Z") }),
+    ]);
+    const cols = csv.split("\r\n")[1].split(";");
+    expect(cols[9]).toBe("10/02/2026");
+    expect(cols[10]).toBe("Vencida");
+  });
+
+  it("deixa promessa e status em branco sem data prometida", () => {
+    const cols = receivablesToCsv([row()]).split("\r\n")[1].split(";");
+    expect(cols[9]).toBe("");
+    expect(cols[10]).toBe("");
+  });
+
+  it("preserva a ordem das linhas recebidas", () => {
+    const csv = receivablesToCsv([
+      row({ show: { title: "Show A", date: new Date("2026-01-01T12:00:00Z") } }),
+      row({ show: { title: "Show B", date: new Date("2026-01-02T12:00:00Z") } }),
+    ]);
+    const lines = csv.split("\r\n");
+    expect(lines[1].startsWith("Show A;")).toBe(true);
+    expect(lines[2].startsWith("Show B;")).toBe(true);
   });
 });

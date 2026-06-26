@@ -3734,3 +3734,42 @@ contexto, decisão, justificativa e alternativas consideradas.
   a forma mínima local segue o padrão dos demais serializadores. (c) também exportar retenção/fontes de renda/sazonalidade
   nesta sessão — adiado: cada uma tem forma de linha distinta e merece seu próprio serializador puro + testes; uma tela
   por sessão mantém o escopo fechado e mergeável (seguem nos próximos passos).
+
+## D128 — Exportação CSV dos cachês a receber em `/shows/a-receber` (Sessão 136)
+- **Contexto:** seguindo a linha das D125 (rentabilidade) e D127 (ranking de contatos), os "próximos passos" pediam
+  estender o botão "⬇ CSV" às demais telas tabulares. A tela **Cachês a receber** (`/shows/a-receber`, D25/D31/D94) é a
+  candidata mais valiosa que ainda faltava: é a lista de dinheiro **na mesa** (recebíveis em aberto, aging por idade do
+  atraso e promessas de pagamento) que um músico naturalmente quer levar para uma planilha — montar uma régua de
+  cobrança, cruzar com extrato, priorizar quem está mais velho. Era a única das telas de dinheiro sem exportação.
+- **Decisão:** serializador **puro** novo `receivablesToCsv` em `src/lib/csv.ts`, na mesma convenção pt-BR já firmada
+  (delimitador `;`, decimal com vírgula, datas em UTC via `csvDate`, BOM UTF-8 prefixado na camada HTTP). Consome uma
+  forma mínima `ReceivableCsvRow` (`{ show: { title, date, venue, city }, fee, collected, outstanding, daysOutstanding,
+  unregistered, registeredPending, promiseStatus, promisedAt }`) declarada em `csv.ts` — não importa `ShowReceivableRow`
+  de `@/lib/finance` (que só carrega `id`/`fee`/`status`, sem título/local), mantendo o mesmo padrão dos demais
+  serializadores. Colunas: Show/Data/Local/Cidade/**Dias em atraso**/Cachê/Recebido/A receber/**Situação**/Promessa/
+  **Status promessa**. A coluna **Situação** consolida os textos da tela ("Receita não lançada" / "Lançada pendente" /
+  "Parcial recebido") derivados de `unregistered`/`registeredPending`; **Status promessa** mapeia `paymentPromiseStatus`
+  (broken→"Vencida", pending→"No prazo", none→vazio) e a data prometida sai por `csvDate` (vazia sem promessa). O route
+  `shows/a-receber/export/route.ts` espelha a query da página (shows PLAYED/CONFIRMED + receitas INCOME vinculadas) e
+  reusa `reconcileShowFees`/`bucketReceivablesByAge`/`paymentPromiseStatus`; ordena pelo **atraso mais longo** (como o
+  aging prioriza a cobrança, em vez da ordem cronológica da tabela) e nomeia o arquivo `caches-a-receber.csv` (ASCII, sem
+  acento no header HTTP). A página ganhou o botão "⬇ CSV" (só com `result.count > 0`).
+- **Justificativa:** mantém a disciplina serializador-puro + route fino das D125/D127 (lógica testável em `csv.ts`, I/O
+  no route). A ordenação por atraso (não cronológica) torna o CSV imediatamente acionável como fila de cobrança. Levar
+  aging (dias), situação e promessa em colunas próprias dá numa planilha o que na tela está espalhado em selos/subtextos.
+- **Testes:** **+7** em `csv.test.ts` (só-cabeçalho; formatação pt-BR com dias/situação; "Receita não lançada"; "Lançada
+  pendente"; data + status de promessa vencida; promessa/status vazios sem data; preservação de ordem). **838 testes**
+  verdes (eram 831).
+- **DoD:** build de produção (a rota `/shows/a-receber/export` aparece no manifesto), typecheck (`tsc --noEmit`) e lint
+  (0 avisos) verdes; **838 testes**; smoke test (`npm start`): sem sessão `/shows/a-receber` e `/shows/a-receber/export`
+  → 307 para `/login`; **com** sessão forjada (lib própria) sobre o seed, o route devolve 200 + `text/csv` + CSV correto
+  ("Show no Bar do Zé;16/06/2026;Bar do Zé;São Paulo;10;1500,00;250,00;1250,00;Parcial recebido;;"). `npm audit`
+  **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado;
+  ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) preservar a ordem cronológica da tabela — descartado: o valor do CSV é ser uma fila
+  de cobrança, e o aging já define a prioridade certa (mais velho primeiro). (b) uma coluna numérica "Pendente lançado
+  (R$)" em vez do texto "Situação" — descartado: a categoria textual (não lançada / lançada pendente / parcial) é mais
+  legível para filtrar numa planilha e espelha os subtextos da tela. (c) incluir o recorte de aging (balde) como coluna
+  — adiado: redundante com "Dias em atraso", que já permite recortar; mantém o cabeçalho enxuto. (d) também exportar
+  a visão por contratante (`/shows/a-receber/por-contratante`) nesta sessão — adiado: forma de linha distinta (agregada
+  por devedor), merece seu próprio serializador + testes; uma tela por sessão mantém o escopo fechado.

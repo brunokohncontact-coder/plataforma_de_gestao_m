@@ -84,6 +84,11 @@ export default async function ShowReceivablesPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {result.count > 0 && (
+            <a href="/shows/a-receber/export" className="btn-secondary text-sm" download>
+              ⬇ CSV
+            </a>
+          )}
           <Link href="/shows/a-receber/por-contratante" className="btn-secondary">
             Por contratante →
           </Link>

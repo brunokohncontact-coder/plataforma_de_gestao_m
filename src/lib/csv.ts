@@ -22,6 +22,7 @@ import {
   type ShowProfitRow,
   type VenueProfitRow,
   type ContactProfitRow,
+  type PaymentPromiseStatus,
 } from "./finance";
 import { MONTH_NAMES_LONG } from "./calendar";
 
@@ -467,6 +468,96 @@ export function contactActivityToCsv(
       String(row.upcomingShows),
       centsToCsvAmount(row.totalFee),
       row.lastShowDate ? csvDate(row.lastShowDate) : "",
+    ]);
+  }
+  return toCsv(out, delimiter);
+}
+
+// ── Cachês a receber (recebíveis em aberto, aging + promessas) ───────────────
+
+export const RECEIVABLE_CSV_HEADERS = [
+  "Show",
+  "Data",
+  "Local",
+  "Cidade",
+  "Dias em atraso",
+  "Cachê (R$)",
+  "Recebido (R$)",
+  "A receber (R$)",
+  "Situação",
+  "Promessa",
+  "Status promessa",
+] as const;
+
+/**
+ * Forma mínima de um recebível em aberto para a exportação (desacoplada do
+ * Prisma e de `ShowReceivableRow`, que só carrega `id`/`fee`/`status`; aqui a
+ * planilha mostra título, local e cidade — incluídos explicitamente). `dias` já
+ * vem calculado (de `bucketReceivablesByAge`) e `promiseStatus` de
+ * `paymentPromiseStatus`, mantendo o serializador puro.
+ */
+export interface ReceivableCsvRow {
+  show: {
+    title: string;
+    date: Date | string;
+    venue?: string | null;
+    city?: string | null;
+  };
+  fee: number; // centavos
+  collected: number; // centavos já recebidos
+  outstanding: number; // centavos a receber
+  daysOutstanding: number; // dias desde o show
+  /** True se nenhuma receita foi sequer lançada para o show. */
+  unregistered: boolean;
+  /** Receita lançada mas ainda pendente (centavos). */
+  registeredPending: number;
+  promiseStatus: PaymentPromiseStatus;
+  /** Data prometida de pagamento (vazia quando não houver). */
+  promisedAt: Date | string | null;
+}
+
+/**
+ * Rótulo da situação da receita do recebível, espelhando os textos da página:
+ * nada lançado → "Receita não lançada"; lançada mas pendente → "Lançada pendente";
+ * caso contrário (parte já recebida) → "Parcial recebido".
+ */
+function receivableSituationLabel(row: ReceivableCsvRow): string {
+  if (row.unregistered) return "Receita não lançada";
+  if (row.registeredPending > 0) return "Lançada pendente";
+  return "Parcial recebido";
+}
+
+/** Rótulo do status da promessa; "none" sai em branco (sem promessa registrada). */
+function promiseStatusLabel(status: PaymentPromiseStatus): string {
+  if (status === "broken") return "Vencida";
+  if (status === "pending") return "No prazo";
+  return "";
+}
+
+/**
+ * Serializa os cachês a receber (recebíveis em aberto) em CSV, pronto para
+ * download. Mesma convenção pt-BR de `transactionsToCsv` (delimitador ";",
+ * decimal com vírgula, datas em UTC). A ordem das linhas é preservada (a página
+ * lista do atraso mais longo ao mais curto). Pura.
+ */
+export function receivablesToCsv(
+  rows: ReceivableCsvRow[],
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(RECEIVABLE_CSV_HEADERS)];
+  for (const row of rows) {
+    out.push([
+      row.show.title,
+      csvDate(row.show.date),
+      row.show.venue ?? "",
+      row.show.city ?? "",
+      String(row.daysOutstanding),
+      centsToCsvAmount(row.fee),
+      centsToCsvAmount(row.collected),
+      centsToCsvAmount(row.outstanding),
+      receivableSituationLabel(row),
+      row.promisedAt ? csvDate(row.promisedAt) : "",
+      promiseStatusLabel(row.promiseStatus),
     ]);
   }
   return toCsv(out, delimiter);
