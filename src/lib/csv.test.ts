@@ -14,6 +14,7 @@ import {
   contactProfitToCsv,
   contactActivityToCsv,
   receivablesToCsv,
+  receivablesByContactToCsv,
   TRANSACTION_CSV_HEADERS,
   SHOW_CSV_HEADERS,
   ANNUAL_SUMMARY_CSV_HEADERS,
@@ -22,11 +23,13 @@ import {
   CONTACT_PROFIT_CSV_HEADERS,
   CONTACT_ACTIVITY_CSV_HEADERS,
   RECEIVABLE_CSV_HEADERS,
+  RECEIVABLE_BY_CONTACT_CSV_HEADERS,
   type CsvTransaction,
   type CsvShow,
   type CsvProfitShow,
   type ContactActivityCsvRow,
   type ReceivableCsvRow,
+  type ReceivableByContactCsvRow,
 } from "./csv";
 import {
   annualSummary,
@@ -553,5 +556,71 @@ describe("receivablesToCsv", () => {
     const lines = csv.split("\r\n");
     expect(lines[1].startsWith("Show A;")).toBe(true);
     expect(lines[2].startsWith("Show B;")).toBe(true);
+  });
+});
+
+describe("receivablesByContactToCsv", () => {
+  const row = (
+    over: Partial<ReceivableByContactCsvRow> = {},
+  ): ReceivableByContactCsvRow => ({
+    contact: { name: "Bar do Zé", role: "VENUE" },
+    outstanding: 150000,
+    showCount: 3,
+    maxDaysOutstanding: 62,
+    weightedAvgDays: 40,
+    share: 0.6,
+    brokenCount: 0,
+    brokenOutstanding: 0,
+    ...over,
+  });
+
+  it("emite só o cabeçalho quando não há linhas", () => {
+    expect(receivablesByContactToCsv([])).toBe(
+      RECEIVABLE_BY_CONTACT_CSV_HEADERS.join(";"),
+    );
+  });
+
+  it("serializa um devedor com valores, atrasos e participação", () => {
+    const csv = receivablesByContactToCsv([row()]);
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(
+      "Contratante;Papel;A receber (R$);Shows;Pior atraso (dias);Atraso médio (dias);Participação;Promessas vencidas;A receber vencido (R$)",
+    );
+    expect(lines[1]).toBe("Bar do Zé;Casa de show;1500,00;3;62;40;60%;0;0,00");
+  });
+
+  it("arredonda a participação para porcentagem inteira", () => {
+    const cols = receivablesByContactToCsv([row({ share: 0.337 })])
+      .split("\r\n")[1]
+      .split(";");
+    expect(cols[6]).toBe("34%");
+  });
+
+  it("serializa o grupo sem contratante com nome fixo e papel em branco", () => {
+    const cols = receivablesByContactToCsv([row({ contact: null })])
+      .split("\r\n")[1]
+      .split(";");
+    expect(cols[0]).toBe("Sem contratante");
+    expect(cols[1]).toBe("");
+  });
+
+  it("expõe as promessas vencidas (contagem + valor)", () => {
+    const cols = receivablesByContactToCsv([
+      row({ brokenCount: 2, brokenOutstanding: 90000 }),
+    ])
+      .split("\r\n")[1]
+      .split(";");
+    expect(cols[7]).toBe("2");
+    expect(cols[8]).toBe("900,00");
+  });
+
+  it("preserva a ordem das linhas recebidas (maior devedor primeiro)", () => {
+    const csv = receivablesByContactToCsv([
+      row({ contact: { name: "Maior", role: "PROMOTER" }, outstanding: 300000 }),
+      row({ contact: { name: "Menor", role: "VENUE" }, outstanding: 100000 }),
+    ]);
+    const lines = csv.split("\r\n");
+    expect(lines[1].startsWith("Maior;")).toBe(true);
+    expect(lines[2].startsWith("Menor;")).toBe(true);
   });
 });

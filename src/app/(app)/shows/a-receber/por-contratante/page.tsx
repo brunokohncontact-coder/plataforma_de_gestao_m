@@ -134,9 +134,20 @@ export default async function ReceivablesByContactPage() {
             por quem responde pelo pagamento, para priorizar a cobrança pelo maior devedor.
           </p>
         </div>
-        <Link href="/shows/a-receber" className="btn-secondary">
-          ← Cachês a receber
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          {byContact.count > 0 && (
+            <a
+              href="/shows/a-receber/por-contratante/export"
+              className="btn-secondary text-sm"
+              download
+            >
+              ⬇ CSV
+            </a>
+          )}
+          <Link href="/shows/a-receber" className="btn-secondary">
+            ← Cachês a receber
+          </Link>
+        </div>
       </div>
 
       {byContact.count === 0 ? (
