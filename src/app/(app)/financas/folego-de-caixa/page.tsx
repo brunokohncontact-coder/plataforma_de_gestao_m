@@ -5,6 +5,7 @@ import {
   cashRunway,
   cashBurnRunway,
   cashFlowByMonth,
+  cashFlowTrend,
   parseBurnWindow,
   BURN_WINDOW_PRESETS,
   CRITICAL_RUNWAY_MONTHS,
@@ -13,6 +14,7 @@ import {
   type BurnRunwayVerdict,
   type CashBurnRunway,
   type CashFlowMonth,
+  type CashFlowTrend,
   type TxLike,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
@@ -276,6 +278,8 @@ function BurnRunwayCard({
 
       <MonthlyFlowStrip months={months} />
 
+      <CashFlowTrendBadge trend={cashFlowTrend(months)} />
+
       {verdict === "surplus" ? (
         <div className={"mt-4 rounded-lg px-4 py-3 text-sm " + BURN_VERDICT_STYLE.surplus.box}>
           {BURN_VERDICT_STYLE.surplus.emoji}{" "}
@@ -386,5 +390,47 @@ function MonthlyFlowStrip({ months }: { months: CashFlowMonth[] }) {
         Líquido por mês (recebido − pago): acima da linha o caixa cresceu, abaixo queimou.
       </figcaption>
     </figure>
+  );
+}
+
+const TREND_STYLE: Record<
+  Exclude<CashFlowTrend["direction"], "insufficient">,
+  { box: string; emoji: string; label: string; hint: string }
+> = {
+  accelerating: {
+    box: "bg-red-50 text-red-800",
+    emoji: "📉",
+    label: "Queima acelerando",
+    hint: "os meses recentes da janela queimaram mais caixa que os do começo — a média suaviza essa piora.",
+  },
+  easing: {
+    box: "bg-green-50 text-green-800",
+    emoji: "📈",
+    label: "Queima aliviando",
+    hint: "os meses recentes da janela vêm melhores que os do começo — o caixa está se recompondo.",
+  },
+  stable: {
+    box: "bg-gray-50 text-gray-700",
+    emoji: "➡️",
+    label: "Ritmo estável",
+    hint: "começo e fim da janela têm fluxo parecido — a média representa bem o período.",
+  },
+};
+
+/**
+ * Veredito de tendência da queima na janela (acelerando × aliviando × estável), derivado
+ * de `cashFlowTrend` sobre o mesmo `cashFlowByMonth` da tira. Some quando a janela é curta
+ * demais para partir em duas metades comparáveis (`insufficient`), para não afirmar uma
+ * direção sem amostra. Complementa a média (um número só) com a direção que ela esconde.
+ */
+function CashFlowTrendBadge({ trend }: { trend: CashFlowTrend }) {
+  if (trend.direction === "insufficient") return null;
+  const style = TREND_STYLE[trend.direction];
+  return (
+    <div className={"mt-3 rounded-lg px-4 py-3 text-sm " + style.box}>
+      {style.emoji} <strong>{style.label}.</strong> Comparando a primeira metade da janela (média{" "}
+      <strong>{formatMoney(trend.olderAvgNet)}/mês</strong>) com a mais recente (
+      <strong>{formatMoney(trend.recentAvgNet)}/mês</strong>), {style.hint}
+    </div>
   );
 }
