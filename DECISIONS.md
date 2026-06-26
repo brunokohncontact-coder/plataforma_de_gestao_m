@@ -3534,3 +3534,40 @@ contexto, decisão, justificativa e alternativas consideradas.
   único parametrizado pelo rótulo — mantido **adiado** (D116 alt. a/D119): os textos acionáveis divergem e as cópias
   são curtas. (b) estender já o comparativo a `/contatos/rentabilidade` (clientes) na mesma sessão — fora do escopo;
   fica como próximo passo priorizado (o helper continua genérico).
+
+## D122 — Comparativo ano a ano da concentração de clientes em `/contatos/rentabilidade` (Sessão 130)
+- **Contexto:** as D120/D121 entregaram o card "Concentração {ano} vs. {ano-1}" no eixo geográfico (`/shows/cidades`
+  e `/shows/locais`), deixando explícito (D121 alt. b / próximos passos itens 8 e 9) que estender o mesmo comparativo
+  a `/contatos/rentabilidade` (eixo de **cliente**) era o próximo passo barato. A página já tinha o retrato corrente do
+  risco de carteira (card "Concentração de clientes", D109) e o recorte por ano (D108), mas não dizia se a dependência
+  de poucos contratantes **piorou ou melhorou** no tempo.
+- **Decisão:** como a `ClientConcentration` (D109) é um **tipo distinto** da `GeoConcentration` (`effectiveClients`/
+  `clients` em vez de `effectivePlaces`/`places`), o helper geográfico não podia ser reusado literalmente. Em vez de
+  forçar uma generalização prematura, extraí a regra de tendência num helper interno `concentrationTrend(topShareDelta)`
+  (decide improved/worsened/stable contra `GEO_TREND_EPSILON`) — compartilhado por `compareGeoConcentration` (refatorado
+  para chamá-lo) e o novo `compareClientConcentration(current, previous)`, ambos em `src/lib/finance.ts`. O novo helper
+  é **puro**: recebe duas `ClientConcentration` já computadas e devolve `topShareDelta`, `effectiveClientsDelta` e o
+  `trend`. Na UI, `/contatos/rentabilidade` renderiza um card "Concentração {ano} vs. {ano-1}" **só** quando um ano
+  específico está selecionado e **ambos** os períodos têm contratante identificado com receita (`clientCount > 0`);
+  reaproveita o recorte por ano UTC (D108) sobre os shows já carregados, sem nova consulta. Os componentes de
+  apresentação (`ClientComparisonCard`, `CLIENT_TREND`, `deltaPp`, `deltaClients`) espelham os geográficos, mudando só a
+  moldura textual para o eixo de cliente ("maior contratante", "clientes efetivos", "conquistar clientes novos").
+- **Justificativa:** o sinal de direção (carteira de clientes abrindo × estreitando) vale o mesmo no eixo de cliente
+  que no geográfico, e a `clientConcentration` já existia — o custo foi só um helper puro fino + UI. Reusar o **limiar**
+  (`GEO_TREND_EPSILON`) e a **regra** (`concentrationTrend`) em vez de duplicá-los mantém uma fonte única da fronteira de
+  ruído; manter os tipos `Geo`/`Client` e os cards de apresentação **separados** (em vez de unificar tudo num genérico)
+  segue o que a D116 (alt. a)/D119 já decidiram: os textos acionáveis divergem de verdade ("conquistar clientes" ×
+  "abrir praças") e os tipos têm vocabulário próprio (praça × cliente).
+- **Testes:** **+5** em `finance.test.ts` (`compareClientConcentration`: improved/worsened/stable, a fronteira exata
+  `== ε` e a preservação das duas concentrações de origem, montando a entrada via `rankContactsByProfit` como na UI) —
+  **802 testes** verdes.
+- **DoD:** build de produção, typecheck e lint (0 avisos) verdes; **802 testes**; smoke test — `npm start`: `/login` →
+  200, `/contatos/rentabilidade?ano=2026` → 307 (rota protegida, redireciona para login). `npm audit` inalterado vs.
+  baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios);
+  **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) generalizar `compareGeoConcentration` para um tipo estrutural mínimo
+  (`{ topShare, effectiveX }`) e reusá-lo literalmente nos dois eixos — descartado: o ganho seria marginal (a regra de
+  tendência já é o que importa, e foi essa que extraí) e perderia o vocabulário próprio de cada `*Concentration`
+  (`effectivePlaces` × `effectiveClients`), tornando os deltas ambíguos no consumidor. (b) unificar os cards de
+  comparativo dos três eixos num componente único parametrizado — mantido **adiado** (D116 alt. a/D119): os textos
+  acionáveis divergem e as cópias são curtas.
