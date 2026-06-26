@@ -336,6 +336,34 @@ describe("rankVenuesByProfit", () => {
     expect(bar!.showCount).toBe(2);
     expect(bar!.totalNet).toBe(260_00);
   });
+
+  it("calcula o cachê mediano (preço típico) por local, robusto a outlier", () => {
+    // Mesmo palco com 3 shows: cachês 100, 200 e um festival fora da curva de 1000.
+    // Média implícita = 433,33 (puxada pelo outlier); mediana = 200 (preço típico).
+    const palco: VenueShowLike[] = [
+      { id: "v1", fee: 100_00, status: "PLAYED", venue: "Teatro X", city: "Recife" },
+      { id: "v2", fee: 200_00, status: "PLAYED", venue: "Teatro X", city: "Recife" },
+      { id: "v3", fee: 1000_00, status: "PLAYED", venue: "Teatro X", city: "Recife" },
+    ];
+    const r = rankVenuesByProfit(palco, []);
+    const teatro = r.rows.find((row) => row.key === "teatro x")!;
+    expect(teatro.medianFee).toBe(200_00);
+    // a mediana ignora o festival que distorceria a média (1300/3 = 433,33)
+    expect(teatro.medianFee).not.toBe(Math.round(teatro.totalFee / teatro.showCount));
+  });
+
+  it("nº par de shows no local: mediana é a média dos dois centrais", () => {
+    const palco: VenueShowLike[] = [
+      { id: "v1", fee: 100_00, status: "PLAYED", venue: "Teatro X", city: "Recife" },
+      { id: "v2", fee: 200_00, status: "PLAYED", venue: "Teatro X", city: "Recife" },
+      { id: "v3", fee: 300_00, status: "PLAYED", venue: "Teatro X", city: "Recife" },
+      { id: "v4", fee: 500_00, status: "PLAYED", venue: "Teatro X", city: "Recife" },
+    ];
+    const r = rankVenuesByProfit(palco, []);
+    const teatro = r.rows.find((row) => row.key === "teatro x")!;
+    // ordenados: 100, 200, 300, 500 -> (200 + 300) / 2 = 250
+    expect(teatro.medianFee).toBe(250_00);
+  });
 });
 
 describe("rankCitiesByProfit", () => {
@@ -400,6 +428,19 @@ describe("rankCitiesByProfit", () => {
     const recife = r.rows.find((row) => row.key === "recife");
     expect(recife!.showCount).toBe(2);
     expect(recife!.totalNet).toBe(260_00);
+  });
+
+  it("calcula o cachê mediano (preço típico) por cidade, robusto a outlier", () => {
+    // Recife com 3 shows (casas distintas): 100, 200 e um cachê fora da curva de 1000.
+    const cityShows: VenueShowLike[] = [
+      { id: "c1", fee: 100_00, status: "PLAYED", venue: "Bar do Zé", city: "Recife" },
+      { id: "c2", fee: 200_00, status: "PLAYED", venue: "Café Acústico", city: "Recife" },
+      { id: "c3", fee: 1000_00, status: "PLAYED", venue: "Arena", city: "Recife" },
+    ];
+    const r = rankCitiesByProfit(cityShows, []);
+    const recife = r.rows.find((row) => row.key === "recife")!;
+    expect(recife.medianFee).toBe(200_00);
+    expect(recife.medianFee).not.toBe(Math.round(recife.totalFee / recife.showCount));
   });
 });
 

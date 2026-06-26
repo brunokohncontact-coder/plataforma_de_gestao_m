@@ -3602,3 +3602,34 @@ contexto, decisão, justificativa e alternativas consideradas.
   `null` em `medianFee` quando `showCount < 3` — descartado: misturaria a regra de exibição na lógica pura e perderia o
   dado para outros consumidores/testes; o gate é presentacional. (c) estender a mesma coluna à rentabilidade por
   casa/cidade — **adiável**: mesma mecânica, mas fica para uma sessão própria para manter o escopo fechado.
+
+## D124 — Cachê mediano por casa/cidade em `/shows/locais` e `/shows/cidades` (Sessão 132)
+- **Contexto:** a D123 entregou o **cachê mediano** por contratante em `/contatos/rentabilidade` (preço típico, robusto a
+  um show fora da curva) e deixou explícito na alternativa (c) que estender a mesma coluna à rentabilidade por
+  casa/cidade seria "mesma mecânica, mas fica para uma sessão própria para manter o escopo fechado". As duas telas
+  (`/shows/locais`/D111 e `/shows/cidades`/D115) já mostram o cachê **somado** (`totalFee`) e a **média/show** do líquido
+  (`avgNet`), mas não o preço típico por show — útil para saber quanto um palco/praça costuma pagar antes de fechar a
+  próxima data, sem o viés de um festival pontual de cachê alto.
+- **Decisão:** fechar o item (c). O agregador genérico `aggregateShowProfit` (`src/lib/finance.ts`, fonte única de
+  `rankVenuesByProfit` e `rankCitiesByProfit`) passou a acumular os cachês individuais de cada grupo (`Acc.fees`) e a
+  expor `medianFee: number` em `VenueProfitRow` (logo, também em `CityProfitRow`, que é o mesmo tipo), reaproveitando o
+  helper interno `median()` — exatamente o mesmo padrão da D123, agora no eixo geográfico. As duas páginas ganharam a
+  coluna "Cachê mediano" (entre "Cachê" e "Extras"), exibida só com `showCount >= MIN_MEDIAN_FEE_SAMPLE` (= 3, a const
+  já exportada da D123, reusada sem duplicar o limiar); abaixo disso "—" com `title` explicativo. Rodapé de cada tela
+  ganhou a nota do "preço típico do palco/da praça". O helper segue **puro** e computa a mediana sempre; o gate é decisão
+  de UI (mesma disciplina da D123).
+- **Justificativa:** reaproveitar `aggregateShowProfit` (em vez de tocar `rankVenuesByProfit`/`rankCitiesByProfit`
+  separadamente) mantém uma fonte única e faz a cidade herdar o campo de graça (é rollup acima do local). Reusar
+  `MIN_MEDIAN_FEE_SAMPLE` e a mesma mecânica de gate da D123 mantém o comportamento consistente entre as três telas de
+  rentabilidade (contratante/casa/cidade) e o limiar ajustável num só lugar.
+- **Testes:** **+3** em `finance.test.ts`: dentro de `rankVenuesByProfit` (mediana robusta a outlier 100/200/1000 → 200 ≠
+  média; nº par de shows → média dos dois centrais) e `rankCitiesByProfit` (mediana por cidade robusta a outlier). **808
+  testes** verdes (eram 805).
+- **DoD:** build de produção, typecheck e lint (0 avisos) verdes; **808 testes**; smoke test — `npm start`: `/login` →
+  200, `/shows/locais` sem sessão → 307 (rota protegida). `npm audit` inalterado vs. baseline (10 advisories — 4 moderate
+  / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) adicionar `medianFee` direto em `rankVenuesByProfit` e `rankCitiesByProfit`
+  separadamente — descartado: ambas delegam a `aggregateShowProfit`, então o ponto único é o agregador. (b) também expor
+  o cachê **médio** por show (`avgFee`, como em `ContactProfitRow`) nas duas telas — descartado por ora: a média implícita
+  já é derivável de `totalFee ÷ shows` e o foco do item era o preço **típico** (mediano); manter o escopo fechado. (c)
+  gravar `null` em `medianFee` abaixo do limiar — descartado pelo mesmo motivo da D123 (gate é presentacional).

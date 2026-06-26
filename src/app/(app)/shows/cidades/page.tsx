@@ -8,6 +8,7 @@ import {
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
+  MIN_MEDIAN_FEE_SAMPLE,
   type TxLike,
   type VenueShowLike,
   type GeoConcentration,
@@ -201,6 +202,7 @@ export default async function CityProfitabilityPage({
                   <th className="px-4 py-3 font-medium">Cidade</th>
                   <th className="px-4 py-3 text-right font-medium">Shows</th>
                   <th className="px-4 py-3 text-right font-medium">Cachê</th>
+                  <th className="px-4 py-3 text-right font-medium">Cachê mediano</th>
                   <th className="px-4 py-3 text-right font-medium">Extras</th>
                   <th className="px-4 py-3 text-right font-medium">Despesas</th>
                   <th className="px-4 py-3 text-right font-medium">Resultado</th>
@@ -233,6 +235,18 @@ export default async function CityProfitabilityPage({
                       {formatMoney(row.totalFee)}
                     </td>
                     <td className="px-4 py-3 text-right text-gray-700">
+                      {row.showCount >= MIN_MEDIAN_FEE_SAMPLE ? (
+                        formatMoney(row.medianFee)
+                      ) : (
+                        <span
+                          className="text-gray-400"
+                          title={`Precisa de ao menos ${MIN_MEDIAN_FEE_SAMPLE} shows para a mediana ser confiável`}
+                        >
+                          —
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right text-gray-700">
                       {row.totalExtra > 0 ? formatMoney(row.totalExtra) : "—"}
                     </td>
                     <td className="px-4 py-3 text-right text-gray-700">
@@ -257,7 +271,10 @@ export default async function CityProfitabilityPage({
 
           <p className="text-xs text-gray-400">
             Os shows são agrupados pela cidade (uma cidade reúne todas as casas nela). Shows sem
-            cidade informada aparecem como “Sem cidade”. Para o detalhe por casa, veja{" "}
+            cidade informada aparecem como “Sem cidade”. O <strong>cachê mediano</strong> é o preço
+            típico da praça (metade dos shows acima, metade abaixo), robusto a um show fora da curva;
+            aparece só com {MIN_MEDIAN_FEE_SAMPLE} shows ou mais (com poucos, a mediana não é
+            confiável). Para o detalhe por casa, veja{" "}
             <Link href="/shows/locais" className="text-brand-700 hover:underline">
               Por local
             </Link>
