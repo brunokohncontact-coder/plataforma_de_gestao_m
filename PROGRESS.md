@@ -9,8 +9,14 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **805 testes**
-verdes após a Sessão 131 (**cachê mediano por contratante em `/contatos/rentabilidade`** — `rankContactsByProfit`
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **808 testes**
+verdes após a Sessão 132 (**cachê mediano por casa/cidade em `/shows/locais` e `/shows/cidades`** — o agregador genérico
+`aggregateShowProfit` (fonte única de `rankVenuesByProfit`/`rankCitiesByProfit`) passou a acumular os cachês de cada grupo
+(`Acc.fees`) e expor `medianFee` em `VenueProfitRow` (e logo `CityProfitRow`, mesmo tipo), reusando o helper interno
+`median()` — mesma mecânica da D123, agora no eixo geográfico; nova coluna "Cachê mediano" (entre "Cachê" e "Extras") nas
+duas telas, exibida só com `showCount >= MIN_MEDIAN_FEE_SAMPLE` (=3, const reusada da D123) — abaixo disso "—" com `title`
+explicativo. Fecha a alternativa (c) adiada na D123. **+3 testes** (mediana vs. outlier por local; nº par; mediana por
+cidade); ver D124; segue 805 da Sessão 131 (**cachê mediano por contratante em `/contatos/rentabilidade`** — `rankContactsByProfit`
 passou a acumular os cachês de cada grupo (`Acc.fees`) e expor `medianFee` em `ContactProfitRow`, reusando o helper
 interno `median()` (de `feeDistribution`); o **preço típico** (metade dos shows acima, metade abaixo) é robusto a um
 show fora da curva que infla a média (`avgFee`/D107). Nova coluna "Cachê mediano" entre "Cachê médio" e "Resultado",
@@ -2635,8 +2641,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    D117. **Cachê mediano por contratante** entregue na Sessão 131 — `medianFee` em `ContactProfitRow`
    (`rankContactsByProfit` acumula os cachês de cada grupo e reusa `median()`) + coluna "Cachê mediano" em
    `/contatos/rentabilidade`, exibida só com `showCount >= MIN_MEDIAN_FEE_SAMPLE` (=3) — resolve na apresentação a
-   ressalva de "ruidoso com poucos shows" (D57) que mantinha o item adiado, ver D123. Próximo possível — a mesma
-   coluna de cachê mediano na rentabilidade por casa/cidade (mesma mecânica, escopo próprio); o **comparativo ano a
+   ressalva de "ruidoso com poucos shows" (D57) que mantinha o item adiado, ver D123. **Cachê mediano por casa/cidade**
+   entregue na Sessão 132 — `medianFee` em `VenueProfitRow`/`CityProfitRow` (acumulado no agregador genérico
+   `aggregateShowProfit`) + coluna "Cachê mediano" em `/shows/locais` e `/shows/cidades`, mesma mecânica/limiar da D123
+   (fecha a alternativa (c) adiada na D123), ver D124. Próximo possível —
+   o **comparativo ano a
    ano da concentração de clientes** foi entregue na Sessão 130
    (`compareClientConcentration` + card "Concentração {ano} vs. {ano-1}" em `/contatos/rentabilidade`, ver D122); ou um
    recorte por período (`?ano=`) também no nudge de concentração do Painel (hoje usa o retrato corrente, todos os
@@ -2678,9 +2687,10 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `/contatos/rentabilidade` ganhou o card "Concentração {ano} vs. {ano-1}" no eixo de cliente, via novo helper puro
    `compareClientConcentration` em `src/lib/finance.ts` (a regra de tendência virou o helper interno compartilhado
    `concentrationTrend`, reusando `GEO_TREND_EPSILON`; como `ClientConcentration` é tipo distinto de `GeoConcentration`,
-   foi um helper paralelo, não generalização — ver D122), +5 testes. Próximo possível aqui —
-   o cachê **mediano** por casa (robusto a outlier, adiável: ruidoso com poucos
-   shows por casa, mesma razão da D57). **DRY do `PeriodPicker`:** ENTREGUE na Sessão 127 — extraído
+   foi um helper paralelo, não generalização — ver D122), +5 testes. **Cachê mediano por casa/cidade** ENTREGUE na
+   Sessão 132 — `medianFee` no agregador genérico `aggregateShowProfit` + coluna "Cachê mediano" em `/shows/locais` e
+   `/shows/cidades`, gated por `MIN_MEDIAN_FEE_SAMPLE` (=3) como na D123 (resolve na apresentação a ressalva de "ruidoso
+   com poucos shows"), ver D124. **DRY do `PeriodPicker`:** ENTREGUE na Sessão 127 — extraído
    `src/components/PeriodPicker.tsx` (server component puro, `basePath` + `ariaLabel`); as cinco telas
    (contratante/local/cidade/detalhe do contato/show) importam o componente compartilhado, −180 linhas, markup
    idêntico, ver D119. Próximo possível de DRY — unificar os cards de concentração permanece **adiado** (D116 alt. a):

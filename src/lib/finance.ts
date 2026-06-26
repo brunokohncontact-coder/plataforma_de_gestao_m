@@ -144,6 +144,14 @@ export interface VenueProfitRow {
   totalNet: number;
   /** Resultado líquido médio por show no grupo (centavos, arredondado). */
   avgNet: number;
+  /**
+   * Cachê **mediano** por show no grupo (centavos): metade dos shows do local
+   * cobra acima, metade abaixo. É o nível de preço **típico** do palco, robusto
+   * a um único show fora da curva (um festival pontual que infla a média).
+   * Complementa o cachê somado (`totalFee`) e a média implícita; a leitura só é
+   * confiável com amostra suficiente — a UI a omite com poucos shows (ver D123/D124).
+   */
+  medianFee: number;
   /** Margem agregada (net / receita bruta), 0 se receita bruta 0. */
   margin: number;
 }
@@ -462,6 +470,8 @@ function aggregateShowProfit(
     totalExtra: number;
     totalExpenses: number;
     totalNet: number;
+    /** Cachês individuais do grupo, para o cachê mediano (robusto a outlier). */
+    fees: number[];
     /** Contagem das grafias originais para escolher o nome de exibição. */
     labels: Map<string, { count: number; order: number }>;
     /** Ordem de primeira aparição do grupo (estabilidade). */
@@ -485,6 +495,7 @@ function aggregateShowProfit(
         totalExtra: 0,
         totalExpenses: 0,
         totalNet: 0,
+        fees: [],
         labels: new Map(),
         order: order++,
       };
@@ -497,6 +508,7 @@ function aggregateShowProfit(
     acc.totalExtra += pnl.extraIncome;
     acc.totalExpenses += pnl.expenses;
     acc.totalNet += pnl.net;
+    acc.fees.push(pnl.fee);
 
     if (rawLabel) {
       const seen = acc.labels.get(rawLabel);
@@ -517,6 +529,7 @@ function aggregateShowProfit(
       totalExpenses: acc.totalExpenses,
       totalNet: acc.totalNet,
       avgNet: acc.showCount > 0 ? Math.round(acc.totalNet / acc.showCount) : 0,
+      medianFee: median(acc.fees),
       margin: gross === 0 ? 0 : acc.totalNet / gross,
     };
   });
