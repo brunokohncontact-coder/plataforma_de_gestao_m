@@ -9,8 +9,15 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **802 testes**
-verdes após a Sessão 130 (**comparativo ano a ano da concentração de clientes em `/contatos/rentabilidade`** —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **805 testes**
+verdes após a Sessão 131 (**cachê mediano por contratante em `/contatos/rentabilidade`** — `rankContactsByProfit`
+passou a acumular os cachês de cada grupo (`Acc.fees`) e expor `medianFee` em `ContactProfitRow`, reusando o helper
+interno `median()` (de `feeDistribution`); o **preço típico** (metade dos shows acima, metade abaixo) é robusto a um
+show fora da curva que infla a média (`avgFee`/D107). Nova coluna "Cachê mediano" entre "Cachê médio" e "Resultado",
+exibida só com `showCount >= MIN_MEDIAN_FEE_SAMPLE` (=3, const exportada) — abaixo disso "—" com `title` explicativo,
+resolvendo na **apresentação** a ressalva de "ruidoso com poucos shows" que mantinha o item adiado (D57/próximos passos).
+O helper segue puro e computa a mediana sempre; o gate é decisão de UI. **+3 testes** (mediana vs. outlier, nº par,
+1 show); ver D123; segue 802 da Sessão 130 (**comparativo ano a ano da concentração de clientes em `/contatos/rentabilidade`** —
 estende o card "Concentração {ano} vs. {ano-1}" das D120/D121 ao eixo de **cliente**: novo helper puro
 `compareClientConcentration(current, previous)` em `src/lib/finance.ts` (recebe duas `ClientConcentration` já
 computadas e devolve `topShareDelta`, `effectiveClientsDelta` e o veredito `trend`), reaproveitando a regra de
@@ -2625,8 +2632,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `ProfitPeriodPicker` (`?ano=` ancorado no contato) que recorta **só** o card "Rentabilidade" (D106) reusando os
    três helpers da D108 (`showProfitYears`/`parseProfitYear`/`filterShowsByYear`); filtra os shows por ano UTC antes
    de `summarizeContactProfit`, deixando o histórico e a lista de shows intactos; estado vazio período-ciente, ver
-   D117. Próximo possível — o cachê **mediano** por contratante (robusto a outlier — adiável: ruidoso com poucos
-   shows, mesma razão da D57); o **comparativo ano a ano da concentração de clientes** foi entregue na Sessão 130
+   D117. **Cachê mediano por contratante** entregue na Sessão 131 — `medianFee` em `ContactProfitRow`
+   (`rankContactsByProfit` acumula os cachês de cada grupo e reusa `median()`) + coluna "Cachê mediano" em
+   `/contatos/rentabilidade`, exibida só com `showCount >= MIN_MEDIAN_FEE_SAMPLE` (=3) — resolve na apresentação a
+   ressalva de "ruidoso com poucos shows" (D57) que mantinha o item adiado, ver D123. Próximo possível — a mesma
+   coluna de cachê mediano na rentabilidade por casa/cidade (mesma mecânica, escopo próprio); o **comparativo ano a
+   ano da concentração de clientes** foi entregue na Sessão 130
    (`compareClientConcentration` + card "Concentração {ano} vs. {ano-1}" em `/contatos/rentabilidade`, ver D122); ou um
    recorte por período (`?ano=`) também no nudge de concentração do Painel (hoje usa o retrato corrente, todos os
    anos).

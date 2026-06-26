@@ -5,6 +5,7 @@ import {
   rankContactsByProfit,
   clientConcentration,
   compareClientConcentration,
+  MIN_MEDIAN_FEE_SAMPLE,
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
@@ -228,6 +229,7 @@ export default async function ContactProfitabilityPage({
                   <th className="px-4 py-3 text-right font-medium">Extras</th>
                   <th className="px-4 py-3 text-right font-medium">Despesas</th>
                   <th className="px-4 py-3 text-right font-medium">Cachê médio</th>
+                  <th className="px-4 py-3 text-right font-medium">Cachê mediano</th>
                   <th className="px-4 py-3 text-right font-medium">Resultado</th>
                   <th className="px-4 py-3 text-right font-medium">Média/show</th>
                 </tr>
@@ -267,6 +269,18 @@ export default async function ContactProfitabilityPage({
                     <td className="px-4 py-3 text-right text-gray-700">
                       {row.showCount > 0 ? formatMoney(row.avgFee) : "—"}
                     </td>
+                    <td className="px-4 py-3 text-right text-gray-700">
+                      {row.showCount >= MIN_MEDIAN_FEE_SAMPLE ? (
+                        formatMoney(row.medianFee)
+                      ) : (
+                        <span
+                          className="text-gray-400"
+                          title={`Precisa de ao menos ${MIN_MEDIAN_FEE_SAMPLE} shows para a mediana ser confiável`}
+                        >
+                          —
+                        </span>
+                      )}
+                    </td>
                     <td
                       className={
                         "px-4 py-3 text-right font-semibold " +
@@ -289,7 +303,10 @@ export default async function ContactProfitabilityPage({
             o resultado não ser contado em dobro. Shows sem contato vinculado aparecem como “Sem
             contratante”. Diferente do ranking, que mede o cachê bruto e conta um show para cada contato.
             O <strong>cachê médio</strong> mostra o nível de preço praticado (cachê ÷ shows), antes de
-            extras e custos — distinto da <strong>média/show</strong>, que é o líquido por show.
+            extras e custos — distinto da <strong>média/show</strong>, que é o líquido por show. O{" "}
+            <strong>cachê mediano</strong> é o preço típico (metade dos shows acima, metade abaixo),
+            robusto a um show fora da curva; aparece só com {MIN_MEDIAN_FEE_SAMPLE} shows ou mais (com
+            poucos, a mediana não é confiável).
           </p>
         </>
       )}

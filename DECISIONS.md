@@ -3571,3 +3571,34 @@ contexto, decisão, justificativa e alternativas consideradas.
   (`effectivePlaces` × `effectiveClients`), tornando os deltas ambíguos no consumidor. (b) unificar os cards de
   comparativo dos três eixos num componente único parametrizado — mantido **adiado** (D116 alt. a/D119): os textos
   acionáveis divergem e as cópias são curtas.
+
+## D123 — Cachê mediano por contratante em `/contatos/rentabilidade` (Sessão 131)
+- **Contexto:** a coluna "Cachê médio" (`avgFee`, D107) mostra o **nível de preço** praticado por contratante (cachê ÷
+  shows). Sendo média, ela é sensível a um único show fora da curva — um festival pontual de cachê alto infla o
+  "preço típico" e engana na hora de negociar o próximo show com aquele cliente. O **cachê mediano** (metade dos shows
+  acima, metade abaixo) é a leitura robusta a esse outlier. O item aparecia nos "próximos passos" (item 8) como
+  "próximo possível", mas **adiado** por ser "ruidoso com poucos shows" (mesma ressalva da D57 para a mediana de prazo).
+- **Decisão:** resolver a ressalva em vez de manter o adiamento. `rankContactsByProfit` (`src/lib/finance.ts`) passou a
+  acumular os cachês individuais de cada grupo (`Acc.fees`) e a expor `medianFee: number` em `ContactProfitRow`,
+  reaproveitando o helper interno `median()` já existente (usado por `feeDistribution`/D61-faixas). A leitura ruidosa é
+  resolvida na **apresentação**, não no dado: a coluna "Cachê mediano" em `/contatos/rentabilidade` só mostra o valor
+  quando o contratante tem `showCount >= MIN_MEDIAN_FEE_SAMPLE` (= 3, nova const exportada); abaixo disso exibe "—" com
+  um `title` explicando ("precisa de ao menos 3 shows para a mediana ser confiável"). O helper continua **puro** e
+  computa a mediana sempre (1 show → o próprio cachê), deixando o gate de exibição como decisão de UI — assim os testes
+  cobrem o cálculo independentemente do limiar.
+- **Justificativa:** com 1–2 shows a mediana é igual/quase igual à média e não agrega (pior: parece "típica" sem ser);
+  com 3+ ela começa a divergir da média e a revelar o preço habitual descontando o outlier — exatamente o que o
+  contratante de carteira longa precisa para negociar. Gatekeepear na UI (e não zerar/ocultar no dado) mantém uma fonte
+  única do cálculo e deixa o limiar ajustável num só lugar. Reusar `median()` evita uma segunda implementação de mediana.
+- **Testes:** **+3** em `finance.test.ts` (dentro de `rankContactsByProfit`): mediana robusta a outlier (cachês
+  100/200/1000 → mediana 200 ≠ média 433,33), nº par de shows (média dos dois centrais) e grupo de 1 show (mediana = o
+  próprio cachê). **805 testes** verdes (eram 802).
+- **DoD:** build de produção, typecheck e lint (0 avisos) verdes; **805 testes**; smoke test — `npm start`: `/login` →
+  200, `/contatos/rentabilidade` sem sessão → 307 (rota protegida), e render **autenticado** (cookie de sessão emitido
+  para o usuário demo) → 200 com a coluna "Cachê mediano" presente. `npm audit` inalterado vs. baseline (10 advisories —
+  4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) manter o adiamento (D57/próximos passos) — descartado: a ressalva era de **ruído
+  com poucos shows**, resolvível por amostra mínima na exibição, então o motivo do adiamento deixou de valer. (b) gravar
+  `null` em `medianFee` quando `showCount < 3` — descartado: misturaria a regra de exibição na lógica pura e perderia o
+  dado para outros consumidores/testes; o gate é presentacional. (c) estender a mesma coluna à rentabilidade por
+  casa/cidade — **adiável**: mesma mecânica, mas fica para uma sessão própria para manter o escopo fechado.
