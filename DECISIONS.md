@@ -3507,3 +3507,30 @@ contexto, decisão, justificativa e alternativas consideradas.
   o ano anterior é o baseline mais legível; revisitar quando houver muitos anos. (c) estender já o mesmo comparativo a
   `/shows/locais` (por casa) e `/contatos/rentabilidade` (clientes) — fora do escopo desta sessão; o helper já é
   genérico (opera sobre `GeoConcentration`), então o reúso fica barato quando for priorizado.
+
+## D121 — Comparativo ano a ano da concentração por casa em `/shows/locais` (Sessão 129)
+- **Contexto:** a D120 entregou o card "Concentração {ano} vs. {ano-1}" só em `/shows/cidades`, deixando explícito
+  (alt. c) que o helper `compareGeoConcentration` é genérico e que estendê-lo a `/shows/locais` (por casa) seria
+  barato quando priorizado. A página `/shows/locais` já tinha o retrato corrente do risco por casa (card
+  "Concentração por casa", D116) e o recorte por ano (D111), mas não dizia se a dependência de poucas casas
+  **piorou ou melhorou** no tempo — exatamente a lacuna que a D120 fechou no eixo de cidade.
+- **Decisão:** wirear o mesmo `compareGeoConcentration` (D120) em `/shows/locais`: com um ano específico
+  selecionado, computa a `geoConcentration` do ano anterior (`rankVenuesByProfit` sobre `filterShowsByYear(..., ano-1)`)
+  e renderiza um card "Concentração {ano} vs. {ano-1}" **só** quando ambos os períodos têm casa identificada com
+  receita (`placeCount > 0`). Reaproveita o recorte por ano UTC (D108) sobre os shows já carregados, sem nova
+  consulta. Os componentes de apresentação (`VenueComparisonCard`, `VENUE_TREND`, `deltaPp`, `deltaPlaces`)
+  espelham os de `/shows/cidades`, mudando só a moldura textual para o eixo de casa/palco ("maior casa",
+  "casas efetivas", "prospectar palcos novos").
+- **Justificativa:** o sinal de direção (carteira de casas abrindo × estreitando) vale o mesmo na granularidade de
+  casa que na de cidade, e o helper puro/testável já existia — então o custo é só UI. Manter as cópias de
+  apresentação separadas (em vez de unificar num card parametrizado) segue o que a D116 (alt. a)/D119 já decidiram:
+  os textos acionáveis divergem de verdade ("prospectar palcos" × "abrir praças"), e as cópias são pequenas.
+- **Testes:** **nenhum novo** — mudança UI-only que reutiliza `compareGeoConcentration`, já coberto por **+5** testes
+  desde a D120; a lógica de tendência/limiar não foi tocada. **797 testes** verdes.
+- **DoD:** build de produção, typecheck e lint (0 avisos) verdes; **797 testes**; smoke test — `npm start`: `/login` →
+  200. `npm audit` inalterado vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
+  postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) unificar os cards de concentração/comparativo de cidade e casa num componente
+  único parametrizado pelo rótulo — mantido **adiado** (D116 alt. a/D119): os textos acionáveis divergem e as cópias
+  são curtas. (b) estender já o comparativo a `/contatos/rentabilidade` (clientes) na mesma sessão — fora do escopo;
+  fica como próximo passo priorizado (o helper continua genérico).
