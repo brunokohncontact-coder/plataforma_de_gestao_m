@@ -3474,3 +3474,36 @@ contexto, decisão, justificativa e alternativas consideradas.
   num componente único — **mantido adiado** (D116 alt. a): ali os textos acionáveis divergem de verdade
   ("prospectar palcos" × "abrir praças" × "diversificar clientes"), então o ganho é menor e o acoplamento, maior.
   (c) embutir o `?ano=` numa querystring genérica com mais filtros — fora de escopo; hoje o único eixo é o ano.
+
+## D120 — Comparação ano a ano da concentração geográfica (vs. ano anterior) (Sessão 128)
+- **Contexto:** o card "Concentração geográfica" de `/shows/cidades` (D113) e o recorte por ano (D115) davam um
+  **retrato** do risco de depender de poucas praças num período, mas não diziam se a dependência **piorou ou melhorou**
+  no tempo. Os próximos passos (itens 8 e 9) sinalizavam repetidamente "comparar a concentração entre dois anos lado a
+  lado, espelhando D33" (o comparativo `computeDelta` já usado em outras telas).
+- **Decisão:** adicionar `compareGeoConcentration(current, previous)` em `src/lib/finance.ts` — função **pura** que
+  recebe duas `GeoConcentration` já computadas (cada uma sobre as linhas de `rankCitiesByProfit` do seu período) e
+  devolve `topShareDelta` (variação da participação da maior praça, atual − anterior), `effectivePlacesDelta`
+  (variação do nº de cidades efetivas) e um veredito `trend` ("improved" / "worsened" / "stable") decidido pela
+  variação de `topShare` contra um limiar `GEO_TREND_EPSILON = 0.05` (5 p.p.). Na UI, `/shows/cidades` renderiza um
+  card "Concentração {ano} vs. {ano-1}" **só** quando um ano específico está selecionado e **ambos** os períodos têm
+  praça identificada com receita (`placeCount > 0`); reaproveita o mesmo recorte por ano UTC (D108) sobre os shows já
+  carregados, sem nova consulta. O card mostra Δ da maior praça (de → para), Δ de cidades efetivas e a nota acionável
+  do veredito.
+- **Justificativa:** o sinal de risco que importa para booking não é o nível absoluto e sim a **direção** — a carteira
+  geográfica está abrindo ou estreitando? `topShare` é a leitura-manchete (a maior praça) e bounded (0..1), o que dá
+  um limiar de ruído intuitivo (5 p.p.); as cidades efetivas (1/HHI) complementam mostrando a dispersão. Manter a
+  função pura (sem I/O, recebe `GeoConcentration` prontas) segue o padrão de `geoConcentrationHeadline`/D110: a regra
+  de tendência vive na lib testável, a página só decide **quando** exibir. O limiar virou `export const` para ficar
+  testável na fronteira e reutilizável se um eixo de cliente quiser a mesma comparação.
+- **Testes:** **+5** em `finance.test.ts` (cobrindo improved/worsened/stable, a fronteira exata `== ε` e a
+  preservação das duas concentrações de origem) — **797 testes** verdes.
+- **DoD:** build de produção, typecheck e lint (0 avisos) verdes; **797 testes**; smoke test — `npm start`: `/login` →
+  200, `/shows/cidades?ano=2025` → 307 (rota protegida, redireciona para login). `npm audit` inalterado vs. baseline
+  (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios);
+  **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) basear o `trend` no HHI/cidades efetivas em vez de `topShare` — descartado: HHI é
+  menos intuitivo para o limiar e a maior praça é a leitura que o músico age sobre ("de quem dependo"). (b) comparar
+  contra a média dos anos anteriores em vez do ano imediatamente anterior — adiado: com histórico curto (poucos anos)
+  o ano anterior é o baseline mais legível; revisitar quando houver muitos anos. (c) estender já o mesmo comparativo a
+  `/shows/locais` (por casa) e `/contatos/rentabilidade` (clientes) — fora do escopo desta sessão; o helper já é
+  genérico (opera sobre `GeoConcentration`), então o reúso fica barato quando for priorizado.
