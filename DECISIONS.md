@@ -3413,3 +3413,33 @@ contexto, decisão, justificativa e alternativas consideradas.
   `PeriodPicker` de `/contatos/rentabilidade` — adiável: as cópias são pequenas e a única diferença real é o
   `href` base; se surgir um quarto uso com a mesma assinatura, vale consolidar num componente parametrizado pelo
   caminho base.
+
+## D118 — Recorte por período (ano) na rentabilidade por show (Sessão 126)
+- **Contexto:** o **ranking de rentabilidade por show** (`/shows/rentabilidade`, F4/Sessão 24) listava o P&L de
+  **todos** os shows não cancelados sem como isolar uma temporada — era a única tela de rentabilidade ainda **sem**
+  `PeriodPicker`, enquanto a rentabilidade por contratante (D108), por local (D111), a atuação por cidade (D115) e o
+  detalhe do contato (D117) já recortavam por ano. Mesma lacuna, mesmos helpers à mão.
+- **Decisão:** `/shows/rentabilidade` passou a aceitar `searchParams.ano` e ganhou um `PeriodPicker` (pílula "Todos"
+  + uma por ano com shows não cancelados), **reaproveitando os três helpers puros da D108** em `finance.ts`:
+  `showProfitYears` (anos UTC dos shows não cancelados), `parseProfitYear` (`?ano=` → `number | "all"`, saneado
+  contra os anos disponíveis) e `filterShowsByYear` (filtra pelo ano UTC). Os shows são filtrados **antes** de
+  `rankShowsByProfit`, então a exclusão de `CANCELLED` e o cálculo de P&L por show seguem intocados (o ranking
+  continua agnóstico ao recorte). A consulta já trazia `date`; a de transações (por `showId`) não mudou —
+  `computeShowPnL` filtra por `showId` internamente, então passar todas as txs é seguro com o recorte. Estado vazio
+  período-ciente (com atalho "Ver todos os anos" quando o ano escolhido fica sem shows).
+- **Justificativa:** mesmo padrão validado em quatro telas (D108/D111/D115/D117) — reusar os helpers puros evita
+  lógica nova e mantém o comportamento de período idêntico. "Quais shows deram dinheiro **neste ano**?" é a pergunta
+  acionável quando o histórico cresce e o ranking de todos os anos vira ruído.
+- **Testes:** nenhum novo — wiring de UI sobre helpers já cobertos (`showProfitYears`/`parseProfitYear`/
+  `filterShowsByYear` têm testes desde a D108; `rankShowsByProfit` desde a Sessão 24), mesmo critério da
+  D111/D115/D117. **792 testes** verdes (inalterado). Validado por smoke test autenticado: sem `?ano=`/ano inválido
+  → todos os anos; `?ano=2026` e `?ano=2025` → só o ano pedido (HTTP 200, picker presente em todos os casos).
+- **DoD:** build de produção (rota `/shows/rentabilidade` ok), typecheck e lint (0 avisos) verdes; **792 testes**;
+  smoke test autenticado (token de sessão forjado via `createSessionToken`) confirmando o recorte por ano. `npm
+  audit` inalterado vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss
+  bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) recorte por **mês** — descartado: o ano é a granularidade das telas irmãs e o
+  P&L por show já é por gig isolado. (b) **extrair** um `PeriodPicker` compartilhado entre as cinco telas que agora o
+  têm — adiável pela mesma razão da D117 alt. (c): as cópias são pequenas e diferem só no `href` base; com cinco
+  usos idênticos, porém, a consolidação num componente parametrizado pelo caminho base já tem massa crítica — fica
+  registrado como o próximo passo natural de DRY.

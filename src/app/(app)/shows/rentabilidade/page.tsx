@@ -1,7 +1,13 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { rankShowsByProfit, type TxLike } from "@/lib/finance";
+import {
+  rankShowsByProfit,
+  showProfitYears,
+  parseProfitYear,
+  filterShowsByYear,
+  type TxLike,
+} from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { formatDate } from "@/lib/format";
 import {
@@ -12,7 +18,15 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export default async function ShowProfitabilityPage() {
+type SearchParams = { [key: string]: string | string[] | undefined };
+
+const CANCELLED = "CANCELLED";
+
+export default async function ShowProfitabilityPage({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
   const user = await requireUser();
 
   const [shows, transactions] = await Promise.all([
@@ -36,8 +50,21 @@ export default async function ShowProfitabilityPage() {
     showId: t.showId,
   }));
 
+  // Recorte por período (ano), reaproveitando os três helpers da D108
+  // (mesmo padrão de /shows/locais e /shows/cidades, ver D111/D115). Os anos do
+  // seletor vêm só dos shows que entram na agregação (não cancelados), para não
+  // oferecer um ano que ficaria vazio. Filtra-se ANTES de `rankShowsByProfit`,
+  // que segue excluindo CANCELLED e calculando o P&L sem saber do recorte.
+  const availableYears = showProfitYears(
+    shows.filter((s) => s.status !== CANCELLED).map((s) => s.date),
+  );
+  const yearFilter = parseProfitYear(searchParams?.ano, availableYears);
+  const periodShows = filterShowsByYear(shows, yearFilter);
+
   // Exclui CANCELLED por padrão (não representam rentabilidade real).
-  const report = rankShowsByProfit(shows, txs);
+  const report = rankShowsByProfit(periodShows, txs);
+
+  const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
 
   return (
     <div className="space-y-6">
@@ -54,12 +81,36 @@ export default async function ShowProfitabilityPage() {
         </Link>
       </div>
 
+      {availableYears.length > 0 && (
+        <PeriodPicker years={availableYears} active={yearFilter} />
+      )}
+
       {report.count === 0 ? (
         <div className="card text-center text-gray-500">
-          <p>Nenhum show para analisar.</p>
-          <Link href="/shows/novo" className="mt-3 inline-block text-brand-700 hover:underline">
-            Cadastrar um show
-          </Link>
+          {yearFilter === "all" ? (
+            <>
+              <p>Nenhum show para analisar.</p>
+              <Link
+                href="/shows/novo"
+                className="mt-3 inline-block text-brand-700 hover:underline"
+              >
+                Cadastrar um show
+              </Link>
+            </>
+          ) : (
+            <>
+              <p>Nenhum show em {periodLabel}.</p>
+              <p className="mt-1 text-sm">
+                Escolha outro período acima para ver a rentabilidade por show.
+              </p>
+              <Link
+                href="/shows/rentabilidade"
+                className="mt-3 inline-block text-brand-700 hover:underline"
+              >
+                Ver todos os anos
+              </Link>
+            </>
+          )}
         </div>
       ) : (
         <>
@@ -149,6 +200,43 @@ export default async function ShowProfitabilityPage() {
         </>
       )}
     </div>
+  );
+}
+
+/** Seletor de período: "Todos" + uma pílula por ano com shows (mais recente primeiro). */
+function PeriodPicker({
+  years,
+  active,
+}: {
+  years: number[];
+  active: number | "all";
+}) {
+  const base = "rounded-full px-3 py-1 text-sm font-medium transition-colors";
+  const on = "bg-brand-600 text-white";
+  const off = "bg-gray-100 text-gray-600 hover:bg-gray-200";
+  return (
+    <nav aria-label="Período" className="flex flex-wrap items-center gap-2">
+      <span className="text-xs font-medium uppercase tracking-wide text-gray-500">
+        Período
+      </span>
+      <Link
+        href="/shows/rentabilidade"
+        className={base + " " + (active === "all" ? on : off)}
+        aria-current={active === "all" ? "page" : undefined}
+      >
+        Todos
+      </Link>
+      {years.map((y) => (
+        <Link
+          key={y}
+          href={`/shows/rentabilidade?ano=${y}`}
+          className={base + " " + (active === y ? on : off)}
+          aria-current={active === y ? "page" : undefined}
+        >
+          {y}
+        </Link>
+      ))}
+    </nav>
   );
 }
 
