@@ -413,11 +413,31 @@ export function compareGeoConcentration(
   const topShareDelta = current.topShare - previous.topShare;
   const effectivePlacesDelta = current.effectivePlaces - previous.effectivePlaces;
 
-  let trend: GeoConcentrationComparison["trend"] = "stable";
-  if (topShareDelta <= -GEO_TREND_EPSILON) trend = "improved";
-  else if (topShareDelta >= GEO_TREND_EPSILON) trend = "worsened";
+  return {
+    current,
+    previous,
+    topShareDelta,
+    effectivePlacesDelta,
+    trend: concentrationTrend(topShareDelta),
+  };
+}
 
-  return { current, previous, topShareDelta, effectivePlacesDelta, trend };
+/**
+ * Veredito de tendência da concentração entre dois períodos a partir da variação
+ * da participação da maior fatia (a leitura-manchete), contra `GEO_TREND_EPSILON`:
+ * - "improved": menos concentrado agora (a maior fatia encolheu além do limiar);
+ * - "worsened": mais concentrado agora (a maior fatia cresceu além do limiar);
+ * - "stable": variação dentro do limiar (ruído, sem leitura de tendência).
+ * Compartilhado por `compareGeoConcentration` (eixo de praça) e
+ * `compareClientConcentration` (eixo de cliente) — a regra é a mesma, só o eixo
+ * muda. Pura.
+ */
+function concentrationTrend(
+  topShareDelta: number,
+): GeoConcentrationComparison["trend"] {
+  if (topShareDelta <= -GEO_TREND_EPSILON) return "improved";
+  if (topShareDelta >= GEO_TREND_EPSILON) return "worsened";
+  return "stable";
 }
 
 /**
@@ -818,6 +838,59 @@ export function clientConcentrationHeadline(
     top: concentration.top?.contact ?? null,
     clientCount: concentration.clientCount,
     level: concentration.level,
+  };
+}
+
+export interface ClientConcentrationComparison {
+  /** Concentração do período atual (tipicamente o ano selecionado). */
+  current: ClientConcentration;
+  /** Concentração do período de comparação (tipicamente o ano anterior). */
+  previous: ClientConcentration;
+  /**
+   * Variação da participação do maior contratante (atual − anterior, em pontos
+   * -1..1). Positivo = o maior cliente pesa **mais** agora (carteira mais
+   * concentrada).
+   */
+  topShareDelta: number;
+  /**
+   * Variação do nº de clientes efetivos (atual − anterior, índice de Simpson).
+   * Positivo = carteira **mais distribuída** agora (mais diversificada).
+   */
+  effectiveClientsDelta: number;
+  /**
+   * Direção do **risco de concentração** entre os dois períodos, decidida pela
+   * variação de `topShare` (a leitura-manchete) contra `GEO_TREND_EPSILON`:
+   * - "improved": menos concentrado agora (o maior cliente encolheu além do limiar);
+   * - "worsened": mais concentrado agora (o maior cliente cresceu além do limiar);
+   * - "stable": variação dentro do limiar (ruído, sem leitura de tendência).
+   */
+  trend: "improved" | "worsened" | "stable";
+}
+
+/**
+ * Compara a **concentração de clientes** entre dois períodos (atual × anterior),
+ * espelhando `compareGeoConcentration` (D120) num eixo de cliente em vez de praça.
+ * Pura, sem I/O: recebe duas `clientConcentration` já computadas (cada uma sobre
+ * as linhas de `rankContactsByProfit` do seu período) e devolve as variações de
+ * `topShare` e de clientes efetivos, além de um veredito de tendência (mesmo
+ * limiar `GEO_TREND_EPSILON` e mesma regra de `concentrationTrend`). O chamador
+ * decide quando exibir (tipicamente só com um ano específico selecionado e o ano
+ * anterior tendo contratante — caso contrário a leitura é enganosa).
+ */
+export function compareClientConcentration(
+  current: ClientConcentration,
+  previous: ClientConcentration,
+): ClientConcentrationComparison {
+  const topShareDelta = current.topShare - previous.topShare;
+  const effectiveClientsDelta =
+    current.effectiveClients - previous.effectiveClients;
+
+  return {
+    current,
+    previous,
+    topShareDelta,
+    effectiveClientsDelta,
+    trend: concentrationTrend(topShareDelta),
   };
 }
 

@@ -9,8 +9,17 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **797 testes**
-verdes após a Sessão 129 (**comparativo ano a ano da concentração por casa em `/shows/locais`** — o mesmo card
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **802 testes**
+verdes após a Sessão 130 (**comparativo ano a ano da concentração de clientes em `/contatos/rentabilidade`** —
+estende o card "Concentração {ano} vs. {ano-1}" das D120/D121 ao eixo de **cliente**: novo helper puro
+`compareClientConcentration(current, previous)` em `src/lib/finance.ts` (recebe duas `ClientConcentration` já
+computadas e devolve `topShareDelta`, `effectiveClientsDelta` e o veredito `trend`), reaproveitando a regra de
+tendência extraída para o helper interno `concentrationTrend` (compartilhado com `compareGeoConcentration`, mesmo
+limiar `GEO_TREND_EPSILON`); como `ClientConcentration` é tipo distinto de `GeoConcentration`, foi um helper paralelo
+(não generalização) — ver D122. `/contatos/rentabilidade` ganhou o card, exibido só com um ano específico selecionado
+e ambos os períodos com contratante (`clientCount > 0`), reaproveitando o recorte por ano UTC da D108 sobre os shows já
+carregados (sem nova consulta); só os rótulos mudam ("maior contratante"/"clientes efetivos"/"conquistar clientes").
+**+5 testes**; ver D122; segue 797 da Sessão 129 (**comparativo ano a ano da concentração por casa em `/shows/locais`** — o mesmo card
 "Concentração {ano} vs. {ano-1}" da atuação por cidade (D120), reaproveitando o `compareGeoConcentration` genérico
 sobre as linhas de `rankVenuesByProfit` do ano selecionado × ano anterior, exibido só com um ano específico e ambos
 os períodos com casa; só os rótulos diferem ("maior casa"/"casas efetivas"/"prospectar palcos"); UI-only, sem nova
@@ -2617,7 +2626,8 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    três helpers da D108 (`showProfitYears`/`parseProfitYear`/`filterShowsByYear`); filtra os shows por ano UTC antes
    de `summarizeContactProfit`, deixando o histórico e a lista de shows intactos; estado vazio período-ciente, ver
    D117. Próximo possível — o cachê **mediano** por contratante (robusto a outlier — adiável: ruidoso com poucos
-   shows, mesma razão da D57); comparar dois anos lado a lado (Δ por contratante/local, espelhando D33); ou um
+   shows, mesma razão da D57); o **comparativo ano a ano da concentração de clientes** foi entregue na Sessão 130
+   (`compareClientConcentration` + card "Concentração {ano} vs. {ano-1}" em `/contatos/rentabilidade`, ver D122); ou um
    recorte por período (`?ano=`) também no nudge de concentração do Painel (hoje usa o retrato corrente, todos os
    anos).
 
@@ -2653,9 +2663,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    o `compareGeoConcentration` genérico (D120) sobre as linhas de `rankVenuesByProfit` do ano selecionado × ano
    anterior (recorte por ano UTC da D108 sobre os shows já carregados, sem nova consulta), exibido só com um ano
    específico e ambos os períodos com casa; só a moldura textual difere ("maior casa"/"casas efetivas"/"prospectar
-   palcos"), ver D121. Próximo possível aqui — estender o mesmo comparativo a `/contatos/rentabilidade` por cliente
-   (espelhando D33 num eixo de cliente; o helper `compareGeoConcentration` opera sobre qualquer `GeoConcentration`);
-   ou o cachê **mediano** por casa (robusto a outlier, adiável: ruidoso com poucos
+   palcos"), ver D121. **Comparativo ano a ano da concentração de clientes** entregue na Sessão 130 —
+   `/contatos/rentabilidade` ganhou o card "Concentração {ano} vs. {ano-1}" no eixo de cliente, via novo helper puro
+   `compareClientConcentration` em `src/lib/finance.ts` (a regra de tendência virou o helper interno compartilhado
+   `concentrationTrend`, reusando `GEO_TREND_EPSILON`; como `ClientConcentration` é tipo distinto de `GeoConcentration`,
+   foi um helper paralelo, não generalização — ver D122), +5 testes. Próximo possível aqui —
+   o cachê **mediano** por casa (robusto a outlier, adiável: ruidoso com poucos
    shows por casa, mesma razão da D57). **DRY do `PeriodPicker`:** ENTREGUE na Sessão 127 — extraído
    `src/components/PeriodPicker.tsx` (server component puro, `basePath` + `ariaLabel`); as cinco telas
    (contratante/local/cidade/detalhe do contato/show) importam o componente compartilhado, −180 linhas, markup

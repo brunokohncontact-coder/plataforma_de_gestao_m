@@ -10,6 +10,7 @@ import {
   geoConcentration,
   geoConcentrationHeadline,
   compareGeoConcentration,
+  compareClientConcentration,
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
@@ -920,6 +921,101 @@ describe("compareGeoConcentration", () => {
     const cur = concentrated();
     const prev = spread();
     const cmp = compareGeoConcentration(cur, prev);
+    expect(cmp.current).toBe(cur);
+    expect(cmp.previous).toBe(prev);
+  });
+});
+
+describe("compareClientConcentration", () => {
+  // Concentração de clientes a partir de shows brutos (mesma cadeia da UI por
+  // período): cada show é atribuído ao pagador informado em `payers`.
+  const concFor = (
+    shows: ShowLike[],
+    payers: Record<string, { id: string; name: string; role: string } | null>,
+    txs: TxLike[] = [],
+  ) =>
+    clientConcentration(
+      rankContactsByProfit(shows, txs, (s: ShowLike) => payers[s.id] ?? null).rows,
+    );
+
+  // Carteira concentrada: um contratante domina (Zé 800 de 1000 → topShare 0,8).
+  const concentrated = () =>
+    concFor(
+      [
+        { id: "a", fee: 800_00, status: "PLAYED" },
+        { id: "b", fee: 100_00, status: "PLAYED" },
+        { id: "c", fee: 100_00, status: "PLAYED" },
+      ],
+      {
+        a: { id: "ze", name: "Zé", role: "PROMOTER" },
+        b: { id: "ana", name: "Ana", role: "BOOKER" },
+        c: { id: "lia", name: "Lia", role: "VENUE" },
+      },
+    );
+
+  // Carteira espalhada: 5 contratantes de 200 cada → topShare 0,2.
+  const spread = () => {
+    const ids = ["c1", "c2", "c3", "c4", "c5"];
+    return concFor(
+      ids.map((id) => ({ id, fee: 200_00, status: "PLAYED" })),
+      Object.fromEntries(
+        ids.map((id) => [id, { id, name: id.toUpperCase(), role: "BOOKER" }]),
+      ),
+    );
+  };
+
+  it("marca 'improved' quando o maior contratante encolhe além do limiar", () => {
+    const cmp = compareClientConcentration(spread(), concentrated());
+    // topShare cai de 0,8 → 0,2 (−0,6) ⇒ menos concentrado.
+    expect(cmp.topShareDelta).toBeCloseTo(-0.6);
+    expect(cmp.effectiveClientsDelta).toBeGreaterThan(0);
+    expect(cmp.trend).toBe("improved");
+  });
+
+  it("marca 'worsened' quando o maior contratante cresce além do limiar", () => {
+    const cmp = compareClientConcentration(concentrated(), spread());
+    expect(cmp.topShareDelta).toBeCloseTo(0.6);
+    expect(cmp.effectiveClientsDelta).toBeLessThan(0);
+    expect(cmp.trend).toBe("worsened");
+  });
+
+  it("marca 'stable' quando a variação fica dentro do limiar (ruído)", () => {
+    const cmp = compareClientConcentration(concentrated(), concentrated());
+    expect(cmp.topShareDelta).toBeCloseTo(0);
+    expect(cmp.trend).toBe("stable");
+  });
+
+  it("usa exatamente o limiar como fronteira (≥ ε vira tendência)", () => {
+    // topShare 0,55 (Zé 550/1000) × 0,50 (Zé 500/1000) → +0,05 == ε.
+    const a = concFor(
+      [
+        { id: "a", fee: 550_00, status: "PLAYED" },
+        { id: "b", fee: 450_00, status: "PLAYED" },
+      ],
+      {
+        a: { id: "ze", name: "Zé", role: "PROMOTER" },
+        b: { id: "ana", name: "Ana", role: "BOOKER" },
+      },
+    );
+    const b = concFor(
+      [
+        { id: "c", fee: 500_00, status: "PLAYED" },
+        { id: "d", fee: 500_00, status: "PLAYED" },
+      ],
+      {
+        c: { id: "ze", name: "Zé", role: "PROMOTER" },
+        d: { id: "ana", name: "Ana", role: "BOOKER" },
+      },
+    );
+    const cmp = compareClientConcentration(a, b);
+    expect(cmp.topShareDelta).toBeCloseTo(0.05);
+    expect(cmp.trend).toBe("worsened");
+  });
+
+  it("preserva as duas concentrações de origem para o detalhe", () => {
+    const cur = concentrated();
+    const prev = spread();
+    const cmp = compareClientConcentration(cur, prev);
     expect(cmp.current).toBe(cur);
     expect(cmp.previous).toBe(prev);
   });
