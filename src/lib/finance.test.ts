@@ -9,6 +9,7 @@ import {
   clientConcentrationHeadline,
   geoConcentration,
   geoConcentrationHeadline,
+  compareGeoConcentration,
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
@@ -850,6 +851,77 @@ describe("geoConcentrationHeadline", () => {
     expect(h.show).toBe(false);
     expect(h.critical).toBe(false);
     expect(h.level).toBe("diversified");
+  });
+});
+
+describe("compareGeoConcentration", () => {
+  // Concentração a partir de shows brutos (mesma cadeia da UI por período).
+  const concFor = (shows: VenueShowLike[], txs: TxLike[] = []) =>
+    geoConcentration(rankCitiesByProfit(shows, txs).rows);
+
+  // Atuação concentrada: uma praça domina (Recife 800 de 1000 → topShare 0,8).
+  const concentrated = () =>
+    concFor([
+      { id: "a", fee: 800_00, status: "PLAYED", venue: "Bar", city: "Recife" },
+      { id: "b", fee: 100_00, status: "PLAYED", venue: "Café", city: "Olinda" },
+      { id: "c", fee: 100_00, status: "PLAYED", venue: "Teatro", city: "Caruaru" },
+    ]);
+
+  // Atuação espalhada: 5 cidades de 200 cada → topShare 0,2.
+  const spread = () =>
+    concFor(
+      ["c1", "c2", "c3", "c4", "c5"].map((id) => ({
+        id,
+        fee: 200_00,
+        status: "PLAYED",
+        venue: `Casa ${id}`,
+        city: `Cidade ${id}`,
+      })),
+    );
+
+  it("marca 'improved' quando a maior praça encolhe além do limiar", () => {
+    const cmp = compareGeoConcentration(spread(), concentrated());
+    // topShare cai de 0,8 → 0,2 (−0,6) ⇒ menos concentrado.
+    expect(cmp.topShareDelta).toBeCloseTo(-0.6);
+    expect(cmp.effectivePlacesDelta).toBeGreaterThan(0);
+    expect(cmp.trend).toBe("improved");
+  });
+
+  it("marca 'worsened' quando a maior praça cresce além do limiar", () => {
+    const cmp = compareGeoConcentration(concentrated(), spread());
+    expect(cmp.topShareDelta).toBeCloseTo(0.6);
+    expect(cmp.effectivePlacesDelta).toBeLessThan(0);
+    expect(cmp.trend).toBe("worsened");
+  });
+
+  it("marca 'stable' quando a variação fica dentro do limiar (ruído)", () => {
+    // Mesma estrutura nos dois períodos → delta 0.
+    const cmp = compareGeoConcentration(concentrated(), concentrated());
+    expect(cmp.topShareDelta).toBeCloseTo(0);
+    expect(cmp.trend).toBe("stable");
+  });
+
+  it("usa exatamente o limiar como fronteira (≥ ε vira tendência)", () => {
+    // topShare 0,55 (Recife 550/1000) × 0,50 (Recife 500/1000) → +0,05 == ε.
+    const a = concFor([
+      { id: "a", fee: 550_00, status: "PLAYED", venue: "Bar", city: "Recife" },
+      { id: "b", fee: 450_00, status: "PLAYED", venue: "Café", city: "Olinda" },
+    ]);
+    const b = concFor([
+      { id: "c", fee: 500_00, status: "PLAYED", venue: "Bar", city: "Recife" },
+      { id: "d", fee: 500_00, status: "PLAYED", venue: "Café", city: "Olinda" },
+    ]);
+    const cmp = compareGeoConcentration(a, b);
+    expect(cmp.topShareDelta).toBeCloseTo(0.05);
+    expect(cmp.trend).toBe("worsened");
+  });
+
+  it("preserva as duas concentrações de origem para o detalhe", () => {
+    const cur = concentrated();
+    const prev = spread();
+    const cmp = compareGeoConcentration(cur, prev);
+    expect(cmp.current).toBe(cur);
+    expect(cmp.previous).toBe(prev);
   });
 });
 

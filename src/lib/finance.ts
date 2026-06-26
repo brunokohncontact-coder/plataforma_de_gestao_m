@@ -364,6 +364,63 @@ export function geoConcentrationHeadline(
 }
 
 /**
+ * Limiar (em pontos de participação, 0..1) abaixo do qual a variação da
+ * concentração geográfica entre dois períodos é tratada como ruído ("stable").
+ * 5 pontos de `topShare` — pequeno o bastante para captar uma mudança real de
+ * dependência, grande o bastante para não oscilar a cada show isolado.
+ */
+export const GEO_TREND_EPSILON = 0.05;
+
+export interface GeoConcentrationComparison {
+  /** Concentração do período atual (tipicamente o ano selecionado). */
+  current: GeoConcentration;
+  /** Concentração do período de comparação (tipicamente o ano anterior). */
+  previous: GeoConcentration;
+  /**
+   * Variação da participação da maior praça (atual − anterior, em pontos -1..1).
+   * Positivo = a maior praça pesa **mais** agora (atuação mais concentrada).
+   */
+  topShareDelta: number;
+  /**
+   * Variação do nº de cidades efetivas (atual − anterior, índice de Simpson).
+   * Positivo = atuação **mais espalhada** agora (mais diversificada).
+   */
+  effectivePlacesDelta: number;
+  /**
+   * Direção do **risco de concentração** entre os dois períodos, decidida pela
+   * variação de `topShare` (a leitura-manchete) contra `GEO_TREND_EPSILON`:
+   * - "improved": menos concentrado agora (a maior praça encolheu além do limiar);
+   * - "worsened": mais concentrado agora (a maior praça cresceu além do limiar);
+   * - "stable": variação dentro do limiar (ruído, sem leitura de tendência).
+   */
+  trend: "improved" | "worsened" | "stable";
+}
+
+/**
+ * Compara a **concentração geográfica** entre dois períodos (atual × anterior),
+ * espelhando o comparativo ano a ano de `computeDelta`/D33 num eixo de risco de
+ * praça. Pura, sem I/O: recebe duas `geoConcentration` já computadas (cada uma
+ * sobre as linhas de `rankCitiesByProfit` do seu período) e devolve as variações
+ * de `topShare` e de cidades efetivas, além de um veredito de tendência. O
+ * chamador decide quando exibir (tipicamente só com um ano específico
+ * selecionado e o ano anterior tendo receita — caso contrário a leitura é
+ * enganosa).
+ */
+export function compareGeoConcentration(
+  current: GeoConcentration,
+  previous: GeoConcentration,
+): GeoConcentrationComparison {
+  const topShareDelta = current.topShare - previous.topShare;
+  const effectivePlacesDelta = current.effectivePlaces - previous.effectivePlaces;
+
+  let trend: GeoConcentrationComparison["trend"] = "stable";
+  if (topShareDelta <= -GEO_TREND_EPSILON) trend = "improved";
+  else if (topShareDelta >= GEO_TREND_EPSILON) trend = "worsened";
+
+  return { current, previous, topShareDelta, effectivePlacesDelta, trend };
+}
+
+/**
  * Agregador genérico do P&L dos shows por um grupo arbitrário (local, cidade…).
  * `keyer` extrai a chave de agrupamento (normalizada) e a grafia original do
  * grupo; `emptyLabel` é o nome do grupo "vazio" (chave ""). Fonte única da

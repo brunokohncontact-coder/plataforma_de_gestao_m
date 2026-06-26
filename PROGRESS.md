@@ -9,8 +9,13 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **792 testes**
-verdes após a Sessão 127 (**`PeriodPicker` compartilhado — DRY das cinco cópias do seletor de período** — extraído
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **797 testes**
+verdes após a Sessão 128 (**comparação ano a ano da concentração geográfica** — `compareGeoConcentration(current, previous)`
++ `GEO_TREND_EPSILON` em `src/lib/finance.ts` derivam, de duas `GeoConcentration` já computadas, a variação de
+`topShare` (maior praça) e de cidades efetivas + um veredito de tendência (improved/worsened/stable, limiar 5 p.p.);
+`/shows/cidades` ganhou o card "Concentração {ano} vs. {ano-1}", exibido só com um ano específico selecionado e
+ambos os períodos com praça (reaproveita o recorte por ano UTC da D108 sobre os shows já carregados, sem nova
+consulta); **+5 testes**; ver D120; segue 792 da Sessão 127 (**`PeriodPicker` compartilhado — DRY das cinco cópias do seletor de período** — extraído
 `src/components/PeriodPicker.tsx` (server component puro, só `Link`s) parametrizado por `basePath` (href de "Todos";
 cada ano → `${basePath}?ano=${y}`) e `ariaLabel` opcional; as cinco telas de rentabilidade que repetiam o mesmo
 seletor (`/shows/locais`, `/shows/cidades`, `/shows/rentabilidade`, `/contatos/rentabilidade`, `/contatos/[id]`)
@@ -2635,8 +2640,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    sem tocar a exclusão de cancelados nem o P&L; era a última tela de rentabilidade sem recorte por período, ver D118.
    Próximo possível — extrair um
    componente único de card de concentração parametrizado pelo rótulo se surgir um terceiro eixo (adiado na D116
-   alt. a por as cópias serem pequenas e os textos acionáveis divergirem); comparar a concentração entre dois anos
-   lado a lado (espelhando D33); ou o cachê **mediano** por casa (robusto a outlier, adiável: ruidoso com poucos
+   alt. a por as cópias serem pequenas e os textos acionáveis divergirem); **comparar a concentração entre dois anos
+   lado a lado (espelhando D33) entregue na Sessão 128** — `compareGeoConcentration` + `GEO_TREND_EPSILON` em
+   `src/lib/finance.ts` (puro: Δ de `topShare` e cidades efetivas + veredito improved/worsened/stable, limiar 5 p.p.)
+   + card "Concentração {ano} vs. {ano-1}" em `/shows/cidades`, exibido só com um ano selecionado e ambos os períodos
+   com praça, reaproveitando o recorte por ano UTC da D108, ver D120 (próximo possível aqui — estender o mesmo
+   comparativo a `/shows/locais` por casa e a `/contatos/rentabilidade` por cliente, já que o helper é genérico);
+   ou o cachê **mediano** por casa (robusto a outlier, adiável: ruidoso com poucos
    shows por casa, mesma razão da D57). **DRY do `PeriodPicker`:** ENTREGUE na Sessão 127 — extraído
    `src/components/PeriodPicker.tsx` (server component puro, `basePath` + `ariaLabel`); as cinco telas
    (contratante/local/cidade/detalhe do contato/show) importam o componente compartilhado, −180 linhas, markup
