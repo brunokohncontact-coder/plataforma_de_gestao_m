@@ -466,6 +466,41 @@ describe("rankContactsByProfit", () => {
     expect(sem!.avgFee).toBe(30_00);
   });
 
+  it("calcula o cachê mediano (preço típico) por contratante, robusto a outlier", () => {
+    // Zé com 3 shows: cachês 100, 200 e um festival fora da curva de 1000.
+    // Média = 433,33 (puxada pelo outlier); mediana = 200 (o preço típico).
+    const ze3: ShowLike[] = [
+      { id: "z1", fee: 100_00, status: "PLAYED" },
+      { id: "z2", fee: 200_00, status: "PLAYED" },
+      { id: "z3", fee: 1000_00, status: "PLAYED" },
+    ];
+    const r = rankContactsByProfit(ze3, [], () => ZE);
+    const ze = r.rows.find((row) => row.contact?.id === "ze")!;
+    expect(ze.medianFee).toBe(200_00);
+    expect(ze.avgFee).toBe(433_33); // round(1300/3) — média distorcida pelo outlier
+    expect(ze.medianFee).not.toBe(ze.avgFee);
+  });
+
+  it("nº par de shows: mediana é a média dos dois centrais", () => {
+    const evenShows: ShowLike[] = [
+      { id: "p1", fee: 100_00, status: "PLAYED" },
+      { id: "p2", fee: 200_00, status: "PLAYED" },
+      { id: "p3", fee: 300_00, status: "PLAYED" },
+      { id: "p4", fee: 500_00, status: "PLAYED" },
+    ];
+    const r = rankContactsByProfit(evenShows, [], () => ZE);
+    const ze = r.rows.find((row) => row.contact?.id === "ze")!;
+    // ordenados: 100, 200, 300, 500 -> (200 + 300) / 2 = 250
+    expect(ze.medianFee).toBe(250_00);
+  });
+
+  it("expõe o cachê mediano por grupo mesmo com 1 show (igual ao cachê do show)", () => {
+    const r = rankContactsByProfit(shows, txs, getPayer);
+    // Ana tem só 1 show de 50 -> mediana = 50 (a UI omite por amostra < mínimo)
+    const ana = r.rows.find((row) => row.contact?.id === "ana")!;
+    expect(ana.medianFee).toBe(50_00);
+  });
+
   it("agrupa shows sem contratante à parte (contact null) e o coloca por último", () => {
     const r = rankContactsByProfit(shows, txs, getPayer);
     const semContratante = r.rows.find((row) => row.contact === null);
