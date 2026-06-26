@@ -3633,3 +3633,41 @@ contexto, decisão, justificativa e alternativas consideradas.
   o cachê **médio** por show (`avgFee`, como em `ContactProfitRow`) nas duas telas — descartado por ora: a média implícita
   já é derivável de `totalFee ÷ shows` e o foco do item era o preço **típico** (mediano); manter o escopo fechado. (c)
   gravar `null` em `medianFee` abaixo do limiar — descartado pelo mesmo motivo da D123 (gate é presentacional).
+
+## D125 — Exportação CSV das quatro telas de rentabilidade (Sessão 133)
+- **Contexto:** as Finanças já exportavam CSV (transações/`/financas/export`, resumo anual/`/financas/anual/export`,
+  trimestral/`/financas/trimestral/export`) e a lista de shows (`/shows/export`), mas as **quatro telas de rentabilidade**
+  — por show (`/shows/rentabilidade`/F4), por local (`/shows/locais`/D111), por cidade (`/shows/cidades`/D115) e por
+  contratante (`/contatos/rentabilidade`/D105) — só mostravam tabelas na tela, sem como levar os números para uma
+  planilha (fechar o mês com o contador, montar um pitch, cruzar com outras fontes). Era a lacuna mais óbvia do acervo de
+  relatórios.
+- **Decisão:** três serializadores **puros** novos em `src/lib/csv.ts`, seguindo a mesma convenção pt-BR já estabelecida
+  (delimitador `;`, decimal com vírgula, datas em UTC, BOM UTF-8 prefixado na camada HTTP): `showProfitToCsv` (consome
+  `ShowProfitRow[]`; colunas Show/Data/Status/Cachê/Extras/Despesas/Resultado/Margem), `venueProfitToCsv` (consome
+  `VenueProfitRow[]`, **serve local e cidade** — `CityProfitRow` é o mesmo tipo — com a 1ª coluna rotulada por um
+  `groupLabel` "Local"/"Cidade") e `contactProfitToCsv` (consome `ContactProfitRow[]`; grupo "Sem contratante" com papel
+  em branco). O **cachê mediano** sai em branco abaixo de `MIN_MEDIAN_FEE_SAMPLE` (espelha o "—" da UI/D123/D124) e a
+  **margem** sai vazia sem receita bruta (espelha o "—" da página). Quatro route handlers `*/export/route.ts` espelham
+  exatamente o carregamento e o recorte por ano (`?ano=`) de cada página (reusando `showProfitYears`/`parseProfitYear`/
+  `filterShowsByYear`/D108 e, no de contratante, `pickPayerContact`/D30), e cada página ganhou um botão "⬇ CSV" (só com
+  `report.count > 0`) que propaga o `?ano=` ativo; o nome do arquivo leva o ano ou "todos".
+- **Justificativa:** manter a serialização **pura e testável** (lógica em `csv.ts`, I/O fino no route) é a mesma
+  disciplina das exportações anteriores. Reusar um único `venueProfitToCsv` parametrizado pelo rótulo (em vez de dois
+  serializadores quase idênticos) aproveita que local e cidade compartilham o tipo de linha. Os route handlers
+  reaproveitam os helpers de período já cobertos, então o CSV reflete fielmente o que o usuário vê na tela (mesmo recorte,
+  mesma ordenação, mesmos gates de mediana/margem).
+- **Testes:** **+12** em `csv.test.ts` (cabeçalho, formatação pt-BR, rótulo de status/papel, gate de mediana em branco,
+  margem vazia sem receita, escape de `;`, preservação de ordem, grupo "Sem contratante"). **820 testes** verdes (eram
+  808).
+- **DoD:** build de produção (as quatro rotas `*/export` aparecem no manifesto), typecheck e lint (0 avisos) verdes; **820
+  testes**; smoke test autenticado (`npm start` + cookie de sessão real): as quatro rotas devolvem `200` com
+  `Content-Type: text/csv`, `Content-Disposition: attachment` e CSV correto (BOM, vírgula decimal, mediana em branco com 1
+  show), e `?ano=2026` recorta + nomeia o arquivo; sem sessão → 307 para `/login`. `npm audit` **inalterado** vs. baseline
+  (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma
+  dependência nova**.
+- **Alternativas consideradas:** (a) um único serializador genérico para os quatro rankings — descartado: as colunas
+  diferem de verdade (show tem Data/Status/Margem; contratante tem Papel/Cachê médio; local/cidade têm Cachê mediano), o
+  que viraria um monstro de flags. (b) exportar a mediana/margem cruas (sem o gate da UI) — descartado: o CSV deve
+  espelhar o que a tela mostra para não confundir (um número "típico" com 1 show engana tanto na planilha quanto na tela).
+  (c) reaproveitar `showsToCsv` para a rentabilidade por show — descartado: aquele serializa o **cadastro** do show
+  (local/cidade/observações), não o **P&L** (cachê/extras/despesas/resultado/margem).

@@ -8,10 +8,21 @@
 import {
   TRANSACTION_TYPE_LABELS,
   SHOW_STATUS_LABELS,
+  CONTACT_ROLE_LABELS,
   type TransactionType,
   type ShowStatus,
+  type ContactRole,
 } from "./domain";
-import { dayKey, type AnnualSummary, type QuarterlySummary } from "./finance";
+import {
+  dayKey,
+  MIN_MEDIAN_FEE_SAMPLE,
+  type AnnualSummary,
+  type QuarterlySummary,
+  type ShowLike,
+  type ShowProfitRow,
+  type VenueProfitRow,
+  type ContactProfitRow,
+} from "./finance";
 import { MONTH_NAMES_LONG } from "./calendar";
 
 const DEFAULT_DELIMITER = ";";
@@ -243,4 +254,167 @@ export function quarterlySummaryToCsv(
     centsToCsvAmount(summary.net),
   ]);
   return toCsv(rows, delimiter);
+}
+
+// ── Rentabilidade por show (ranking de P&L, F4) ──────────────────────────────
+
+/**
+ * Forma mínima de show exigida para exportar a rentabilidade por show. O cálculo
+ * (`ShowLike`) só precisa de `id`/`fee`/`status`, mas a planilha mostra também o
+ * título e a data — incluídos aqui, desacoplados do Prisma.
+ */
+export interface CsvProfitShow extends ShowLike {
+  title: string;
+  date: Date | string;
+}
+
+export const SHOW_PROFIT_CSV_HEADERS = [
+  "Show",
+  "Data",
+  "Status",
+  "Cachê (R$)",
+  "Extras (R$)",
+  "Despesas (R$)",
+  "Resultado (R$)",
+  "Margem",
+] as const;
+
+/**
+ * Margem (0..1) -> porcentagem inteira ("60%"); vazio quando não há receita
+ * bruta (espelha o "—" da página, onde a margem não tem sentido sem receita).
+ */
+function csvMargin(grossIncome: number, margin: number): string {
+  if (grossIncome <= 0) return "";
+  return `${Math.round(margin * 100)}%`;
+}
+
+/**
+ * Serializa o ranking de rentabilidade por show (P&L) em CSV, pronto para
+ * download. Mesma convenção pt-BR de `transactionsToCsv` (delimitador ";",
+ * decimal com vírgula, data em UTC). A ordem das linhas é preservada (a página/
+ * route decide a ordenação — por resultado decrescente). Pura.
+ */
+export function showProfitToCsv(
+  rows: ShowProfitRow<CsvProfitShow>[],
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(SHOW_PROFIT_CSV_HEADERS)];
+  for (const { show, pnl } of rows) {
+    out.push([
+      show.title,
+      csvDate(show.date),
+      showStatusLabel(show.status ?? ""),
+      centsToCsvAmount(pnl.fee),
+      centsToCsvAmount(pnl.extraIncome),
+      centsToCsvAmount(pnl.expenses),
+      centsToCsvAmount(pnl.net),
+      csvMargin(pnl.fee + pnl.extraIncome, pnl.margin),
+    ]);
+  }
+  return toCsv(out, delimiter);
+}
+
+// ── Rentabilidade por local / cidade (agregada por casa ou cidade) ───────────
+
+/**
+ * Cabeçalhos da rentabilidade agregada por local OU cidade (mesma forma de
+ * linha — `CityProfitRow` é `VenueProfitRow`). O primeiro rótulo varia ("Local"
+ * × "Cidade") e é passado pela route; os demais são fixos.
+ */
+function venueProfitHeaders(groupLabel: string): readonly string[] {
+  return [
+    groupLabel,
+    "Shows",
+    "Cachê (R$)",
+    "Cachê mediano (R$)",
+    "Extras (R$)",
+    "Despesas (R$)",
+    "Resultado (R$)",
+    "Média/show (R$)",
+  ];
+}
+
+/**
+ * Cachê mediano formatado, vazio abaixo da amostra mínima (`MIN_MEDIAN_FEE_SAMPLE`)
+ * — espelha o "—" da página, onde a mediana só aparece com shows suficientes para
+ * ser confiável (ver D123/D124).
+ */
+function csvMedianFee(showCount: number, medianFee: number): string {
+  return showCount >= MIN_MEDIAN_FEE_SAMPLE ? centsToCsvAmount(medianFee) : "";
+}
+
+/**
+ * Serializa a rentabilidade agregada por local ou por cidade em CSV, pronto para
+ * download. `groupLabel` rotula a primeira coluna ("Local" ou "Cidade"). Mesma
+ * convenção pt-BR de `transactionsToCsv`. A ordem das linhas é preservada (a
+ * página ordena por resultado decrescente). Pura.
+ */
+export function venueProfitToCsv(
+  rows: VenueProfitRow[],
+  groupLabel: string,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(venueProfitHeaders(groupLabel))];
+  for (const row of rows) {
+    out.push([
+      row.name,
+      String(row.showCount),
+      centsToCsvAmount(row.totalFee),
+      csvMedianFee(row.showCount, row.medianFee),
+      centsToCsvAmount(row.totalExtra),
+      centsToCsvAmount(row.totalExpenses),
+      centsToCsvAmount(row.totalNet),
+      centsToCsvAmount(row.avgNet),
+    ]);
+  }
+  return toCsv(out, delimiter);
+}
+
+// ── Rentabilidade por contratante (P&L agrupado por quem paga) ───────────────
+
+export const CONTACT_PROFIT_CSV_HEADERS = [
+  "Contratante",
+  "Papel",
+  "Shows",
+  "Cachê (R$)",
+  "Extras (R$)",
+  "Despesas (R$)",
+  "Cachê médio (R$)",
+  "Cachê mediano (R$)",
+  "Resultado (R$)",
+  "Média/show (R$)",
+] as const;
+
+/** Rótulo de papel legível; um papel desconhecido cai em "Outro" (defensivo). */
+function contactRoleLabel(role: string): string {
+  return CONTACT_ROLE_LABELS[role as ContactRole] ?? CONTACT_ROLE_LABELS.OTHER;
+}
+
+/**
+ * Serializa a rentabilidade por contratante (P&L somado por quem paga) em CSV,
+ * pronto para download. Mesma convenção pt-BR de `transactionsToCsv`. O grupo
+ * "Sem contratante" (`contact: null`) sai com nome fixo e papel em branco. A
+ * ordem das linhas é preservada (a página ordena por resultado decrescente,
+ * "Sem contratante" por último). Pura.
+ */
+export function contactProfitToCsv(
+  rows: ContactProfitRow[],
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(CONTACT_PROFIT_CSV_HEADERS)];
+  for (const row of rows) {
+    out.push([
+      row.contact ? row.contact.name : "Sem contratante",
+      row.contact ? contactRoleLabel(row.contact.role) : "",
+      String(row.showCount),
+      centsToCsvAmount(row.totalFee),
+      centsToCsvAmount(row.totalExtra),
+      centsToCsvAmount(row.totalExpenses),
+      centsToCsvAmount(row.avgFee),
+      csvMedianFee(row.showCount, row.medianFee),
+      centsToCsvAmount(row.totalNet),
+      centsToCsvAmount(row.avgNet),
+    ]);
+  }
+  return toCsv(out, delimiter);
 }

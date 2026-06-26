@@ -77,9 +77,20 @@ export default async function ShowProfitabilityPage({
             vinculadas. Shows cancelados são ignorados.
           </p>
         </div>
-        <Link href="/shows" className="btn-secondary">
-          ← Shows
-        </Link>
+        <div className="flex items-center gap-2">
+          {report.count > 0 && (
+            <a
+              href={`/shows/rentabilidade/export${yearFilter === "all" ? "" : `?ano=${yearFilter}`}`}
+              className="btn-secondary text-sm"
+              download
+            >
+              ⬇ CSV
+            </a>
+          )}
+          <Link href="/shows" className="btn-secondary">
+            ← Shows
+          </Link>
+        </div>
       </div>
 
       {availableYears.length > 0 && (
