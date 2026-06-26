@@ -48,6 +48,11 @@ export default async function ContactsRankingPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {ranking.count > 0 && (
+            <a href="/contatos/ranking/export" className="btn-secondary text-sm" download>
+              ⬇ CSV
+            </a>
+          )}
           <Link href="/contatos/retencao" className="btn-secondary">
             Fidelização
           </Link>

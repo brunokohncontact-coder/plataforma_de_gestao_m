@@ -418,3 +418,56 @@ export function contactProfitToCsv(
   }
   return toCsv(out, delimiter);
 }
+
+// ── Ranking de contatos por atividade (CRM) ──────────────────────────────────
+
+export const CONTACT_ACTIVITY_CSV_HEADERS = [
+  "Contato",
+  "Papel",
+  "Shows ativos",
+  "Shows (total)",
+  "Próximos",
+  "Cachê total (R$)",
+  "Último show",
+] as const;
+
+/**
+ * Forma mínima de uma linha do ranking de contatos por atividade para a
+ * exportação (desacoplada de `@/lib/contacts` para não criar dependência de
+ * tipo cíclica; estruturalmente compatível com `ContactRankRow`). O cachê é por
+ * contato — um show com vários contatos conta para cada um.
+ */
+export interface ContactActivityCsvRow {
+  contact: { name: string; role: string };
+  totalShows: number;
+  activeShows: number;
+  upcomingShows: number;
+  totalFee: number; // centavos
+  lastShowDate: Date | string | null;
+}
+
+/**
+ * Serializa o ranking de contatos por atividade em CSV, pronto para download.
+ * Mesma convenção pt-BR de `transactionsToCsv`. A ordem das linhas é preservada
+ * (a página ordena por cachê total decrescente). As colunas espelham a tabela:
+ * shows ativos e total separados (em vez de "ativos / total"), próximos, cachê
+ * total e a data do último show (vazia quando não há). Pura.
+ */
+export function contactActivityToCsv(
+  rows: ContactActivityCsvRow[],
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(CONTACT_ACTIVITY_CSV_HEADERS)];
+  for (const row of rows) {
+    out.push([
+      row.contact.name,
+      contactRoleLabel(row.contact.role),
+      String(row.activeShows),
+      String(row.totalShows),
+      String(row.upcomingShows),
+      centsToCsvAmount(row.totalFee),
+      row.lastShowDate ? csvDate(row.lastShowDate) : "",
+    ]);
+  }
+  return toCsv(out, delimiter);
+}

@@ -3701,3 +3701,36 @@ contexto, decisão, justificativa e alternativas consideradas.
   dois. (c) também levar o veredito ao nudge de burn do Painel (D103) — adiado: o Painel já tem dois nudges de caixa; um
   terceiro eixo de texto ali pede um corte de relevância à parte (só quando `accelerating` e o fôlego morde), fica p/ uma
   próxima sessão.
+
+## D127 — Exportação CSV do ranking de contatos por atividade em `/contatos/ranking` (Sessão 135)
+- **Contexto:** a D125 fechou a exportação CSV das quatro telas de **rentabilidade**, mas os "próximos passos" do
+  PROGRESS já apontavam estender o botão "⬇ CSV" às demais telas tabulares que ainda só mostram tabela na tela. O
+  **ranking de contatos por atividade** (`/contatos/ranking`/CRM, D27) é a candidata mais óbvia: é uma tabela de quem
+  mais movimenta a agenda (shows ativos/total, próximos, cachê total, último show) que um músico naturalmente quer levar
+  para uma planilha (priorizar quem reativar, montar um relatório de relacionamento, cruzar com outras fontes).
+- **Decisão:** um serializador **puro** novo `contactActivityToCsv` em `src/lib/csv.ts`, na mesma convenção pt-BR já
+  estabelecida (delimitador `;`, decimal com vírgula, datas em UTC via `csvDate`, BOM UTF-8 prefixado na camada HTTP).
+  Consome uma forma mínima `ContactActivityCsvRow` (`{ contact: { name, role }, totalShows, activeShows, upcomingShows,
+  totalFee, lastShowDate }`) — declarada em `csv.ts` em vez de importar `ContactRankRow` de `@/lib/contacts`, mantendo
+  `csv.ts` sem nova dependência de tipo, e estruturalmente compatível com a linha real do ranking. Colunas:
+  Contato/Papel/**Shows ativos**/**Shows (total)**/Próximos/Cachê total/Último show — a tabela exibe "ativos / total"
+  numa célula só; no CSV viram duas colunas separadas, mais úteis para ordenar/filtrar em planilha. Papel passa pelo
+  `contactRoleLabel` já existente (rótulo legível; desconhecido → "Outro"); último show vazio quando `null`. Um route
+  handler fino `contatos/ranking/export/route.ts` espelha exatamente a query e a ordenação da página (mesma
+  `rankContactsByActivity` sobre os contatos do usuário); a página ganhou o botão "⬇ CSV" (só com `ranking.count > 0`),
+  sem `?ano=` (a tela não tem recorte por período).
+- **Justificativa:** mantém a disciplina serializador-puro + route fino da D125 (lógica testável em `csv.ts`, I/O no
+  route). Declarar a forma mínima local em vez de reusar o tipo de `contacts.ts` evita acoplar a serialização ao módulo
+  de CRM (o mesmo padrão de `CsvTransaction`/`CsvShow`), e o route entrega a compatibilidade estrutural na prática.
+- **Testes:** **+4** em `csv.test.ts` (só-cabeçalho, formatação pt-BR com papel legível e ativos/total separados, último
+  show vazio sem data, preservação de ordem). **831 testes** verdes (eram 827).
+- **DoD:** build de produção (a rota `/contatos/ranking/export` aparece no manifesto), typecheck (`tsc --noEmit`) e lint
+  (0 avisos) verdes; **831 testes**; smoke test (`npm start`): `/contatos/ranking` e `/contatos/ranking/export` sem
+  sessão → 307 para `/login` (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high /
+  1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) manter "ativos / total" numa coluna só (espelho fiel da tela) — descartado: numa
+  planilha duas colunas numéricas são mais úteis (ordenar por ativos, somar totais) e o cabeçalho deixa o significado
+  claro. (b) reusar `ContactRankRow` importando de `@/lib/contacts` — descartado p/ não acoplar `csv.ts` ao módulo de CRM;
+  a forma mínima local segue o padrão dos demais serializadores. (c) também exportar retenção/fontes de renda/sazonalidade
+  nesta sessão — adiado: cada uma tem forma de linha distinta e merece seu próprio serializador puro + testes; uma tela
+  por sessão mantém o escopo fechado e mergeável (seguem nos próximos passos).

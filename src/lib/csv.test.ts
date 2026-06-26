@@ -12,15 +12,18 @@ import {
   showProfitToCsv,
   venueProfitToCsv,
   contactProfitToCsv,
+  contactActivityToCsv,
   TRANSACTION_CSV_HEADERS,
   SHOW_CSV_HEADERS,
   ANNUAL_SUMMARY_CSV_HEADERS,
   QUARTERLY_SUMMARY_CSV_HEADERS,
   SHOW_PROFIT_CSV_HEADERS,
   CONTACT_PROFIT_CSV_HEADERS,
+  CONTACT_ACTIVITY_CSV_HEADERS,
   type CsvTransaction,
   type CsvShow,
   type CsvProfitShow,
+  type ContactActivityCsvRow,
 } from "./csv";
 import {
   annualSummary,
@@ -431,5 +434,47 @@ describe("contactProfitToCsv", () => {
     const csv = contactProfitToCsv([row({ showCount: 2 })]);
     // 8ª coluna (índice 7) = cachê mediano.
     expect(csv.split("\r\n")[1].split(";")[7]).toBe("");
+  });
+});
+
+describe("contactActivityToCsv", () => {
+  const row = (over: Partial<ContactActivityCsvRow> = {}): ContactActivityCsvRow => ({
+    contact: { name: "Produtora Lua", role: "PROMOTER" },
+    totalShows: 5,
+    activeShows: 4,
+    upcomingShows: 2,
+    totalFee: 600000,
+    lastShowDate: new Date("2026-03-10T12:00:00Z"),
+    ...over,
+  });
+
+  it("emite só o cabeçalho quando não há linhas", () => {
+    expect(contactActivityToCsv([])).toBe(CONTACT_ACTIVITY_CSV_HEADERS.join(";"));
+  });
+
+  it("serializa contato com papel legível, shows ativos/total e cachê com vírgula", () => {
+    const csv = contactActivityToCsv([row()]);
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(
+      "Contato;Papel;Shows ativos;Shows (total);Próximos;Cachê total (R$);Último show",
+    );
+    expect(lines[1]).toBe("Produtora Lua;Produtor/Promoter;4;5;2;6000,00;10/03/2026");
+  });
+
+  it("deixa o último show vazio quando não há data", () => {
+    const csv = contactActivityToCsv([row({ lastShowDate: null })]);
+    const cols = csv.split("\r\n")[1].split(";");
+    // 7ª coluna (índice 6) = último show.
+    expect(cols[6]).toBe("");
+  });
+
+  it("preserva a ordem das linhas recebidas", () => {
+    const csv = contactActivityToCsv([
+      row({ contact: { name: "Casa A", role: "VENUE" } }),
+      row({ contact: { name: "Casa B", role: "VENUE" } }),
+    ]);
+    const lines = csv.split("\r\n");
+    expect(lines[1].startsWith("Casa A;")).toBe(true);
+    expect(lines[2].startsWith("Casa B;")).toBe(true);
   });
 });
