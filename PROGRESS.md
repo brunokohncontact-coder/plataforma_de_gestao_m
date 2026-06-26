@@ -10,7 +10,11 @@
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
 do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **797 testes**
-verdes após a Sessão 128 (**comparação ano a ano da concentração geográfica** — `compareGeoConcentration(current, previous)`
+verdes após a Sessão 129 (**comparativo ano a ano da concentração por casa em `/shows/locais`** — o mesmo card
+"Concentração {ano} vs. {ano-1}" da atuação por cidade (D120), reaproveitando o `compareGeoConcentration` genérico
+sobre as linhas de `rankVenuesByProfit` do ano selecionado × ano anterior, exibido só com um ano específico e ambos
+os períodos com casa; só os rótulos diferem ("maior casa"/"casas efetivas"/"prospectar palcos"); UI-only, sem nova
+lógica (helper já coberto desde a D120), sem testes novos; ver D121; segue 797 da Sessão 128 (**comparação ano a ano da concentração geográfica** — `compareGeoConcentration(current, previous)`
 + `GEO_TREND_EPSILON` em `src/lib/finance.ts` derivam, de duas `GeoConcentration` já computadas, a variação de
 `topShare` (maior praça) e de cidades efetivas + um veredito de tendência (improved/worsened/stable, limiar 5 p.p.);
 `/shows/cidades` ganhou o card "Concentração {ano} vs. {ano-1}", exibido só com um ano específico selecionado e
@@ -2644,8 +2648,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    lado a lado (espelhando D33) entregue na Sessão 128** — `compareGeoConcentration` + `GEO_TREND_EPSILON` em
    `src/lib/finance.ts` (puro: Δ de `topShare` e cidades efetivas + veredito improved/worsened/stable, limiar 5 p.p.)
    + card "Concentração {ano} vs. {ano-1}" em `/shows/cidades`, exibido só com um ano selecionado e ambos os períodos
-   com praça, reaproveitando o recorte por ano UTC da D108, ver D120 (próximo possível aqui — estender o mesmo
-   comparativo a `/shows/locais` por casa e a `/contatos/rentabilidade` por cliente, já que o helper é genérico);
+   com praça, reaproveitando o recorte por ano UTC da D108, ver D120. **Comparativo ano a ano por casa**
+   entregue na Sessão 129 — `/shows/locais` ganhou o mesmo card "Concentração {ano} vs. {ano-1}", reaproveitando
+   o `compareGeoConcentration` genérico (D120) sobre as linhas de `rankVenuesByProfit` do ano selecionado × ano
+   anterior (recorte por ano UTC da D108 sobre os shows já carregados, sem nova consulta), exibido só com um ano
+   específico e ambos os períodos com casa; só a moldura textual difere ("maior casa"/"casas efetivas"/"prospectar
+   palcos"), ver D121. Próximo possível aqui — estender o mesmo comparativo a `/contatos/rentabilidade` por cliente
+   (espelhando D33 num eixo de cliente; o helper `compareGeoConcentration` opera sobre qualquer `GeoConcentration`);
    ou o cachê **mediano** por casa (robusto a outlier, adiável: ruidoso com poucos
    shows por casa, mesma razão da D57). **DRY do `PeriodPicker`:** ENTREGUE na Sessão 127 — extraído
    `src/components/PeriodPicker.tsx` (server component puro, `basePath` + `ariaLabel`); as cinco telas

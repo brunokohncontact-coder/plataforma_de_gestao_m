@@ -4,12 +4,14 @@ import { prisma } from "@/lib/prisma";
 import {
   rankVenuesByProfit,
   geoConcentration,
+  compareGeoConcentration,
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
   type TxLike,
   type VenueShowLike,
   type GeoConcentration,
+  type GeoConcentrationComparison,
   type DiversificationLevel,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
@@ -73,6 +75,24 @@ export default async function VenueProfitabilityPage({
   // Reaproveita o mesmo `geoConcentration` da atuação por cidade (D113), aqui num
   // eixo de casa/local em vez de cidade — ver D116.
   const concentration = geoConcentration(report.rows);
+
+  // Comparativo ano a ano da concentração por casa (espelha o de /shows/cidades,
+  // D120, reaproveitando o mesmo `compareGeoConcentration` genérico): só faz
+  // sentido com um ano específico selecionado e o ano anterior tendo receita —
+  // caso contrário a leitura "melhorou/piorou" seria enganosa. Reaproveita o
+  // mesmo recorte por ano UTC (D108) sobre os shows já carregados.
+  let venueComparison: GeoConcentrationComparison | null = null;
+  let previousYear = 0;
+  if (yearFilter !== "all") {
+    previousYear = yearFilter - 1;
+    const previousConcentration = geoConcentration(
+      rankVenuesByProfit(filterShowsByYear(venueShows, previousYear), txs).rows,
+    );
+    // Exige casa identificada nos DOIS períodos para comparar de verdade.
+    if (concentration.placeCount > 0 && previousConcentration.placeCount > 0) {
+      venueComparison = compareGeoConcentration(concentration, previousConcentration);
+    }
+  }
 
   const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
 
@@ -159,6 +179,14 @@ export default async function VenueProfitabilityPage({
 
           {concentration.placeCount > 0 && (
             <VenueConcentrationCard concentration={concentration} />
+          )}
+
+          {venueComparison && (
+            <VenueComparisonCard
+              comparison={venueComparison}
+              currentYear={yearFilter as number}
+              previousYear={previousYear}
+            />
           )}
 
           <div className="card overflow-x-auto p-0">
@@ -301,6 +329,95 @@ function VenueConcentrationCard({
         </div>
       </div>
       <p className="mt-3 text-xs opacity-90">{verdict.note}</p>
+    </div>
+  );
+}
+
+/** Rótulo + tom do veredito de tendência da concentração por casa entre dois anos. */
+const VENUE_TREND: Record<
+  GeoConcentrationComparison["trend"],
+  { label: string; emoji: string; classes: string; note: string }
+> = {
+  improved: {
+    label: "Mais espalhada",
+    emoji: "🟢",
+    classes: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    note: "A receita ficou menos dependente de uma única casa em relação ao ano anterior — risco de palco em queda.",
+  },
+  worsened: {
+    label: "Mais concentrada",
+    emoji: "🔴",
+    classes: "border-red-200 bg-red-50 text-red-800",
+    note: "A receita passou a depender mais de poucas casas que no ano anterior — vale prospectar palcos novos para reduzir o risco.",
+  },
+  stable: {
+    label: "Estável",
+    emoji: "⚪",
+    classes: "border-gray-200 bg-gray-50 text-gray-700",
+    note: "A dependência de casas ficou praticamente igual à do ano anterior.",
+  },
+};
+
+/** Formata uma variação em pontos percentuais com sinal (ex.: −0,12 → "−12 p.p."). */
+function deltaPp(delta: number): string {
+  const points = Math.round(delta * 100);
+  if (points === 0) return "0 p.p.";
+  return `${points > 0 ? "+" : "−"}${Math.abs(points)} p.p.`;
+}
+
+/** Formata a variação de casas efetivas com sinal (ex.: 1,3 → "+1,3"). */
+function deltaPlaces(delta: number): string {
+  const rounded = Math.round(delta * 10) / 10;
+  if (rounded === 0) return "0";
+  return `${rounded > 0 ? "+" : "−"}${Math.abs(rounded).toFixed(1)}`;
+}
+
+/**
+ * Card "vs. {ano-1}": compara a concentração por casa do ano selecionado com a
+ * do ano anterior (espelha o card homônimo de /shows/cidades, D120, num eixo de
+ * casa/palco em vez de cidade). Mostra a variação da maior casa e das casas
+ * efetivas, com um veredito de tendência (mais espalhada × mais concentrada).
+ */
+function VenueComparisonCard({
+  comparison,
+  currentYear,
+  previousYear,
+}: {
+  comparison: GeoConcentrationComparison;
+  currentYear: number;
+  previousYear: number;
+}) {
+  const trend = VENUE_TREND[comparison.trend];
+  const { current, previous } = comparison;
+  return (
+    <div className={"card border " + trend.classes}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide opacity-80">
+          Concentração {currentYear} vs. {previousYear}
+        </p>
+        <span className="badge bg-white/70 font-semibold">
+          {trend.emoji} {trend.label}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+        <div>
+          <p className="text-2xl font-bold">{deltaPp(comparison.topShareDelta)}</p>
+          <p className="text-xs opacity-80">
+            na maior casa: {pct(previous.topShare)} ({previousYear}) →{" "}
+            {pct(current.topShare)} ({currentYear})
+          </p>
+        </div>
+        <div>
+          <p className="text-2xl font-bold">
+            {deltaPlaces(comparison.effectivePlacesDelta)}
+          </p>
+          <p className="text-xs opacity-80">
+            casas efetivas: {previous.effectivePlaces.toFixed(1)} →{" "}
+            {current.effectivePlaces.toFixed(1)}
+          </p>
+        </div>
+      </div>
+      <p className="mt-3 text-xs opacity-90">{trend.note}</p>
     </div>
   );
 }
