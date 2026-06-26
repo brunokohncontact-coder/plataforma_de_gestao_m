@@ -107,7 +107,16 @@ export default async function CityProfitabilityPage({
             shows na mesma cidade, reunindo as várias casas. Shows cancelados são ignorados.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          {report.count > 0 && (
+            <a
+              href={`/shows/cidades/export${yearFilter === "all" ? "" : `?ano=${yearFilter}`}`}
+              className="btn-secondary text-sm"
+              download
+            >
+              ⬇ CSV
+            </a>
+          )}
           <Link href="/shows/locais" className="btn-secondary">
             Por local
           </Link>

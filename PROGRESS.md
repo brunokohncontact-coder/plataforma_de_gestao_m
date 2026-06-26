@@ -9,8 +9,18 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **808 testes**
-verdes após a Sessão 132 (**cachê mediano por casa/cidade em `/shows/locais` e `/shows/cidades`** — o agregador genérico
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **820 testes**
+verdes após a Sessão 133 (**exportação CSV das quatro telas de rentabilidade** — três serializadores puros novos em
+`src/lib/csv.ts` na mesma convenção pt-BR das exportações anteriores (delimitador `;`, decimal com vírgula, datas UTC,
+BOM): `showProfitToCsv` (`ShowProfitRow[]`: Show/Data/Status/Cachê/Extras/Despesas/Resultado/Margem), `venueProfitToCsv`
+(`VenueProfitRow[]`, **serve local e cidade** — mesmo tipo — com a 1ª coluna rotulada por `groupLabel` "Local"/"Cidade")
+e `contactProfitToCsv` (`ContactProfitRow[]`; "Sem contratante" com papel em branco). O cachê mediano sai em branco
+abaixo de `MIN_MEDIAN_FEE_SAMPLE` e a margem vazia sem receita bruta — espelham o "—" da UI (D123/D124). Quatro route
+handlers `*/export/route.ts` espelham o carregamento e o recorte por ano (`?ano=`) de cada página (reusando
+`showProfitYears`/`parseProfitYear`/`filterShowsByYear`/D108 e, no de contratante, `pickPayerContact`/D30); cada página
+ganhou botão "⬇ CSV" (só com `report.count > 0`) que propaga o `?ano=` ativo e nomeia o arquivo com o ano ou "todos".
+Fecha a lacuna de exportação do acervo de rentabilidade. **+12 testes**; ver D125; segue 808 da Sessão 132
+(**cachê mediano por casa/cidade em `/shows/locais` e `/shows/cidades`** — o agregador genérico
 `aggregateShowProfit` (fonte única de `rankVenuesByProfit`/`rankCitiesByProfit`) passou a acumular os cachês de cada grupo
 (`Acc.fees`) e expor `medianFee` em `VenueProfitRow` (e logo `CityProfitRow`, mesmo tipo), reusando o helper interno
 `median()` — mesma mecânica da D123, agora no eixo geográfico; nova coluna "Cachê mediano" (entre "Cachê" e "Extras") nas
@@ -457,7 +467,10 @@ adicionar um relatório novo passa a ser registrá-lo num único lugar (ver D53)
 (medição real `vitest run`; eram 486 na main — 9 testes novos de invariantes do catálogo).
 Próxima sessão: continuar o polimento de UX (acessibilidade, mensagens vazias, estados de erro
 inline dos server actions), evoluções de calendário (arrastar/soltar para remarcar), ou ligar os
-relatórios novos ao hub à medida que surgirem.
+relatórios novos ao hub à medida que surgirem. **Exportação CSV** entregue para as quatro telas de
+rentabilidade na Sessão 133 (D125); próximo possível no mesmo tema — estender o botão "⬇ CSV" às
+demais telas tabulares que ainda não exportam (ex.: ranking de contatos, sazonalidade, fontes de
+renda, retenção), reaproveitando a mesma disciplina serializador-puro + route fino.
 
 ## Modelo de branches (a partir de 2026-06-16)
 O repositório tem um tronco **`main`** (ver DECISIONS.md D7), já definido como **default

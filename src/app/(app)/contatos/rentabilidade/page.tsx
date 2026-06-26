@@ -128,6 +128,15 @@ export default async function ContactProfitabilityPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {report.count > 0 && (
+            <a
+              href={`/contatos/rentabilidade/export${yearFilter === "all" ? "" : `?ano=${yearFilter}`}`}
+              className="btn-secondary text-sm"
+              download
+            >
+              ⬇ CSV
+            </a>
+          )}
           <Link href="/contatos/ranking" className="btn-secondary">
             Ranking
           </Link>
