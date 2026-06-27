@@ -35,6 +35,8 @@ import {
   rankCitiesByProfit,
   geoConcentration,
   geoConcentrationHeadline,
+  gigSeasonality,
+  gigSeasonalityHeadline,
   type TxLike,
   type ContactProfitContact,
   type QuarterGoalStatus,
@@ -275,6 +277,16 @@ export default async function DashboardPage() {
     geoConcentration(rankCitiesByProfit(shows, txs).rows),
   );
 
+  // Sazonalidade dos shows (D133/D134): "qual o próximo mês forte chegando?".
+  // Reaproveita os shows já carregados (sem I/O extra): agrega os shows
+  // realizados por mês do calendário (gigSeasonality) e a manchete escolhe o
+  // mês mais cedo, à frente, cujo faturamento histórico bate acima da média.
+  // Vira nudge só com amostra mínima e um pico de fato à frente — antecedência
+  // para prospectar/precificar. O detalhe completo está em /shows/sazonalidade.
+  const seasonHeadline = gigSeasonalityHeadline(
+    gigSeasonality(shows as ReceivableShowLike[]),
+  );
+
   // Rentabilidade: top shows realizados por resultado
   const playedShows = shows.filter((s) => s.status === "PLAYED");
   const showPnls = playedShows
@@ -391,6 +403,28 @@ export default async function DashboardPage() {
             )}
           </span>
           <span className="text-brand-600">Agendar →</span>
+        </Link>
+      )}
+
+      {/* Oportunidade: próximo mês forte da temporada (sazonalidade dos shows). */}
+      {seasonHeadline.show && seasonHeadline.month && (
+        <Link
+          href="/shows/sazonalidade"
+          className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900 transition hover:bg-brand-100"
+        >
+          <span className="font-semibold">📈 Mês forte chegando</span>
+          <span>
+            <strong>{seasonHeadline.month.label}</strong>{" "}
+            {seasonHeadline.monthsAhead === 1
+              ? "(mês que vem)"
+              : `(daqui a ${seasonHeadline.monthsAhead} meses)`}{" "}
+            historicamente rende{" "}
+            <strong>
+              {Math.round((seasonHeadline.lift - 1) * 100)}% acima
+            </strong>{" "}
+            do mês médio.
+          </span>
+          <span className="text-brand-600">Prospectar →</span>
         </Link>
       )}
 

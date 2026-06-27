@@ -83,6 +83,8 @@ import {
   FEE_BANDS,
   weekdayPerformance,
   gigSeasonality,
+  gigSeasonalityHeadline,
+  STRONG_MONTH_MIN_SHOWS,
   incomeMix,
   expenseMix,
   paymentLag,
@@ -5653,6 +5655,114 @@ describe("gigSeasonality", () => {
     expect(s.bestByAvg?.month).toBe(0);
     expect(s.bestByVolume?.month).toBe(0);
     expect(s.busiest?.month).toBe(0);
+  });
+});
+
+describe("gigSeasonalityHeadline", () => {
+  // "now" em junho de 2027 → janela à frente cobre jul(6), ago(7), set(8), out(9).
+  const now = new Date("2027-06-15T12:00:00.000Z");
+
+  function gig(partial: Partial<ReceivableShowLike>): ReceivableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-01-10T20:00:00.000Z",
+      ...partial,
+    };
+  }
+
+  // Constrói uma amostra com cachê concentrado num mês forte à frente, mais
+  // shows de "enchimento" espalhados para passar do mínimo amostral sem
+  // empurrar o feeShare daquele mês abaixo do limiar.
+  function sampleWithPeak(peakMonthIso: string, peakFee: number, filler: number) {
+    const shows: ReceivableShowLike[] = [
+      gig({ id: "peak", date: peakMonthIso, fee: peakFee }),
+    ];
+    for (let i = 0; i < filler; i++) {
+      // Todos em fevereiro (mês 1, fora da janela jul→out) com cachê baixo.
+      shows.push(
+        gig({ id: `f${i}`, date: "2026-02-05T20:00:00.000Z", fee: 10_00 }),
+      );
+    }
+    return shows;
+  }
+
+  it("não aparece sem amostra mínima de shows", () => {
+    // Um único show forte em agosto, mas totalShows (1) < mínimo.
+    const s = gigSeasonality(
+      [gig({ id: "ago", date: "2026-08-10T20:00:00.000Z", fee: 500_00 })],
+      { now },
+    );
+    expect(s.totalShows).toBeLessThan(STRONG_MONTH_MIN_SHOWS);
+    const h = gigSeasonalityHeadline(s, { now });
+    expect(h.show).toBe(false);
+    expect(h.month).toBeNull();
+    expect(h.monthsAhead).toBe(0);
+    expect(h.lift).toBe(0);
+  });
+
+  it("aponta o próximo mês forte à frente com lift acima da média", () => {
+    // Agosto (mês 7, 2 à frente de junho) carrega a maioria do faturamento;
+    // fevereiro só enche a amostra.
+    const s = gigSeasonality(
+      sampleWithPeak("2026-08-10T20:00:00.000Z", 500_00, 6),
+      { now },
+    );
+    expect(s.totalShows).toBeGreaterThanOrEqual(STRONG_MONTH_MIN_SHOWS);
+    const h = gigSeasonalityHeadline(s, { now });
+    expect(h.show).toBe(true);
+    expect(h.month?.month).toBe(7); // agosto
+    expect(h.monthsAhead).toBe(2); // junho → agosto
+    expect(h.lift).toBeGreaterThan(1.25);
+  });
+
+  it("escolhe o mês forte MAIS CEDO na janela, não o maior", () => {
+    // Julho (1 à frente) e setembro (3 à frente) ambos fortes; vence julho.
+    const s = gigSeasonality(
+      [
+        gig({ id: "jul", date: "2026-07-10T20:00:00.000Z", fee: 300_00 }),
+        gig({ id: "set", date: "2026-09-10T20:00:00.000Z", fee: 600_00 }),
+        ...Array.from({ length: 6 }, (_, i) =>
+          gig({ id: `f${i}`, date: "2026-02-05T20:00:00.000Z", fee: 10_00 }),
+        ),
+      ],
+      { now },
+    );
+    const h = gigSeasonalityHeadline(s, { now });
+    expect(h.show).toBe(true);
+    expect(h.month?.month).toBe(6); // julho, ainda que setembro renda mais
+    expect(h.monthsAhead).toBe(1);
+  });
+
+  it("ignora meses fortes fora da janela (atrás ou além do horizonte)", () => {
+    // Janeiro (mês 0) é o pico, mas está atrás de junho; nada à frente qualifica.
+    const s = gigSeasonality(
+      [
+        gig({ id: "jan", date: "2026-01-10T20:00:00.000Z", fee: 500_00 }),
+        ...Array.from({ length: 6 }, (_, i) =>
+          // Espalhados na janela à frente, todos fracos (abaixo do limiar).
+          gig({ id: `f${i}`, date: "2026-07-05T20:00:00.000Z", fee: 5_00 }),
+        ),
+      ],
+      { now },
+    );
+    const h = gigSeasonalityHeadline(s, { now });
+    expect(h.show).toBe(false);
+  });
+
+  it("não aparece quando nenhum mês à frente supera o limiar (temporada plana)", () => {
+    // 12 shows iguais, um por mês → todo feeShare = 1/12, ninguém forte.
+    const shows = Array.from({ length: 12 }, (_, m) =>
+      gig({
+        id: `m${m}`,
+        date: `2026-${String(m + 1).padStart(2, "0")}-10T20:00:00.000Z`,
+        fee: 100_00,
+      }),
+    );
+    const s = gigSeasonality(shows, { now });
+    const h = gigSeasonalityHeadline(s, { now });
+    expect(h.show).toBe(false);
   });
 });
 
