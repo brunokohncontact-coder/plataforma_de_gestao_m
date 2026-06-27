@@ -82,6 +82,7 @@ import {
   feeBandKeyFor,
   FEE_BANDS,
   weekdayPerformance,
+  gigSeasonality,
   incomeMix,
   expenseMix,
   paymentLag,
@@ -5541,6 +5542,117 @@ describe("weekdayPerformance", () => {
     );
     // Mesma média (100), terça tem mais shows → vence o desempate.
     expect(w.bestByAvg?.weekday).toBe(2);
+  });
+});
+
+describe("gigSeasonality", () => {
+  const now = new Date("2027-06-15T12:00:00.000Z");
+
+  function gig(partial: Partial<ReceivableShowLike>): ReceivableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-03-10T20:00:00.000Z", // março
+      ...partial,
+    };
+  }
+
+  it("sem shows realizados retorna 12 meses zerados e destaques nulos", () => {
+    const s = gigSeasonality([], { now });
+    expect(s.months).toHaveLength(12);
+    expect(s.months.map((m) => m.month)).toEqual([
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+    ]);
+    expect(s.months.every((m) => m.count === 0 && m.totalFee === 0)).toBe(true);
+    expect(s.totalShows).toBe(0);
+    expect(s.totalFee).toBe(0);
+    expect(s.avgFee).toBe(0);
+    expect(s.bestByAvg).toBeNull();
+    expect(s.bestByVolume).toBeNull();
+    expect(s.busiest).toBeNull();
+  });
+
+  it("colapsa todos os anos no mesmo mês do calendário", () => {
+    const s = gigSeasonality(
+      [
+        gig({ id: "jan23", date: "2023-01-15T20:00:00.000Z", fee: 200_00 }),
+        gig({ id: "jan24", date: "2024-01-20T20:00:00.000Z", fee: 400_00 }),
+        gig({ id: "mar24", date: "2024-03-05T20:00:00.000Z", fee: 300_00 }),
+      ],
+      { now },
+    );
+    const jan = s.months[0];
+    const mar = s.months[2];
+    expect(jan).toMatchObject({ count: 2, totalFee: 600_00, avgFee: 300_00 });
+    expect(mar).toMatchObject({ count: 1, totalFee: 300_00, avgFee: 300_00 });
+    expect(jan.countShare).toBeCloseTo(2 / 3, 5);
+    expect(jan.feeShare).toBeCloseTo(600_00 / 900_00, 5);
+    expect(s.totalShows).toBe(3);
+    expect(s.totalFee).toBe(900_00);
+    expect(s.avgFee).toBe(300_00);
+    // Meses sem shows seguem zerados.
+    expect(s.months[5].count).toBe(0);
+  });
+
+  it("considera só shows realizados (ignora proposto, cancelado e futuro)", () => {
+    const s = gigSeasonality(
+      [
+        gig({ id: "played", status: "PLAYED", date: "2026-03-10T20:00:00.000Z" }),
+        gig({ id: "confPast", status: "CONFIRMED", date: "2026-03-20T20:00:00.000Z" }),
+        gig({ id: "confFut", status: "CONFIRMED", date: "2027-09-12T20:00:00.000Z" }),
+        gig({ id: "prop", status: "PROPOSED", date: "2026-03-04T20:00:00.000Z" }),
+        gig({ id: "canc", status: "CANCELLED", date: "2026-03-05T20:00:00.000Z" }),
+      ],
+      { now },
+    );
+    expect(s.totalShows).toBe(2); // só os dois de março já realizados
+    expect(s.months[2].count).toBe(2);
+  });
+
+  it("ignora shows sem cachê (fee <= 0)", () => {
+    const s = gigSeasonality(
+      [
+        gig({ id: "a", fee: 0, date: "2026-03-10T20:00:00.000Z" }),
+        gig({ id: "b", fee: 80_00, date: "2026-04-02T20:00:00.000Z" }),
+      ],
+      { now },
+    );
+    expect(s.totalShows).toBe(1);
+    expect(s.months[3].count).toBe(1); // abril
+    expect(s.months[2].count).toBe(0); // março (fee 0 ignorado)
+  });
+
+  it("destaca melhor por média, por volume e mais cheio", () => {
+    const s = gigSeasonality(
+      [
+        // Janeiro: 1 show de 100 → avg 100, total 100
+        gig({ id: "jan", date: "2026-01-04T20:00:00.000Z", fee: 100_00 }),
+        // Maio: 2 shows de 150 → avg 150, total 300 (mais cheio)
+        gig({ id: "mai1", date: "2026-05-02T20:00:00.000Z", fee: 150_00 }),
+        gig({ id: "mai2", date: "2026-05-09T20:00:00.000Z", fee: 150_00 }),
+        // Dezembro: 1 show de 600 → avg 600, total 600
+        gig({ id: "dez", date: "2026-12-10T20:00:00.000Z", fee: 600_00 }),
+      ],
+      { now },
+    );
+    expect(s.bestByAvg?.month).toBe(11); // dezembro (600)
+    expect(s.bestByVolume?.month).toBe(11); // dezembro (600 total)
+    expect(s.busiest?.month).toBe(4); // maio (2 shows)
+  });
+
+  it("empate total de destaque resolve pelo mês mais cedo do ano", () => {
+    const s = gigSeasonality(
+      [
+        gig({ id: "fev", date: "2026-02-05T20:00:00.000Z", fee: 100_00 }),
+        gig({ id: "jan", date: "2026-01-04T20:00:00.000Z", fee: 100_00 }),
+      ],
+      { now },
+    );
+    // Janeiro (0) e fevereiro (1) idênticos → escolhe janeiro.
+    expect(s.bestByAvg?.month).toBe(0);
+    expect(s.bestByVolume?.month).toBe(0);
+    expect(s.busiest?.month).toBe(0);
   });
 });
 

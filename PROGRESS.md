@@ -9,8 +9,21 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **859 testes**
-verdes após a Sessão 140 (**exportação CSV do prazo de recebimento por show em `/shows/prazo-recebimento`** —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **865 testes**
+verdes após a Sessão 141 (**sazonalidade de shows por mês do ano em `/shows/sazonalidade`** —
+fecha a lacuna do eixo "mês do calendário" em "Agenda & pipeline": já havia *quando na semana* (`weekdayPerformance`/
+`/shows/dias-semana`) e *cadência no tempo* (`/shows/cadencia`), mas não *quais meses do ano* (jan→dez, somando todos os
+anos) historicamente rendem mais shows e maiores cachês. Novo helper puro `gigSeasonality(shows, { now? })` em
+`src/lib/finance.ts` espelhando integralmente `weekdayPerformance` num eixo de 12 meses: agrega os shows realizados
+(`isHappenedGig`) com cachê > 0 por `getUTCMonth()`, colapsando todos os anos no mesmo balde; sempre 12 entradas
+`GigMonthStat` (mês/label/count/totalFee/avgFee/countShare/feeShare, inclusive meses zerados) + destaques `busiest`/
+`bestByVolume`/`bestByAvg` com o mesmo desempate determinístico (mês mais cedo vence). Rótulos exportados
+`GIG_MONTH_LABELS`/`GIG_MONTH_SHORT` definidos localmente (finance.ts não tem imports, como já faz com `WEEKDAY_LABELS`).
+Página `/shows/sazonalidade` (server component) com três cards de destaque + tabela "Shows por mês do ano" (barra
+proporcional ao nº de shows), espelhando o layout de `/shows/dias-semana`; registrada no hub (`REPORT_GROUPS`, subtema
+"Agenda & pipeline", após "Cadência"). **+6 testes**; validado por smoke test autenticado (200 + destaques + rótulos de
+mês + selo "mais cheio" + entrada no hub). Distinto do `monthlySeasonality` (que opera sobre transações, não cachês de
+shows). Ver D133; segue 859 da Sessão 140 (**exportação CSV do prazo de recebimento por show em `/shows/prazo-recebimento`** —
 fecha a alternativa (b) adiada na D131 e a última lacuna de exportação tabular do acervo: a tela-mãe (uma linha por show,
 do prazo mais lento ao mais rápido) ainda não exportava. Serializador puro novo `paymentLagToCsv` em `src/lib/csv.ts` na
 mesma convenção pt-BR (delimitador `;`, decimal com vírgula, datas UTC, BOM), consumindo a forma mínima local
@@ -2571,6 +2584,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    em `shows.ts` + pílulas 4/8/12/26 semanas via `?semanas=` em `/shows/fins-de-semana-livres`, ver D98.)
    Próximo possível — um mini-calendário de salto rápido na agenda, ou estimar a receita parada por fim de
    semana livre (adiada na D96 por ser hipótese frágil).
+2c. **Sazonalidade de shows** (entregue na Sessão 141, `/shows/sazonalidade` + `gigSeasonality` em
+   `src/lib/finance.ts`, ver D133): agrega os shows realizados por mês do calendário (jan→dez, somando todos os anos),
+   com cards de destaque (mês mais cheio / mais faturamento / melhor cachê médio) e tabela com barra por nº de shows —
+   os picos e vales da temporada para planejar prospecção e preço. Distinto de `weekdayPerformance` (dia da semana) e da
+   cadência (timeline mês a mês). Próximo possível — recorte por ano (`?ano=`, adiado na D133(b) porque a sazonalidade
+   ganha sentido somando os anos), exportação CSV (adiada na D133(d): são só 12 linhas), ou um card de "próximo mês forte"
+   no Painel.
 2b. **Funil de propostas — evoluções** (entregue na Sessão 51, `/shows/funil` + `showPipeline`,
    ver D42; **card do funil no Painel** entregue na Sessão 52 — cachê em aberto + taxa de
    concretização, ver D43): hoje é um retrato do estado atual. Próximo possível — registrar

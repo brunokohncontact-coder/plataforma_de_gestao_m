@@ -3940,3 +3940,42 @@ contexto, decisão, justificativa e alternativas consideradas.
   mesmo motivo da D131(a): inteiros ordenam/filtram melhor. (c) incluir o prazo mediano por show — descartado: a mediana
   é uma propriedade de um conjunto de recebimentos de vários shows, não de um show isolado (cujo `avgDays` já pondera os
   recebimentos próprios); manter por contratante (D131).
+
+## D133 — Sazonalidade de shows por mês do ano em `/shows/sazonalidade` (Sessão 141)
+- **Contexto:** o acervo de "Agenda & pipeline" já respondia *quando* (por dia da semana, `weekdayPerformance`/`/shows/dias-semana`)
+  e *quanto ao longo do tempo* (cadência mês a mês, `/shows/cadencia`), mas faltava o eixo de **sazonalidade**: quais
+  **meses do calendário** (jan→dez), somando todos os anos, historicamente rendem mais shows e maiores cachês. O
+  `monthlySeasonality` que existia em `finance.ts` opera sobre **transações** (receita/despesa lançadas), não sobre os
+  cachês dos shows realizados — é outra pergunta (fluxo de caixa vs. agenda de palco). Sem isso, o músico não tinha como
+  ver os picos e vales da temporada para planejar prospecção e preço.
+- **Decisão:** novo helper puro `gigSeasonality(shows, { now? })` em `src/lib/finance.ts`, espelhando integralmente a
+  mecânica de `weekdayPerformance` (D próximo do eixo dia-da-semana) num eixo de 12 meses: agrega os **shows já realizados**
+  (`isHappenedGig` — PLAYED, ou CONFIRMED com data passada; propostos/cancelados/futuros fora) e **com cachê > 0** por
+  `getUTCMonth()`, **colapsando todos os anos** no mesmo balde (jan/2023 e jan/2024 → "Janeiro"). Devolve sempre 12
+  entradas `GigMonthStat` (mês, label, count, totalFee, avgFee, countShare, feeShare) — inclusive meses zerados, para o
+  gráfico/tabela não "pular" meses e revelar os vales — mais os destaques `busiest` (mais shows), `bestByVolume` (maior
+  faturamento) e `bestByAvg` (maior cachê médio), com o mesmo desempate determinístico do `weekdayPerformance` (mês mais
+  cedo vence). Constantes de rótulo exportadas: `GIG_MONTH_LABELS` (Janeiro…Dezembro) e `GIG_MONTH_SHORT` (jan…dez) —
+  definidas localmente em `finance.ts`, que é um módulo sem imports (não reusa `MONTH_NAMES_LONG` de `calendar.ts`, como
+  já faz com seu próprio `WEEKDAY_LABELS`). Nova página `/shows/sazonalidade` (server component) que carrega os shows do
+  usuário e renderiza três cards de destaque + uma tabela "Shows por mês do ano" com barra proporcional ao nº de shows,
+  espelhando o layout de `/shows/dias-semana`. Registrada no hub de relatórios (`REPORT_GROUPS`, subtema "Agenda &
+  pipeline", após "Cadência de shows").
+- **Justificativa:** reusa um padrão já testado e validado (mesma forma do `weekdayPerformance`), mantendo a lógica pura e
+  testável em `finance.ts` e a página fina. O eixo "mês do ano" é distinto de "dia da semana" e de "cadência no tempo":
+  responde à pergunta de planejamento de temporada (dezembro/junho cheios? fevereiro morto?) que nenhuma tela cobria.
+  A barra usa o nº de shows (não o cachê) por ser a leitura primária de sazonalidade — "quando há trabalho"; o cachê
+  médio e o faturamento ficam nas colunas ao lado.
+- **Testes:** **+6** em `finance.test.ts` (12 meses zerados sem dados; colapso de anos no mesmo mês com média/total/
+  participações; só realizados; ignora fee≤0; destaques por média/volume/movimento; desempate pelo mês mais cedo).
+- **DoD:** build de produção (a rota `/shows/sazonalidade` aparece no manifesto), typecheck (`tsc --noEmit`) e lint
+  (`next lint`, 0 avisos) verdes; **865 testes** (`vitest run`, eram 859); smoke test (`npm start`) com sessão forjada
+  (lib própria) sobre o seed → a página devolve 200, renderiza os destaques, os rótulos de mês e o selo "mais cheio", e o
+  hub de relatórios lista a entrada. `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1
+  critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) estender o `monthlySeasonality` de transações em vez de um helper novo — descartado:
+  são fontes (shows vs. transações) e perguntas diferentes; acoplar distorceria ambos. (b) parametrizar por ano (`?ano=`)
+  como as telas de rentabilidade — adiado: a sazonalidade ganha sentido **somando** os anos (a amostra de um ano só é
+  rala); um recorte por ano pode vir depois se houver demanda. (c) usar o cachê na barra em vez do nº de shows —
+  descartado: "quando há trabalho" é a leitura primária de temporada; o dinheiro fica nas colunas. (d) exportação CSV —
+  adiada: a tela é um resumo de 12 linhas que o usuário já lê inteiro; sem o atrito de planilha das tabelas longas.
