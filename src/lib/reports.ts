@@ -309,6 +309,13 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "💸",
       },
       {
+        title: "Rentabilidade por papel",
+        href: "/contatos/rentabilidade/por-papel",
+        description: "Que tipo de comprador (casa, produtor, contratante…) rende mais — resultado somado por papel de quem paga.",
+        subtopic: "Quem move a carreira",
+        icon: "🎭",
+      },
+      {
         title: "Fidelização de contratantes",
         href: "/contatos/retencao",
         description: "Quem repete contratação e quem chamou uma vez só.",

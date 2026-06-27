@@ -5,6 +5,7 @@ import {
   rankVenuesByProfit,
   rankCitiesByProfit,
   rankContactsByProfit,
+  rankRolesByProfit,
   clientConcentration,
   clientConcentrationHeadline,
   geoConcentration,
@@ -588,6 +589,92 @@ describe("rankContactsByProfit", () => {
     const ze = r.rows.find((row) => row.contact?.id === "ze");
     expect(ze!.showCount).toBe(2);
     expect(ze!.totalNet).toBe(285_00);
+  });
+});
+
+describe("rankRolesByProfit", () => {
+  // Dois contratantes do mesmo papel (PROMOTER) devem somar num só grupo; um
+  // BOOKER em outro; um show sem contratante à parte.
+  const ZE = { id: "ze", name: "Zé Produções", role: "PROMOTER" };
+  const NEY = { id: "ney", name: "Ney Shows", role: "PROMOTER" };
+  const ANA = { id: "ana", name: "Ana Booking", role: "BOOKER" };
+  const shows: ShowLike[] = [
+    { id: "a", fee: 100_00, status: "PLAYED" }, // Zé (PROMOTER), -40 -> net 60
+    { id: "b", fee: 200_00, status: "CONFIRMED" }, // Ney (PROMOTER), +25 extra -> net 225
+    { id: "c", fee: 50_00, status: "CONFIRMED" }, // Ana (BOOKER) -> net 50
+    { id: "d", fee: 30_00, status: "CONFIRMED" }, // sem contratante -> net 30
+  ];
+  const payers: Record<string, { id: string; name: string; role: string } | null> = {
+    a: ZE,
+    b: NEY,
+    c: ANA,
+    d: null,
+  };
+  const getPayer = (s: ShowLike) => payers[s.id] ?? null;
+  const txs: TxLike[] = [
+    tx({ type: "EXPENSE", amount: 40_00, showId: "a" }),
+    tx({ type: "INCOME", amount: 25_00, showId: "b" }),
+  ];
+
+  it("retorna estrutura vazia quando não há shows", () => {
+    const r = rankRolesByProfit([], txs, getPayer);
+    expect(r.count).toBe(0);
+    expect(r.roleCount).toBe(0);
+    expect(r.rows).toEqual([]);
+    expect(r.totalNet).toBe(0);
+    expect(r.best).toBeNull();
+    expect(r.worst).toBeNull();
+  });
+
+  it("soma o P&L de vários contratantes do mesmo papel num único grupo", () => {
+    const r = rankRolesByProfit(shows, txs, getPayer);
+    const promoter = r.rows.find((row) => row.role === "PROMOTER");
+    // Zé (net 60) + Ney (net 225) somam no papel PROMOTER
+    expect(promoter!.showCount).toBe(2);
+    expect(promoter!.totalFee).toBe(300_00);
+    expect(promoter!.totalExtra).toBe(25_00);
+    expect(promoter!.totalExpenses).toBe(40_00);
+    expect(promoter!.totalNet).toBe(285_00);
+    expect(promoter!.avgNet).toBe(142_50);
+    // cachê médio: 300/2 = 150 (≠ avgNet, que é líquido)
+    expect(promoter!.avgFee).toBe(150_00);
+    // total reconcilia: 285 (PROMOTER) + 50 (BOOKER) + 30 (sem) = 365
+    expect(r.totalNet).toBe(365_00);
+    expect(r.count).toBe(4);
+  });
+
+  it("agrupa shows sem contratante à parte (role null) e o coloca por último", () => {
+    const r = rankRolesByProfit(shows, txs, getPayer);
+    const sem = r.rows.find((row) => row.role === null);
+    expect(sem).toBeDefined();
+    expect(sem!.totalNet).toBe(30_00);
+    expect(r.rows[r.rows.length - 1]).toBe(sem);
+  });
+
+  it("ordena por resultado desc e aponta melhor/pior só entre identificados", () => {
+    const r = rankRolesByProfit(shows, txs, getPayer);
+    // nets: PROMOTER=285, BOOKER=50, sem=30 -> sem contratante nunca é best/worst
+    expect(r.rows.map((row) => row.role ?? "—")).toEqual(["PROMOTER", "BOOKER", "—"]);
+    expect(r.best?.role).toBe("PROMOTER");
+    expect(r.worst?.role).toBe("BOOKER");
+    expect(r.roleCount).toBe(2);
+  });
+
+  it("calcula o cachê mediano por papel, robusto a outlier, e exclui cancelados", () => {
+    // PROMOTER com 3 shows: cachês 100, 200 e um festival fora da curva de 1000;
+    // mais um cancelado que não deve entrar.
+    const many: ShowLike[] = [
+      { id: "p1", fee: 100_00, status: "PLAYED" },
+      { id: "p2", fee: 200_00, status: "PLAYED" },
+      { id: "p3", fee: 1000_00, status: "PLAYED" },
+      { id: "px", fee: 999_00, status: "CANCELLED" },
+    ];
+    const r = rankRolesByProfit(many, [], () => ZE);
+    const promoter = r.rows.find((row) => row.role === "PROMOTER")!;
+    expect(promoter.showCount).toBe(3); // cancelado fora
+    expect(promoter.medianFee).toBe(200_00); // preço típico, não a média distorcida
+    expect(promoter.avgFee).toBe(433_33); // round(1300/3)
+    expect(promoter.medianFee).not.toBe(promoter.avgFee);
   });
 });
 

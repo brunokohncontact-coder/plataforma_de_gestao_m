@@ -137,6 +137,9 @@ export default async function ContactProfitabilityPage({
               ⬇ CSV
             </a>
           )}
+          <Link href="/contatos/rentabilidade/por-papel" className="btn-secondary">
+            Por papel
+          </Link>
           <Link href="/contatos/ranking" className="btn-secondary">
             Ranking
           </Link>

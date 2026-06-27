@@ -9,8 +9,21 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **875 testes**
-verdes após a Sessão 143 (**nudge "mês fraco à frente" (vale da temporada) no Painel** — espelho simétrico do nudge de
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **880 testes**
+verdes após a Sessão 144 (**rentabilidade por papel do contratante em `/contatos/rentabilidade/por-papel`** — rollup
+acima da rentabilidade por contratante (D105): agrupa os shows pelo **papel** de quem paga (Casa de show / Produtor /
+Promoter / Contratante…) em vez de por pessoa, respondendo "que tipo de comprador rende mais por show?" — útil para
+decidir onde investir prospecção. Novo helper puro `rankRolesByProfit(shows, txs, getPayer, opts?)` em `src/lib/finance.ts`
+espelhando `rankContactsByProfit` (mesma atribuição de **um** pagador por show via `pickPayerContact`, mesmos campos
+`showCount`/`totalFee`/`totalExtra`/`totalExpenses`/`totalNet`/`avgNet`/`avgFee`/`medianFee`/`margin`, exclui `CANCELLED`
+por padrão), só que a chave de grupo é o `role` do pagador — vários contratantes do mesmo papel somam num só grupo; shows
+sem contato vão para "Sem contratante" (`role: null`, sempre por último); `best`/`worst`/`roleCount` ignoram o grupo sem
+contratante. Devolve `RolesProfitability` (`rows: RoleProfitRow[]`). Página server component `/contatos/rentabilidade/por-papel`
+espelhando o layout da tela por contratante (cards de destaque + `PeriodPicker`/`?ano=` reusando os três helpers da D108 +
+tabela com cachê médio/mediano), com badge de papel por linha (sem link, papel não é entidade) e cross-link "Por papel"
+↔ "Por contratante"; registrada no hub (`REPORT_GROUPS`, área Contatos, subtema "Quem move a carreira", após "Rentabilidade
+por contratante"). **+5 testes**; validado por smoke test autenticado (200 + dois produtores agrupados no papel PROMOTER +
+rótulos de papel + "Sem contratante" + seletor de período). Ver D136; segue 875 da Sessão 143 (**nudge "mês fraco à frente" (vale da temporada) no Painel** — espelho simétrico do nudge de
 mês forte (D134): novo helper puro `gigSeasonalityLull(seasonality, { now? })` em `src/lib/finance.ts`, idêntico a
 `gigSeasonalityHeadline` no sentido oposto (mesma janela `STRONG_MONTH_HORIZON`=4, mesma amostra mínima
 `STRONG_MONTH_MIN_SHOWS`=6, mesmo `now` injetável), que varre **só para frente** e escolhe o **mês fraco mais cedo** com
@@ -2806,6 +2819,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    (`compareClientConcentration` + card "Concentração {ano} vs. {ano-1}" em `/contatos/rentabilidade`, ver D122); ou um
    recorte por período (`?ano=`) também no nudge de concentração do Painel (hoje usa o retrato corrente, todos os
    anos).
+   **Rentabilidade por papel do contratante** entregue na Sessão 144 — `rankRolesByProfit` em `src/lib/finance.ts`
+   (rollup acima de `rankContactsByProfit`: agrupa o P&L pelo papel de quem paga, vários contratantes do mesmo papel
+   somam num grupo) + `/contatos/rentabilidade/por-papel` (cards de destaque + `PeriodPicker`/`?ano=` + tabela com cachê
+   médio/mediano) + cross-link ↔ "Por contratante", registrada no hub, ver D136. Próximo possível — exportação CSV da
+   tela por papel (são poucas linhas, mas casa com o acervo de exportações); ou uma concentração por papel (o quanto a
+   receita depende de um único tipo de comprador), embora o nº de papéis seja pequeno e fixo (6).
 
 9. **Rentabilidade geográfica — evoluções** (rentabilidade por local entregue na Sessão 28, `/shows/locais` +
    `rankVenuesByProfit`; atuação por cidade na Sessão 57, `/shows/cidades` + `rankCitiesByProfit`; recorte por
