@@ -9,8 +9,18 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **865 testes**
-verdes após a Sessão 141 (**sazonalidade de shows por mês do ano em `/shows/sazonalidade`** —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **870 testes**
+verdes após a Sessão 142 (**nudge "próximo mês forte" no Painel a partir da sazonalidade** — transforma a sazonalidade
+dos shows (D133) em **antecedência**: novo helper puro `gigSeasonalityHeadline(seasonality, { now? })` em
+`src/lib/finance.ts` (espelha a disciplina de `geoConcentrationHeadline`/`cashBurnHeadline` — regra de exibição no helper,
+Painel só consome) que varre **só para frente**, do mês seguinte até `STRONG_MONTH_HORIZON` (=4) meses à frente
+(excluindo o mês corrente), e escolhe o **mês forte mais cedo** que qualifica (`feeShare ≥ STRONG_MONTH_FACTOR/12`, =1.25/12,
+i.e. ≥25% acima do faturamento do mês médio), só com amostra mínima `totalShows ≥ STRONG_MONTH_MIN_SHOWS` (=6). Devolve
+`{ show, month, monthsAhead, lift }` (`lift` = `feeShare × 12`, múltiplo da média). Banner-nudge 📈 "Mês forte chegando"
+em `dashboard/page.tsx` (estilo brand, como o de fim de semana livre), reaproveitando os `shows` já carregados via
+`gigSeasonality(shows)` — zero consulta nova — exibindo o mês, o lead time ("mês que vem"/"daqui a N meses") e `(lift−1)×100`%
+"acima do mês médio", linkando para `/shows/sazonalidade`. **+5 testes**; validado por smoke test autenticado (200 + banner
+com mês/lead time/% acima sobre dados forjados de pico). Ver D134; segue 865 da Sessão 141 (**sazonalidade de shows por mês do ano em `/shows/sazonalidade`** —
 fecha a lacuna do eixo "mês do calendário" em "Agenda & pipeline": já havia *quando na semana* (`weekdayPerformance`/
 `/shows/dias-semana`) e *cadência no tempo* (`/shows/cadencia`), mas não *quais meses do ano* (jan→dez, somando todos os
 anos) historicamente rendem mais shows e maiores cachês. Novo helper puro `gigSeasonality(shows, { now? })` em
@@ -2588,9 +2598,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `src/lib/finance.ts`, ver D133): agrega os shows realizados por mês do calendário (jan→dez, somando todos os anos),
    com cards de destaque (mês mais cheio / mais faturamento / melhor cachê médio) e tabela com barra por nº de shows —
    os picos e vales da temporada para planejar prospecção e preço. Distinto de `weekdayPerformance` (dia da semana) e da
-   cadência (timeline mês a mês). Próximo possível — recorte por ano (`?ano=`, adiado na D133(b) porque a sazonalidade
-   ganha sentido somando os anos), exportação CSV (adiada na D133(d): são só 12 linhas), ou um card de "próximo mês forte"
-   no Painel.
+   cadência (timeline mês a mês). **Nudge "próximo mês forte" no Painel** entregue na Sessão 142 —
+   `gigSeasonalityHeadline` em `src/lib/finance.ts` + banner 📈 em `dashboard/page.tsx` aponta o mês forte mais cedo à
+   frente (até 4 meses, `feeShare` ≥ 25% acima da média, com amostra mínima de 6 shows), ver D134. Próximo possível —
+   recorte por ano (`?ano=`, adiado na D133(b) porque a sazonalidade ganha sentido somando os anos), exportação CSV
+   (adiada na D133(d): são só 12 linhas), ou um mini-gráfico dos 12 meses embutido no Painel (adiado na D134(d): o Painel
+   já é denso).
 2b. **Funil de propostas — evoluções** (entregue na Sessão 51, `/shows/funil` + `showPipeline`,
    ver D42; **card do funil no Painel** entregue na Sessão 52 — cachê em aberto + taxa de
    concretização, ver D43): hoje é um retrato do estado atual. Próximo possível — registrar

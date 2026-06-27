@@ -3979,3 +3979,40 @@ contexto, decisão, justificativa e alternativas consideradas.
   rala); um recorte por ano pode vir depois se houver demanda. (c) usar o cachê na barra em vez do nº de shows —
   descartado: "quando há trabalho" é a leitura primária de temporada; o dinheiro fica nas colunas. (d) exportação CSV —
   adiada: a tela é um resumo de 12 linhas que o usuário já lê inteiro; sem o atrito de planilha das tabelas longas.
+
+## D134 — Nudge "próximo mês forte" no Painel a partir da sazonalidade (Sessão 142)
+- **Contexto:** a sazonalidade dos shows (D133, `/shows/sazonalidade`) revela os picos da temporada, mas só para quem
+  abre a tela. O Painel já traz uma família de nudges acionáveis derivados de helpers puros — concentração de clientes
+  (D110), concentração geográfica (D114), DSO (D70), fôlego de caixa (D103) e a oportunidade de "fim de semana livre"
+  (D97). Faltava transformar a sazonalidade em **antecedência**: avisar, na primeira tela, qual é o **próximo mês forte
+  chegando** para que o músico comece a prospectar/precificar com tempo. Era o "próximo possível" registrado na D133/item
+  2c dos próximos passos.
+- **Decisão:** novo helper puro `gigSeasonalityHeadline(seasonality, { now? })` em `src/lib/finance.ts`, espelhando a
+  disciplina de `geoConcentrationHeadline`/`cashBurnHeadline` (a regra de exibição vive no helper; o Painel só consome).
+  Recebe uma `GigSeasonality` já computada e devolve `{ show, month, monthsAhead, lift }`. Varre **só para frente** — do
+  mês seguinte (`monthsAhead` 1) até `STRONG_MONTH_HORIZON` (=4) meses à frente, **excluindo o mês corrente** (já é tarde
+  para prospectá-lo; o valor do aviso é o lead time) — e escolhe o **mês forte mais cedo** que qualifica, definido por
+  `feeShare ≥ STRONG_MONTH_FACTOR/12` (=1.25/12, i.e. ≥ 25% acima do faturamento do mês médio uniforme). Só dispara
+  (`show: true`) com amostra mínima `totalShows ≥ STRONG_MONTH_MIN_SHOWS` (=6) — abaixo disso a "temporada" é ruído. O
+  `lift` (= `feeShare × 12`) é exposto como múltiplo da média; o Painel mostra `(lift − 1) × 100`% "acima do mês médio".
+  Novo banner-nudge 📈 "Mês forte chegando" em `dashboard/page.tsx` (estilo brand, como o de fim de semana livre),
+  reaproveitando os `shows` já carregados via `gigSeasonality(shows)` — **zero consulta nova** — linkando para
+  `/shows/sazonalidade`.
+- **Justificativa:** usa **faturamento** (`feeShare`), não nº de shows, porque o nudge é sobre **onde priorizar esforço
+  de venda/preço**, não só onde há volume. Escolher o mês forte **mais cedo** (não o maior) casa com o nome "próximo mês
+  forte" e maximiza o lead time acionável; se um pico maior vier depois, ainda assim o próximo a preparar é o mais
+  iminente. A janela de 4 meses e o piso de 6 shows espelham a economia dos outros nudges: alto o bastante para ser sinal,
+  não ruído.
+- **Testes:** **+5** em `finance.test.ts` (não aparece sem amostra mínima; aponta o próximo mês forte com lift > 1.25;
+  escolhe o mais cedo na janela e não o maior; ignora meses fortes atrás/além do horizonte; não aparece em temporada
+  plana). 870 testes no total (eram 865).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **870 testes**
+  (`vitest run`); smoke test (`npm start`) com sessão forjada sobre o seed → `/dashboard` devolve 200; com dados forjados
+  de um pico em agosto, o banner renderiza com o mês, o lead time ("daqui a 2 meses") e o "% acima". `npm audit`
+  **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver
+  D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) basear o "forte" no nº de shows (`countShare`) em vez do faturamento — descartado: o
+  card é sobre priorizar receita; volume sem cachê não move a agulha. (b) surfar o **maior** pico da janela em vez do mais
+  cedo — descartado: contraria o "próximo" e desperdiça lead time do mês iminente. (c) incluir o mês corrente — descartado:
+  prospectar/precificar o mês que já começou é tarde demais para o que o nudge propõe. (d) um card cheio (mini-gráfico dos
+  12 meses no Painel) — adiado: o Painel já é denso; o detalhe vive em `/shows/sazonalidade`, o nudge só puxa para lá.

@@ -5669,6 +5669,92 @@ export function gigSeasonality(
   };
 }
 
+/**
+ * Quantos meses do calendário à frente o Painel varre em busca do próximo mês
+ * forte. Inclui o mês seguinte (`monthsAhead` 1) e **exclui o mês corrente** —
+ * já é tarde para prospectar/precificar o mês que está rolando; o valor do nudge
+ * é o tempo de antecedência. 4 = uma janela de prospecção realista (~um trimestre).
+ */
+export const STRONG_MONTH_HORIZON = 4;
+
+/**
+ * Mínimo de shows realizados (com cachê) para a sazonalidade ser confiável o
+ * bastante para virar nudge no Painel. Abaixo disso a "temporada" é só ruído
+ * amostral e o aviso enganaria mais do que ajudaria.
+ */
+export const STRONG_MONTH_MIN_SHOWS = 6;
+
+/**
+ * Um mês conta como "forte" quando sua participação no faturamento histórico
+ * (`feeShare`) supera a média uniforme (1/12) por este fator. 1.25 = pelo menos
+ * 25% acima do mês médio — alto o bastante para ser de fato um pico de temporada,
+ * não uma flutuação qualquer.
+ */
+export const STRONG_MONTH_FACTOR = 1.25;
+
+export interface GigSeasonalityHeadline {
+  /**
+   * Deve aparecer no Painel? Só quando há amostra suficiente
+   * (`totalShows >= STRONG_MONTH_MIN_SHOWS`) **e** existe um mês forte dentro da
+   * janela à frente — caso contrário o nudge seria ruído (mesma disciplina de
+   * `geoConcentrationHeadline`/`cashBurnHeadline`).
+   */
+  show: boolean;
+  /** O próximo mês forte na janela (o mais cedo que qualifica), ou null. */
+  month: GigMonthStat | null;
+  /** Quantos meses à frente está (1 = mês que vem … STRONG_MONTH_HORIZON); 0 se nenhum. */
+  monthsAhead: number;
+  /**
+   * Quantas vezes o `feeShare` do mês supera a média uniforme (1/12), i.e.
+   * `feeShare * 12`. Ex.: 1.8 = esse mês historicamente rende 80% acima do mês
+   * médio. 0 quando não há mês forte à frente.
+   */
+  lift: number;
+}
+
+/**
+ * Resumo de Painel da **sazonalidade dos shows**: deriva, de uma
+ * `gigSeasonality` já computada, o **próximo mês forte** que se aproxima — o
+ * mais cedo, dentro de `STRONG_MONTH_HORIZON` meses, cujo faturamento histórico
+ * está acima da média (≥ `STRONG_MONTH_FACTOR`× o mês médio). Pura, com `now`
+ * injetável — espelha `geoConcentrationHeadline` (D114): a regra de exibição
+ * vive aqui, o dashboard só consome.
+ *
+ * Olha **só para frente** (a partir do mês que vem) porque o valor do aviso é a
+ * antecedência para prospectar/precificar; e exige amostra mínima
+ * (`STRONG_MONTH_MIN_SHOWS`) para não tratar um par de shows como "temporada".
+ * O detalhe completo está em `/shows/sazonalidade`.
+ */
+export function gigSeasonalityHeadline(
+  seasonality: GigSeasonality,
+  opts: { now?: Date | string } = {},
+): GigSeasonalityHeadline {
+  const none: GigSeasonalityHeadline = {
+    show: false,
+    month: null,
+    monthsAhead: 0,
+    lift: 0,
+  };
+  if (seasonality.totalShows < STRONG_MONTH_MIN_SHOWS) return none;
+
+  const nowDate =
+    opts.now == null
+      ? new Date()
+      : typeof opts.now === "string"
+        ? new Date(opts.now)
+        : opts.now;
+  const currentMonth = nowDate.getUTCMonth();
+  const threshold = STRONG_MONTH_FACTOR / 12;
+
+  for (let ahead = 1; ahead <= STRONG_MONTH_HORIZON; ahead++) {
+    const m = seasonality.months[(currentMonth + ahead) % 12];
+    if (m.count > 0 && m.feeShare >= threshold) {
+      return { show: true, month: m, monthsAhead: ahead, lift: m.feeShare * 12 };
+    }
+  }
+  return none;
+}
+
 /** Sequência de `count` meses "YYYY-MM" a partir de `startKey` (inclusive), em UTC. */
 function sequentialMonths(startKey: string, count: number): string[] {
   const [y, m] = startKey.split("-").map(Number);
