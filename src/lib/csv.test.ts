@@ -16,6 +16,7 @@ import {
   receivablesToCsv,
   receivablesByContactToCsv,
   paymentLagByContactToCsv,
+  paymentLagToCsv,
   TRANSACTION_CSV_HEADERS,
   SHOW_CSV_HEADERS,
   ANNUAL_SUMMARY_CSV_HEADERS,
@@ -26,6 +27,7 @@ import {
   RECEIVABLE_CSV_HEADERS,
   RECEIVABLE_BY_CONTACT_CSV_HEADERS,
   PAYMENT_LAG_BY_CONTACT_CSV_HEADERS,
+  PAYMENT_LAG_CSV_HEADERS,
   type CsvTransaction,
   type CsvShow,
   type CsvProfitShow,
@@ -33,6 +35,7 @@ import {
   type ReceivableCsvRow,
   type ReceivableByContactCsvRow,
   type PaymentLagByContactCsvRow,
+  type PaymentLagCsvRow,
 } from "./csv";
 import {
   annualSummary,
@@ -695,6 +698,64 @@ describe("paymentLagByContactToCsv", () => {
     const csv = paymentLagByContactToCsv([
       row({ contact: { name: "Lento", role: "PROMOTER" }, avgDays: 50, bucket: "slow" }),
       row({ contact: { name: "Rápido", role: "VENUE" }, avgDays: 3, bucket: "d7" }),
+    ]);
+    const lines = csv.split("\r\n");
+    expect(lines[1].startsWith("Lento;")).toBe(true);
+    expect(lines[2].startsWith("Rápido;")).toBe(true);
+  });
+});
+
+describe("paymentLagToCsv", () => {
+  const row = (over: Partial<PaymentLagCsvRow> = {}): PaymentLagCsvRow => ({
+    show: {
+      title: "Festival de Verão",
+      date: "2024-03-15T00:00:00.000Z",
+      venue: "Bar do Zé",
+      city: "Recife",
+    },
+    received: 150000,
+    paymentCount: 2,
+    avgDays: 22,
+    lastDays: 45,
+    bucket: "d30",
+    ...over,
+  });
+
+  it("emite só o cabeçalho quando não há linhas", () => {
+    expect(paymentLagToCsv([])).toBe(PAYMENT_LAG_CSV_HEADERS.join(";"));
+  });
+
+  it("serializa um show com data, local, cidade, recebido, prazos e velocidade", () => {
+    const csv = paymentLagToCsv([row()]);
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(
+      "Show;Data;Local;Cidade;Recebido (R$);Recebimentos;Prazo médio (dias);Pior prazo (dias);Velocidade",
+    );
+    expect(lines[1]).toBe(
+      "Festival de Verão;15/03/2024;Bar do Zé;Recife;1500,00;2;22;45;8 a 30 dias",
+    );
+  });
+
+  it("deixa local e cidade em branco quando ausentes", () => {
+    const cols = paymentLagToCsv([row({ show: { title: "Solo", date: "2024-01-01T00:00:00.000Z" } })])
+      .split("\r\n")[1]
+      .split(";");
+    expect(cols[2]).toBe("");
+    expect(cols[3]).toBe("");
+  });
+
+  it("preserva prazos negativos (pagamento adiantado)", () => {
+    const cols = paymentLagToCsv([row({ avgDays: -3, lastDays: -1 })])
+      .split("\r\n")[1]
+      .split(";");
+    expect(cols[6]).toBe("-3");
+    expect(cols[7]).toBe("-1");
+  });
+
+  it("preserva a ordem das linhas recebidas (mais lento primeiro)", () => {
+    const csv = paymentLagToCsv([
+      row({ show: { title: "Lento", date: "2024-01-01T00:00:00.000Z" }, avgDays: 70, bucket: "slow" }),
+      row({ show: { title: "Rápido", date: "2024-02-01T00:00:00.000Z" }, avgDays: 3, bucket: "d7" }),
     ]);
     const lines = csv.split("\r\n");
     expect(lines[1].startsWith("Lento;")).toBe(true);

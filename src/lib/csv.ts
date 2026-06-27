@@ -702,3 +702,71 @@ export function paymentLagByContactToCsv(
   }
   return toCsv(out, delimiter);
 }
+
+// ── Prazo de recebimento por show (tela-mãe, do mais lento ao mais rápido) ────
+
+export const PAYMENT_LAG_CSV_HEADERS = [
+  "Show",
+  "Data",
+  "Local",
+  "Cidade",
+  "Recebido (R$)",
+  "Recebimentos",
+  "Prazo médio (dias)",
+  "Pior prazo (dias)",
+  "Velocidade",
+] as const;
+
+/**
+ * Forma mínima de uma linha de prazo de recebimento por SHOW para a exportação
+ * (desacoplada de `PaymentLagShowRow` de `@/lib/finance`, que carrega o show
+ * inteiro; aqui a planilha mostra só título, data, local e cidade). É a visão da
+ * tela-mãe `/shows/prazo-recebimento`: uma linha por show, com quanto entrou, em
+ * quantos recebimentos e em quantos dias (médio e pior). Os prazos são inteiros e
+ * podem ser negativos (pago adiantado). O `bucket` rotula a velocidade via
+ * `PAYMENT_SPEED_BUCKET_LABELS`.
+ */
+export interface PaymentLagCsvRow {
+  show: {
+    title: string;
+    date: Date | string;
+    venue?: string | null;
+    city?: string | null;
+  };
+  received: number; // centavos recebidos vinculados ao show
+  paymentCount: number; // nº de recebimentos que compõem o total
+  avgDays: number; // prazo médio ponderado (dias)
+  lastDays: number; // pior prazo (recebimento mais tardio do show, dias)
+  bucket: PaymentSpeedBucketKey; // balde de velocidade derivado de avgDays
+}
+
+/**
+ * Serializa o prazo de recebimento por show (tela-mãe) em CSV, pronto para
+ * download. Uma linha por show, espelhando a tabela de
+ * `/shows/prazo-recebimento`: título, data, local, cidade, recebido, nº de
+ * recebimentos, prazo médio e pior prazo (em dias, inteiros — negativos =
+ * adiantado) e o rótulo de velocidade. Mesma convenção pt-BR de
+ * `transactionsToCsv` (delimitador ";", decimal com vírgula, datas em UTC). A
+ * ordem das linhas é preservada (a página lista do prazo médio mais lento ao
+ * mais rápido). Pura.
+ */
+export function paymentLagToCsv(
+  rows: PaymentLagCsvRow[],
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(PAYMENT_LAG_CSV_HEADERS)];
+  for (const row of rows) {
+    out.push([
+      row.show.title,
+      csvDate(row.show.date),
+      row.show.venue ?? "",
+      row.show.city ?? "",
+      centsToCsvAmount(row.received),
+      String(row.paymentCount),
+      String(row.avgDays),
+      String(row.lastDays),
+      PAYMENT_SPEED_BUCKET_LABELS[row.bucket],
+    ]);
+  }
+  return toCsv(out, delimiter);
+}
