@@ -4129,3 +4129,39 @@ contexto, decisão, justificativa e alternativas consideradas.
   (`ContactProfitRow` × `RoleProfitRow`); (b) incluir uma coluna "Contratantes" listando os nomes do grupo — descartado:
   a tela por papel é deliberadamente um rollup (papel não é entidade), e quem quiser o detalhe usa a exportação por
   contratante.
+
+## D138 — Concentração por papel em `/contatos/rentabilidade/por-papel` (Sessão 146)
+- **Contexto:** a tela de rentabilidade por papel (D136) responde "que tipo de comprador rende mais", mas não dizia o
+  quanto a receita **depende** de um único tipo de comprador — o risco de canal ("e se as casas de show, que pagam a
+  maior fatia, secarem?"). Os eixos de cliente (D109) e geográfico (D113) já tinham seu card de concentração; o eixo de
+  papel era o "próximo possível" registrado na D136/seção 8 do PROGRESS.
+- **Decisão:** novo helper puro `roleConcentration(rows: RoleProfitRow[])` em `src/lib/finance.ts`, **espelho de
+  `clientConcentration`/`geoConcentration`**: opera sobre as linhas de `rankRolesByProfit`, considera só papéis
+  **identificados** (descarta `role: null`, "sem contratante") com **receita bruta** positiva (cachê + extras), e deriva
+  `topShare`/`top3Share`/`hhi`/`effectiveRoles` + veredito reusando os mesmos limiares (`diversificationLevel`/D45).
+  Devolve `RoleConcentration` (com `RoleShareSlice[]`). Card "Concentração por papel" em
+  `/contatos/rentabilidade/por-papel`, exibido só com `roleCount > 0`, idêntico em layout ao card de concentração de
+  clientes (3 métricas + badge de veredito 🔴/🟡/🟢 + nota acionável), com os rótulos de papel resolvidos via
+  `CONTACT_ROLE_LABELS` (o maior papel não é link — papel não é entidade).
+- **Justificativa:** reuso máximo — o helper difere de `clientConcentration`/`geoConcentration` só no eixo (papel × pessoa
+  × cidade) e na chave de empate; o card é uma cópia do `ConcentrationCard` da tela por contratante trocando o rótulo. Usa
+  receita **bruta** (não o líquido, que pode ser negativo e não forma participações válidas que somam 1), coerente com os
+  outros dois eixos de concentração. Como os papéis são poucos e fixos (~6), a concentração tende a ser naturalmente mais
+  alta; o card deixa isso explícito na nota ("vale prospectar outros tipos de contratante").
+- **Testes:** **+6** em `finance.test.ts` (`describe("roleConcentration")`: estrutura vazia; participação sobre receita
+  bruta com dois VENUE somando num grupo e o grupo sem contratante ignorado; extras na receita bruta; descarte de papel
+  sem receita positiva; papel único sempre concentrado; cinco papéis equidistribuídos → diversificada). **890 testes** no
+  total (eram 884).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **890 testes**
+  (`vitest run`); smoke test autenticado (`next start` + cookie de sessão forjado do usuário demo): `/contatos/
+  rentabilidade/por-papel` 200, sem vínculos o card some (roleCount 0, comportamento correto), e com contatos de papéis
+  distintos vinculados aos shows o card renderiza "Concentração por papel" + veredito "Moderada" + "maior papel" +
+  "papéis efetivos". `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do
+  Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) generalizar `clientConcentration`/`geoConcentration`/`roleConcentration` num único
+  helper parametrizado pelo eixo — descartado por ora: os tipos de fatia divergem (`ClientShareSlice` carrega o `contact`,
+  `GeoShareSlice` a chave/nome, `RoleShareSlice` o papel) e a regra de empate difere; o ganho de DRY não compensa o
+  acoplamento (mesma decisão que manteve os dois helpers existentes paralelos); (b) um nudge de concentração por papel no
+  Painel (espelhando `clientConcentrationHeadline`/D110) — adiado: o Painel já tem dois nudges de concentração (cliente
+  D110 + geográfica D114) e um terceiro do mesmo tema seria ruído; (c) comparativo ano a ano da concentração por papel
+  (espelhando D122/D121) — adiado até haver demanda, pelo nº pequeno e fixo de papéis tornar o sinal anual fraco.

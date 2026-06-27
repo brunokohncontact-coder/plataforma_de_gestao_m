@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   rankRolesByProfit,
+  roleConcentration,
   MIN_MEDIAN_FEE_SAMPLE,
   showProfitYears,
   parseProfitYear,
@@ -10,6 +11,7 @@ import {
   type TxLike,
   type ShowLike,
   type ContactProfitContact,
+  type RoleConcentration,
 } from "@/lib/finance";
 import { pickPayerContact } from "@/lib/billing";
 import { formatMoney } from "@/lib/money";
@@ -83,6 +85,8 @@ export default async function RoleProfitabilityPage({
     txs,
     getPayer as (s: ShowLike & ShowRow) => ContactProfitContact | null,
   );
+
+  const concentration = roleConcentration(report.rows);
 
   const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
 
@@ -187,6 +191,10 @@ export default async function RoleProfitabilityPage({
                 />
               </div>
             )}
+
+          {concentration.roleCount > 0 && (
+            <ConcentrationCard concentration={concentration} />
+          )}
 
           <div className="card overflow-x-auto p-0">
             <table className="w-full text-sm">
@@ -319,6 +327,85 @@ function Highlight({
       <p className="mt-1 block truncate font-medium text-gray-900">{title}</p>
       <p className="text-xs text-gray-500">{subtitle}</p>
       <p className={"mt-1 text-lg font-bold " + tones[tone]}>{value}</p>
+    </div>
+  );
+}
+
+/** Rótulo + tom (cor/emoji) do veredito de concentração por papel. */
+const CONCENTRATION_VERDICT: Record<
+  RoleConcentration["level"],
+  { label: string; emoji: string; classes: string; note: string }
+> = {
+  concentrated: {
+    label: "Concentrada",
+    emoji: "🔴",
+    classes: "border-red-200 bg-red-50 text-red-800",
+    note: "Boa parte da receita vem de um único tipo de comprador — se esse canal secar, o baque é grande. Vale prospectar outros tipos de contratante.",
+  },
+  moderate: {
+    label: "Moderada",
+    emoji: "🟡",
+    classes: "border-amber-200 bg-amber-50 text-amber-800",
+    note: "A receita depende de poucos tipos de comprador. Abrir frente em outros canais reduz o risco.",
+  },
+  diversified: {
+    label: "Diversificada",
+    emoji: "🟢",
+    classes: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    note: "A receita está bem distribuída entre vários tipos de comprador — pouca dependência de um único canal.",
+  },
+};
+
+/** Formata uma participação 0..1 como porcentagem inteira (ex.: 0,6 → "60%"). */
+function pct(share: number): string {
+  return `${Math.round(share * 100)}%`;
+}
+
+/**
+ * Card "Concentração por papel": mede o risco de depender de um único tipo de
+ * comprador (sobre a receita bruta, distinto da rentabilidade líquida). Espelha
+ * o card de concentração de clientes (D109) num eixo de papel.
+ */
+function ConcentrationCard({
+  concentration,
+}: {
+  concentration: RoleConcentration;
+}) {
+  const verdict = CONCENTRATION_VERDICT[concentration.level];
+  const { top, roleCount } = concentration;
+  return (
+    <div className={"card border " + verdict.classes}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide opacity-80">
+          Concentração por papel
+        </p>
+        <span className="badge bg-white/70 font-semibold">
+          {verdict.emoji} {verdict.label}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-4 sm:grid-cols-3">
+        <div>
+          <p className="text-2xl font-bold">{pct(concentration.topShare)}</p>
+          <p className="text-xs opacity-80">
+            da receita vem de {top ? roleLabel(top.role) : "—"} (maior papel)
+          </p>
+        </div>
+        <div>
+          <p className="text-2xl font-bold">{pct(concentration.top3Share)}</p>
+          <p className="text-xs opacity-80">
+            nos 3 maiores de {roleCount} {roleCount === 1 ? "papel" : "papéis"}
+          </p>
+        </div>
+        <div>
+          <p className="text-2xl font-bold">
+            {concentration.effectiveRoles.toFixed(1)}
+          </p>
+          <p className="text-xs opacity-80">
+            papéis efetivos (como se fossem N de mesmo tamanho)
+          </p>
+        </div>
+      </div>
+      <p className="mt-3 text-xs opacity-90">{verdict.note}</p>
     </div>
   );
 }
