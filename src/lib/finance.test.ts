@@ -84,6 +84,7 @@ import {
   weekdayPerformance,
   gigSeasonality,
   gigSeasonalityHeadline,
+  gigSeasonalityLull,
   STRONG_MONTH_MIN_SHOWS,
   incomeMix,
   expenseMix,
@@ -5763,6 +5764,102 @@ describe("gigSeasonalityHeadline", () => {
     const s = gigSeasonality(shows, { now });
     const h = gigSeasonalityHeadline(s, { now });
     expect(h.show).toBe(false);
+  });
+});
+
+describe("gigSeasonalityLull", () => {
+  // "now" em junho de 2027 → janela à frente cobre jul(6), ago(7), set(8), out(9).
+  const now = new Date("2027-06-15T12:00:00.000Z");
+
+  function gig(partial: Partial<ReceivableShowLike>): ReceivableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-01-10T20:00:00.000Z",
+      ...partial,
+    };
+  }
+
+  it("não aparece sem amostra mínima de shows", () => {
+    // Um único show fraco em agosto, mas totalShows (1) < mínimo.
+    const s = gigSeasonality(
+      [gig({ id: "ago", date: "2026-08-10T20:00:00.000Z", fee: 5_00 })],
+      { now },
+    );
+    expect(s.totalShows).toBeLessThan(STRONG_MONTH_MIN_SHOWS);
+    const l = gigSeasonalityLull(s, { now });
+    expect(l.show).toBe(false);
+    expect(l.month).toBeNull();
+    expect(l.monthsAhead).toBe(0);
+    expect(l.shortfall).toBe(0);
+  });
+
+  it("aponta o próximo mês fraco à frente com shortfall abaixo da média", () => {
+    // Agosto (mês 7, 2 à frente) é um vale: 1 show baixinho; o grosso do
+    // faturamento concentra-se em fevereiro (fora da janela), empurrando o
+    // feeShare de agosto bem abaixo de 1/12.
+    const s = gigSeasonality(
+      [
+        gig({ id: "ago", date: "2026-08-10T20:00:00.000Z", fee: 5_00 }),
+        ...Array.from({ length: 6 }, (_, i) =>
+          gig({ id: `f${i}`, date: "2026-02-05T20:00:00.000Z", fee: 200_00 }),
+        ),
+      ],
+      { now },
+    );
+    expect(s.totalShows).toBeGreaterThanOrEqual(STRONG_MONTH_MIN_SHOWS);
+    const l = gigSeasonalityLull(s, { now });
+    expect(l.show).toBe(true);
+    expect(l.month?.month).toBe(7); // agosto
+    expect(l.monthsAhead).toBe(2); // junho → agosto
+    expect(l.shortfall).toBeGreaterThan(0.25);
+  });
+
+  it("escolhe o mês fraco MAIS CEDO na janela, não o mais fundo", () => {
+    // Julho (1 à frente) e setembro (3 à frente) ambos fracos; vence julho,
+    // ainda que setembro seja o fundo do vale.
+    const s = gigSeasonality(
+      [
+        gig({ id: "jul", date: "2026-07-10T20:00:00.000Z", fee: 8_00 }),
+        gig({ id: "set", date: "2026-09-10T20:00:00.000Z", fee: 2_00 }),
+        ...Array.from({ length: 6 }, (_, i) =>
+          gig({ id: `f${i}`, date: "2026-02-05T20:00:00.000Z", fee: 200_00 }),
+        ),
+      ],
+      { now },
+    );
+    const l = gigSeasonalityLull(s, { now });
+    expect(l.show).toBe(true);
+    expect(l.month?.month).toBe(6); // julho, ainda que setembro renda menos
+    expect(l.monthsAhead).toBe(1);
+  });
+
+  it("exige count > 0: mês sem história não vira vale (ausência ≠ sazonalidade)", () => {
+    // Toda a história está em fevereiro; jul→out estão zerados. Nenhum mês à
+    // frente teve shows, então não há sinal de SAZONALIDADE de vale.
+    const s = gigSeasonality(
+      Array.from({ length: 6 }, (_, i) =>
+        gig({ id: `f${i}`, date: "2026-02-05T20:00:00.000Z", fee: 200_00 }),
+      ),
+      { now },
+    );
+    const l = gigSeasonalityLull(s, { now });
+    expect(l.show).toBe(false);
+  });
+
+  it("não aparece quando nenhum mês à frente fica abaixo do limiar (temporada plana)", () => {
+    // 12 shows iguais, um por mês → todo feeShare = 1/12, ninguém fraco.
+    const shows = Array.from({ length: 12 }, (_, m) =>
+      gig({
+        id: `m${m}`,
+        date: `2026-${String(m + 1).padStart(2, "0")}-10T20:00:00.000Z`,
+        fee: 100_00,
+      }),
+    );
+    const s = gigSeasonality(shows, { now });
+    const l = gigSeasonalityLull(s, { now });
+    expect(l.show).toBe(false);
   });
 });
 
