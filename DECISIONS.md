@@ -4165,3 +4165,33 @@ contexto, decisão, justificativa e alternativas consideradas.
   Painel (espelhando `clientConcentrationHeadline`/D110) — adiado: o Painel já tem dois nudges de concentração (cliente
   D110 + geográfica D114) e um terceiro do mesmo tema seria ruído; (c) comparativo ano a ano da concentração por papel
   (espelhando D122/D121) — adiado até haver demanda, pelo nº pequeno e fixo de papéis tornar o sinal anual fraco.
+
+## D139 — Exportação CSV da sazonalidade de shows (`/shows/sazonalidade/export`) (Sessão 147)
+- **Contexto:** a tela de sazonalidade de shows por mês do ano (D133, `gigSeasonality`) era a única tela de análise
+  recente (criada na Sessão 141, depois da onda de exportações CSV das Sessões 134–146) sem botão "⬇ CSV". Era a última
+  tabela de "Agenda & pipeline" sem exportação, e casa com o acervo já consolidado em `@/lib/csv`.
+- **Decisão:** novo serializador puro `gigSeasonalityToCsv(season: GigSeasonality, delimiter?)` + `GIG_SEASONALITY_CSV_HEADERS`
+  em `src/lib/csv.ts`, na mesma convenção pt-BR dos irmãos (delimitador ";", decimal com vírgula, BOM UTF-8 na camada HTTP).
+  Recebe o objeto `GigSeasonality` inteiro (já tipado em `@/lib/finance`, importado como os demais row-types do csv.ts) e
+  emite **sempre as 12 linhas de mês** (jan→dez, inclusive meses zerados — preserva os vales da temporada que a tela
+  destaca) + uma linha **"Total"**. Colunas: Mês / Shows / Cachê médio (R$) / Faturamento (R$) / % dos shows / % do
+  faturamento; as duas participações reusam o helper interno `csvShare`. Diferente da UI (que mostra "—" nos meses vazios),
+  o CSV registra `0` e `0,00` para ficar legível por máquina; as participações da linha Total ficam **em branco** (são
+  sempre 100% por construção). Nova rota `/shows/sazonalidade/export` que reusa **exatamente** a mesma consulta da página
+  (`prisma.show.findMany` → `gigSeasonality`), nome de arquivo fixo `sazonalidade-shows.csv` (sem `?ano=`: a sazonalidade
+  por design soma todos os anos). Botão "⬇ CSV" no cabeçalho da página, exibido só quando há dados (`season.totalShows > 0`).
+- **Justificativa:** reuso máximo — a route é uma cópia mecânica das demais rotas de export (só muda o helper de domínio e o
+  nome do arquivo), e o serializador segue a forma dos irmãos. Receber a `GigSeasonality` inteira (em vez de uma forma
+  mínima local como `paymentLagToCsv`) é seguro aqui porque o tipo é leve (12 stats + agregados) e já vive no `@/lib/finance`
+  importado; permite emitir a linha Total a partir dos agregados sem recomputar.
+- **Testes:** **+3** em `csv.test.ts` (`describe("gigSeasonalityToCsv")`: sempre 14 linhas — cabeçalho + 12 meses + Total —
+  mesmo sem shows, com Total zerado e shares em branco; contagem/cachê médio/faturamento/participações por mês com dois anos
+  colapsados no mesmo balde "Março" + linha Total; meses sem shows saem como `0`/`0,00`/`0%`, não "—"). 893 testes no total
+  (eram 890).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **893 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/shows/sazonalidade/export` 307 (redireciona ao login sem sessão, rota
+  auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
+  postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) uma coluna a mais para a barra/percentual relativo ao mês de pico — descartado: o pico é
+  contexto visual da tela, não dado tabular; (b) omitir os meses zerados para encurtar o arquivo — descartado: os vales são
+  parte do sinal de sazonalidade (onde prospectar/ajustar preço), então o CSV os mantém explícitos como a tela faz.

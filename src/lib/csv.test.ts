@@ -18,6 +18,7 @@ import {
   receivablesByContactToCsv,
   paymentLagByContactToCsv,
   paymentLagToCsv,
+  gigSeasonalityToCsv,
   TRANSACTION_CSV_HEADERS,
   SHOW_CSV_HEADERS,
   ANNUAL_SUMMARY_CSV_HEADERS,
@@ -30,6 +31,7 @@ import {
   RECEIVABLE_BY_CONTACT_CSV_HEADERS,
   PAYMENT_LAG_BY_CONTACT_CSV_HEADERS,
   PAYMENT_LAG_CSV_HEADERS,
+  GIG_SEASONALITY_CSV_HEADERS,
   type CsvTransaction,
   type CsvShow,
   type CsvProfitShow,
@@ -42,10 +44,12 @@ import {
 import {
   annualSummary,
   quarterlySummary,
+  gigSeasonality,
   type ShowProfitRow,
   type VenueProfitRow,
   type ContactProfitRow,
   type RoleProfitRow,
+  type ReceivableShowLike,
 } from "./finance";
 
 describe("escapeCsvField", () => {
@@ -805,5 +809,64 @@ describe("paymentLagToCsv", () => {
     const lines = csv.split("\r\n");
     expect(lines[1].startsWith("Lento;")).toBe(true);
     expect(lines[2].startsWith("Rápido;")).toBe(true);
+  });
+});
+
+describe("gigSeasonalityToCsv", () => {
+  // `now` fixo no futuro para que todos os shows forjados contem como realizados.
+  const NOW = "2025-01-01T00:00:00.000Z";
+  const gig = (
+    over: Partial<ReceivableShowLike> = {},
+  ): ReceivableShowLike => ({
+    id: "s",
+    fee: 100000,
+    status: "PLAYED",
+    date: "2024-03-10T00:00:00.000Z",
+    ...over,
+  });
+
+  it("sempre emite as 12 linhas de mês + a linha Total mesmo sem shows", () => {
+    const csv = gigSeasonalityToCsv(gigSeasonality([], { now: NOW }));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(GIG_SEASONALITY_CSV_HEADERS.join(";"));
+    // cabeçalho + 12 meses + Total
+    expect(lines).toHaveLength(14);
+    expect(lines[1].startsWith("Janeiro;0;")).toBe(true);
+    expect(lines[12].startsWith("Dezembro;0;")).toBe(true);
+    expect(lines[13]).toBe("Total;0;0,00;0,00;;");
+  });
+
+  it("serializa contagem, cachê médio, faturamento e participações por mês", () => {
+    const season = gigSeasonality(
+      [
+        gig({ date: "2024-03-01T00:00:00.000Z", fee: 100000 }),
+        gig({ date: "2023-03-20T00:00:00.000Z", fee: 300000 }), // mesmo balde "Março"
+        gig({ date: "2024-07-04T00:00:00.000Z", fee: 200000 }),
+      ],
+      { now: NOW },
+    );
+    const lines = gigSeasonalityToCsv(season).split("\r\n");
+    const março = lines[3].split(";");
+    expect(março[0]).toBe("Março");
+    expect(março[1]).toBe("2"); // dois shows somados entre anos
+    expect(março[2]).toBe("2000,00"); // cachê médio = (1000+3000)/2
+    expect(março[3]).toBe("4000,00"); // faturamento do mês
+    expect(março[4]).toBe("67%"); // 2 de 3 shows
+    expect(março[5]).toBe("67%"); // 4000 de 6000
+    // Linha Total: shares em branco (sempre 100% por construção).
+    const total = lines[13].split(";");
+    expect(total[0]).toBe("Total");
+    expect(total[1]).toBe("3");
+    expect(total[3]).toBe("6000,00");
+    expect(total[4]).toBe("");
+    expect(total[5]).toBe("");
+  });
+
+  it("registra 0 e 0,00 nos meses sem shows (não usa o '—' da UI)", () => {
+    const season = gigSeasonality([gig({ date: "2024-03-01T00:00:00.000Z" })], {
+      now: NOW,
+    });
+    const janeiro = gigSeasonalityToCsv(season).split("\r\n")[1].split(";");
+    expect(janeiro).toEqual(["Janeiro", "0", "0,00", "0,00", "0%", "0%"]);
   });
 });
