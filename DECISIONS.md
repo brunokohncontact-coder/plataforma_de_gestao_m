@@ -3853,3 +3853,49 @@ contexto, decisão, justificativa e alternativas consideradas.
   consumidores/testes; o gate é presentacional. (d) levar o prazo mediano também ao card do Painel (`paymentLagHeadline`
   já expõe o `medianDays` global) — **adiável**: o Painel já mostra o DSO mediano global; o recorte por contratante é
   granularidade de tela, não de Painel.
+
+## D131 — Exportação CSV do prazo de recebimento por contratante em `/shows/prazo-recebimento/por-contratante` (Sessão 139)
+- **Contexto:** todas as telas tabulares de análise já exportam CSV (rentabilidade D125, ranking de contatos D127,
+  recebíveis D128/D129) **exceto** as duas de "prazo de recebimento" (`/shows/prazo-recebimento` e a sua quebra
+  `.../por-contratante`). A visão por contratante é a mais rica: uma linha por quem paga, com recebido, nº de shows,
+  prazo médio ponderado, **prazo mediano** (D130, robusto a outlier) e pior prazo — exatamente o recorte que um músico
+  leva para uma planilha ao decidir de quem cobrar primeiro e com quem renegociar prazo. Era uma lacuna óbvia de
+  exportação no acervo de análise.
+- **Decisão:** serializador **puro** novo `paymentLagByContactToCsv` em `src/lib/csv.ts`, na mesma convenção pt-BR já
+  firmada (delimitador `;`, decimal com vírgula, BOM UTF-8 prefixado na camada HTTP). Consome uma forma mínima
+  `PaymentLagByContactCsvRow` (`{ contact: { name, role } | null, received, showCount, avgDays, medianDays, lastDays,
+  share, bucket }`) declarada em `csv.ts` — **não** importa `ContactPaymentLagRow` de `@/lib/finance`, mantendo o mesmo
+  desacoplamento dos demais serializadores (como `ReceivableByContactCsvRow`/D129). Colunas:
+  Contratante/**Papel**/Recebido/Shows/**Prazo médio (dias)**/**Prazo mediano (dias)**/**Pior prazo (dias)**/
+  **Participação**/**Velocidade**. Os prazos saem como inteiros (negativos = adiantado) — mais úteis para ordenar/filtrar
+  numa planilha que o rótulo textual da tela. O **prazo mediano** só sai a partir de `MIN_MEDIAN_LAG_SAMPLE` (=3) shows
+  pagos — abaixo disso, célula em branco, espelhando o "—" da UI (D130) na **apresentação**, sem mexer no dado puro. A
+  "Velocidade" usa `PAYMENT_SPEED_BUCKET_LABELS` (o mesmo balde derivado de `avgDays`). O grupo "Sem contratante"
+  (`contact: null`) sai com nome fixo e papel em branco; a participação vira porcentagem inteira (`csvShare`). O route
+  `por-contratante/export/route.ts` espelha a query da página (shows não cancelados + `contacts` + receitas INCOME
+  recebidas vinculadas) e reusa **toda** a camada pura já testada: `pickPayerContact` (atribuição por papel) →
+  `paymentLagByContact` (agregação e prazos ponderados, que já ordena do mais lento ao mais rápido e joga "Sem
+  contratante" por último). Arquivo `prazo-recebimento-por-contratante.csv` (ASCII no header HTTP). A página ganhou o
+  botão "⬇ CSV" (só com `lag.rows.length > 0`).
+- **Justificativa:** mantém a disciplina serializador-puro + route fino das D125/D127/D128/D129 (lógica testável em
+  `csv.ts`, I/O no route). A ordem herdada de `paymentLagByContact` (mais lento primeiro) torna o CSV imediatamente
+  acionável como fila de cobrança/renegociação. Repetir o gate da mediana (em branco abaixo de 3 shows) na exportação
+  evita oferecer um número ruidoso como se fosse típico — coerente com a tela (D130) e com a exportação de cachê
+  mediano (D125, que também deixa o mediano em branco abaixo da amostra).
+- **Testes:** **+7** em `csv.test.ts` (só-cabeçalho; formatação pt-BR com recebido/prazos/participação/velocidade;
+  arredondamento da participação; mediana em branco abaixo da amostra mínima; preservação de prazos negativos
+  adiantados; grupo "Sem contratante" com papel em branco; preservação de ordem lento→rápido). **854 testes** verdes
+  (eram 847).
+- **DoD:** build de produção (a rota `/shows/prazo-recebimento/por-contratante/export` aparece no manifesto), typecheck
+  (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **854 testes** (`vitest run`); smoke test (`npm start`): sem
+  sessão a rota → 307 para `/login`; **com** sessão forjada (lib própria) sobre o seed, o route devolve 200 +
+  `text/csv` + `content-disposition` correto + CSV correto (cabeçalho + linha "Sem contratante;;250,00;1;0;;0;100%;No
+  dia ou adiantado" — mediana em branco com 1 show, batendo o gate); a página renderiza 200 com o botão "⬇ CSV". `npm
+  audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss
+  bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) exportar os prazos como texto ("22 dias"/"3 d adiantado") espelhando a tela —
+  descartado: inteiros ordenam/filtram melhor numa planilha e o sinal já carrega o "adiantado". (b) também exportar a
+  tela-mãe `/shows/prazo-recebimento` (agregado global, sem quebra por contratante) — **adiável**: tem forma de linha
+  distinta (baldes de velocidade, não devedores) e menor valor de planilha; fica como próximo passo. (c) gravar `null`
+  no `medianDays` quando `showCount < 3` no serializador — descartado: o gate é presentacional (como na D130), então o
+  serializador apenas omite na exibição, recebendo o `medianDays` cru.

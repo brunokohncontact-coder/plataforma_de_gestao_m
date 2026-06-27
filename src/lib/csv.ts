@@ -16,6 +16,8 @@ import {
 import {
   dayKey,
   MIN_MEDIAN_FEE_SAMPLE,
+  MIN_MEDIAN_LAG_SAMPLE,
+  PAYMENT_SPEED_BUCKET_LABELS,
   type AnnualSummary,
   type QuarterlySummary,
   type ShowLike,
@@ -23,6 +25,7 @@ import {
   type VenueProfitRow,
   type ContactProfitRow,
   type PaymentPromiseStatus,
+  type PaymentSpeedBucketKey,
 } from "./finance";
 import { MONTH_NAMES_LONG } from "./calendar";
 
@@ -628,6 +631,73 @@ export function receivablesByContactToCsv(
       csvShare(row.share),
       String(row.brokenCount),
       centsToCsvAmount(row.brokenOutstanding),
+    ]);
+  }
+  return toCsv(out, delimiter);
+}
+
+// ── Prazo de recebimento por contratante (quem paga rápido × devagar) ────────
+
+export const PAYMENT_LAG_BY_CONTACT_CSV_HEADERS = [
+  "Contratante",
+  "Papel",
+  "Recebido (R$)",
+  "Shows",
+  "Prazo médio (dias)",
+  "Prazo mediano (dias)",
+  "Pior prazo (dias)",
+  "Participação",
+  "Velocidade",
+] as const;
+
+/**
+ * Forma mínima de uma linha de prazo de recebimento por contratante para a
+ * exportação (desacoplada de `ContactPaymentLagRow` de `@/lib/finance` para não
+ * acoplar `csv.ts` ao núcleo de prazos; estruturalmente compatível). Uma linha
+ * por contratante: quanto entrou, em quantos shows, e em quantos dias (médio,
+ * mediano e pior). Prazos são inteiros e podem ser negativos (adiantado). O
+ * `bucket` rotula a velocidade via `PAYMENT_SPEED_BUCKET_LABELS`.
+ */
+export interface PaymentLagByContactCsvRow {
+  /** Contratante do grupo; `null` agrega os shows sem contato vinculado. */
+  contact: { name: string; role: string } | null;
+  received: number; // centavos recebidos atribuídos ao contratante
+  showCount: number; // shows pagos do contratante
+  avgDays: number; // prazo médio ponderado (dias)
+  medianDays: number; // prazo mediano ponderado (dias)
+  lastDays: number; // pior prazo entre os shows (dias)
+  share: number; // participação no total recebido (0..1)
+  bucket: PaymentSpeedBucketKey; // balde de velocidade derivado de avgDays
+}
+
+/**
+ * Serializa o prazo de recebimento por contratante em CSV, pronto para download.
+ * Uma linha por contratante, espelhando a tabela de
+ * `/shows/prazo-recebimento/por-contratante`: recebido, nº de shows, prazo médio,
+ * mediano e pior (em dias, inteiros — negativos = adiantado), participação no
+ * total e o rótulo de velocidade. Mesma convenção pt-BR de `transactionsToCsv`.
+ * O grupo "Sem contratante" (`contact: null`) sai com nome fixo e papel em
+ * branco. O prazo mediano só sai a partir de `MIN_MEDIAN_LAG_SAMPLE` shows pagos
+ * (abaixo disso, em branco — mesma regra de apresentação da UI, onde fica "—").
+ * A ordem das linhas é preservada (a página ordena do mais lento ao mais rápido,
+ * "Sem contratante" por último). Pura.
+ */
+export function paymentLagByContactToCsv(
+  rows: PaymentLagByContactCsvRow[],
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(PAYMENT_LAG_BY_CONTACT_CSV_HEADERS)];
+  for (const row of rows) {
+    out.push([
+      row.contact ? row.contact.name : "Sem contratante",
+      row.contact ? contactRoleLabel(row.contact.role) : "",
+      centsToCsvAmount(row.received),
+      String(row.showCount),
+      String(row.avgDays),
+      row.showCount >= MIN_MEDIAN_LAG_SAMPLE ? String(row.medianDays) : "",
+      String(row.lastDays),
+      csvShare(row.share),
+      PAYMENT_SPEED_BUCKET_LABELS[row.bucket],
     ]);
   }
   return toCsv(out, delimiter);
