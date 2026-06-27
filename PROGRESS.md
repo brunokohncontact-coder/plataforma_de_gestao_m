@@ -9,8 +9,14 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **884 testes**
-verdes após a Sessão 145 (**exportação CSV da rentabilidade por papel** em `/contatos/rentabilidade/por-papel/export` —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **890 testes**
+verdes após a Sessão 146 (**concentração por papel** em `/contatos/rentabilidade/por-papel` — novo helper puro
+`roleConcentration(rows)` em `src/lib/finance.ts` espelhando `clientConcentration`/D109 e `geoConcentration`/D113 num eixo
+de papel: sobre as linhas de `rankRolesByProfit`, considera só papéis identificados (descarta `role: null`) com receita
+bruta positiva e deriva `topShare`/`top3Share`/`hhi`/`effectiveRoles` + veredito via `diversificationLevel`; card
+"Concentração por papel" (3 métricas + badge 🔴/🟡/🟢) exibido só com `roleCount > 0`, rótulos via `CONTACT_ROLE_LABELS`.
+**+6 testes**; smoke test autenticado renderizou o card com veredito "Moderada". Ver D138; segue 884 da Sessão 145
+(**exportação CSV da rentabilidade por papel** em `/contatos/rentabilidade/por-papel/export` —
 `roleProfitToCsv`/`ROLE_PROFIT_CSV_HEADERS` em `src/lib/csv.ts` espelhando `contactProfitToCsv`/D105 sem a coluna
 "Contratante" (1ª coluna "Papel", grupo `role: null` → "Sem contratante", cachê mediano gated por `MIN_MEDIAN_FEE_SAMPLE`);
 rota `/contatos/rentabilidade/por-papel/export?ano=` reusa a mesma consulta/recorte da página + BOM UTF-8; botão "⬇ CSV"
@@ -2832,8 +2838,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `contactProfitToCsv`/D105 sem a coluna "Contratante": a 1ª coluna é "Papel", grupo `role: null` sai como "Sem
    contratante", cachê mediano gated por `MIN_MEDIAN_FEE_SAMPLE`) + rota `/contatos/rentabilidade/por-papel/export?ano=`
    (mesma consulta/recorte da página, BOM UTF-8, nome `rentabilidade-papeis-<ano|todos>.csv`) + botão "⬇ CSV" no
-   cabeçalho da página (só com linhas), **+4 testes**, ver D137. Próximo possível — uma concentração por papel (o quanto
-   a receita depende de um único tipo de comprador), embora o nº de papéis seja pequeno e fixo (6).
+   cabeçalho da página (só com linhas), **+4 testes**, ver D137. **Concentração por papel** entregue na Sessão 146 —
+   `roleConcentration(rows)` em `src/lib/finance.ts` (espelha `clientConcentration`/D109 e `geoConcentration`/D113 num eixo
+   de papel: receita bruta por papel identificado, `topShare`/`top3Share`/`hhi`/`effectiveRoles`, veredito via
+   `diversificationLevel`) + card "Concentração por papel" em `/contatos/rentabilidade/por-papel` (só com `roleCount > 0`),
+   **+6 testes**, ver D138. Próximo possível — um nudge dessa concentração no Painel (adiado na D138 por já haver dois
+   nudges de concentração lá) ou um comparativo ano a ano (adiado: nº de papéis pequeno/fixo torna o sinal anual fraco).
 
 9. **Rentabilidade geográfica — evoluções** (rentabilidade por local entregue na Sessão 28, `/shows/locais` +
    `rankVenuesByProfit`; atuação por cidade na Sessão 57, `/shows/cidades` + `rankCitiesByProfit`; recorte por

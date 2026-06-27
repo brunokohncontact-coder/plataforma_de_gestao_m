@@ -6,6 +6,7 @@ import {
   rankCitiesByProfit,
   rankContactsByProfit,
   rankRolesByProfit,
+  roleConcentration,
   clientConcentration,
   clientConcentrationHeadline,
   geoConcentration,
@@ -769,6 +770,111 @@ describe("clientConcentration", () => {
     );
     const c = clientConcentration(rowsFrom(shows, payers));
     expect(c.clientCount).toBe(5);
+    expect(c.hhi).toBeCloseTo(0.2);
+    expect(c.level).toBe("diversified");
+    expect(c.top3Share).toBeCloseTo(0.6);
+  });
+});
+
+describe("roleConcentration", () => {
+  // Constrói as linhas via rankRolesByProfit para refletir a entrada real da UI.
+  function rowsFrom(
+    shows: ShowLike[],
+    payers: Record<string, { id: string; name: string; role: string } | null>,
+    txs: TxLike[] = [],
+  ) {
+    return rankRolesByProfit(shows, txs, (s: ShowLike) => payers[s.id] ?? null).rows;
+  }
+
+  it("retorna estrutura vazia quando não há papéis com receita", () => {
+    const c = roleConcentration([]);
+    expect(c.roles).toEqual([]);
+    expect(c.total).toBe(0);
+    expect(c.roleCount).toBe(0);
+    expect(c.top).toBeNull();
+    expect(c.topShare).toBe(0);
+    expect(c.top3Share).toBe(0);
+    expect(c.hhi).toBe(0);
+    expect(c.effectiveRoles).toBe(0);
+    expect(c.level).toBe("concentrated");
+  });
+
+  it("calcula participação sobre a receita bruta por papel e ignora o grupo sem contratante", () => {
+    // Dois VENUE somam num grupo (600+? ), um PROMOTER, um BOOKER; um show sem
+    // contratante não conta. Receita por papel: VENUE 600, PROMOTER 300, BOOKER 100.
+    const VENUE_A = { id: "va", name: "Bar do Zé", role: "VENUE" };
+    const VENUE_B = { id: "vb", name: "Teatro Lia", role: "VENUE" };
+    const PROM = { id: "p", name: "Ney Shows", role: "PROMOTER" };
+    const BOOK = { id: "b", name: "Ana Booking", role: "BOOKER" };
+    const shows: ShowLike[] = [
+      { id: "a", fee: 400_00, status: "PLAYED" }, // VENUE_A
+      { id: "b", fee: 200_00, status: "CONFIRMED" }, // VENUE_B (VENUE total 600)
+      { id: "c", fee: 300_00, status: "CONFIRMED" }, // PROMOTER
+      { id: "d", fee: 100_00, status: "CONFIRMED" }, // BOOKER
+      { id: "e", fee: 999_00, status: "CONFIRMED" }, // sem contratante (não conta)
+    ];
+    const c = roleConcentration(
+      rowsFrom(shows, { a: VENUE_A, b: VENUE_B, c: PROM, d: BOOK, e: null }),
+    );
+    // total = 600 + 300 + 100 = 1000 (o show sem contratante de 999 não entra)
+    expect(c.total).toBe(1000_00);
+    expect(c.roleCount).toBe(3);
+    expect(c.top?.role).toBe("VENUE");
+    expect(c.topShare).toBeCloseTo(0.6);
+    expect(c.roles.map((s) => s.role)).toEqual(["VENUE", "PROMOTER", "BOOKER"]);
+    // HHI = 0,6² + 0,3² + 0,1² = 0,46
+    expect(c.hhi).toBeCloseTo(0.46);
+    expect(c.effectiveRoles).toBeCloseTo(1 / 0.46);
+    expect(c.top3Share).toBeCloseTo(1);
+  });
+
+  it("inclui extras na receita bruta do papel", () => {
+    const PROM = { id: "p", name: "Ney Shows", role: "PROMOTER" };
+    const shows: ShowLike[] = [{ id: "a", fee: 100_00, status: "PLAYED" }];
+    const txs: TxLike[] = [tx({ type: "INCOME", amount: 50_00, showId: "a" })];
+    const c = roleConcentration(rowsFrom(shows, { a: PROM }, txs));
+    // receita bruta = cachê 100 + extra 50 = 150
+    expect(c.total).toBe(150_00);
+    expect(c.top?.revenue).toBe(150_00);
+  });
+
+  it("descarta papéis sem receita bruta positiva", () => {
+    // VENUE tem receita; BOOKER só com despesa (cachê 0) não vira fatia.
+    const VENUE = { id: "v", name: "Bar do Zé", role: "VENUE" };
+    const BOOK = { id: "b", name: "Ana Booking", role: "BOOKER" };
+    const shows: ShowLike[] = [
+      { id: "a", fee: 100_00, status: "PLAYED" },
+      { id: "b", fee: 0, status: "PLAYED" },
+    ];
+    const txs: TxLike[] = [tx({ type: "EXPENSE", amount: 20_00, showId: "b" })];
+    const c = roleConcentration(rowsFrom(shows, { a: VENUE, b: BOOK }, txs));
+    expect(c.roleCount).toBe(1);
+    expect(c.roles.map((s) => s.role)).toEqual(["VENUE"]);
+  });
+
+  it("um único papel é sempre concentrado (HHI 1)", () => {
+    const VENUE = { id: "v", name: "Bar do Zé", role: "VENUE" };
+    const shows: ShowLike[] = [{ id: "a", fee: 500_00, status: "PLAYED" }];
+    const c = roleConcentration(rowsFrom(shows, { a: VENUE }));
+    expect(c.topShare).toBe(1);
+    expect(c.hhi).toBe(1);
+    expect(c.effectiveRoles).toBe(1);
+    expect(c.level).toBe("concentrated");
+  });
+
+  it("receita bem distribuída entre cinco papéis é diversificada", () => {
+    // 5 papéis distintos de 100 cada -> HHI 0,2 (< 0,25) -> diversificada
+    const roles = ["VENUE", "PROMOTER", "BOOKER", "PRODUCER", "OTHER"];
+    const shows: ShowLike[] = roles.map((_role, i) => ({
+      id: `s${i}`,
+      fee: 100_00,
+      status: "PLAYED",
+    }));
+    const payers = Object.fromEntries(
+      roles.map((role, i) => [`s${i}`, { id: `c${i}`, name: role, role }]),
+    );
+    const c = roleConcentration(rowsFrom(shows, payers));
+    expect(c.roleCount).toBe(5);
     expect(c.hhi).toBeCloseTo(0.2);
     expect(c.level).toBe("diversified");
     expect(c.top3Share).toBeCloseTo(0.6);

@@ -895,6 +895,93 @@ export function rankRolesByProfit<S extends ShowLike>(
   };
 }
 
+// ── Concentração por papel (risco de depender de um tipo de comprador) ───────
+// Mede o quanto a receita bruta se concentra em poucos **papéis** de comprador
+// (casa de show, produtor, contratante…) — o risco de a carreira depender de um
+// único tipo de canal ("e se as casas de show, que pagam 80% do meu faturamento,
+// secarem?"). Distinto da concentração de clientes (D109, por pessoa) e da
+// geográfica (D113, por cidade): aqui o eixo é o **tipo** de comprador. Como há
+// poucos papéis (e fixos), a concentração tende a ser naturalmente mais alta —
+// o sinal acionável costuma ser o peso relativo entre eles, não o valor absoluto.
+// Espelha `clientConcentration`/`geoConcentration`: receita bruta (cachê +
+// extras), HHI, nº efetivo, mesmos limiares (`diversificationLevel`). Ignora o
+// grupo "sem contratante" (`role: null`), que não é um canal acionável.
+
+export interface RoleShareSlice {
+  /** Papel do comprador (sempre identificado; "sem contratante" é excluído). */
+  role: string;
+  /** Receita bruta do papel = cachê + extras (centavos). */
+  revenue: number;
+  /** Participação na receita total dos papéis identificados (0..1). */
+  share: number;
+}
+
+export interface RoleConcentration {
+  /** Papéis por receita decrescente (empate determinístico pela chave do papel). */
+  roles: RoleShareSlice[];
+  /** Receita somada dos papéis identificados (centavos). */
+  total: number;
+  /** Nº de papéis identificados com receita > 0. */
+  roleCount: number;
+  /** Maior papel por receita, ou null se não há receita. */
+  top: RoleShareSlice | null;
+  /** Participação do maior papel (0..1). */
+  topShare: number;
+  /** Participação acumulada dos 3 maiores papéis (0..1). */
+  top3Share: number;
+  /**
+   * Índice de Herfindahl–Hirschman (HHI): soma dos quadrados das participações
+   * (0..1). 1 = um único papel; quanto menor, mais distribuído entre tipos.
+   */
+  hhi: number;
+  /** Nº efetivo de papéis (1/HHI, índice de Simpson); 0 se não há receita. */
+  effectiveRoles: number;
+  /** Veredito de concentração (mesmos limiares de `incomeMix`, ver D45). */
+  level: DiversificationLevel;
+}
+
+/**
+ * Deriva a **concentração por papel** a partir das linhas de `rankRolesByProfit`:
+ * mede o risco de a receita depender de um único tipo de comprador. Considera só
+ * papéis **identificados** (descarta o grupo "sem contratante", `role: null`) com
+ * receita bruta positiva (cachê + extras); usa a receita bruta — não o líquido,
+ * que pode ser negativo e não forma participações válidas. Reaproveita os mesmos
+ * limiares de diversificação de `incomeMix` / `clientConcentration`
+ * (`diversificationLevel`). Pura, espelha `clientConcentration` (D109) num eixo
+ * de papel em vez de por contratante.
+ */
+export function roleConcentration(rows: RoleProfitRow[]): RoleConcentration {
+  const rolesRaw = rows
+    .filter((r) => r.role !== null)
+    .map((r) => ({ role: r.role as string, revenue: r.totalFee + r.totalExtra }))
+    .filter((r) => r.revenue > 0);
+
+  const total = rolesRaw.reduce((acc, r) => acc + r.revenue, 0);
+
+  const roles: RoleShareSlice[] = rolesRaw
+    .map((r) => ({
+      role: r.role,
+      revenue: r.revenue,
+      share: total === 0 ? 0 : r.revenue / total,
+    }))
+    .sort((a, b) => b.revenue - a.revenue || a.role.localeCompare(b.role));
+
+  const hhi = roles.reduce((acc, r) => acc + r.share * r.share, 0);
+  const top3Share = roles.slice(0, 3).reduce((acc, r) => acc + r.share, 0);
+
+  return {
+    roles,
+    total,
+    roleCount: roles.length,
+    top: roles[0] ?? null,
+    topShare: roles[0]?.share ?? 0,
+    top3Share,
+    hhi,
+    effectiveRoles: hhi === 0 ? 0 : 1 / hhi,
+    level: diversificationLevel(hhi, roles.length),
+  };
+}
+
 // ── Concentração de clientes (risco de dependência de contratante) ──────────
 // Mede o quanto a receita se concentra em poucos contratantes — o risco de
 // carreira de depender de um único cliente ("e se o contratante que paga metade
