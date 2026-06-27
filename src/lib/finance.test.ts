@@ -3895,6 +3895,53 @@ describe("paymentLagByContact", () => {
     const r = paymentLagByContact(shows, txs, getPayer);
     expect(r.rows[0].shows.map((s) => s.show.id)).toEqual(["lento", "rapido"]);
   });
+
+  it("expõe o prazo mediano por contratante, robusto a um show muito atrasado", () => {
+    const ze = { id: "ze", name: "Bar do Zé" };
+    // Três shows de mesmo valor: 5d, 10d e 90d. A média ponderada (≈35d) é puxada
+    // pelo outlier de 90d; a mediana (peso igual) cai no show central = 10d.
+    const shows = [
+      gig({ id: "a", date: "2026-03-01T00:00:00.000Z", payer: ze }),
+      gig({ id: "b", date: "2026-03-01T00:00:00.000Z", payer: ze }),
+      gig({ id: "c", date: "2026-03-01T00:00:00.000Z", payer: ze }),
+    ];
+    const txs = [
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "a", date: "2026-03-06T00:00:00.000Z" }), // 5d
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "b", date: "2026-03-11T00:00:00.000Z" }), // 10d
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "c", date: "2026-05-30T00:00:00.000Z" }), // 90d
+    ];
+    const row = paymentLagByContact(shows, txs, getPayer).rows[0];
+    expect(row.showCount).toBe(3);
+    expect(row.medianDays).toBe(10);
+    expect(row.avgDays).toBeGreaterThan(row.medianDays); // outlier infla só a média
+  });
+
+  it("media ponderada pelo valor desempata a mediana no nº par de shows", () => {
+    const ze = { id: "ze", name: "Bar do Zé" };
+    // Dois shows de mesmo valor: 10d e 20d. Mediana ponderada bate exatamente na
+    // metade do peso entre os dois → média dos dois centrais = 15d.
+    const shows = [
+      gig({ id: "a", date: "2026-03-01T00:00:00.000Z", payer: ze }),
+      gig({ id: "b", date: "2026-03-01T00:00:00.000Z", payer: ze }),
+    ];
+    const txs = [
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "a", date: "2026-03-11T00:00:00.000Z" }), // 10d
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "b", date: "2026-03-21T00:00:00.000Z" }), // 20d
+    ];
+    expect(paymentLagByContact(shows, txs, getPayer).rows[0].medianDays).toBe(15);
+  });
+
+  it("o grupo sem recebimentos não aparece; mediana 0 quando computada sem peso", () => {
+    // Um único show pago → mediana = o próprio prazo (a UI gateia por amostra mínima).
+    const ze = { id: "ze", name: "Bar do Zé" };
+    const shows = [gig({ id: "a", date: "2026-03-01T00:00:00.000Z", payer: ze })];
+    const txs = [
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "a", date: "2026-03-08T00:00:00.000Z" }), // 7d
+    ];
+    const row = paymentLagByContact(shows, txs, getPayer).rows[0];
+    expect(row.showCount).toBe(1);
+    expect(row.medianDays).toBe(7);
+  });
 });
 
 describe("outstandingByContact", () => {

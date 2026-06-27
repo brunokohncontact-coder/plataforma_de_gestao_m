@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   paymentLagByContact,
+  MIN_MEDIAN_LAG_SAMPLE,
   type PaymentSpeedBucketKey,
   type ReceivableShowLike,
   type TxLike,
@@ -184,6 +185,7 @@ export default async function PaymentLagByContactPage() {
                   <th className="px-4 py-3 text-right font-medium">Recebido</th>
                   <th className="px-4 py-3 text-right font-medium">Shows</th>
                   <th className="px-4 py-3 text-right font-medium">Prazo médio</th>
+                  <th className="px-4 py-3 text-right font-medium">Prazo mediano</th>
                   <th className="px-4 py-3 text-right font-medium">Pior prazo</th>
                 </tr>
               </thead>
@@ -220,6 +222,18 @@ export default async function PaymentLagByContactPage() {
                         <span className={"h-2 w-2 rounded-full " + BUCKET_TONES[r.bucket]} />
                         {daysLabel(r.avgDays)}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 text-right text-gray-500">
+                      {r.showCount >= MIN_MEDIAN_LAG_SAMPLE ? (
+                        daysLabel(r.medianDays)
+                      ) : (
+                        <span
+                          className="text-gray-300"
+                          title={`Mediana exige ao menos ${MIN_MEDIAN_LAG_SAMPLE} shows pagos (este tem ${r.showCount})`}
+                        >
+                          —
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right text-gray-500">
                       {daysLabel(r.lastDays)}
@@ -285,8 +299,11 @@ export default async function PaymentLagByContactPage() {
           <p className="text-xs text-gray-400">
             Cada show é atribuído ao contato responsável pelo pagamento (contratante/promoter
             antes da casa). O prazo de cada contratante pondera os shows pelo valor recebido.
-            Shows sem contato vinculado caem em &quot;Sem contratante&quot;. Considera só
-            receitas já recebidas e vinculadas a um show.
+            O <strong>prazo mediano</strong> (dia em que metade do que ele pagou já tinha
+            entrado) resiste a um show muito atrasado que infla a média, e só aparece a partir
+            de {MIN_MEDIAN_LAG_SAMPLE} shows pagos — abaixo disso é ruidoso demais. Shows sem
+            contato vinculado caem em &quot;Sem contratante&quot;. Considera só receitas já
+            recebidas e vinculadas a um show.
           </p>
         </>
       )}
