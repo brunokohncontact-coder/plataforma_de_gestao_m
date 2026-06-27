@@ -28,6 +28,7 @@ import {
   type PaymentPromiseStatus,
   type PaymentSpeedBucketKey,
   type GigSeasonality,
+  type WeekdayPerformance,
 } from "./finance";
 import { MONTH_NAMES_LONG } from "./calendar";
 
@@ -861,6 +862,55 @@ export function gigSeasonalityToCsv(
     String(season.totalShows),
     centsToCsvAmount(season.avgFee),
     centsToCsvAmount(season.totalFee),
+    "",
+    "",
+  ]);
+  return toCsv(out, delimiter);
+}
+
+// ── Desempenho por dia da semana (domingo→sábado) ────────────────────────────
+
+export const WEEKDAY_PERFORMANCE_CSV_HEADERS = [
+  "Dia",
+  "Shows",
+  "Cachê médio (R$)",
+  "Faturamento (R$)",
+  "% dos shows",
+  "% do faturamento",
+] as const;
+
+/**
+ * Serializa o desempenho por dia da semana (`weekdayPerformance`) em CSV, pronto
+ * para download. Espelha a tabela de `/shows/dias-semana`: uma linha por dia
+ * (sempre os 7, de domingo a sábado, inclusive dias zerados, para revelar as
+ * lacunas da agenda que a tela destaca) com nº de shows, cachê médio,
+ * faturamento e as duas participações (no nº de shows e no faturamento), seguida
+ * de uma linha "Total". Diferente da UI (que mostra "—" nos dias vazios), o CSV
+ * registra 0 e 0,00 para ficar legível por máquina. Mesma convenção pt-BR de
+ * `transactionsToCsv` (delimitador ";", decimal com vírgula). As participações do
+ * Total ficam em branco (são sempre 100% por construção). Irmão de
+ * `gigSeasonalityToCsv` (mesmo eixo Stat → linhas + Total). Pura.
+ */
+export function weekdayPerformanceToCsv(
+  wp: WeekdayPerformance,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(WEEKDAY_PERFORMANCE_CSV_HEADERS)];
+  for (const d of wp.days) {
+    out.push([
+      d.label,
+      String(d.count),
+      centsToCsvAmount(d.avgFee),
+      centsToCsvAmount(d.totalFee),
+      csvShare(d.countShare),
+      csvShare(d.feeShare),
+    ]);
+  }
+  out.push([
+    "Total",
+    String(wp.totalShows),
+    centsToCsvAmount(wp.avgFee),
+    centsToCsvAmount(wp.totalFee),
     "",
     "",
   ]);

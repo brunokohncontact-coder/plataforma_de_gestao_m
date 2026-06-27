@@ -4195,3 +4195,37 @@ contexto, decisão, justificativa e alternativas consideradas.
 - **Alternativas consideradas:** (a) uma coluna a mais para a barra/percentual relativo ao mês de pico — descartado: o pico é
   contexto visual da tela, não dado tabular; (b) omitir os meses zerados para encurtar o arquivo — descartado: os vales são
   parte do sinal de sazonalidade (onde prospectar/ajustar preço), então o CSV os mantém explícitos como a tela faz.
+
+## D140 — Exportação CSV do desempenho por dia da semana (`/shows/dias-semana/export`) (Sessão 148)
+- **Contexto:** a tela "Por dia da semana" (`weekdayPerformance`, `/shows/dias-semana`) é a irmã direta da sazonalidade de
+  shows — mesma família "Agenda & pipeline", mesmo eixo Stat (label/count/totalFee/avgFee/countShare/feeShare). A irmã
+  ganhou "⬇ CSV" na Sessão 147 (D139); a de dia da semana era a tabela vizinha mais óbvia ainda sem exportação.
+- **Decisão:** novo serializador puro `weekdayPerformanceToCsv(wp: WeekdayPerformance, delimiter?)` +
+  `WEEKDAY_PERFORMANCE_CSV_HEADERS` em `src/lib/csv.ts`, **cópia estrutural** de `gigSeasonalityToCsv` (D139): recebe o
+  objeto `WeekdayPerformance` inteiro (tipo leve já em `@/lib/finance`, importado como os demais row-types do csv.ts) e
+  emite **sempre as 7 linhas de dia** (domingo→sábado, na ordem do array de `weekdayPerformance`, inclusive dias zerados —
+  preserva as lacunas da agenda que a tela destaca) + uma linha **"Total"**. Colunas idênticas às da irmã: Dia / Shows /
+  Cachê médio (R$) / Faturamento (R$) / % dos shows / % do faturamento; as duas participações reusam o helper interno
+  `csvShare`. Como na irmã, dias sem shows saem como `0`/`0,00`/`0%` (a UI usa "—") para ficar legível por máquina, e as
+  participações da linha Total ficam **em branco** (sempre 100% por construção). Nova rota `/shows/dias-semana/export` que
+  reusa **exatamente** a mesma consulta da página (`prisma.show.findMany` → `weekdayPerformance`), nome de arquivo fixo
+  `shows-por-dia-da-semana.csv` (sem `?ano=`: a leitura por dia da semana, como a sazonalidade, soma todos os anos por
+  design). Botão "⬇ CSV" no cabeçalho da página (header reembrulhado num `flex gap-2` como o da irmã), exibido só quando há
+  dados (`wp.totalShows > 0`).
+- **Justificativa:** reuso máximo — a route é uma cópia mecânica das demais rotas de export (muda só o helper de domínio e o
+  nome do arquivo) e o serializador segue a forma da irmã linha a linha. Manter a ordem domingo→sábado (não reordenar por
+  faturamento) espelha a tabela da tela e mantém a planilha previsível; receber o `WeekdayPerformance` inteiro permite emitir
+  o Total a partir dos agregados sem recomputar.
+- **Testes:** **+3** em `csv.test.ts` (`describe("weekdayPerformanceToCsv")`: sempre 9 linhas — cabeçalho + 7 dias + Total —
+  mesmo sem shows, com Total zerado e shares em branco; contagem/cachê médio/faturamento/participações por dia com dois anos
+  colapsados no mesmo balde "Domingo" + linha Total; dias sem shows saem como `0`/`0,00`/`0%`, não "—"). 896 testes no total
+  (eram 893).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **896 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/shows/dias-semana/export` 307 (redireciona ao login sem sessão, rota
+  auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
+  postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) ordenar as linhas por cachê médio (como os destaques da tela) — descartado: a tabela da
+  página mantém a ordem natural dom→sáb e a planilha deve ser previsível/comparável; (b) omitir os dias zerados — descartado:
+  as lacunas da agenda são sinal (que dias ainda não rendem shows), então o CSV as mantém explícitas como a tela faz;
+  (c) generalizar `gigSeasonalityToCsv`/`weekdayPerformanceToCsv` num serializador de "eixo Stat" parametrizado — adiado: são
+  só duas cópias curtas e o ganho de DRY não paga a indireção (mesma postura da D116 alt. a sobre os cards de concentração).

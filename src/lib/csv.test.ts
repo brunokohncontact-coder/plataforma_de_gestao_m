@@ -32,6 +32,8 @@ import {
   PAYMENT_LAG_BY_CONTACT_CSV_HEADERS,
   PAYMENT_LAG_CSV_HEADERS,
   GIG_SEASONALITY_CSV_HEADERS,
+  weekdayPerformanceToCsv,
+  WEEKDAY_PERFORMANCE_CSV_HEADERS,
   type CsvTransaction,
   type CsvShow,
   type CsvProfitShow,
@@ -45,6 +47,7 @@ import {
   annualSummary,
   quarterlySummary,
   gigSeasonality,
+  weekdayPerformance,
   type ShowProfitRow,
   type VenueProfitRow,
   type ContactProfitRow,
@@ -868,5 +871,66 @@ describe("gigSeasonalityToCsv", () => {
     });
     const janeiro = gigSeasonalityToCsv(season).split("\r\n")[1].split(";");
     expect(janeiro).toEqual(["Janeiro", "0", "0,00", "0,00", "0%", "0%"]);
+  });
+});
+
+describe("weekdayPerformanceToCsv", () => {
+  // `now` fixo no futuro para que todos os shows forjados contem como realizados.
+  const NOW = "2025-01-01T00:00:00.000Z";
+  const gig = (
+    over: Partial<ReceivableShowLike> = {},
+  ): ReceivableShowLike => ({
+    id: "s",
+    fee: 100000,
+    status: "PLAYED",
+    date: "2024-03-10T00:00:00.000Z", // domingo (UTC)
+    ...over,
+  });
+
+  it("sempre emite os 7 dias (domingo→sábado) + a linha Total mesmo sem shows", () => {
+    const csv = weekdayPerformanceToCsv(weekdayPerformance([], { now: NOW }));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(WEEKDAY_PERFORMANCE_CSV_HEADERS.join(";"));
+    // cabeçalho + 7 dias + Total
+    expect(lines).toHaveLength(9);
+    expect(lines[1].startsWith("Domingo;0;")).toBe(true);
+    expect(lines[7].startsWith("Sábado;0;")).toBe(true);
+    expect(lines[8]).toBe("Total;0;0,00;0,00;;");
+  });
+
+  it("serializa contagem, cachê médio, faturamento e participações por dia", () => {
+    const wp = weekdayPerformance(
+      [
+        gig({ date: "2024-03-10T00:00:00.000Z", fee: 100000 }), // domingo
+        gig({ date: "2023-03-05T00:00:00.000Z", fee: 300000 }), // domingo (outro ano)
+        gig({ date: "2024-07-04T00:00:00.000Z", fee: 200000 }), // quinta
+      ],
+      { now: NOW },
+    );
+    const lines = weekdayPerformanceToCsv(wp).split("\r\n");
+    const domingo = lines[1].split(";");
+    expect(domingo[0]).toBe("Domingo");
+    expect(domingo[1]).toBe("2"); // dois shows somados entre anos
+    expect(domingo[2]).toBe("2000,00"); // cachê médio = (1000+3000)/2
+    expect(domingo[3]).toBe("4000,00"); // faturamento do dia
+    expect(domingo[4]).toBe("67%"); // 2 de 3 shows
+    expect(domingo[5]).toBe("67%"); // 4000 de 6000
+    // Linha Total: shares em branco (sempre 100% por construção).
+    const total = lines[8].split(";");
+    expect(total[0]).toBe("Total");
+    expect(total[1]).toBe("3");
+    expect(total[3]).toBe("6000,00");
+    expect(total[4]).toBe("");
+    expect(total[5]).toBe("");
+  });
+
+  it("registra 0 e 0,00 nos dias sem shows (não usa o '—' da UI)", () => {
+    // Único show numa sexta-feira: domingo deve sair zerado.
+    const wp = weekdayPerformance(
+      [gig({ date: "2024-03-01T00:00:00.000Z" })],
+      { now: NOW },
+    );
+    const domingo = weekdayPerformanceToCsv(wp).split("\r\n")[1].split(";");
+    expect(domingo).toEqual(["Domingo", "0", "0,00", "0,00", "0%", "0%"]);
   });
 });

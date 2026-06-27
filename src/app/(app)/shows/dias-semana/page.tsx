@@ -46,9 +46,20 @@ export default async function WeekdayPage() {
             saber quais convites valem mais a pena.
           </p>
         </div>
-        <Link href="/shows" className="btn-secondary">
-          ← Shows
-        </Link>
+        <div className="flex items-center gap-2">
+          {wp.totalShows > 0 && (
+            <a
+              href="/shows/dias-semana/export"
+              className="btn-secondary text-sm"
+              download
+            >
+              ⬇ CSV
+            </a>
+          )}
+          <Link href="/shows" className="btn-secondary">
+            ← Shows
+          </Link>
+        </div>
       </div>
 
       {wp.totalShows === 0 ? (

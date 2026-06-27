@@ -9,8 +9,16 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **893 testes**
-verdes após a Sessão 147 (**exportação CSV da sazonalidade de shows** em `/shows/sazonalidade/export` — novo
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **896 testes**
+verdes após a Sessão 148 (**exportação CSV do desempenho por dia da semana** em `/shows/dias-semana/export` — novo
+serializador puro `weekdayPerformanceToCsv(wp)` + `WEEKDAY_PERFORMANCE_CSV_HEADERS` em `src/lib/csv.ts`, irmão direto de
+`gigSeasonalityToCsv` (D139): recebe o objeto `WeekdayPerformance` (`weekdayPerformance`, importado de `@/lib/finance`) e
+emite sempre as 7 linhas de dia (domingo→sábado, inclusive dias zerados — preserva as lacunas da agenda que a tela
+destaca) + linha "Total", colunas Dia/Shows/Cachê médio/Faturamento/% dos shows/% do faturamento (participações via
+`csvShare`); como na irmã, o CSV registra `0`/`0,00` nos dias vazios (a UI usa "—") e os shares do Total ficam em branco
+(sempre 100%). Rota `/shows/dias-semana/export` reusa a mesma consulta da página (`weekdayPerformance`), nome fixo
+`shows-por-dia-da-semana.csv`; botão "⬇ CSV" no cabeçalho só com `wp.totalShows > 0`. **+3 testes**; smoke test
+(`next start`) → `/login` 200 e a rota 307 (auth-gated). Ver D140; segue 893 da Sessão 147 (**exportação CSV da sazonalidade de shows** em `/shows/sazonalidade/export` — novo
 serializador puro `gigSeasonalityToCsv(season)` + `GIG_SEASONALITY_CSV_HEADERS` em `src/lib/csv.ts`, na mesma convenção
 pt-BR dos irmãos (delimitador `;`, decimal com vírgula, BOM UTF-8 na camada HTTP): recebe o objeto `GigSeasonality` (D133)
 e emite sempre as 12 linhas de mês (jan→dez, inclusive meses zerados — preserva os vales que a tela destaca) + linha
