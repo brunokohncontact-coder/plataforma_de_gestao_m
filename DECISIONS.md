@@ -4016,3 +4016,46 @@ contexto, decisão, justificativa e alternativas consideradas.
   cedo — descartado: contraria o "próximo" e desperdiça lead time do mês iminente. (c) incluir o mês corrente — descartado:
   prospectar/precificar o mês que já começou é tarde demais para o que o nudge propõe. (d) um card cheio (mini-gráfico dos
   12 meses no Painel) — adiado: o Painel já é denso; o detalhe vive em `/shows/sazonalidade`, o nudge só puxa para lá.
+
+---
+
+## D135 — Nudge "mês fraco à frente" (vale da temporada) no Painel a partir da sazonalidade (Sessão 143)
+- **Contexto:** a D134 entregou o lado do **pico** da sazonalidade no Painel (📈 "Mês forte chegando" via
+  `gigSeasonalityHeadline`): antecedência para precificar/prospectar um mês que historicamente rende mais. Falta o
+  lado simétrico e, em muitos casos, **mais acionável**: o **vale** da temporada. Um pico tende a se encher sozinho;
+  já um mês historicamente fraco precisa de prospecção ativa *antes* da baixa para não virar agenda vazia. O nudge de
+  pico era o "próximo possível" óbvio; o de vale é o seu espelho natural, fechando o par "onde cobrar mais × onde
+  correr atrás de show".
+- **Decisão:** novo helper puro `gigSeasonalityLull(seasonality, { now? })` em `src/lib/finance.ts`, **espelho exato**
+  de `gigSeasonalityHeadline` no sentido oposto: mesma janela (`STRONG_MONTH_HORIZON` = 4 meses à frente, excluindo o
+  mês corrente), mesma amostra mínima (`STRONG_MONTH_MIN_SHOWS` = 6) e mesmo `now` injetável. Devolve
+  `{ show, month, monthsAhead, shortfall }` e escolhe o **mês fraco mais cedo** que qualifica, definido por
+  `feeShare ≤ WEAK_MONTH_FACTOR/12` (nova const `WEAK_MONTH_FACTOR` = 0.75, i.e. ≥ 25% **abaixo** do faturamento do mês
+  médio uniforme). `shortfall` (= `1 − feeShare × 12`) é a fração abaixo da média; o Painel mostra
+  `shortfall × 100`% "abaixo do mês médio". **Exige `count > 0`** no mês candidato (simétrico ao mês forte): o sinal é
+  "neste mês, em que você historicamente toca, costuma render menos" — não "você ainda não tem dados desse mês" (isso
+  seria ausência de história, não sazonalidade). Novo banner-nudge 🍂 "Mês fraco à frente" em `dashboard/page.tsx`
+  (estilo âmbar), reaproveitando a **mesma** `gigSeasonality(shows)` já computada para o nudge de pico — **zero consulta
+  nova** — linkando para `/shows/sazonalidade`.
+- **Justificativa:** usa **faturamento** (`feeShare`), não nº de shows, pela mesma razão da D134 — o card é sobre **onde
+  faltará receita** se a agenda não for trabalhada. Para **não adensar o Painel** (a ressalva recorrente, ver D134(d)), o
+  nudge de vale **cede a vez** ao de pico: só aparece quando `!seasonHeadline.show`. Assim há **no máximo um** nudge de
+  sazonalidade por vez — o pico tem prioridade por ser também oportunidade de preço, e o vale preenche o slot quando não
+  há pico iminente. Os limiares/horizonte/amostra são reusados do mês forte (sem novas constantes além do fator), mantendo
+  a economia coerente entre os dois lados.
+- **Testes:** **+5** em `finance.test.ts` (não aparece sem amostra mínima; aponta o próximo mês fraco com shortfall >
+  0.25; escolhe o mais cedo na janela e não o mais fundo; exige `count > 0` — mês sem história não vira vale; não aparece
+  em temporada plana). 875 testes no total (eram 870).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **875 testes**
+  (`vitest run`); smoke test (`next start`) com sessão forjada → `/dashboard` devolve 200 e, com dados forjados de um vale
+  em agosto (grosso do faturamento em janeiro, fora da janela), renderiza o banner 🍂 com o mês ("Agosto"), o lead time
+  ("daqui a 2 meses") e o "% abaixo" (95%), **sem** o nudge de pico (regra de prioridade confirmada). `npm audit`
+  **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver
+  D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) mostrar pico **e** vale ao mesmo tempo (meses distintos) — descartado: dois nudges
+  de sazonalidade adensam o Painel (D134(d)); o vale ceder a vez ao pico mantém um único slot. (b) incluir meses de
+  `count = 0` como vale — descartado: ausência de história ≠ sazonalidade de baixa, e já há o nudge de "fim de semana
+  livre" (D97) para agenda futura vazia; o `count > 0` mantém o sinal *histórico*. (c) dar prioridade ao vale sobre o pico
+  (por ser mais urgente) — descartado: o pico também é janela de preço e é o nudge já estabelecido; o vale como fallback é
+  menos surpreendente. (d) surfar o vale **mais fundo** da janela em vez do mais cedo — descartado: espelha a escolha do
+  mês forte (D134(b)) e maximiza o lead time do mês iminente.

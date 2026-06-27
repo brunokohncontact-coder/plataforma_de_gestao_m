@@ -9,8 +9,19 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **870 testes**
-verdes após a Sessão 142 (**nudge "próximo mês forte" no Painel a partir da sazonalidade** — transforma a sazonalidade
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **875 testes**
+verdes após a Sessão 143 (**nudge "mês fraco à frente" (vale da temporada) no Painel** — espelho simétrico do nudge de
+mês forte (D134): novo helper puro `gigSeasonalityLull(seasonality, { now? })` em `src/lib/finance.ts`, idêntico a
+`gigSeasonalityHeadline` no sentido oposto (mesma janela `STRONG_MONTH_HORIZON`=4, mesma amostra mínima
+`STRONG_MONTH_MIN_SHOWS`=6, mesmo `now` injetável), que varre **só para frente** e escolhe o **mês fraco mais cedo** com
+`feeShare ≤ WEAK_MONTH_FACTOR/12` (=0.75/12, ≥25% **abaixo** do mês médio), exigindo `count > 0` (vale histórico, não
+ausência de dados). Devolve `{ show, month, monthsAhead, shortfall }` (`shortfall` = `1 − feeShare×12`). Banner-nudge 🍂
+"Mês fraco à frente" (estilo âmbar) em `dashboard/page.tsx`, reaproveitando a **mesma** `gigSeasonality(shows)` já
+computada para o nudge de pico (**zero consulta nova**) e **cedendo a vez** ao nudge de mês forte (só aparece quando
+`!seasonHeadline.show` → no máximo um nudge de sazonalidade por vez, respeitando a densidade do Painel/D134(d)); mostra o
+mês, o lead time e `shortfall×100`% "abaixo do mês médio", linkando para `/shows/sazonalidade`. **+5 testes**; validado
+por smoke test autenticado (200 + banner 🍂 com mês/lead time/% abaixo sobre dados forjados de vale, sem o nudge de pico).
+Ver D135; segue 870 da Sessão 142 (**nudge "próximo mês forte" no Painel a partir da sazonalidade** — transforma a sazonalidade
 dos shows (D133) em **antecedência**: novo helper puro `gigSeasonalityHeadline(seasonality, { now? })` em
 `src/lib/finance.ts` (espelha a disciplina de `geoConcentrationHeadline`/`cashBurnHeadline` — regra de exibição no helper,
 Painel só consome) que varre **só para frente**, do mês seguinte até `STRONG_MONTH_HORIZON` (=4) meses à frente
@@ -2600,7 +2611,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    os picos e vales da temporada para planejar prospecção e preço. Distinto de `weekdayPerformance` (dia da semana) e da
    cadência (timeline mês a mês). **Nudge "próximo mês forte" no Painel** entregue na Sessão 142 —
    `gigSeasonalityHeadline` em `src/lib/finance.ts` + banner 📈 em `dashboard/page.tsx` aponta o mês forte mais cedo à
-   frente (até 4 meses, `feeShare` ≥ 25% acima da média, com amostra mínima de 6 shows), ver D134. Próximo possível —
+   frente (até 4 meses, `feeShare` ≥ 25% acima da média, com amostra mínima de 6 shows), ver D134. **Nudge "mês fraco à
+   frente" (vale da temporada)** entregue na Sessão 143 — `gigSeasonalityLull` em `src/lib/finance.ts` (espelho simétrico
+   de `gigSeasonalityHeadline`: mesma janela/amostra, `feeShare ≤ WEAK_MONTH_FACTOR/12` = 0.75/12, exige `count > 0`) +
+   banner 🍂 âmbar em `dashboard/page.tsx` que **cede a vez** ao nudge de pico (só com `!seasonHeadline.show` → no máximo um
+   nudge de sazonalidade por vez), avisando o próximo mês historicamente fraco para prospectar com antecedência, ver D135.
+   Próximo possível —
    recorte por ano (`?ano=`, adiado na D133(b) porque a sazonalidade ganha sentido somando os anos), exportação CSV
    (adiada na D133(d): são só 12 linhas), ou um mini-gráfico dos 12 meses embutido no Painel (adiado na D134(d): o Painel
    já é denso).

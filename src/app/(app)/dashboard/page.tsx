@@ -37,6 +37,7 @@ import {
   geoConcentrationHeadline,
   gigSeasonality,
   gigSeasonalityHeadline,
+  gigSeasonalityLull,
   type TxLike,
   type ContactProfitContact,
   type QuarterGoalStatus,
@@ -283,9 +284,14 @@ export default async function DashboardPage() {
   // mês mais cedo, à frente, cujo faturamento histórico bate acima da média.
   // Vira nudge só com amostra mínima e um pico de fato à frente — antecedência
   // para prospectar/precificar. O detalhe completo está em /shows/sazonalidade.
-  const seasonHeadline = gigSeasonalityHeadline(
-    gigSeasonality(shows as ReceivableShowLike[]),
-  );
+  const season = gigSeasonality(shows as ReceivableShowLike[]);
+  const seasonHeadline = gigSeasonalityHeadline(season);
+  // Lado do vale (D135): o próximo mês FRACO à frente — antecedência para
+  // prospectar e encher a agenda antes da baixa. Reaproveita a mesma
+  // `gigSeasonality` (zero I/O extra). Para não adensar o Painel, cede a vez ao
+  // nudge de mês forte: aparece só quando NÃO há um pico chegando (no máximo um
+  // nudge de sazonalidade por vez).
+  const seasonLull = gigSeasonalityLull(season);
 
   // Rentabilidade: top shows realizados por resultado
   const playedShows = shows.filter((s) => s.status === "PLAYED");
@@ -425,6 +431,29 @@ export default async function DashboardPage() {
             do mês médio.
           </span>
           <span className="text-brand-600">Prospectar →</span>
+        </Link>
+      )}
+
+      {/* Vale da temporada: próximo mês fraco à frente (sazonalidade dos shows).
+          Cede a vez ao nudge de mês forte para não adensar o Painel. */}
+      {!seasonHeadline.show && seasonLull.show && seasonLull.month && (
+        <Link
+          href="/shows/sazonalidade"
+          className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 transition hover:bg-amber-100"
+        >
+          <span className="font-semibold">🍂 Mês fraco à frente</span>
+          <span>
+            <strong>{seasonLull.month.label}</strong>{" "}
+            {seasonLull.monthsAhead === 1
+              ? "(mês que vem)"
+              : `(daqui a ${seasonLull.monthsAhead} meses)`}{" "}
+            historicamente rende{" "}
+            <strong>
+              {Math.round(seasonLull.shortfall * 100)}% abaixo
+            </strong>{" "}
+            do mês médio — prospecte com antecedência.
+          </span>
+          <span className="text-amber-600">Prospectar →</span>
         </Link>
       )}
 

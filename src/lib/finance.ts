@@ -5755,6 +5755,85 @@ export function gigSeasonalityHeadline(
   return none;
 }
 
+/**
+ * Um mês conta como "fraco" (vale da temporada) quando sua participação no
+ * faturamento histórico (`feeShare`) fica abaixo da média uniforme (1/12) por
+ * este fator. 0.75 = pelo menos 25% abaixo do mês médio — fundo o bastante para
+ * ser de fato um vale de temporada, não uma flutuação qualquer. Espelha
+ * `STRONG_MONTH_FACTOR` no sentido oposto; o horizonte e a amostra mínima são os
+ * mesmos do mês forte (`STRONG_MONTH_HORIZON`/`STRONG_MONTH_MIN_SHOWS`).
+ */
+export const WEAK_MONTH_FACTOR = 0.75;
+
+export interface GigSeasonalityLull {
+  /**
+   * Deve aparecer no Painel? Só quando há amostra suficiente
+   * (`totalShows >= STRONG_MONTH_MIN_SHOWS`) **e** existe um mês fraco dentro da
+   * janela à frente — caso contrário o nudge seria ruído (mesma disciplina de
+   * `gigSeasonalityHeadline`).
+   */
+  show: boolean;
+  /** O próximo mês fraco na janela (o mais cedo que qualifica), ou null. */
+  month: GigMonthStat | null;
+  /** Quantos meses à frente está (1 = mês que vem … STRONG_MONTH_HORIZON); 0 se nenhum. */
+  monthsAhead: number;
+  /**
+   * Quão abaixo da média uniforme (1/12) o `feeShare` do mês fica, como fração:
+   * `1 - feeShare * 12`. Ex.: 0.4 = esse mês historicamente rende 40% abaixo do
+   * mês médio. 0 quando não há mês fraco à frente.
+   */
+  shortfall: number;
+}
+
+/**
+ * Resumo de Painel da **sazonalidade dos shows**, do lado do vale: deriva, de
+ * uma `gigSeasonality` já computada, o **próximo mês fraco** que se aproxima — o
+ * mais cedo, dentro de `STRONG_MONTH_HORIZON` meses, cujo faturamento histórico
+ * fica abaixo da média (≤ `WEAK_MONTH_FACTOR`× o mês médio). Espelho exato de
+ * `gigSeasonalityHeadline` (mesma janela, mesma amostra mínima, mesmo `now`
+ * injetável), no sentido oposto: enquanto o mês forte é oportunidade de preço, o
+ * mês fraco é antecedência para **prospectar e encher a agenda** antes do vale.
+ *
+ * Exige `count > 0` no mês candidato (simétrico ao mês forte): o sinal é "neste
+ * mês, em que você historicamente toca, costuma render menos" — não "você ainda
+ * não tem dados desse mês" (isso seria ausência de história, não sazonalidade).
+ * O detalhe completo está em `/shows/sazonalidade`.
+ */
+export function gigSeasonalityLull(
+  seasonality: GigSeasonality,
+  opts: { now?: Date | string } = {},
+): GigSeasonalityLull {
+  const none: GigSeasonalityLull = {
+    show: false,
+    month: null,
+    monthsAhead: 0,
+    shortfall: 0,
+  };
+  if (seasonality.totalShows < STRONG_MONTH_MIN_SHOWS) return none;
+
+  const nowDate =
+    opts.now == null
+      ? new Date()
+      : typeof opts.now === "string"
+        ? new Date(opts.now)
+        : opts.now;
+  const currentMonth = nowDate.getUTCMonth();
+  const threshold = WEAK_MONTH_FACTOR / 12;
+
+  for (let ahead = 1; ahead <= STRONG_MONTH_HORIZON; ahead++) {
+    const m = seasonality.months[(currentMonth + ahead) % 12];
+    if (m.count > 0 && m.feeShare <= threshold) {
+      return {
+        show: true,
+        month: m,
+        monthsAhead: ahead,
+        shortfall: 1 - m.feeShare * 12,
+      };
+    }
+  }
+  return none;
+}
+
 /** Sequência de `count` meses "YYYY-MM" a partir de `startKey` (inclusive), em UTC. */
 function sequentialMonths(startKey: string, count: number): string[] {
   const [y, m] = startKey.split("-").map(Number);
