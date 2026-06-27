@@ -98,6 +98,15 @@ export default async function RoleProfitabilityPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {report.count > 0 && (
+            <a
+              href={`/contatos/rentabilidade/por-papel/export${yearFilter === "all" ? "" : `?ano=${yearFilter}`}`}
+              className="btn-secondary text-sm"
+              download
+            >
+              ⬇ CSV
+            </a>
+          )}
           <Link href="/contatos/rentabilidade" className="btn-secondary">
             Por contratante
           </Link>

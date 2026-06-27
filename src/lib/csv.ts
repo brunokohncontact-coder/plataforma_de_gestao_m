@@ -24,6 +24,7 @@ import {
   type ShowProfitRow,
   type VenueProfitRow,
   type ContactProfitRow,
+  type RoleProfitRow,
   type PaymentPromiseStatus,
   type PaymentSpeedBucketKey,
 } from "./finance";
@@ -410,6 +411,52 @@ export function contactProfitToCsv(
     out.push([
       row.contact ? row.contact.name : "Sem contratante",
       row.contact ? contactRoleLabel(row.contact.role) : "",
+      String(row.showCount),
+      centsToCsvAmount(row.totalFee),
+      centsToCsvAmount(row.totalExtra),
+      centsToCsvAmount(row.totalExpenses),
+      centsToCsvAmount(row.avgFee),
+      csvMedianFee(row.showCount, row.medianFee),
+      centsToCsvAmount(row.totalNet),
+      centsToCsvAmount(row.avgNet),
+    ]);
+  }
+  return toCsv(out, delimiter);
+}
+
+// ── Rentabilidade por papel do contratante (rollup acima do contratante) ─────
+
+export const ROLE_PROFIT_CSV_HEADERS = [
+  "Papel",
+  "Shows",
+  "Cachê (R$)",
+  "Extras (R$)",
+  "Despesas (R$)",
+  "Cachê médio (R$)",
+  "Cachê mediano (R$)",
+  "Resultado (R$)",
+  "Média/show (R$)",
+] as const;
+
+/**
+ * Serializa a rentabilidade por papel do contratante (P&L somado pelo papel de
+ * quem paga) em CSV, pronto para download. É um rollup acima de
+ * `contactProfitToCsv`: agrupa pelo papel, não pelo contratante, então não há
+ * coluna "Contratante". Mesma convenção pt-BR de `transactionsToCsv`. O grupo
+ * sem papel (`role: null`) sai como "Sem contratante" (espelha a página). O
+ * cachê mediano só sai a partir de `MIN_MEDIAN_FEE_SAMPLE` shows (abaixo disso,
+ * em branco — mesma regra de apresentação da UI). A ordem das linhas é
+ * preservada (a página ordena por resultado decrescente, "Sem contratante" por
+ * último). Pura.
+ */
+export function roleProfitToCsv(
+  rows: RoleProfitRow[],
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(ROLE_PROFIT_CSV_HEADERS)];
+  for (const row of rows) {
+    out.push([
+      row.role ? contactRoleLabel(row.role) : "Sem contratante",
       String(row.showCount),
       centsToCsvAmount(row.totalFee),
       centsToCsvAmount(row.totalExtra),

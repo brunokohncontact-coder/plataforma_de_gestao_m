@@ -4100,3 +4100,32 @@ contexto, decisão, justificativa e alternativas consideradas.
   (quanto a receita depende de um único tipo de comprador) — adiado: o nº de papéis é pequeno e fixo (6), então a
   concentração é menos informativa que nos eixos cliente/cidade; (d) link da linha para uma lista de contatos daquele papel
   — descartado por ora: a tela de Contatos já filtra por papel e a badge mantém a tabela enxuta.
+
+## D137 — Exportação CSV da rentabilidade por papel (`/contatos/rentabilidade/por-papel/export`) (Sessão 145)
+- **Contexto:** a tela de rentabilidade por papel (D136) era a única das telas de rentabilidade por contratante sem
+  exportação CSV — todas as irmãs (por contratante D105, por show, por local/cidade) já oferecem "⬇ CSV". Era o próximo
+  passo registrado na D136 (alt. b, adiada) e casa com o acervo de exportações (`@/lib/csv`).
+- **Decisão:** novo serializador puro `roleProfitToCsv(rows, delimiter?)` + `ROLE_PROFIT_CSV_HEADERS` em `src/lib/csv.ts`,
+  **espelho de `contactProfitToCsv`** (mesma convenção pt-BR: delimitador ";", decimal com vírgula, BOM UTF-8 na camada
+  HTTP), mas **sem a coluna "Contratante"**: a 1ª coluna é "Papel" (rótulo legível via `CONTACT_ROLE_LABELS`), o grupo
+  `role: null` sai como "Sem contratante", e o cachê mediano é gated por `MIN_MEDIAN_FEE_SAMPLE` (em branco abaixo de 3,
+  reusando `csvMedianFee`, mesma regra de apresentação da UI/D123). Nova rota `/contatos/rentabilidade/por-papel/export`
+  que reusa **exatamente** a mesma consulta, atribuição de pagador (`pickPayerContact`), recorte por ano (`?ano=`, helpers
+  D108) e `rankRolesByProfit` da página, devolvendo o CSV com nome `rentabilidade-papeis-<ano|todos>.csv`. Botão "⬇ CSV"
+  no cabeçalho da página, exibido só quando há linhas (`report.count > 0`), idêntico ao da tela por contratante.
+- **Justificativa:** reuso máximo — o serializador difere do `contactProfitToCsv` só na 1ª coluna (papel vs. contratante+
+  papel), e a route é uma cópia mecânica da `/contatos/rentabilidade/export` trocando `rankContactsByProfit`/
+  `contactProfitToCsv` por `rankRolesByProfit`/`roleProfitToCsv`. Mantém a planilha consistente com o que a página mostra
+  (mesmos campos, mesma ordem, mesmo recorte de período).
+- **Testes:** **+4** em `csv.test.ts` (só cabeçalho quando vazio; papel com rótulo legível e valores com vírgula sem
+  coluna de contratante; `role: null` → "Sem contratante"; cachê mediano vazio abaixo da amostra mínima). 884 testes no
+  total (eram 880).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **884 testes**
+  (`vitest run`); smoke test (`next start`) → `/` 200 e `/contatos/rentabilidade/por-papel/export?ano=2025` devolve 307
+  (redireciona ao login sem sessão, rota auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate
+  / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) generalizar `contactProfitToCsv` para aceitar a 1ª coluna como parâmetro — descartado:
+  a diferença é uma coluna e o ganho de DRY não compensava o acoplamento entre dois serializadores de tipos distintos
+  (`ContactProfitRow` × `RoleProfitRow`); (b) incluir uma coluna "Contratantes" listando os nomes do grupo — descartado:
+  a tela por papel é deliberadamente um rollup (papel não é entidade), e quem quiser o detalhe usa a exportação por
+  contratante.
