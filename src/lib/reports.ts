@@ -69,6 +69,13 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "🎶",
       },
       {
+        title: "Sazonalidade de shows",
+        href: "/shows/sazonalidade",
+        description: "Quais meses do ano rendem mais shows e maiores cachês, somando todos os anos — para planejar a temporada.",
+        subtopic: "Agenda & pipeline",
+        icon: "🌤️",
+      },
+      {
         title: "Conflitos de agenda",
         href: "/shows/conflitos",
         description: "Dias com dois ou mais shows marcados, para resolver choques de agenda.",

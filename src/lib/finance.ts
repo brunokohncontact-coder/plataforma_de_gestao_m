@@ -5524,6 +5524,151 @@ export function weekdayPerformance(
   };
 }
 
+/** Rótulos longos dos meses (Janeiro..Dezembro), índice 0 = janeiro. */
+export const GIG_MONTH_LABELS: readonly string[] = [
+  "Janeiro",
+  "Fevereiro",
+  "Março",
+  "Abril",
+  "Maio",
+  "Junho",
+  "Julho",
+  "Agosto",
+  "Setembro",
+  "Outubro",
+  "Novembro",
+  "Dezembro",
+];
+
+/** Rótulos curtos dos meses (jan..dez), índice 0 = janeiro. */
+export const GIG_MONTH_SHORT: readonly string[] = [
+  "jan",
+  "fev",
+  "mar",
+  "abr",
+  "mai",
+  "jun",
+  "jul",
+  "ago",
+  "set",
+  "out",
+  "nov",
+  "dez",
+];
+
+export interface GigMonthStat {
+  /** Mês do ano: 0 = janeiro .. 11 = dezembro (UTC). */
+  month: number;
+  /** Rótulo longo ("Janeiro", "Fevereiro"…). */
+  label: string;
+  /** Nº de shows realizados nesse mês do ano (somado entre todos os anos). */
+  count: number;
+  /** Soma dos cachês nesse mês (centavos). */
+  totalFee: number;
+  /** Cachê médio nesse mês = round(totalFee / count); 0 se não houver shows. */
+  avgFee: number;
+  /** Participação no nº de shows = count / totalShows (0..1). */
+  countShare: number;
+  /** Participação no faturamento = totalFee / faturamento total (0..1). */
+  feeShare: number;
+}
+
+export interface GigSeasonality {
+  /** Sempre 12 entradas, de janeiro (0) a dezembro (11), inclusive meses sem shows. */
+  months: GigMonthStat[];
+  /** Nº total de shows realizados considerados (com cachê > 0). */
+  totalShows: number;
+  /** Soma de todos os cachês considerados (centavos). */
+  totalFee: number;
+  /** Cachê médio geral por show = round(totalFee / totalShows); 0 se nenhum. */
+  avgFee: number;
+  /** Mês com maior cachê médio (empate → maior nº de shows, depois mês mais cedo); null se nenhum. */
+  bestByAvg: GigMonthStat | null;
+  /** Mês com maior faturamento total (empate → maior nº de shows, depois mês mais cedo); null se nenhum. */
+  bestByVolume: GigMonthStat | null;
+  /** Mês com mais shows (empate → maior faturamento, depois mês mais cedo); null se nenhum. */
+  busiest: GigMonthStat | null;
+}
+
+/**
+ * Agrega os shows já realizados por MÊS DO ANO (jan→dez), somando todos os anos,
+ * respondendo "quais meses da temporada historicamente rendem mais shows e
+ * maiores cachês?" — a sazonalidade da agenda, para planejar prospecção e preço.
+ *
+ * - "Realizado" = `isHappenedGig` (PLAYED, ou CONFIRMED com data já passada);
+ *   propostos, cancelados e futuros ficam de fora (mesma postura de
+ *   `weekdayPerformance`/`feeTrend`).
+ * - Só shows com cachê registrado (`fee > 0`) entram — gigs sem cachê
+ *   distorceriam a média.
+ * - O mês é extraído em UTC (`getUTCMonth`) para estabilidade nos testes; os
+ *   anos são colapsados num só calendário de 12 meses (jan de 2023 e jan de 2024
+ *   caem no mesmo balde "Janeiro").
+ * - `months` traz sempre os 12 meses, mesmo os zerados, para o gráfico não
+ *   "pular" meses e revelar as lacunas da temporada. Pura; `now` injetável.
+ */
+export function gigSeasonality(
+  shows: ReceivableShowLike[],
+  opts: { now?: Date | string } = {},
+): GigSeasonality {
+  const todayMs = utcMidnight(opts.now ?? new Date());
+
+  const feesByMonth: number[][] = Array.from({ length: 12 }, () => []);
+  for (const s of shows) {
+    if (!isHappenedGig(s, todayMs)) continue;
+    if (s.fee <= 0) continue;
+    const d = typeof s.date === "string" ? new Date(s.date) : s.date;
+    feesByMonth[d.getUTCMonth()].push(s.fee);
+  }
+
+  const totalShows = feesByMonth.reduce((acc, fees) => acc + fees.length, 0);
+  const totalFee = feesByMonth.reduce((acc, fees) => acc + sum(fees), 0);
+
+  const months: GigMonthStat[] = feesByMonth.map((fees, month) => {
+    const monthTotal = sum(fees);
+    return {
+      month,
+      label: GIG_MONTH_LABELS[month],
+      count: fees.length,
+      totalFee: monthTotal,
+      avgFee: fees.length > 0 ? Math.round(monthTotal / fees.length) : 0,
+      countShare: totalShows > 0 ? fees.length / totalShows : 0,
+      feeShare: totalFee > 0 ? monthTotal / totalFee : 0,
+    };
+  });
+
+  // Candidatos a "melhor": apenas meses que de fato tiveram shows.
+  const active = months.filter((m) => m.count > 0);
+
+  // Empates resolvidos de forma determinística (mês mais cedo vence por iterar
+  // de jan→dez e exigir desempate estritamente maior).
+  const pick = (
+    rank: (m: GigMonthStat) => number,
+    tiebreak: (m: GigMonthStat) => number,
+  ): GigMonthStat | null => {
+    let best: GigMonthStat | null = null;
+    for (const m of active) {
+      if (
+        best == null ||
+        rank(m) > rank(best) ||
+        (rank(m) === rank(best) && tiebreak(m) > tiebreak(best))
+      ) {
+        best = m;
+      }
+    }
+    return best;
+  };
+
+  return {
+    months,
+    totalShows,
+    totalFee,
+    avgFee: totalShows > 0 ? Math.round(totalFee / totalShows) : 0,
+    bestByAvg: pick((m) => m.avgFee, (m) => m.count),
+    bestByVolume: pick((m) => m.totalFee, (m) => m.count),
+    busiest: pick((m) => m.count, (m) => m.totalFee),
+  };
+}
+
 /** Sequência de `count` meses "YYYY-MM" a partir de `startKey` (inclusive), em UTC. */
 function sequentialMonths(startKey: string, count: number): string[] {
   const [y, m] = startKey.split("-").map(Number);
