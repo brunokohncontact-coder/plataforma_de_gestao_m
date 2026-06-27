@@ -27,6 +27,7 @@ import {
   type RoleProfitRow,
   type PaymentPromiseStatus,
   type PaymentSpeedBucketKey,
+  type GigSeasonality,
 } from "./finance";
 import { MONTH_NAMES_LONG } from "./calendar";
 
@@ -815,5 +816,53 @@ export function paymentLagToCsv(
       PAYMENT_SPEED_BUCKET_LABELS[row.bucket],
     ]);
   }
+  return toCsv(out, delimiter);
+}
+
+// ── Sazonalidade de shows por mês do ano (jan→dez, somando todos os anos) ─────
+
+export const GIG_SEASONALITY_CSV_HEADERS = [
+  "Mês",
+  "Shows",
+  "Cachê médio (R$)",
+  "Faturamento (R$)",
+  "% dos shows",
+  "% do faturamento",
+] as const;
+
+/**
+ * Serializa a sazonalidade de shows por mês do ano (`gigSeasonality`) em CSV,
+ * pronto para download. Espelha a tabela de `/shows/sazonalidade`: uma linha por
+ * mês (sempre as 12, de janeiro a dezembro, inclusive meses zerados, para revelar
+ * os vales da temporada) com nº de shows, cachê médio, faturamento e as duas
+ * participações (no nº de shows e no faturamento), seguida de uma linha "Total".
+ * Diferente da UI (que mostra "—" nos meses vazios), o CSV registra 0 e 0,00 para
+ * ficar legível por máquina. Mesma convenção pt-BR de `transactionsToCsv`
+ * (delimitador ";", decimal com vírgula). As participações do Total ficam em
+ * branco (são sempre 100% por construção). Pura.
+ */
+export function gigSeasonalityToCsv(
+  season: GigSeasonality,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(GIG_SEASONALITY_CSV_HEADERS)];
+  for (const m of season.months) {
+    out.push([
+      m.label,
+      String(m.count),
+      centsToCsvAmount(m.avgFee),
+      centsToCsvAmount(m.totalFee),
+      csvShare(m.countShare),
+      csvShare(m.feeShare),
+    ]);
+  }
+  out.push([
+    "Total",
+    String(season.totalShows),
+    centsToCsvAmount(season.avgFee),
+    centsToCsvAmount(season.totalFee),
+    "",
+    "",
+  ]);
   return toCsv(out, delimiter);
 }

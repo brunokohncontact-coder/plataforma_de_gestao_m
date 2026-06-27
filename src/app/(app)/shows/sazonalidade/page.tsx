@@ -47,9 +47,20 @@ export default async function GigSeasonalityPage() {
             temporada.
           </p>
         </div>
-        <Link href="/shows" className="btn-secondary">
-          ← Shows
-        </Link>
+        <div className="flex items-center gap-2">
+          {season.totalShows > 0 && (
+            <a
+              href="/shows/sazonalidade/export"
+              className="btn-secondary text-sm"
+              download
+            >
+              ⬇ CSV
+            </a>
+          )}
+          <Link href="/shows" className="btn-secondary">
+            ← Shows
+          </Link>
+        </div>
       </div>
 
       {season.totalShows === 0 ? (
