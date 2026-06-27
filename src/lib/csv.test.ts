@@ -12,6 +12,7 @@ import {
   showProfitToCsv,
   venueProfitToCsv,
   contactProfitToCsv,
+  roleProfitToCsv,
   contactActivityToCsv,
   receivablesToCsv,
   receivablesByContactToCsv,
@@ -23,6 +24,7 @@ import {
   QUARTERLY_SUMMARY_CSV_HEADERS,
   SHOW_PROFIT_CSV_HEADERS,
   CONTACT_PROFIT_CSV_HEADERS,
+  ROLE_PROFIT_CSV_HEADERS,
   CONTACT_ACTIVITY_CSV_HEADERS,
   RECEIVABLE_CSV_HEADERS,
   RECEIVABLE_BY_CONTACT_CSV_HEADERS,
@@ -43,6 +45,7 @@ import {
   type ShowProfitRow,
   type VenueProfitRow,
   type ContactProfitRow,
+  type RoleProfitRow,
 } from "./finance";
 
 describe("escapeCsvField", () => {
@@ -446,6 +449,48 @@ describe("contactProfitToCsv", () => {
     const csv = contactProfitToCsv([row({ showCount: 2 })]);
     // 8ª coluna (índice 7) = cachê mediano.
     expect(csv.split("\r\n")[1].split(";")[7]).toBe("");
+  });
+});
+
+describe("roleProfitToCsv", () => {
+  const row = (over: Partial<RoleProfitRow> = {}): RoleProfitRow => ({
+    role: "VENUE",
+    showCount: 5,
+    totalFee: 750000,
+    totalExtra: 0,
+    totalExpenses: 100000,
+    totalNet: 650000,
+    avgNet: 130000,
+    avgFee: 150000,
+    medianFee: 150000,
+    margin: 650000 / 750000,
+    ...over,
+  });
+
+  it("emite só o cabeçalho quando não há linhas", () => {
+    expect(roleProfitToCsv([])).toBe(ROLE_PROFIT_CSV_HEADERS.join(";"));
+  });
+
+  it("serializa o papel com rótulo legível e valores com vírgula (sem coluna de contratante)", () => {
+    const csv = roleProfitToCsv([row()]);
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(
+      "Papel;Shows;Cachê (R$);Extras (R$);Despesas (R$);Cachê médio (R$);Cachê mediano (R$);Resultado (R$);Média/show (R$)",
+    );
+    expect(lines[1]).toBe(
+      "Casa de show;5;7500,00;0,00;1000,00;1500,00;1500,00;6500,00;1300,00",
+    );
+  });
+
+  it("usa 'Sem contratante' para o grupo sem papel (role null)", () => {
+    const csv = roleProfitToCsv([row({ role: null })]);
+    expect(csv.split("\r\n")[1].split(";")[0]).toBe("Sem contratante");
+  });
+
+  it("deixa o cachê mediano vazio abaixo da amostra mínima", () => {
+    const csv = roleProfitToCsv([row({ showCount: 2 })]);
+    // 7ª coluna (índice 6) = cachê mediano.
+    expect(csv.split("\r\n")[1].split(";")[6]).toBe("");
   });
 });
 

@@ -9,8 +9,13 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **880 testes**
-verdes após a Sessão 144 (**rentabilidade por papel do contratante em `/contatos/rentabilidade/por-papel`** — rollup
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **884 testes**
+verdes após a Sessão 145 (**exportação CSV da rentabilidade por papel** em `/contatos/rentabilidade/por-papel/export` —
+`roleProfitToCsv`/`ROLE_PROFIT_CSV_HEADERS` em `src/lib/csv.ts` espelhando `contactProfitToCsv`/D105 sem a coluna
+"Contratante" (1ª coluna "Papel", grupo `role: null` → "Sem contratante", cachê mediano gated por `MIN_MEDIAN_FEE_SAMPLE`);
+rota `/contatos/rentabilidade/por-papel/export?ano=` reusa a mesma consulta/recorte da página + BOM UTF-8; botão "⬇ CSV"
+no cabeçalho. +4 testes. Ver D137; segue a Sessão 144 (**rentabilidade por papel do contratante em
+`/contatos/rentabilidade/por-papel`** — rollup
 acima da rentabilidade por contratante (D105): agrupa os shows pelo **papel** de quem paga (Casa de show / Produtor /
 Promoter / Contratante…) em vez de por pessoa, respondendo "que tipo de comprador rende mais por show?" — útil para
 decidir onde investir prospecção. Novo helper puro `rankRolesByProfit(shows, txs, getPayer, opts?)` em `src/lib/finance.ts`
@@ -2822,9 +2827,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    **Rentabilidade por papel do contratante** entregue na Sessão 144 — `rankRolesByProfit` em `src/lib/finance.ts`
    (rollup acima de `rankContactsByProfit`: agrupa o P&L pelo papel de quem paga, vários contratantes do mesmo papel
    somam num grupo) + `/contatos/rentabilidade/por-papel` (cards de destaque + `PeriodPicker`/`?ano=` + tabela com cachê
-   médio/mediano) + cross-link ↔ "Por contratante", registrada no hub, ver D136. Próximo possível — exportação CSV da
-   tela por papel (são poucas linhas, mas casa com o acervo de exportações); ou uma concentração por papel (o quanto a
-   receita depende de um único tipo de comprador), embora o nº de papéis seja pequeno e fixo (6).
+   médio/mediano) + cross-link ↔ "Por contratante", registrada no hub, ver D136. **Exportação CSV da tela por papel**
+   entregue na Sessão 145 — `roleProfitToCsv` + `ROLE_PROFIT_CSV_HEADERS` em `src/lib/csv.ts` (espelha
+   `contactProfitToCsv`/D105 sem a coluna "Contratante": a 1ª coluna é "Papel", grupo `role: null` sai como "Sem
+   contratante", cachê mediano gated por `MIN_MEDIAN_FEE_SAMPLE`) + rota `/contatos/rentabilidade/por-papel/export?ano=`
+   (mesma consulta/recorte da página, BOM UTF-8, nome `rentabilidade-papeis-<ano|todos>.csv`) + botão "⬇ CSV" no
+   cabeçalho da página (só com linhas), **+4 testes**, ver D137. Próximo possível — uma concentração por papel (o quanto
+   a receita depende de um único tipo de comprador), embora o nº de papéis seja pequeno e fixo (6).
 
 9. **Rentabilidade geográfica — evoluções** (rentabilidade por local entregue na Sessão 28, `/shows/locais` +
    `rankVenuesByProfit`; atuação por cidade na Sessão 57, `/shows/cidades` + `rankCitiesByProfit`; recorte por
