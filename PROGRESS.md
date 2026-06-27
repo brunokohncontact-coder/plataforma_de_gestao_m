@@ -9,8 +9,16 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **844 testes**
-verdes após a Sessão 137 (**exportação CSV dos cachês a receber por contratante em `/shows/a-receber/por-contratante`** —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **847 testes**
+verdes após a Sessão 138 (**prazo MEDIANO de recebimento por contratante em `/shows/prazo-recebimento/por-contratante`** —
+fecha o item adiado na D57/próximos passos (item 5) com a mesma mecânica da D123 (cachê mediano): `paymentLagByContact`
+em `src/lib/finance.ts` passou a expor `medianDays` em `ContactPaymentLagRow`, via `weightedMedian` sobre os shows do
+grupo (`value=avgDays`, `weight=received`) — os mesmos insumos do `avgDays`, espelhando o `medianDays` global de
+`paymentLag`. A coluna "Prazo mediano" (entre "Prazo médio" e "Pior prazo") só aparece com `showCount >=
+MIN_MEDIAN_LAG_SAMPLE` (=3, nova const exportada); abaixo disso "—" com `title` ("Mediana exige ao menos 3 shows pagos").
+O helper segue puro e computa sempre; o gate é decisão de UI. Resolve na apresentação a ressalva de "ruidoso com poucos
+shows por contratante" (D57). **+4 testes** (mediana vs. outlier 5/10/90→10 com avg>mediana; nº par→15; 1 show→o próprio
+prazo); validado por smoke test autenticado (200 + coluna e ambos os ramos do gate). Ver D130; segue 844 da Sessão 137 (**exportação CSV dos cachês a receber por contratante em `/shows/a-receber/por-contratante`** —
 fecha a alternativa (d) adiada na D128: estende o botão "⬇ CSV" à visão "de quem cobrar primeiro" (agregada por **devedor**,
 não por show). Serializador puro novo `receivablesByContactToCsv` em `src/lib/csv.ts` na mesma convenção pt-BR (delimitador
 `;`, decimal com vírgula, BOM), consumindo uma forma mínima local `ReceivableByContactCsvRow` (não importa
@@ -2591,8 +2599,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `/shows/a-receber/por-contratante/export` (Contratante/Papel/a receber/shows/pior atraso/atraso médio/participação/
    promessas vencidas/a receber vencido), uma linha por devedor na ordem do maior saldo, botão "⬇ CSV" só com devedores,
    ver D129.
-   Próximo possível — lembrar a última escolha de contato por show; ou a mediana
-   do prazo por contratante (adiada na D57: com poucos shows por contratante fica ruidosa).
+   **Prazo MEDIANO de recebimento por contratante** entregue na Sessão 138 — `medianDays` em `ContactPaymentLagRow`
+   (`paymentLagByContact` reusa `weightedMedian` sobre os shows do grupo) + coluna "Prazo mediano" em
+   `/shows/prazo-recebimento/por-contratante`, exibida só com `showCount >= MIN_MEDIAN_LAG_SAMPLE` (=3) — resolve na
+   apresentação a ressalva de "ruidoso com poucos shows por contratante" (D57), mesma mecânica da D123, ver D130.
+   Próximo possível — lembrar a última escolha de contato por show; ou levar o prazo mediano por contratante também ao
+   card do Painel (adiado na D130: o Painel já mostra o DSO mediano global via `paymentLagHeadline`).
 4. **Sessões/segurança**: invalidação ao trocar a senha entregue na Sessão 26
    (`passwordChangedAt` + `isSessionFresh`, ver D17). Evoluções possíveis: "encerrar sessão
    específica" (lista de sessões revogáveis) e recuperação de senha por e-mail — adiáveis.

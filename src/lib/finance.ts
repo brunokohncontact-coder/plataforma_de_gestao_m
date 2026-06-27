@@ -3786,6 +3786,14 @@ export interface ContactPaymentLagRow<
   showCount: number;
   /** Prazo médio (dias) ponderado pelo valor recebido nos shows do contratante. */
   avgDays: number;
+  /**
+   * Prazo MEDIANO (dias) ponderado pelo valor sobre os shows do contratante: o
+   * dia em que metade do que esse contratante pagou já tinha entrado. Robusto a
+   * outlier — um único show muito atrasado infla `avgDays`, mas não a mediana.
+   * Com poucos shows é ruidoso (a UI gateia por `MIN_MEDIAN_LAG_SAMPLE`); o
+   * helper computa sempre. 0 se o grupo não recebeu nada.
+   */
+  medianDays: number;
   /** Pior prazo (dias) entre os shows do contratante. */
   lastDays: number;
   /** Balde de velocidade do contratante, derivado de `avgDays`. */
@@ -3816,6 +3824,13 @@ export interface PaymentLagByContact<
   /** Contratante mais rápido (menor `avgDays`), ignorando o grupo `null`. */
   fastest: ContactPaymentLagRow<C, S> | null;
 }
+
+/**
+ * Amostra mínima de shows pagos de um contratante para exibir o prazo MEDIANO
+ * dele: com 1–2 shows a mediana é tão ruidosa quanto a média (era a ressalva que
+ * mantinha o item adiado na D57). Gate de apresentação — o helper computa sempre.
+ */
+export const MIN_MEDIAN_LAG_SAMPLE = 3;
 
 /**
  * Agrupa o prazo de recebimento realizado por contratante. Reaproveita `paymentLag`
@@ -3873,6 +3888,12 @@ export function paymentLagByContact<
       paymentCount: g.paymentCount,
       showCount: g.shows.length,
       avgDays: Math.round(avgExact),
+      // Mediana ponderada pelo valor sobre o prazo de cada show do grupo — mesmos
+      // insumos do avgDays (avgDays do show, peso = recebido), espelhando o
+      // `medianDays` global de `paymentLag`. Resiste a um show muito atrasado.
+      medianDays: weightedMedian(
+        g.shows.map((s) => ({ value: s.avgDays, weight: s.received })),
+      ),
       lastDays: g.lastDays,
       bucket: paymentSpeedBucket(avgExact),
       share: totalReceived === 0 ? 0 : g.received / totalReceived,

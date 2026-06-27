@@ -3813,3 +3813,43 @@ contexto, decisão, justificativa e alternativas consideradas.
   da exportação por show (D128); aqui o valor é a linha **agregada por devedor**. (c) uma coluna de balde de aging em vez
   de "Pior atraso (dias)" — descartado: os dias permitem recortar/ordenar na planilha e são mais precisos que o rótulo
   do balde.
+
+## D130 — Prazo MEDIANO de recebimento por contratante em `/shows/prazo-recebimento/por-contratante` (Sessão 138)
+- **Contexto:** a tela "Prazo de recebimento por contratante" (D52) mostra, por quem paga, o **prazo médio**
+  ponderado pelo valor (`avgDays`) e o pior prazo (`lastDays`). Sendo média, `avgDays` é puxada por um único show
+  pago muito atrasado — um contratante que costuma pagar em ~10 dias mas teve um show perdido por 90 aparece "lento"
+  e engana na hora de decidir de quem cobrar primeiro. O **prazo mediano** (dia em que metade do que o contratante
+  pagou já tinha entrado) é a leitura robusta a esse outlier — o mesmo que `paymentLag.medianDays` (D57) já dá no
+  agregado global, mas que faltava por contratante. O item estava **adiado na D57/próximos passos** ("com poucos
+  shows por contratante fica ruidosa"), a mesma ressalva que a D123 resolveu para o cachê mediano.
+- **Decisão:** resolver a ressalva como na D123, em vez de manter o adiamento. `paymentLagByContact`
+  (`src/lib/finance.ts`) passou a expor `medianDays: number` em `ContactPaymentLagRow`, computado por
+  `weightedMedian(shows.map(s => ({ value: s.avgDays, weight: s.received })))` — exatamente os mesmos insumos do
+  `avgDays` do grupo e espelhando o `medianDays` global de `paymentLag`. A leitura ruidosa é resolvida na
+  **apresentação**: a coluna "Prazo mediano" (entre "Prazo médio" e "Pior prazo") só mostra o valor quando o
+  contratante tem `showCount >= MIN_MEDIAN_LAG_SAMPLE` (= 3, nova const exportada); abaixo disso exibe "—" com um
+  `title` explicando ("Mediana exige ao menos 3 shows pagos"). O helper continua **puro** e computa a mediana sempre
+  (1 show → o próprio prazo), deixando o gate como decisão de UI — os testes cobrem o cálculo independentemente do
+  limiar. Rodapé da página passou a explicar a leitura mediana e o gate.
+- **Justificativa:** com 1–2 shows pagos a mediana é igual/quase igual à média e não agrega (pior: parece "típica"
+  sem ser); com 3+ ela diverge da média e revela o prazo habitual descontando o show perdido — o que importa para
+  priorizar cobrança e renegociar condições com um cliente de carteira longa. Gatekeepear na UI (e não zerar no dado)
+  mantém uma fonte única do cálculo, o limiar ajustável num só lugar, e reusa o `weightedMedian` já existente — nenhuma
+  segunda implementação de mediana ponderada. Coerente com `MIN_MEDIAN_FEE_SAMPLE` (=3, D123): mesma constante semântica
+  para "amostra mínima de mediana", mas separada por eixo (cachê × prazo) para poder evoluir independente.
+- **Testes:** **+4** em `finance.test.ts` (dentro de `paymentLagByContact`): mediana robusta a outlier (prazos
+  5/10/90 d → mediana 10 d, com `avgDays > medianDays`), nº par de shows (mediana ponderada bate na metade do peso →
+  média dos dois centrais = 15 d), grupo de 1 show (mediana = o próprio prazo, 7 d). **847 testes** verdes (eram 844).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **847 testes**
+  (`vitest run`); smoke test — `npm start`: rota sem sessão → 307 (`/login`), e render **autenticado** (cookie de
+  sessão emitido para o usuário demo) → 200 com a coluna "Prazo mediano" presente e ambos os ramos do gate exercitados
+  (2 contratantes com < 3 shows pagos mostram "—" com o tooltip). `npm audit` inalterado vs. baseline (10 advisories —
+  4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) manter o adiamento (D57) — descartado: a ressalva era de **ruído com poucos
+  shows**, resolvível por amostra mínima na exibição (como na D123), então o motivo deixou de valer. (b) reusar
+  `MIN_MEDIAN_FEE_SAMPLE` em vez de criar `MIN_MEDIAN_LAG_SAMPLE` — descartado: acoplaria o limiar do eixo de prazo ao
+  do eixo de cachê (mesmo valor hoje, mas semânticas distintas que podem divergir). (c) gravar `null` em `medianDays`
+  quando `showCount < 3` — descartado: misturaria regra de exibição na lógica pura e perderia o dado para outros
+  consumidores/testes; o gate é presentacional. (d) levar o prazo mediano também ao card do Painel (`paymentLagHeadline`
+  já expõe o `medianDays` global) — **adiável**: o Painel já mostra o DSO mediano global; o recorte por contratante é
+  granularidade de tela, não de Painel.
