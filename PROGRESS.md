@@ -9,8 +9,18 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **847 testes**
-verdes após a Sessão 138 (**prazo MEDIANO de recebimento por contratante em `/shows/prazo-recebimento/por-contratante`** —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **854 testes**
+verdes após a Sessão 139 (**exportação CSV do prazo de recebimento por contratante em `/shows/prazo-recebimento/por-contratante`** —
+fecha a última lacuna de exportação do acervo de análise (as duas telas de "prazo de recebimento" eram as únicas sem CSV):
+serializador puro novo `paymentLagByContactToCsv` em `src/lib/csv.ts` na mesma convenção pt-BR (delimitador `;`, decimal com
+vírgula, BOM), consumindo a forma mínima local `PaymentLagByContactCsvRow` (não importa `ContactPaymentLagRow` de
+`@/lib/finance`). Colunas Contratante/**Papel**/Recebido/Shows/**Prazo médio (dias)**/**Prazo mediano (dias)**/**Pior prazo
+(dias)**/**Participação**/**Velocidade**; prazos como inteiros (negativo = adiantado), prazo mediano só a partir de
+`MIN_MEDIAN_LAG_SAMPLE` (=3) shows pagos (abaixo disso em branco, espelha o "—" da UI/D130), "Velocidade" via
+`PAYMENT_SPEED_BUCKET_LABELS`. Route `por-contratante/export/route.ts` espelha a query da página e reusa a camada pura testada:
+`pickPayerContact`→`paymentLagByContact` (que já ordena do mais lento ao mais rápido e joga "Sem contratante" por último);
+arquivo `prazo-recebimento-por-contratante.csv`. Botão "⬇ CSV" só com `lag.rows.length > 0`. **+7 testes**; validado por smoke
+test autenticado (200 + CSV correto + página com o botão). Ver D131; segue 847 da Sessão 138 (**prazo MEDIANO de recebimento por contratante em `/shows/prazo-recebimento/por-contratante`** —
 fecha o item adiado na D57/próximos passos (item 5) com a mesma mecânica da D123 (cachê mediano): `paymentLagByContact`
 em `src/lib/finance.ts` passou a expor `medianDays` em `ContactPaymentLagRow`, via `weightedMedian` sobre os shows do
 grupo (`value=avgDays`, `weight=received`) — os mesmos insumos do `avgDays`, espelhando o `medianDays` global de
@@ -2603,8 +2613,14 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    (`paymentLagByContact` reusa `weightedMedian` sobre os shows do grupo) + coluna "Prazo mediano" em
    `/shows/prazo-recebimento/por-contratante`, exibida só com `showCount >= MIN_MEDIAN_LAG_SAMPLE` (=3) — resolve na
    apresentação a ressalva de "ruidoso com poucos shows por contratante" (D57), mesma mecânica da D123, ver D130.
-   Próximo possível — lembrar a última escolha de contato por show; ou levar o prazo mediano por contratante também ao
-   card do Painel (adiado na D130: o Painel já mostra o DSO mediano global via `paymentLagHeadline`).
+   **Exportação CSV do prazo de recebimento por contratante** entregue na Sessão 139 — `paymentLagByContactToCsv` em
+   `src/lib/csv.ts` + `/shows/prazo-recebimento/por-contratante/export` (Contratante/Papel/Recebido/Shows/prazo médio/prazo
+   mediano/pior prazo/participação/velocidade), uma linha por contratante na ordem do mais lento ao mais rápido, prazo
+   mediano em branco abaixo de `MIN_MEDIAN_LAG_SAMPLE` (=3) shows, botão "⬇ CSV" só com linhas, ver D131.
+   Próximo possível — exportação CSV também da tela-mãe `/shows/prazo-recebimento` (agregado global por baldes de
+   velocidade, adiada na D131 por ter forma de linha distinta); lembrar a última escolha de contato por show; ou levar o
+   prazo mediano por contratante também ao card do Painel (adiado na D130: o Painel já mostra o DSO mediano global via
+   `paymentLagHeadline`).
 4. **Sessões/segurança**: invalidação ao trocar a senha entregue na Sessão 26
    (`passwordChangedAt` + `isSessionFresh`, ver D17). Evoluções possíveis: "encerrar sessão
    específica" (lista de sessões revogáveis) e recuperação de senha por e-mail — adiáveis.

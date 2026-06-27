@@ -107,9 +107,20 @@ export default async function PaymentLagByContactPage() {
             por quem responde pelo pagamento de cada show.
           </p>
         </div>
-        <Link href="/shows/prazo-recebimento" className="btn-secondary">
-          ← Prazo de recebimento
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          {lag.rows.length > 0 && (
+            <a
+              href="/shows/prazo-recebimento/por-contratante/export"
+              className="btn-secondary text-sm"
+              download
+            >
+              ⬇ CSV
+            </a>
+          )}
+          <Link href="/shows/prazo-recebimento" className="btn-secondary">
+            ← Prazo de recebimento
+          </Link>
+        </div>
       </div>
 
       {lag.contactCount === 0 && lag.rows.length === 0 ? (

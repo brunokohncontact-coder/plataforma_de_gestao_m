@@ -15,6 +15,7 @@ import {
   contactActivityToCsv,
   receivablesToCsv,
   receivablesByContactToCsv,
+  paymentLagByContactToCsv,
   TRANSACTION_CSV_HEADERS,
   SHOW_CSV_HEADERS,
   ANNUAL_SUMMARY_CSV_HEADERS,
@@ -24,12 +25,14 @@ import {
   CONTACT_ACTIVITY_CSV_HEADERS,
   RECEIVABLE_CSV_HEADERS,
   RECEIVABLE_BY_CONTACT_CSV_HEADERS,
+  PAYMENT_LAG_BY_CONTACT_CSV_HEADERS,
   type CsvTransaction,
   type CsvShow,
   type CsvProfitShow,
   type ContactActivityCsvRow,
   type ReceivableCsvRow,
   type ReceivableByContactCsvRow,
+  type PaymentLagByContactCsvRow,
 } from "./csv";
 import {
   annualSummary,
@@ -622,5 +625,79 @@ describe("receivablesByContactToCsv", () => {
     const lines = csv.split("\r\n");
     expect(lines[1].startsWith("Maior;")).toBe(true);
     expect(lines[2].startsWith("Menor;")).toBe(true);
+  });
+});
+
+describe("paymentLagByContactToCsv", () => {
+  const row = (
+    over: Partial<PaymentLagByContactCsvRow> = {},
+  ): PaymentLagByContactCsvRow => ({
+    contact: { name: "Bar do Zé", role: "VENUE" },
+    received: 150000,
+    showCount: 4,
+    avgDays: 22,
+    medianDays: 18,
+    lastDays: 45,
+    share: 0.6,
+    bucket: "d30",
+    ...over,
+  });
+
+  it("emite só o cabeçalho quando não há linhas", () => {
+    expect(paymentLagByContactToCsv([])).toBe(
+      PAYMENT_LAG_BY_CONTACT_CSV_HEADERS.join(";"),
+    );
+  });
+
+  it("serializa um contratante com recebido, prazos e velocidade", () => {
+    const csv = paymentLagByContactToCsv([row()]);
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(
+      "Contratante;Papel;Recebido (R$);Shows;Prazo médio (dias);Prazo mediano (dias);Pior prazo (dias);Participação;Velocidade",
+    );
+    expect(lines[1]).toBe("Bar do Zé;Casa de show;1500,00;4;22;18;45;60%;8 a 30 dias");
+  });
+
+  it("arredonda a participação para porcentagem inteira", () => {
+    const cols = paymentLagByContactToCsv([row({ share: 0.337 })])
+      .split("\r\n")[1]
+      .split(";");
+    expect(cols[7]).toBe("34%");
+  });
+
+  it("omite o prazo mediano abaixo da amostra mínima (espelha o '—' da UI)", () => {
+    const cols = paymentLagByContactToCsv([row({ showCount: 2, medianDays: 18 })])
+      .split("\r\n")[1]
+      .split(";");
+    expect(cols[5]).toBe("");
+  });
+
+  it("preserva prazos negativos (pagamento adiantado)", () => {
+    const cols = paymentLagByContactToCsv([
+      row({ avgDays: -3, medianDays: -2, lastDays: -1, showCount: 3 }),
+    ])
+      .split("\r\n")[1]
+      .split(";");
+    expect(cols[4]).toBe("-3");
+    expect(cols[5]).toBe("-2");
+    expect(cols[6]).toBe("-1");
+  });
+
+  it("serializa o grupo sem contratante com nome fixo e papel em branco", () => {
+    const cols = paymentLagByContactToCsv([row({ contact: null })])
+      .split("\r\n")[1]
+      .split(";");
+    expect(cols[0]).toBe("Sem contratante");
+    expect(cols[1]).toBe("");
+  });
+
+  it("preserva a ordem das linhas recebidas (mais lento primeiro)", () => {
+    const csv = paymentLagByContactToCsv([
+      row({ contact: { name: "Lento", role: "PROMOTER" }, avgDays: 50, bucket: "slow" }),
+      row({ contact: { name: "Rápido", role: "VENUE" }, avgDays: 3, bucket: "d7" }),
+    ]);
+    const lines = csv.split("\r\n");
+    expect(lines[1].startsWith("Lento;")).toBe(true);
+    expect(lines[2].startsWith("Rápido;")).toBe(true);
   });
 });
