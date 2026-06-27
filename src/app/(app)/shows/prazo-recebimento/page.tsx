@@ -78,7 +78,16 @@ export default async function PaymentLagPage() {
             que já caiu — complementa os <Link href="/shows/a-receber" className="text-brand-700 hover:underline">cachês a receber</Link>.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {lag.rows.length > 0 && (
+            <a
+              href="/shows/prazo-recebimento/export"
+              className="btn-secondary text-sm"
+              download
+            >
+              ⬇ CSV
+            </a>
+          )}
           <Link href="/shows/prazo-recebimento/por-contratante" className="btn-secondary">
             Por contratante
           </Link>

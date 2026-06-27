@@ -9,8 +9,18 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **854 testes**
-verdes após a Sessão 139 (**exportação CSV do prazo de recebimento por contratante em `/shows/prazo-recebimento/por-contratante`** —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **859 testes**
+verdes após a Sessão 140 (**exportação CSV do prazo de recebimento por show em `/shows/prazo-recebimento`** —
+fecha a alternativa (b) adiada na D131 e a última lacuna de exportação tabular do acervo: a tela-mãe (uma linha por show,
+do prazo mais lento ao mais rápido) ainda não exportava. Serializador puro novo `paymentLagToCsv` em `src/lib/csv.ts` na
+mesma convenção pt-BR (delimitador `;`, decimal com vírgula, datas UTC, BOM), consumindo a forma mínima local
+`PaymentLagCsvRow` (não importa `PaymentLagShowRow` de `@/lib/finance`, que carrega o show inteiro). Colunas
+Show/**Data**/**Local**/**Cidade**/Recebido/**Recebimentos**/**Prazo médio (dias)**/**Pior prazo (dias)**/**Velocidade**;
+prazos como inteiros (negativo = adiantado), "Velocidade" via `PAYMENT_SPEED_BUCKET_LABELS`. Sem prazo mediano por linha
+(a mediana é propriedade de um grupo de shows, não de um show isolado — fica na visão por contratante/D131). Route
+`prazo-recebimento/export/route.ts` espelha a query da página e reusa a camada pura testada `paymentLag` (que já ordena do
+mais lento ao mais rápido); arquivo `prazo-recebimento.csv`. Botão "⬇ CSV" só com `lag.rows.length > 0`. **+5 testes**;
+validado por smoke test autenticado (200 + `text/csv` + CSV correto + página com o botão). Ver D132; segue 854 da Sessão 139 (**exportação CSV do prazo de recebimento por contratante em `/shows/prazo-recebimento/por-contratante`** —
 fecha a última lacuna de exportação do acervo de análise (as duas telas de "prazo de recebimento" eram as únicas sem CSV):
 serializador puro novo `paymentLagByContactToCsv` em `src/lib/csv.ts` na mesma convenção pt-BR (delimitador `;`, decimal com
 vírgula, BOM), consumindo a forma mínima local `PaymentLagByContactCsvRow` (não importa `ContactPaymentLagRow` de
@@ -2617,10 +2627,15 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `src/lib/csv.ts` + `/shows/prazo-recebimento/por-contratante/export` (Contratante/Papel/Recebido/Shows/prazo médio/prazo
    mediano/pior prazo/participação/velocidade), uma linha por contratante na ordem do mais lento ao mais rápido, prazo
    mediano em branco abaixo de `MIN_MEDIAN_LAG_SAMPLE` (=3) shows, botão "⬇ CSV" só com linhas, ver D131.
-   Próximo possível — exportação CSV também da tela-mãe `/shows/prazo-recebimento` (agregado global por baldes de
-   velocidade, adiada na D131 por ter forma de linha distinta); lembrar a última escolha de contato por show; ou levar o
+   **Exportação CSV do prazo de recebimento por show (tela-mãe)** entregue na Sessão 140 — `paymentLagToCsv` em
+   `src/lib/csv.ts` + `/shows/prazo-recebimento/export` (Show/Data/Local/Cidade/Recebido/Recebimentos/prazo médio/pior
+   prazo/velocidade), uma linha por show na ordem do mais lento ao mais rápido, sem prazo mediano por linha (é propriedade
+   de grupo, não de show isolado), botão "⬇ CSV" só com linhas; fecha a alternativa (b) adiada na D131 e a última lacuna
+   de exportação tabular do acervo, ver D132.
+   Próximo possível — lembrar a última escolha de contato por show; ou levar o
    prazo mediano por contratante também ao card do Painel (adiado na D130: o Painel já mostra o DSO mediano global via
-   `paymentLagHeadline`).
+   `paymentLagHeadline`); ou exportar o agregado por baldes de velocidade (5 linhas-resumo) se houver demanda (descartado
+   na D132(a) por baixo valor de planilha).
 4. **Sessões/segurança**: invalidação ao trocar a senha entregue na Sessão 26
    (`passwordChangedAt` + `isSessionFresh`, ver D17). Evoluções possíveis: "encerrar sessão
    específica" (lista de sessões revogáveis) e recuperação de senha por e-mail — adiáveis.

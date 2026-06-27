@@ -3899,3 +3899,44 @@ contexto, decisão, justificativa e alternativas consideradas.
   distinta (baldes de velocidade, não devedores) e menor valor de planilha; fica como próximo passo. (c) gravar `null`
   no `medianDays` quando `showCount < 3` no serializador — descartado: o gate é presentacional (como na D130), então o
   serializador apenas omite na exibição, recebendo o `medianDays` cru.
+
+## D132 — Exportação CSV do prazo de recebimento por show em `/shows/prazo-recebimento` (Sessão 140)
+- **Contexto:** a quebra por contratante de "prazo de recebimento" já exporta CSV (D131), mas a **tela-mãe**
+  `/shows/prazo-recebimento` (uma linha por show, do prazo mais lento ao mais rápido) ainda não — era a alternativa (b)
+  explicitamente adiada na D131. Era a última tela tabular de análise do acervo sem exportação. A tabela por show é o
+  recorte que um músico leva para uma planilha ao auditar *quais shows* demoraram a pagar (não *quem* — isso é a visão
+  por contratante), p.ex. ordenar pelo pior prazo, cruzar com local/cidade ou filtrar por período manualmente.
+- **Decisão:** serializador **puro** novo `paymentLagToCsv` em `src/lib/csv.ts`, na mesma convenção pt-BR já firmada
+  (delimitador `;`, decimal com vírgula, datas UTC via `csvDate`, BOM UTF-8 prefixado na camada HTTP). Consome uma forma
+  mínima `PaymentLagCsvRow` (`{ show: { title, date, venue?, city? }, received, paymentCount, avgDays, lastDays,
+  bucket }`) declarada em `csv.ts` — **não** importa `PaymentLagShowRow` de `@/lib/finance` (que carrega o show inteiro),
+  mantendo o mesmo desacoplamento dos demais serializadores (como `ReceivableCsvRow`/D128). Colunas:
+  Show/**Data**/**Local**/**Cidade**/Recebido/**Recebimentos**/**Prazo médio (dias)**/**Pior prazo (dias)**/**Velocidade**.
+  Os prazos saem como inteiros (negativos = adiantado); título/data/local/cidade saem explícitos (a planilha quer
+  identificar o show, ao contrário de `PaymentLagShowRow` que só referencia o objeto). A "Velocidade" usa
+  `PAYMENT_SPEED_BUCKET_LABELS` (o mesmo balde por show derivado de `avgDays`). Diferente da visão por contratante (D131),
+  **não há prazo mediano** por linha — a mediana só faz sentido sobre um grupo de shows; por show o par médio+pior já
+  descreve a linha. O route `prazo-recebimento/export/route.ts` espelha a query da página (shows não cancelados +
+  receitas INCOME recebidas vinculadas) e reusa **toda** a camada pura já testada: `paymentLag` (agregação e prazos
+  ponderados, que já ordena do mais lento ao mais rápido). Arquivo `prazo-recebimento.csv`. A página ganhou o botão
+  "⬇ CSV" (só com `lag.rows.length > 0`), ao lado de "Por contratante" e "← Shows".
+- **Justificativa:** mantém a disciplina serializador-puro + route fino das D125/D127/D128/D129/D131 (lógica testável em
+  `csv.ts`, I/O no route). A ordem herdada de `paymentLag` (mais lento primeiro) torna o CSV imediatamente útil para
+  auditar os piores pagamentos. Fecha a última lacuna de exportação do acervo de análise (era a alternativa (b) da D131).
+- **Testes:** **+5** em `csv.test.ts` (só-cabeçalho; formatação pt-BR com data/local/cidade/recebido/prazos/velocidade;
+  local/cidade em branco quando ausentes; preservação de prazos negativos adiantados; preservação de ordem
+  lento→rápido). **859 testes** verdes (eram 854).
+- **DoD:** build de produção (a rota `/shows/prazo-recebimento/export` aparece no manifesto), typecheck (`tsc --noEmit`)
+  e lint (`next lint`, 0 avisos) verdes; **859 testes** (`vitest run`); smoke test (`npm start`): sem sessão a rota → 307
+  para `/login`; **com** sessão forjada (lib própria) sobre o seed, o route devolve 200 + `text/csv` +
+  `content-disposition` correto + CSV correto (cabeçalho + linha "Show no Bar do Zé;17/06/2026;Bar do Zé;São
+  Paulo;250,00;1;0;0;No dia ou adiantado"); a página renderiza 200 com o botão "⬇ CSV". `npm audit` **inalterado** vs.
+  baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios);
+  **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) exportar o agregado por baldes de velocidade (a forma de "linha distinta" citada na
+  D131) em vez da tabela por show — descartado: são só 5 linhas-resumo (pouco valor de planilha) e o usuário já vê os
+  baldes na tela; a tabela por show é o artefato natural e consistente com todas as outras exportações (cada uma exporta
+  o detalhe tabular, não o resumo). (b) exportar os prazos como texto ("22 dias") espelhando a tela — descartado pelo
+  mesmo motivo da D131(a): inteiros ordenam/filtram melhor. (c) incluir o prazo mediano por show — descartado: a mediana
+  é uma propriedade de um conjunto de recebimentos de vários shows, não de um show isolado (cujo `avgDays` já pondera os
+  recebimentos próprios); manter por contratante (D131).
