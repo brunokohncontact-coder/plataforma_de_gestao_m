@@ -4059,3 +4059,44 @@ contexto, decisão, justificativa e alternativas consideradas.
   (por ser mais urgente) — descartado: o pico também é janela de preço e é o nudge já estabelecido; o vale como fallback é
   menos surpreendente. (d) surfar o vale **mais fundo** da janela em vez do mais cedo — descartado: espelha a escolha do
   mês forte (D134(b)) e maximiza o lead time do mês iminente.
+
+## D136 — Rentabilidade por papel do contratante (`/contatos/rentabilidade/por-papel`) (Sessão 144)
+- **Contexto:** o acervo de rentabilidade já cobre as dimensões *por show* (D-F4), *por local/cidade* (D105/geo) e *por
+  contratante individual* (D105). Falta o **rollup por tipo de comprador**: agrupar os shows pelo **papel** de quem paga
+  (Casa de show, Produtor/Promoter, Contratante, Produtor musical, Imprensa, Outro). É uma pergunta de estratégia distinta
+  da rentabilidade por pessoa — "que *categoria* de comprador rende mais por show?" orienta **onde investir prospecção**
+  (ex.: se produtores pagam consistentemente mais que reservas diretas com a casa, vale priorizar produtores), enquanto a
+  visão por contratante orienta o relacionamento com clientes específicos.
+- **Decisão:** novo helper puro `rankRolesByProfit(shows, txs, getPayer, opts?)` em `src/lib/finance.ts`, **espelho de
+  `rankContactsByProfit`** (mesma atribuição de **um** pagador por show via `getPayer`/`pickPayerContact` para não contar o
+  resultado em dobro; mesmos campos por linha: `showCount`/`totalFee`/`totalExtra`/`totalExpenses`/`totalNet`/`avgNet`/
+  `avgFee`/`medianFee`/`margin`; exclui `CANCELLED` por padrão), só que a **chave de grupo é o `role` do pagador** — vários
+  contratantes do mesmo papel somam num só grupo. Shows sem contato atribuído caem em "Sem contratante" (`role: null`,
+  sempre por último, fora de `best`/`worst`/`roleCount`). Devolve `RolesProfitability` (`rows: RoleProfitRow[]`). Página
+  server component `/contatos/rentabilidade/por-papel` espelha o layout da tela por contratante (cards de destaque +
+  `PeriodPicker`/`?ano=` reusando os três helpers da D108 + tabela com cachê médio/mediano, mediano só ≥
+  `MIN_MEDIAN_FEE_SAMPLE`=3), com **badge** de papel por linha (sem link — papel não é entidade navegável) e cross-link
+  recíproco "Por papel" ↔ "Por contratante". Registrada no hub (`REPORT_GROUPS`, área Contatos, subtema "Quem move a
+  carreira", após "Rentabilidade por contratante").
+- **Justificativa:** um helper paralelo (não uma generalização de `rankContactsByProfit`) porque a chave, a forma da linha
+  (`role` vs. `contact`) e os agregados de cabeçalho (`roleCount`/`best`/`worst`) diferem o bastante para que parametrizar
+  custasse mais clareza do que duplicar ~70 linhas de mecânica já testada — mesma decisão da D122 (concentração de cliente
+  vs. geográfica como helpers paralelos). A atribuição de pagador é idêntica à D30/D105, então a leitura reconcilia com a
+  soma do P&L dos shows (sem dupla contagem). O recorte por ano reusa exatamente os helpers da D108 (zero lógica nova de
+  período).
+- **Testes:** **+5** em `finance.test.ts` (estrutura vazia; dois contratantes do mesmo papel somam num grupo e reconciliam
+  com a soma dos shows + cachê médio ≠ líquido; "Sem contratante" à parte e por último; ordena por resultado e aponta
+  melhor/pior só entre identificados; cachê mediano robusto a outlier + exclui cancelado). 880 testes no total (eram 875).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **880 testes**
+  (`vitest run`); smoke test (`next start`) com sessão forjada → `/contatos/rentabilidade/por-papel` devolve 200 e, com
+  dois produtores distintos (mesmo papel PROMOTER), uma casa de show e um show sem contratante, renderiza os rótulos de
+  papel, o grupo "Sem contratante", o seletor de período e o cross-link "Por contratante". `npm audit` **inalterado** vs.
+  baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios);
+  **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) generalizar `rankContactsByProfit` com um `keyer` genérico (como `aggregateShowProfit`
+  faz para local/cidade) — descartado: a forma da linha e os agregados de cabeçalho diferem (papel é `string|null` sem
+  nome/id), e o ganho de DRY não compensava o acoplamento; (b) exportação CSV junto — adiada (são poucas linhas; pode casar
+  com o acervo de exportações numa sessão futura, registrado nos próximos passos); (c) card de concentração por papel
+  (quanto a receita depende de um único tipo de comprador) — adiado: o nº de papéis é pequeno e fixo (6), então a
+  concentração é menos informativa que nos eixos cliente/cidade; (d) link da linha para uma lista de contatos daquele papel
+  — descartado por ora: a tela de Contatos já filtra por papel e a badge mantém a tabela enxuta.

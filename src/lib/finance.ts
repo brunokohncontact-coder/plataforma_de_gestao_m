@@ -736,6 +736,165 @@ export function rankContactsByProfit<S extends ShowLike>(
   };
 }
 
+// ── Rentabilidade por papel do contratante (que tipo de comprador paga melhor) ─
+// Complementa a rentabilidade por contratante individual (D105) com um rollup
+// acima dele: agrupa os shows pelo **papel** de quem paga (Casa de show, Produtor/
+// Promoter, Contratante…) em vez de por pessoa. Responde "que tipo de comprador
+// vale mais a pena cultivar?" — útil para decidir onde investir prospecção
+// (ex.: produtores pagam 40% mais por show que reservas diretas com a casa).
+// Mesma mecânica de atribuição de `rankContactsByProfit` (um pagador por show via
+// getPayer/pickPayerContact), só que a chave de grupo é o papel do pagador.
+
+export interface RoleProfitRow {
+  /** Papel do contratante (ex.: "VENUE"); `null` = shows sem contato atribuído. */
+  role: string | null;
+  /** Nº de shows no grupo (após exclusões). */
+  showCount: number;
+  /** Cachê somado (centavos). */
+  totalFee: number;
+  /** Receitas extras somadas (centavos). */
+  totalExtra: number;
+  /** Despesas somadas (centavos). */
+  totalExpenses: number;
+  /** Resultado líquido somado = cachê + extras − despesas (centavos). */
+  totalNet: number;
+  /** Resultado líquido médio por show no grupo (centavos, arredondado). */
+  avgNet: number;
+  /**
+   * Cachê médio por show no grupo (centavos, arredondado) — o **nível de preço**
+   * praticado por este tipo de comprador, distinto do líquido (`avgNet`).
+   */
+  avgFee: number;
+  /**
+   * Cachê **mediano** por show no grupo (centavos): metade dos shows do papel
+   * cobra acima, metade abaixo. Robusto a um único show fora da curva. A leitura
+   * só é confiável com amostra suficiente; a UI a omite com poucos shows (D123).
+   */
+  medianFee: number;
+  /** Margem agregada (net / receita bruta), 0 se receita bruta 0. */
+  margin: number;
+}
+
+export interface RolesProfitability {
+  /** Linhas por resultado (`totalNet`) decrescente; o grupo "sem contratante" por último. */
+  rows: RoleProfitRow[];
+  /** Nº de papéis distintos identificados (exclui o grupo "sem contratante"). */
+  roleCount: number;
+  /** Nº de shows considerados (após exclusões). */
+  count: number;
+  /** Resultado líquido somado de todos os grupos. */
+  totalNet: number;
+  /** Papel mais rentável (maior `totalNet`, ignora "sem contratante") ou null. */
+  best: RoleProfitRow | null;
+  /** Papel menos rentável (menor `totalNet`, ignora "sem contratante") ou null. */
+  worst: RoleProfitRow | null;
+}
+
+/**
+ * Agrega a rentabilidade (P&L) dos shows pelo **papel** de quem paga — respondendo
+ * "que tipo de comprador (casa, produtor, contratante…) me dá mais dinheiro?".
+ * É um rollup acima de `rankContactsByProfit`: em vez de uma linha por pessoa,
+ * uma linha por papel, somando todos os contratantes daquele papel.
+ *
+ * - Cada show é atribuído a **um único** pagador via `getPayer` (tipicamente
+ *   `pickPayerContact`), exatamente como `rankContactsByProfit`, para o resultado
+ *   não ser contado em duplicidade; o papel do grupo é o `role` desse pagador.
+ * - Shows sem contato atribuído caem no grupo "Sem contratante" (`role: null`).
+ * - Reaproveita `computeShowPnL` (fonte única do cálculo por show).
+ * - Por padrão exclui shows `CANCELLED`; `opts.excludeStatuses` customiza.
+ * - Ordena por `totalNet` desc; empate por nº de shows e papel; o grupo sem
+ *   contratante sempre por último. `best`/`worst` consideram só os identificados.
+ */
+export function rankRolesByProfit<S extends ShowLike>(
+  shows: S[],
+  txs: TxLike[],
+  getPayer: (show: S) => ContactProfitContact | null,
+  opts: { excludeStatuses?: string[] } = {},
+): RolesProfitability {
+  const excluded = new Set(opts.excludeStatuses ?? ["CANCELLED"]);
+
+  interface Acc {
+    role: string | null;
+    showCount: number;
+    totalFee: number;
+    totalExtra: number;
+    totalExpenses: number;
+    totalNet: number;
+    /** Cachês individuais do grupo, para o cachê mediano (robusto a outlier). */
+    fees: number[];
+  }
+
+  const NO_ROLE = " "; // chave reservada para o grupo sem contratante
+  const groups = new Map<string, Acc>();
+
+  for (const show of shows) {
+    if (show.status != null && excluded.has(show.status)) continue;
+
+    const contact = getPayer(show);
+    const role = contact ? contact.role : null;
+    const key = role ?? NO_ROLE;
+
+    let acc = groups.get(key);
+    if (!acc) {
+      acc = {
+        role,
+        showCount: 0,
+        totalFee: 0,
+        totalExtra: 0,
+        totalExpenses: 0,
+        totalNet: 0,
+        fees: [],
+      };
+      groups.set(key, acc);
+    }
+
+    const pnl = computeShowPnL(show, txs);
+    acc.showCount += 1;
+    acc.totalFee += pnl.fee;
+    acc.totalExtra += pnl.extraIncome;
+    acc.totalExpenses += pnl.expenses;
+    acc.totalNet += pnl.net;
+    acc.fees.push(pnl.fee);
+  }
+
+  const rows: RoleProfitRow[] = [...groups.values()].map((acc) => {
+    const gross = acc.totalFee + acc.totalExtra;
+    return {
+      role: acc.role,
+      showCount: acc.showCount,
+      totalFee: acc.totalFee,
+      totalExtra: acc.totalExtra,
+      totalExpenses: acc.totalExpenses,
+      totalNet: acc.totalNet,
+      avgNet: acc.showCount > 0 ? Math.round(acc.totalNet / acc.showCount) : 0,
+      avgFee: acc.showCount > 0 ? Math.round(acc.totalFee / acc.showCount) : 0,
+      medianFee: median(acc.fees),
+      margin: gross === 0 ? 0 : acc.totalNet / gross,
+    };
+  });
+
+  // Resultado desc; "sem contratante" sempre por último; empate determinístico.
+  rows.sort((a, b) => {
+    if (!a.role !== !b.role) return a.role ? -1 : 1;
+    return (
+      b.totalNet - a.totalNet ||
+      b.showCount - a.showCount ||
+      (a.role ?? "").localeCompare(b.role ?? "")
+    );
+  });
+
+  const identified = rows.filter((r) => r.role);
+
+  return {
+    rows,
+    roleCount: identified.length,
+    count: rows.reduce((n, r) => n + r.showCount, 0),
+    totalNet: sum(rows.map((r) => r.totalNet)),
+    best: identified[0] ?? null,
+    worst: identified.length > 0 ? identified[identified.length - 1] : null,
+  };
+}
+
 // ── Concentração de clientes (risco de dependência de contratante) ──────────
 // Mede o quanto a receita se concentra em poucos contratantes — o risco de
 // carreira de depender de um único cliente ("e se o contratante que paga metade
