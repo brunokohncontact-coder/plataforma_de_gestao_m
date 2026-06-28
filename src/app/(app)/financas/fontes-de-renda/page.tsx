@@ -54,9 +54,19 @@ export default async function FinanceIncomeSourcesPage() {
             De onde vem o seu dinheiro e o quanto você depende de uma única fonte.
           </p>
         </div>
-        <Link href="/financas" className="text-sm text-gray-500 hover:underline">
-          ← Finanças
-        </Link>
+        <div className="flex items-center gap-3">
+          {mix.sourceCount > 0 && (
+            <a
+              href="/financas/fontes-de-renda/export"
+              className="text-sm text-brand-700 hover:underline"
+            >
+              ⬇ CSV
+            </a>
+          )}
+          <Link href="/financas" className="text-sm text-gray-500 hover:underline">
+            ← Finanças
+          </Link>
+        </div>
       </div>
 
       {mix.sourceCount === 0 ? (

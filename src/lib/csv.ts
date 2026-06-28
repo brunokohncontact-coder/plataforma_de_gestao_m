@@ -30,6 +30,7 @@ import {
   type GigSeasonality,
   type WeekdayPerformance,
   type FeeDistribution,
+  type IncomeMix,
 } from "./finance";
 import { MONTH_NAMES_LONG } from "./calendar";
 
@@ -962,5 +963,41 @@ export function feeDistributionToCsv(
     centsToCsvAmount(dist.totalFee),
     "",
   ]);
+  return toCsv(out, delimiter);
+}
+
+// ── Fontes de renda / mix de receitas (de onde vem o dinheiro?) ──────────────
+
+export const INCOME_MIX_CSV_HEADERS = [
+  "Fonte",
+  "Lançamentos",
+  "Total (R$)",
+  "Participação",
+] as const;
+
+/**
+ * Serializa o mix de receitas por fonte (`incomeMix`) em CSV, pronto para
+ * download. Espelha a tabela de `/financas/fontes-de-renda`: uma linha por fonte
+ * (categoria de receita), na mesma ordem da página (valor decrescente, empate por
+ * nome pt-BR), com nº de lançamentos, total e participação no total de receitas,
+ * seguida de uma linha "Total". A participação do Total fica em branco (é sempre
+ * 100% por construção). Mesma convenção pt-BR de `transactionsToCsv` (delimitador
+ * ";", decimal com vírgula). Irmão de `feeDistributionToCsv` (mesmo eixo linhas +
+ * Total). Pura.
+ */
+export function incomeMixToCsv(
+  mix: IncomeMix,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(INCOME_MIX_CSV_HEADERS)];
+  for (const s of mix.sources) {
+    out.push([
+      s.category,
+      String(s.count),
+      centsToCsvAmount(s.amount),
+      csvShare(s.share),
+    ]);
+  }
+  out.push(["Total", "", centsToCsvAmount(mix.total), ""]);
   return toCsv(out, delimiter);
 }

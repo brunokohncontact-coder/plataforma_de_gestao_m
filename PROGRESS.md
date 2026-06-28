@@ -9,8 +9,19 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **908 testes**
-verdes após a Sessão 151 (**recorte por ano (`?ano=`) na distribuição por faixa de cachê** em `/shows/faixas-de-cache` —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **911 testes**
+verdes após a Sessão 152 (**exportação CSV das fontes de renda** em `/financas/fontes-de-renda/export` — novo serializador
+puro `incomeMixToCsv(mix)` + `INCOME_MIX_CSV_HEADERS` em `src/lib/csv.ts`, irmão direto de `feeDistributionToCsv` (D142):
+recebe o objeto `IncomeMix` (`incomeMix`/D45, importado de `@/lib/finance`) e emite uma linha por fonte na mesma ordem da
+página (valor decrescente, empate por nome pt-BR) — colunas Fonte/Lançamentos/Total (R$)/Participação — seguida de uma linha
+"Total" (com a participação em branco, sempre 100% por construção, e sem contagem de lançamentos). Mesma convenção pt-BR dos
+irmãos (delimitador `;`, decimal com vírgula, BOM UTF-8 na camada HTTP). Rota `/financas/fontes-de-renda/export` reusa a mesma
+consulta/`incomeMix` da página (sem `?ano=`: a tela ainda não tem recorte por período), nome fixo `fontes-de-renda.csv`; botão
+"⬇ CSV" no cabeçalho só com `mix.sourceCount > 0`. Fecha uma lacuna de exportação do lado das Finanças (até então só
+transações/D14, resumo anual/D47 e trimestral exportavam). **+3 testes** (`describe("incomeMixToCsv")`: só cabeçalho + Total
+zerado sem receita; uma linha por fonte em ordem decrescente + Total com participação em branco; ignora despesas e agrupa sem
+categoria em "Sem categoria"). Smoke test (`next start`) → `/login` 200 e `/financas/fontes-de-renda` +
+`/financas/fontes-de-renda/export` 307 (auth-gated). Ver D144; segue 908 da Sessão 151 (**recorte por ano (`?ano=`) na distribuição por faixa de cachê** em `/shows/faixas-de-cache` —
 a tela e seu export deixaram de somar só "todos os anos" e ganharam o seletor de período (`PeriodPicker`/D119) das telas de
 rentabilidade, reusando os helpers da D108 (`parseProfitYear`/`filterShowsByYear`) + novo derivador puro
 `feeDistributionYears(shows, { now? })` em `src/lib/finance.ts` que devolve os anos UTC (decrescente) **só** dos shows que
@@ -2946,6 +2957,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    (contratante/local/cidade/detalhe do contato/show) importam o componente compartilhado, −180 linhas, markup
    idêntico, ver D119. Próximo possível de DRY — unificar os cards de concentração permanece **adiado** (D116 alt. a):
    os textos acionáveis divergem de verdade ("prospectar palcos" × "abrir praças" × "diversificar clientes").
+10. **Exportação CSV das telas de Finanças — evoluções** (transações entregues na Sessão 14, `/financas/export`;
+   resumo anual na Sessão 47, `/financas/anual/export`; trimestral, `/financas/trimestral/export`):
+   **fontes de renda** entregue na Sessão 152 — `incomeMixToCsv` + `INCOME_MIX_CSV_HEADERS` em `src/lib/csv.ts` +
+   `/financas/fontes-de-renda/export` (Fonte/Lançamentos/Total/Participação + linha Total), botão "⬇ CSV" só com
+   fontes, ver D144. Próximo possível — espelhar o mesmo serializador para a **composição de despesas**
+   (`/financas/composicao-despesas`, `expenseMix` é o espelho de `incomeMix`), e/ou adicionar recorte por ano (`?ano=`)
+   às fontes de renda (página + export juntos), hoje ambas somam todas as receitas/despesas lançadas.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)
