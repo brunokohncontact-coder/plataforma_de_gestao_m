@@ -46,9 +46,19 @@ export default async function FinanceSeasonalityPage() {
             Em que época do ano você costuma faturar mais
           </p>
         </div>
-        <Link href="/financas" className="text-sm text-gray-500 hover:underline">
-          ← Finanças
-        </Link>
+        <div className="flex items-center gap-4">
+          {hasActivity && (
+            <a
+              href="/financas/sazonalidade/export"
+              className="text-sm font-medium text-brand-700 hover:underline"
+            >
+              ⬇ CSV
+            </a>
+          )}
+          <Link href="/financas" className="text-sm text-gray-500 hover:underline">
+            ← Finanças
+          </Link>
+        </div>
       </div>
 
       {!hasActivity ? (
