@@ -9,8 +9,22 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **936 testes**
-verdes após a Sessão 158 (**exportação CSV da cadência de shows** em `/shows/cadencia/export` — a última tela de análise de
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **939 testes**
+verdes após a Sessão 159 (**exportação CSV da evolução do cachê** em `/shows/evolucao-cache/export` — a tela "Evolução do
+cachê" (`feeTrend`, cachê médio realizado mês a mês) ganhou botão de exportação, mais uma lacuna fechada após
+cadência/sazonalidade/dia-da-semana/faixa-de-cachê. Novo serializador puro `feeTrendToCsv(trend)` + `FEE_TREND_CSV_HEADERS`
+em `src/lib/csv.ts` espelha a tabela "Cachê médio mês a mês": uma linha por **mês ativo** (show realizado com cachê), em ordem
+cronológica crescente, com cachê médio/mínimo/máximo do mês e a contagem de shows, seguida de uma linha "Total" cujos valores
+são os agregados gerais da tela (cachê médio geral, menor/maior cachê, total de shows — batem com os cards de destaque).
+Colunas Mês/Cachê médio (R$)/Cachê mínimo (R$)/Cachê máximo (R$)/Shows. A coluna "Mês" usa a chave ISO "YYYY-MM" (ordenável
+por máquina), não o rótulo "Jan 2026" da UI; a "Faixa" da tela vira duas colunas (mín/máx) para abrir limpo na planilha. Só
+meses ativos viram linha (janela aberta, pode abranger anos). Rota `/shows/evolucao-cache/export` reusa a mesma
+consulta/`feeTrend` da página + BOM UTF-8; nome fixo `evolucao-cache.csv`; botão "⬇ CSV" no cabeçalho só com
+`trend.totalShows > 0`. **+3 testes** (`describe("feeTrendToCsv")`: só cabeçalho + Total zerado sem shows com cachê; uma
+linha por mês ativo (média/mín/máx, ordem cronológica, mês parado fora) + Total com agregados gerais; ignora
+propostos/cancelados/futuros/sem-cachê). Smoke test (`next start`) → `/login` 200 e `/shows/evolucao-cache` +
+`/shows/evolucao-cache/export` 307 (auth-gated). `npm audit` sem novas vulnerabilidades (mesmos advisories Next/postcss da
+D6). Ver D151; segue 936 da Sessão 158 (**exportação CSV da cadência de shows** em `/shows/cadencia/export` — a última tela de análise de
 shows sem botão de exportação ganhou o seu, fechando a lacuna após sazonalidade/dia-da-semana/faixa-de-cachê. Novo
 serializador puro `gigCadenceToCsv(cadence)` + `GIG_CADENCE_CSV_HEADERS` em `src/lib/csv.ts` espelha a tabela "Shows mês a
 mês": uma linha por **mês ativo** (com ao menos um show realizado), em ordem cronológica crescente, com a contagem de shows,
