@@ -83,6 +83,11 @@ export default async function FinanceCategoryVariationPage({
           >
             Relatório do mês
           </Link>
+          {hasData && (
+            <a href={`/financas/variacao/export?mes=${key}`} className="btn-secondary text-sm">
+              ⬇ CSV
+            </a>
+          )}
         </div>
       </div>
 

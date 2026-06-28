@@ -40,6 +40,8 @@ import {
   INCOME_MIX_CSV_HEADERS,
   expenseMixToCsv,
   EXPENSE_MIX_CSV_HEADERS,
+  categoryVariationToCsv,
+  CATEGORY_VARIATION_CSV_HEADERS,
   type CsvTransaction,
   type CsvShow,
   type CsvProfitShow,
@@ -57,6 +59,7 @@ import {
   feeDistribution,
   incomeMix,
   expenseMix,
+  compareCategoryReports,
   type TxLike,
   type ShowProfitRow,
   type VenueProfitRow,
@@ -1115,5 +1118,66 @@ describe("expenseMixToCsv", () => {
     expect(semCat[0]).toBe("Sem categoria");
     expect(semCat[2]).toBe("500,00");
     expect(lines[2]).toBe("Total;;500,00;");
+  });
+});
+
+describe("categoryVariationToCsv", () => {
+  const tx = (over: Partial<TxLike> = {}): TxLike => ({
+    type: "EXPENSE",
+    amount: 100000,
+    category: "Transporte",
+    date: "2024-03-10T00:00:00.000Z",
+    received: false,
+    ...over,
+  });
+
+  it("emite só o cabeçalho + as duas linhas Total (zeradas) sem transação", () => {
+    const csv = categoryVariationToCsv(compareCategoryReports([], []));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(CATEGORY_VARIATION_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(3); // cabeçalho + Total despesa + Total receita
+    // delta 0 (mês a mês) → "0%", não "novo".
+    expect(lines[1]).toBe("Despesa;Total;0,00;0,00;0,00;0%");
+    expect(lines[2]).toBe("Receita;Total;0,00;0,00;0,00;0%");
+  });
+
+  it("serializa despesas e receitas marcadas por Tipo, com variação e Totais", () => {
+    const current = [
+      tx({ category: "Transporte", amount: 300000 }),
+      tx({ category: "Equipamento", amount: 100000 }),
+      tx({ type: "INCOME", category: "Show", amount: 500000 }),
+    ];
+    const previous = [
+      tx({ category: "Transporte", amount: 100000 }),
+      tx({ type: "INCOME", category: "Show", amount: 400000 }),
+    ];
+    const csv = categoryVariationToCsv(compareCategoryReports(current, previous));
+    const lines = csv.split("\r\n");
+
+    // Despesas primeiro, ordenadas pelo maior movimento absoluto.
+    expect(lines[1]).toBe("Despesa;Transporte;1000,00;3000,00;2000,00;+200%");
+    // Equipamento não existia no mês anterior → previousAmount 0, pct "novo".
+    expect(lines[2]).toBe("Despesa;Equipamento;0,00;1000,00;1000,00;novo");
+    // Total das despesas: 1000 → 4000 (+300%).
+    expect(lines[3]).toBe("Despesa;Total;1000,00;4000,00;3000,00;+300%");
+    // Depois as receitas + seu Total.
+    expect(lines[4]).toBe("Receita;Show;4000,00;5000,00;1000,00;+25%");
+    expect(lines[5]).toBe("Receita;Total;4000,00;5000,00;1000,00;+25%");
+  });
+
+  it("registra quedas com porcentagem negativa e categoria que sumiu como queda de 100%", () => {
+    const current = [tx({ category: "Marketing", amount: 70000 })];
+    const previous = [
+      tx({ category: "Marketing", amount: 100000 }),
+      tx({ category: "Estúdio", amount: 50000 }),
+    ];
+    const csv = categoryVariationToCsv(compareCategoryReports(current, previous));
+    const lines = csv.split("\r\n");
+    // Estúdio sumiu (500 → 0): maior movimento absoluto, vem primeiro, −100%.
+    expect(lines[1]).toBe("Despesa;Estúdio;500,00;0,00;-500,00;-100%");
+    // Marketing caiu de 1000 para 700 (−30%).
+    expect(lines[2]).toBe("Despesa;Marketing;1000,00;700,00;-300,00;-30%");
+    // Total das despesas: 1500 → 700 (−53%).
+    expect(lines[3]).toBe("Despesa;Total;1500,00;700,00;-800,00;-53%");
   });
 });

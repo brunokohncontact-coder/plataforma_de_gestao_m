@@ -9,8 +9,21 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **919 testes**
-verdes após a Sessão 154 (**recorte por ano (`?ano=`) no desempenho por dia da semana** em `/shows/dias-semana` — a tela e
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **922 testes**
+verdes após a Sessão 155 (**exportação CSV da variação por categoria** em `/financas/variacao/export` — novo serializador
+puro `categoryVariationToCsv(cmp)` + `CATEGORY_VARIATION_CSV_HEADERS` em `src/lib/csv.ts`, recebendo a `CategoryReportComparison`
+já computada (`compareCategoryReports`, de `@/lib/finance`) e emitindo as **duas tabelas da tela num único arquivo** — cada
+linha marcada pela coluna `Tipo` (Despesa/Receita), despesas primeiro, na ordem da comparação (maior movimento absoluto
+primeiro), cada seção terminando numa linha "Total" com somatórios + variação do total (sempre presente, mesmo sem
+categorias). Colunas Tipo/Categoria/Mês anterior (R$)/Este mês (R$)/Variação (R$)/Variação (%); a variação relativa usa o
+helper local novo `csvDeltaPct` ("+25%"/"-30%"/"0%" com sinal, ou "novo" quando o mês anterior é 0, espelhando a página).
+Rota `/financas/variacao/export?mes=YYYY-MM` reusa a mesma leitura de mês (`parseMonthKey`/`shiftMonth`/`monthKey`), consulta
+e `compareCategoryReports` da página + BOM UTF-8; nome `variacao-por-categoria-{mes}.csv`; botão "⬇ CSV" no cabeçalho só com
+`hasData`, propagando o `?mes=` ativo. Fecha a última lacuna de exportação tabular das Finanças. **+3 testes**
+(`describe("categoryVariationToCsv")`: cabeçalho + duas linhas Total zeradas sem transação; despesas/receitas por Tipo com
+variação e Totais incluindo categoria "novo"; quedas com % negativa e categoria sumida como −100%). Smoke test (`next start`)
+→ `/login` 200 e `/financas/variacao?mes=2026-06` + `/financas/variacao/export?mes=2026-06` 307 (auth-gated). Ver D147;
+segue 919 da Sessão 154 (**recorte por ano (`?ano=`) no desempenho por dia da semana** em `/shows/dias-semana` — a tela e
 seu export deixaram de somar só "todos os anos" e ganharam o seletor de período (`PeriodPicker`/D119), reusando os helpers da
 D108 (`parseProfitYear`/`filterShowsByYear`) + novo derivador puro `weekdayPerformanceYears(shows, { now? })` em
 `src/lib/finance.ts` que devolve os anos UTC (decrescente) **só** dos shows que entram no cálculo — realizados

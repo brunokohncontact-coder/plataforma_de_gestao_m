@@ -32,6 +32,9 @@ import {
   type FeeDistribution,
   type IncomeMix,
   type ExpenseMix,
+  type MetricDelta,
+  type CategoryDelta,
+  type CategoryReportComparison,
 } from "./finance";
 import { MONTH_NAMES_LONG } from "./calendar";
 
@@ -1035,5 +1038,79 @@ export function expenseMixToCsv(
     ]);
   }
   out.push(["Total", "", centsToCsvAmount(mix.total), ""]);
+  return toCsv(out, delimiter);
+}
+
+/**
+ * Variação relativa com sinal, legível por máquina, para o CSV de variação por
+ * categoria: "+25%", "-30%", "0%" — ou "novo" quando o mês anterior é 0 (sem base
+ * para porcentagem, espelhando o "novo" da página). Diferente de `csvShare` (que
+ * é sempre uma participação positiva 0–100%): aqui a variação pode ser negativa, e
+ * o sinal é a informação. Pura.
+ */
+function csvDeltaPct(d: MetricDelta): string {
+  if (d.delta === 0) return "0%"; // sem variação (inclui base 0 e atual 0)
+  if (d.pct == null) return "novo"; // surgiu do nada (mês anterior era 0)
+  const p = Math.round(d.pct * 100);
+  return p > 0 ? `+${p}%` : `${p}%`;
+}
+
+export const CATEGORY_VARIATION_CSV_HEADERS = [
+  "Tipo",
+  "Categoria",
+  "Mês anterior (R$)",
+  "Este mês (R$)",
+  "Variação (R$)",
+  "Variação (%)",
+] as const;
+
+/**
+ * Serializa a variação por categoria entre dois meses (`compareCategoryReports`)
+ * em CSV, pronto para download — espelha a página `/financas/variacao`. Emite as
+ * duas seções da tela num único arquivo, cada linha marcada por `Tipo`
+ * (Despesa/Receita): primeiro as despesas, depois as receitas, preservando a
+ * ordem da comparação (maior movimento absoluto primeiro). Cada seção termina
+ * numa linha "Total" com os somatórios do mês e a variação do total — de modo que
+ * o arquivo sempre traz pelo menos as duas linhas de Total, mesmo sem categorias.
+ * Colunas: valor do mês anterior, valor deste mês, variação absoluta (com sinal) e
+ * variação relativa (`csvDeltaPct`: "+25%"/"-30%"/"0%"/"novo"). Mesma convenção
+ * pt-BR de `transactionsToCsv` (delimitador ";", decimal com vírgula). Pura.
+ */
+export function categoryVariationToCsv(
+  cmp: CategoryReportComparison,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(CATEGORY_VARIATION_CSV_HEADERS)];
+
+  const section = (
+    tipo: string,
+    rows: CategoryDelta[],
+    previousTotal: number,
+    total: number,
+    totalDelta: MetricDelta,
+  ): void => {
+    for (const r of rows) {
+      out.push([
+        tipo,
+        r.category,
+        centsToCsvAmount(r.previousAmount),
+        centsToCsvAmount(r.amount),
+        centsToCsvAmount(r.delta.delta),
+        csvDeltaPct(r.delta),
+      ]);
+    }
+    out.push([
+      tipo,
+      "Total",
+      centsToCsvAmount(previousTotal),
+      centsToCsvAmount(total),
+      centsToCsvAmount(totalDelta.delta),
+      csvDeltaPct(totalDelta),
+    ]);
+  };
+
+  section("Despesa", cmp.expense, cmp.previousTotalExpense, cmp.totalExpense, cmp.expenseDelta);
+  section("Receita", cmp.income, cmp.previousTotalIncome, cmp.totalIncome, cmp.incomeDelta);
+
   return toCsv(out, delimiter);
 }

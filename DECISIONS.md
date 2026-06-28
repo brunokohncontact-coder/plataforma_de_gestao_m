@@ -4448,3 +4448,45 @@ contexto, decisão, justificativa e alternativas consideradas.
   smoke test (`next start`) → `/login` 200 e `/shows/dias-semana?ano=2025` + `/shows/dias-semana/export?ano=2025` 307
   (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
   postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## D147 — Exportação CSV da variação por categoria (`/financas/variacao/export`) (Sessão 155)
+- **Contexto:** a tela `/financas/variacao` (variação por categoria, mês de referência vs. mês anterior, `compareCategoryReports`)
+  era a última tela tabular das Finanças sem exportação CSV. As telas-irmãs de análise financeira já exportavam há sessões
+  (resumo anual/D47, trimestral, transações/D14, fontes de renda/D144, composição de despesas/D145). A tela mostra duas
+  tabelas (despesas e receitas por categoria, cada linha com o valor dos dois meses e a variação) — formato naturalmente
+  tabular, pedindo exportação para acompanhamento offline.
+- **Decisão:** novo serializador puro `categoryVariationToCsv(cmp)` + `CATEGORY_VARIATION_CSV_HEADERS` em `src/lib/csv.ts`,
+  recebendo a `CategoryReportComparison` já computada (`compareCategoryReports`, importada de `@/lib/finance`). Emite as **duas
+  seções da tela num único arquivo**, cada linha marcada pela coluna `Tipo` (Despesa/Receita): primeiro as despesas, depois as
+  receitas, preservando a ordem da comparação (maior movimento absoluto primeiro). Cada seção termina numa linha "Total" com os
+  somatórios do mês e a variação do total — de modo que o arquivo sempre traz pelo menos as duas linhas de Total, mesmo sem
+  categorias. Colunas: Tipo / Categoria / Mês anterior (R$) / Este mês (R$) / Variação (R$) / Variação (%). A variação relativa
+  usa um helper local novo `csvDeltaPct(delta)`: "+25%"/"-30%"/"0%" (com sinal, legível por máquina) — ou "novo" quando o mês
+  anterior é 0 (espelhando o "novo" da página), e "0%" quando a variação absoluta é 0 (inclui o total zerado de um mês vazio).
+  Rota `/financas/variacao/export?mes=YYYY-MM` reusa a mesma leitura de mês (`parseMonthKey`/`shiftMonth`/`monthKey`), a mesma
+  consulta e o mesmo `compareCategoryReports` da página, com BOM UTF-8 na camada HTTP; nome `variacao-por-categoria-{mes}.csv`.
+  Botão "⬇ CSV" no cabeçalho só com `hasData` (alguma transação em qualquer um dos dois meses), propagando o `?mes=` ativo.
+- **Justificativa:** fecha a última lacuna de exportação tabular das Finanças. O eixo de **variação** (não só o retrato de um
+  mês, mas o que mudou em relação ao anterior) é exatamente o que se quer levar para uma planilha de acompanhamento — qual
+  categoria de gasto subiu, qual receita caiu — para anotar causas e metas. Um único arquivo com a coluna `Tipo` (em vez de
+  dois downloads separados) mantém despesas e receitas juntas no mesmo recorte, como a tela.
+- **Por que `csvDeltaPct` com sinal (e não `csvShare`):** `csvShare` formata uma participação sempre positiva (0–100%); aqui a
+  variação pode ser negativa e o **sinal é a informação** (gasto subiu vs. caiu). O helper distingue três casos que a página
+  também distingue: variação 0 → "0%" (a página mostra "→ sem variação"); base 0 com valor novo → "novo" (a página mostra
+  "novo"); demais → percentual com sinal explícito (`+`/`-`). A coluna "Variação (R$)" já traz o valor absoluto com sinal via
+  `centsToCsvAmount`, então as duas colunas são redundantes-por-construção mas complementares na leitura (uma em reais, outra
+  em %), como na própria tela.
+- **Alternativas consideradas:** (a) dois arquivos separados (despesas / receitas) — descartado: a tela trata os dois eixos
+  como um só recorte; um arquivo com coluna `Tipo` é mais fiel e evita dois cliques. (b) emitir a variação % sem sinal (como
+  `csvShare`) e deixar a direção implícita no sinal do valor em reais — descartado: a coluna de % isolada ficaria ambígua
+  (subiu ou caiu 30%?) numa planilha ordenada por ela. (c) recorte por ano (`?ano=`) — não se aplica: a tela é comparação
+  mês a mês, não soma anual; o seletor de mês (`?mes=`) já é o recorte natural, e o export o propaga.
+- **Testes:** **+3** em `csv.test.ts` (`describe("categoryVariationToCsv")`): só o cabeçalho + as duas linhas Total zeradas
+  sem transação ("0%", não "novo"); despesas e receitas marcadas por Tipo com variação e Totais, incluindo categoria nova
+  ("novo") e ordenação por maior movimento; quedas com porcentagem negativa e categoria que sumiu do mês como queda de −100%.
+  O serializador é puro; o recorte de mês reusa `compareCategoryReports`/`parseMonthKey`/`shiftMonth` (já testados). **922
+  testes** no total (eram 919).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **922 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/financas/variacao?mes=2026-06` + `/financas/variacao/export?mes=2026-06` 307
+  (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
+  postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
