@@ -4229,3 +4229,40 @@ contexto, decisão, justificativa e alternativas consideradas.
   as lacunas da agenda são sinal (que dias ainda não rendem shows), então o CSV as mantém explícitas como a tela faz;
   (c) generalizar `gigSeasonalityToCsv`/`weekdayPerformanceToCsv` num serializador de "eixo Stat" parametrizado — adiado: são
   só duas cópias curtas e o ganho de DRY não paga a indireção (mesma postura da D116 alt. a sobre os cards de concentração).
+
+## D141 — Comparativo ano a ano da concentração por papel (`/contatos/rentabilidade/por-papel`) (Sessão 149)
+- **Contexto:** o eixo de **papel do comprador** ganhou concentração (HHI/topShare/papéis efetivos) na Sessão 146 (D138),
+  mas era o único dos três eixos de concentração sem comparativo de tendência ano a ano: o de praça já tinha
+  `compareGeoConcentration` (D120) e o de cliente `compareClientConcentration` (D139-família/Sessão da rentabilidade por
+  contratante). A página por papel já carrega o seletor `?ano=` (D136) e computa a `roleConcentration` do período, então o
+  ano anterior estava a um recorte de distância — a lacuna era só o helper + o card.
+- **Decisão:** novo helper puro `compareRoleConcentration(current, previous): RoleConcentrationComparison` em
+  `src/lib/finance.ts`, **cópia estrutural** de `compareClientConcentration`/`compareGeoConcentration` num eixo de papel:
+  recebe duas `RoleConcentration` já computadas (cada uma sobre as linhas de `rankRolesByProfit` do seu período) e devolve
+  `topShareDelta` (variação da participação do maior papel, −1..1), `effectiveRolesDelta` (variação do nº de papéis
+  efetivos, índice de Simpson) e `trend` ("improved"/"worsened"/"stable") via o **mesmo** `concentrationTrend` compartilhado
+  (limiar `GEO_TREND_EPSILON` = 0,05). Na página `/contatos/rentabilidade/por-papel`, o comparativo só é computado/exibido
+  com um ano específico selecionado **e** papel identificado nos dois períodos (`roleCount > 0` em ambos) — reaproveitando o
+  recorte por ano UTC (D108) sobre os shows já carregados, **sem nova consulta**. Novo `RoleComparisonCard` (espelha o
+  `ClientComparisonCard` da rentabilidade por contratante): badge de tendência (🟢 mais distribuída / 🔴 mais concentrada /
+  ⚪ estável), variação do maior papel em p.p. (com os dois valores ano→ano) e variação de papéis efetivos, renderizado logo
+  abaixo do card de concentração por papel.
+- **Justificativa:** simetria — o eixo de papel passa a ter o mesmo trio (concentração + headline-de-card + comparativo) que
+  os outros eixos, com reuso máximo (`concentrationTrend`/`GEO_TREND_EPSILON` já existiam; o card é uma cópia mecânica do de
+  cliente trocando "contratante"→"papel" e removendo o link para a entidade, já que papel não é entidade clicável). A guarda
+  "papel identificado nos dois anos" evita a leitura enganosa de "melhorou/piorou" quando um dos lados está vazio, igual à do
+  comparativo por contratante.
+- **Testes:** **+5** em `finance.test.ts` (`describe("compareRoleConcentration")`, espelhando o bloco do comparativo de
+  cliente sobre o eixo de papel): 'improved' quando o maior papel encolhe além do limiar (topShare 0,8→0,2, efetivos sobem),
+  'worsened' no sentido oposto, 'stable' dentro do limiar (ruído), a fronteira exata (+0,05 == ε vira "worsened") e a
+  preservação das duas concentrações de origem para o detalhe. 901 testes no total (eram 896).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **901 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/contatos/rentabilidade/por-papel?ano=2025` 307 (redireciona ao login sem
+  sessão, rota auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos
+  do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) levar o comparativo também ao Painel — descartado: o Painel já é denso e o comparativo
+  pede um ano selecionado (não há recorte de período no dashboard); fica na página, como os comparativos de praça e cliente;
+  (b) generalizar os três `compare*Concentration` num só helper genérico sobre `topShare`/`effective*` — adiado: são três
+  cópias curtas de ~10 linhas e a indireção (tipos genéricos sobre slices diferentes) não paga o DRY, mesma postura da D140
+  alt. c; (c) um `roleConcentrationHeadline` para nudge de Painel (espelho do `clientConcentrationHeadline`) — adiado pela
+  mesma razão de densidade do Painel, pode vir depois se houver demanda.

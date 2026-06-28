@@ -982,6 +982,60 @@ export function roleConcentration(rows: RoleProfitRow[]): RoleConcentration {
   };
 }
 
+export interface RoleConcentrationComparison {
+  /** Concentração por papel do período atual (tipicamente o ano selecionado). */
+  current: RoleConcentration;
+  /** Concentração por papel do período de comparação (tipicamente o ano anterior). */
+  previous: RoleConcentration;
+  /**
+   * Variação da participação do maior papel (atual − anterior, em pontos
+   * -1..1). Positivo = o maior tipo de comprador pesa **mais** agora (carteira
+   * mais concentrada por canal).
+   */
+  topShareDelta: number;
+  /**
+   * Variação do nº de papéis efetivos (atual − anterior, índice de Simpson).
+   * Positivo = receita **mais distribuída** entre canais agora (mais diversificada).
+   */
+  effectiveRolesDelta: number;
+  /**
+   * Direção do **risco de concentração por canal** entre os dois períodos,
+   * decidida pela variação de `topShare` (a leitura-manchete) contra
+   * `GEO_TREND_EPSILON`:
+   * - "improved": menos concentrado agora (o maior papel encolheu além do limiar);
+   * - "worsened": mais concentrado agora (o maior papel cresceu além do limiar);
+   * - "stable": variação dentro do limiar (ruído, sem leitura de tendência).
+   */
+  trend: "improved" | "worsened" | "stable";
+}
+
+/**
+ * Compara a **concentração por papel** entre dois períodos (atual × anterior),
+ * espelhando `compareClientConcentration` (D139/cliente) e `compareGeoConcentration`
+ * (D120/praça) num eixo de papel do comprador. Pura, sem I/O: recebe duas
+ * `roleConcentration` já computadas (cada uma sobre as linhas de
+ * `rankRolesByProfit` do seu período) e devolve as variações de `topShare` e de
+ * papéis efetivos, além de um veredito de tendência (mesmo limiar
+ * `GEO_TREND_EPSILON` e mesma regra de `concentrationTrend`). O chamador decide
+ * quando exibir (tipicamente só com um ano específico selecionado e o ano
+ * anterior tendo papel identificado — caso contrário a leitura é enganosa).
+ */
+export function compareRoleConcentration(
+  current: RoleConcentration,
+  previous: RoleConcentration,
+): RoleConcentrationComparison {
+  const topShareDelta = current.topShare - previous.topShare;
+  const effectiveRolesDelta = current.effectiveRoles - previous.effectiveRoles;
+
+  return {
+    current,
+    previous,
+    topShareDelta,
+    effectiveRolesDelta,
+    trend: concentrationTrend(topShareDelta),
+  };
+}
+
 // ── Concentração de clientes (risco de dependência de contratante) ──────────
 // Mede o quanto a receita se concentra em poucos contratantes — o risco de
 // carreira de depender de um único cliente ("e se o contratante que paga metade

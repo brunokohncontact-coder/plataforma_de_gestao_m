@@ -7,6 +7,7 @@ import {
   rankContactsByProfit,
   rankRolesByProfit,
   roleConcentration,
+  compareRoleConcentration,
   clientConcentration,
   clientConcentrationHeadline,
   geoConcentration,
@@ -878,6 +879,101 @@ describe("roleConcentration", () => {
     expect(c.hhi).toBeCloseTo(0.2);
     expect(c.level).toBe("diversified");
     expect(c.top3Share).toBeCloseTo(0.6);
+  });
+});
+
+describe("compareRoleConcentration", () => {
+  // Concentração por papel a partir de shows brutos (mesma cadeia da UI por
+  // período): cada show é atribuído ao papel do pagador informado em `payers`.
+  const concFor = (
+    shows: ShowLike[],
+    payers: Record<string, { id: string; name: string; role: string } | null>,
+    txs: TxLike[] = [],
+  ) =>
+    roleConcentration(
+      rankRolesByProfit(shows, txs, (s: ShowLike) => payers[s.id] ?? null).rows,
+    );
+
+  // Receita concentrada num papel: VENUE domina (800 de 1000 → topShare 0,8).
+  const concentrated = () =>
+    concFor(
+      [
+        { id: "a", fee: 800_00, status: "PLAYED" },
+        { id: "b", fee: 100_00, status: "PLAYED" },
+        { id: "c", fee: 100_00, status: "PLAYED" },
+      ],
+      {
+        a: { id: "ze", name: "Zé", role: "VENUE" },
+        b: { id: "ana", name: "Ana", role: "BOOKER" },
+        c: { id: "lia", name: "Lia", role: "PROMOTER" },
+      },
+    );
+
+  // Receita espalhada: 5 papéis distintos de 200 cada → topShare 0,2.
+  const spread = () => {
+    const roles = ["VENUE", "BOOKER", "PROMOTER", "PRODUCER", "OTHER"];
+    return concFor(
+      roles.map((_r, i) => ({ id: `s${i}`, fee: 200_00, status: "PLAYED" })),
+      Object.fromEntries(
+        roles.map((role, i) => [`s${i}`, { id: `c${i}`, name: role, role }]),
+      ),
+    );
+  };
+
+  it("marca 'improved' quando o maior papel encolhe além do limiar", () => {
+    const cmp = compareRoleConcentration(spread(), concentrated());
+    // topShare cai de 0,8 → 0,2 (−0,6) ⇒ menos concentrado.
+    expect(cmp.topShareDelta).toBeCloseTo(-0.6);
+    expect(cmp.effectiveRolesDelta).toBeGreaterThan(0);
+    expect(cmp.trend).toBe("improved");
+  });
+
+  it("marca 'worsened' quando o maior papel cresce além do limiar", () => {
+    const cmp = compareRoleConcentration(concentrated(), spread());
+    expect(cmp.topShareDelta).toBeCloseTo(0.6);
+    expect(cmp.effectiveRolesDelta).toBeLessThan(0);
+    expect(cmp.trend).toBe("worsened");
+  });
+
+  it("marca 'stable' quando a variação fica dentro do limiar (ruído)", () => {
+    const cmp = compareRoleConcentration(concentrated(), concentrated());
+    expect(cmp.topShareDelta).toBeCloseTo(0);
+    expect(cmp.trend).toBe("stable");
+  });
+
+  it("usa exatamente o limiar como fronteira (≥ ε vira tendência)", () => {
+    // topShare 0,55 (VENUE 550/1000) × 0,50 (VENUE 500/1000) → +0,05 == ε.
+    const a = concFor(
+      [
+        { id: "a", fee: 550_00, status: "PLAYED" },
+        { id: "b", fee: 450_00, status: "PLAYED" },
+      ],
+      {
+        a: { id: "ze", name: "Zé", role: "VENUE" },
+        b: { id: "ana", name: "Ana", role: "BOOKER" },
+      },
+    );
+    const b = concFor(
+      [
+        { id: "c", fee: 500_00, status: "PLAYED" },
+        { id: "d", fee: 500_00, status: "PLAYED" },
+      ],
+      {
+        c: { id: "ze", name: "Zé", role: "VENUE" },
+        d: { id: "ana", name: "Ana", role: "BOOKER" },
+      },
+    );
+    const cmp = compareRoleConcentration(a, b);
+    expect(cmp.topShareDelta).toBeCloseTo(0.05);
+    expect(cmp.trend).toBe("worsened");
+  });
+
+  it("preserva as duas concentrações de origem para o detalhe", () => {
+    const cur = concentrated();
+    const prev = spread();
+    const cmp = compareRoleConcentration(cur, prev);
+    expect(cmp.current).toBe(cur);
+    expect(cmp.previous).toBe(prev);
   });
 });
 

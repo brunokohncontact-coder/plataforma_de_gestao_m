@@ -9,8 +9,18 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **896 testes**
-verdes após a Sessão 148 (**exportação CSV do desempenho por dia da semana** em `/shows/dias-semana/export` — novo
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **901 testes**
+verdes após a Sessão 149 (**comparativo ano a ano da concentração por papel** em `/contatos/rentabilidade/por-papel` — novo
+helper puro `compareRoleConcentration(current, previous)` + tipo `RoleConcentrationComparison` em `src/lib/finance.ts`,
+cópia estrutural de `compareClientConcentration`/`compareGeoConcentration` (D120) num eixo de **papel do comprador**:
+recebe duas `roleConcentration` já computadas (cada uma sobre `rankRolesByProfit` do seu período) e devolve `topShareDelta`,
+`effectiveRolesDelta` e `trend` ("improved"/"worsened"/"stable") via o **mesmo** `concentrationTrend` compartilhado
+(`GEO_TREND_EPSILON`=0,05). Fecha a última lacuna de simetria entre os três eixos de concentração (praça/cliente já tinham
+comparativo; papel só ganhou concentração na D138). Card `RoleComparisonCard` (espelha o `ClientComparisonCard`) com badge
+🟢/🔴/⚪ + variação do maior papel em p.p. (com os dois valores ano→ano) + variação de papéis efetivos, exibido só com um
+ano específico selecionado **e** papel identificado nos dois períodos (`roleCount > 0` em ambos), reaproveitando o recorte
+por ano UTC (D108) sobre os shows já carregados (**sem nova consulta**). **+5 testes**; smoke test (`next start`) →
+`/login` 200 e `/contatos/rentabilidade/por-papel?ano=2025` 307 (auth-gated). Ver D141; segue 896 da Sessão 148 (**exportação CSV do desempenho por dia da semana** em `/shows/dias-semana/export` — novo
 serializador puro `weekdayPerformanceToCsv(wp)` + `WEEKDAY_PERFORMANCE_CSV_HEADERS` em `src/lib/csv.ts`, irmão direto de
 `gigSeasonalityToCsv` (D139): recebe o objeto `WeekdayPerformance` (`weekdayPerformance`, importado de `@/lib/finance`) e
 emite sempre as 7 linhas de dia (domingo→sábado, inclusive dias zerados — preserva as lacunas da agenda que a tela
@@ -2859,8 +2869,14 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `roleConcentration(rows)` em `src/lib/finance.ts` (espelha `clientConcentration`/D109 e `geoConcentration`/D113 num eixo
    de papel: receita bruta por papel identificado, `topShare`/`top3Share`/`hhi`/`effectiveRoles`, veredito via
    `diversificationLevel`) + card "Concentração por papel" em `/contatos/rentabilidade/por-papel` (só com `roleCount > 0`),
-   **+6 testes**, ver D138. Próximo possível — um nudge dessa concentração no Painel (adiado na D138 por já haver dois
-   nudges de concentração lá) ou um comparativo ano a ano (adiado: nº de papéis pequeno/fixo torna o sinal anual fraco).
+   **+6 testes**, ver D138. **Comparativo ano a ano da concentração por papel** entregue na Sessão 149 —
+   `compareRoleConcentration(current, previous)` + tipo `RoleConcentrationComparison` em `src/lib/finance.ts` (cópia
+   estrutural de `compareClientConcentration`/`compareGeoConcentration`/D120 num eixo de papel: `topShareDelta`,
+   `effectiveRolesDelta`, `trend` via `concentrationTrend`/`GEO_TREND_EPSILON`) + `RoleComparisonCard` em
+   `/contatos/rentabilidade/por-papel` (badge 🟢/🔴/⚪ + variação do maior papel e dos papéis efetivos), só com ano
+   selecionado e papel identificado nos dois períodos — fecha a simetria dos três eixos de concentração, **+5 testes**, ver D141.
+   Próximo possível — um nudge dessa concentração no Painel (`roleConcentrationHeadline`, adiado na D138/D141 por já haver
+   dois nudges de concentração lá).
 
 9. **Rentabilidade geográfica — evoluções** (rentabilidade por local entregue na Sessão 28, `/shows/locais` +
    `rankVenuesByProfit`; atuação por cidade na Sessão 57, `/shows/cidades` + `rankCitiesByProfit`; recorte por
