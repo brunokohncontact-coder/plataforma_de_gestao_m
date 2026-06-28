@@ -42,6 +42,8 @@ import {
   EXPENSE_MIX_CSV_HEADERS,
   categoryVariationToCsv,
   CATEGORY_VARIATION_CSV_HEADERS,
+  gigCadenceToCsv,
+  GIG_CADENCE_CSV_HEADERS,
   type CsvTransaction,
   type CsvShow,
   type CsvProfitShow,
@@ -55,6 +57,7 @@ import {
   annualSummary,
   quarterlySummary,
   gigSeasonality,
+  gigCadence,
   weekdayPerformance,
   feeDistribution,
   incomeMix,
@@ -1179,5 +1182,60 @@ describe("categoryVariationToCsv", () => {
     expect(lines[2]).toBe("Despesa;Marketing;1000,00;700,00;-300,00;-30%");
     // Total das despesas: 1500 → 700 (−53%).
     expect(lines[3]).toBe("Despesa;Total;1500,00;700,00;-800,00;-53%");
+  });
+});
+
+describe("gigCadenceToCsv", () => {
+  // `now` fixo no futuro para que os shows forjados contem como realizados.
+  const NOW = "2027-01-01T00:00:00.000Z";
+  const gig = (
+    over: Partial<ReceivableShowLike> = {},
+  ): ReceivableShowLike => ({
+    id: "s",
+    fee: 100000,
+    status: "PLAYED",
+    date: "2026-03-10T00:00:00.000Z",
+    ...over,
+  });
+
+  it("só cabeçalho + Total zerado quando não há shows realizados", () => {
+    const csv = gigCadenceToCsv(gigCadence([], { now: NOW }));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(GIG_CADENCE_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe("Total;0");
+  });
+
+  it("uma linha por mês ativo (chave ISO, ordem cronológica) + Total", () => {
+    const cadence = gigCadence(
+      [
+        gig({ id: "a", date: "2026-01-05T00:00:00.000Z" }),
+        gig({ id: "b", date: "2026-01-20T00:00:00.000Z" }),
+        gig({ id: "c", date: "2026-03-02T00:00:00.000Z" }),
+      ],
+      { now: NOW },
+    );
+    const lines = gigCadenceToCsv(cadence).split("\r\n");
+    // cabeçalho + 2 meses ativos (jan, mar) + Total — fev parado não vira linha.
+    expect(lines).toHaveLength(4);
+    expect(lines[1]).toBe("2026-01;2");
+    expect(lines[2]).toBe("2026-03;1");
+    expect(lines[3]).toBe("Total;3");
+  });
+
+  it("ignora propostos/cancelados/futuros (só shows realizados)", () => {
+    const cadence = gigCadence(
+      [
+        gig({ id: "ok", date: "2026-02-10T00:00:00.000Z" }),
+        gig({ id: "prop", date: "2026-02-12T00:00:00.000Z", status: "PROPOSED" }),
+        gig({ id: "canc", date: "2026-02-14T00:00:00.000Z", status: "CANCELLED" }),
+        gig({ id: "fut", date: "2099-02-14T00:00:00.000Z", status: "CONFIRMED" }),
+      ],
+      { now: NOW },
+    );
+    const lines = gigCadenceToCsv(cadence).split("\r\n");
+    expect(lines).toHaveLength(3);
+    expect(lines[1]).toBe("2026-02;1");
+    expect(lines[2]).toBe("Total;1");
   });
 });

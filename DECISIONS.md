@@ -4569,3 +4569,33 @@ contexto, decisão, justificativa e alternativas consideradas.
   smoke test (`next start`) → `/login` 200 e `/financas/composicao-despesas?ano=2026` +
   `/financas/composicao-despesas/export?ano=2026` 307 (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories —
   4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## D150 — Exportação CSV da cadência de shows (`/shows/cadencia/export`) (Sessão 158)
+- **Contexto:** a tela `/shows/cadencia` (volume de shows realizados mês a mês ao longo do tempo, `gigCadence`/D-cadência)
+  exibia uma tabela "Shows mês a mês" + cards de destaque (média por mês ativo, mês mais cheio, meses parados, tendência),
+  mas era a última das telas de análise de shows **sem** botão de exportação — as irmãs sazonalidade (D139), dia da semana
+  (D140) e faixa de cachê (D142) já exportavam.
+- **Decisão:** novo serializador puro `gigCadenceToCsv(cadence)` + `GIG_CADENCE_CSV_HEADERS` em `src/lib/csv.ts`, espelhando
+  a tabela: uma linha por **mês ativo** (com ao menos um show realizado), em ordem cronológica crescente, com a contagem de
+  shows, seguida de uma linha "Total". Colunas Mês/Shows. Rota `/shows/cadencia/export` reusa a mesma consulta/`gigCadence`
+  da página (sem `?ano=`: a cadência é uma série temporal completa, não um recorte por ano) + BOM UTF-8; nome fixo
+  `cadencia-shows.csv`; botão "⬇ CSV" no cabeçalho só com `cadence.totalShows > 0`.
+- **Justificativa:** a cadência é um histórico de atividade que o músico pode querer levar para planilha (cruzar com receita,
+  marcar meses parados, montar gráfico próprio). Fecha a última lacuna de exportação tabular das telas de análise de shows.
+- **Por que a chave ISO "YYYY-MM" na coluna Mês (e não o rótulo "Jan 2026" da UI):** o CSV é leitura por máquina/planilha; a
+  chave ISO ordena lexicograficamente igual à cronológica e é inambígua entre anos. A UI mantém o rótulo amigável; o CSV
+  registra a divergência no docstring.
+- **Por que só meses ativos (e não preencher os parados como em sazonalidade/dia-da-semana):** ao contrário daqueles baldes
+  fixos (12 meses / 7 dias, que existem por definição), a janela da cadência é aberta e pode abranger anos — preencher todos
+  os meses parados inflaria o arquivo sem ganho; o eixo é atividade e `idleMonths` já resume o vazio. Espelha exatamente o que
+  a tabela da página mostra ("meses sem nenhum show não aparecem").
+- **Alternativas consideradas:** (a) anexar as estatísticas agregadas (média por mês ativo, meses parados, tendência) ao CSV —
+  descartado por baixo valor de planilha e por já estarem na tela; o CSV é a série crua, da qual a planilha deriva o que
+  quiser. (b) recorte por ano `?ano=` — não se aplica: a cadência é a série temporal inteira por design.
+- **Testes:** **+3** em `csv.test.ts` (`describe("gigCadenceToCsv")`): só cabeçalho + Total zerado sem shows; uma linha por
+  mês ativo (chave ISO, ordem cronológica, mês parado não vira linha) + Total; ignora propostos/cancelados/futuros (só
+  realizados, via gate de `gigCadence`). **936 testes** no total (eram 933).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **936 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/shows/cadencia` + `/shows/cadencia/export` 307 (auth-gated). `npm audit`
+  **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver
+  D6/bloqueios); **nenhuma dependência nova**.
