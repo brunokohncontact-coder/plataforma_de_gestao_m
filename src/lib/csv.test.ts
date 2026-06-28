@@ -38,6 +38,8 @@ import {
   FEE_DISTRIBUTION_CSV_HEADERS,
   incomeMixToCsv,
   INCOME_MIX_CSV_HEADERS,
+  expenseMixToCsv,
+  EXPENSE_MIX_CSV_HEADERS,
   type CsvTransaction,
   type CsvShow,
   type CsvProfitShow,
@@ -54,6 +56,7 @@ import {
   weekdayPerformance,
   feeDistribution,
   incomeMix,
+  expenseMix,
   type TxLike,
   type ShowProfitRow,
   type VenueProfitRow,
@@ -1050,6 +1053,64 @@ describe("incomeMixToCsv", () => {
     );
     const lines = csv.split("\r\n");
     expect(lines).toHaveLength(3); // cabeçalho + 1 fonte + Total
+    const semCat = lines[1].split(";");
+    expect(semCat[0]).toBe("Sem categoria");
+    expect(semCat[2]).toBe("500,00");
+    expect(lines[2]).toBe("Total;;500,00;");
+  });
+});
+
+describe("expenseMixToCsv", () => {
+  const exp = (over: Partial<TxLike> = {}): TxLike => ({
+    type: "EXPENSE",
+    amount: 100000,
+    category: "Transporte",
+    date: "2024-03-10T00:00:00.000Z",
+    received: false,
+    ...over,
+  });
+
+  it("emite só o cabeçalho + a linha Total (zerada) quando não há despesa", () => {
+    const csv = expenseMixToCsv(expenseMix([]));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(EXPENSE_MIX_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe("Total;;0,00;");
+  });
+
+  it("serializa uma linha por rubrica (decrescente) + participação + Total", () => {
+    const csv = expenseMixToCsv(
+      expenseMix([
+        exp({ category: "Transporte", amount: 300000 }),
+        exp({ category: "Transporte", amount: 100000 }),
+        exp({ category: "Equipamento", amount: 100000 }),
+      ]),
+    );
+    const lines = csv.split("\r\n");
+    // Ordem por valor: Transporte (4000) antes de Equipamento (1000).
+    const transporte = lines[1].split(";");
+    expect(transporte[0]).toBe("Transporte");
+    expect(transporte[1]).toBe("2"); // dois lançamentos
+    expect(transporte[2]).toBe("4000,00");
+    expect(transporte[3]).toBe("80%"); // 4000 de 5000
+    const equip = lines[2].split(";");
+    expect(equip[0]).toBe("Equipamento");
+    expect(equip[1]).toBe("1");
+    expect(equip[2]).toBe("1000,00");
+    expect(equip[3]).toBe("20%");
+    // Total: participação em branco (sempre 100%).
+    expect(lines[3]).toBe("Total;;5000,00;");
+  });
+
+  it("ignora receitas e agrupa despesa sem categoria em 'Sem categoria'", () => {
+    const csv = expenseMixToCsv(
+      expenseMix([
+        exp({ category: "", amount: 50000 }),
+        exp({ type: "INCOME", category: "Show", amount: 999999 }),
+      ]),
+    );
+    const lines = csv.split("\r\n");
+    expect(lines).toHaveLength(3); // cabeçalho + 1 rubrica + Total
     const semCat = lines[1].split(";");
     expect(semCat[0]).toBe("Sem categoria");
     expect(semCat[2]).toBe("500,00");

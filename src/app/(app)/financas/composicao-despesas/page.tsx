@@ -55,9 +55,19 @@ export default async function FinanceExpenseMixPage() {
             o orçamento.
           </p>
         </div>
-        <Link href="/financas" className="text-sm text-gray-500 hover:underline">
-          ← Finanças
-        </Link>
+        <div className="flex items-center gap-3">
+          {mix.categoryCount > 0 && (
+            <a
+              href="/financas/composicao-despesas/export"
+              className="text-sm text-brand-700 hover:underline"
+            >
+              ⬇ CSV
+            </a>
+          )}
+          <Link href="/financas" className="text-sm text-gray-500 hover:underline">
+            ← Finanças
+          </Link>
+        </div>
       </div>
 
       {mix.categoryCount === 0 ? (

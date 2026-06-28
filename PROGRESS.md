@@ -9,8 +9,20 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **911 testes**
-verdes após a Sessão 152 (**exportação CSV das fontes de renda** em `/financas/fontes-de-renda/export` — novo serializador
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **914 testes**
+verdes após a Sessão 153 (**exportação CSV da composição de despesas** em `/financas/composicao-despesas/export` — novo
+serializador puro `expenseMixToCsv(mix)` + `EXPENSE_MIX_CSV_HEADERS` em `src/lib/csv.ts`, espelho direto de `incomeMixToCsv`
+(D144) no eixo de gastos: recebe o objeto `ExpenseMix` (`expenseMix`/D45, importado de `@/lib/finance`) e emite uma linha
+por rubrica na mesma ordem da página (valor decrescente, empate por nome pt-BR) — colunas Categoria/Lançamentos/Total
+(R$)/Participação — seguida de uma linha "Total" (participação em branco, sempre 100% por construção, e sem contagem de
+lançamentos). Mesma convenção pt-BR do irmão (delimitador `;`, decimal com vírgula, BOM UTF-8 na camada HTTP). Rota
+`/financas/composicao-despesas/export` reusa a mesma consulta/`expenseMix` da página (sem `?ano=`: a tela ainda não tem
+recorte por período), nome fixo `composicao-despesas.csv`; botão "⬇ CSV" no cabeçalho só com `mix.categoryCount > 0`. Fecha
+a assimetria com D144: as duas telas-irmãs de mix das Finanças (fontes de renda × composição de despesas) agora exportam.
+**+3 testes** (`describe("expenseMixToCsv")`: só cabeçalho + Total zerado sem despesa; uma linha por rubrica em ordem
+decrescente + Total com participação em branco; ignora receitas e agrupa sem categoria em "Sem categoria"). Smoke test
+(`next start`) → `/login` 200 e `/financas/composicao-despesas` + `/financas/composicao-despesas/export` 307 (auth-gated).
+Ver D145; segue 911 da Sessão 152 (**exportação CSV das fontes de renda** em `/financas/fontes-de-renda/export` — novo serializador
 puro `incomeMixToCsv(mix)` + `INCOME_MIX_CSV_HEADERS` em `src/lib/csv.ts`, irmão direto de `feeDistributionToCsv` (D142):
 recebe o objeto `IncomeMix` (`incomeMix`/D45, importado de `@/lib/finance`) e emite uma linha por fonte na mesma ordem da
 página (valor decrescente, empate por nome pt-BR) — colunas Fonte/Lançamentos/Total (R$)/Participação — seguida de uma linha

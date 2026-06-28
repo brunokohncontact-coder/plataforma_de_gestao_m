@@ -31,6 +31,7 @@ import {
   type WeekdayPerformance,
   type FeeDistribution,
   type IncomeMix,
+  type ExpenseMix,
 } from "./finance";
 import { MONTH_NAMES_LONG } from "./calendar";
 
@@ -996,6 +997,41 @@ export function incomeMixToCsv(
       String(s.count),
       centsToCsvAmount(s.amount),
       csvShare(s.share),
+    ]);
+  }
+  out.push(["Total", "", centsToCsvAmount(mix.total), ""]);
+  return toCsv(out, delimiter);
+}
+
+// ── Composição de despesas / mix de gastos (para onde vai o dinheiro?) ───────
+
+export const EXPENSE_MIX_CSV_HEADERS = [
+  "Categoria",
+  "Lançamentos",
+  "Total (R$)",
+  "Participação",
+] as const;
+
+/**
+ * Serializa a composição das despesas por rubrica (`expenseMix`) em CSV, pronto
+ * para download. Espelho exato de `incomeMixToCsv` no eixo de gastos: uma linha
+ * por categoria de despesa, na mesma ordem da página `/financas/composicao-despesas`
+ * (valor decrescente, empate por nome pt-BR), com nº de lançamentos, total e
+ * participação na despesa total, seguida de uma linha "Total". A participação do
+ * Total fica em branco (é sempre 100% por construção). Mesma convenção pt-BR de
+ * `transactionsToCsv` (delimitador ";", decimal com vírgula). Pura.
+ */
+export function expenseMixToCsv(
+  mix: ExpenseMix,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(EXPENSE_MIX_CSV_HEADERS)];
+  for (const c of mix.categories) {
+    out.push([
+      c.category,
+      String(c.count),
+      centsToCsvAmount(c.amount),
+      csvShare(c.share),
     ]);
   }
   out.push(["Total", "", centsToCsvAmount(mix.total), ""]);
