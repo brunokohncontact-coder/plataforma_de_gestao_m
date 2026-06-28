@@ -45,9 +45,20 @@ export default async function FeeTrendPage() {
             o sinal de que você está cobrando mais.
           </p>
         </div>
-        <Link href="/shows" className="btn-secondary">
-          ← Shows
-        </Link>
+        <div className="flex items-center gap-2">
+          {trend.totalShows > 0 && (
+            <a
+              href="/shows/evolucao-cache/export"
+              className="btn-secondary text-sm"
+              download
+            >
+              ⬇ CSV
+            </a>
+          )}
+          <Link href="/shows" className="btn-secondary">
+            ← Shows
+          </Link>
+        </div>
       </div>
 
       {trend.totalShows === 0 ? (

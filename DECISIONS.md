@@ -4599,3 +4599,42 @@ contexto, decisão, justificativa e alternativas consideradas.
   smoke test (`next start`) → `/login` 200 e `/shows/cadencia` + `/shows/cadencia/export` 307 (auth-gated). `npm audit`
   **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver
   D6/bloqueios); **nenhuma dependência nova**.
+
+## D151 — Exportação CSV da evolução do cachê (`/shows/evolucao-cache/export`) (Sessão 159)
+- **Contexto:** a tela `/shows/evolucao-cache` ("Evolução do cachê", `feeTrend`) exibe a tabela "Cachê médio mês a mês"
+  (Mês / Cachê médio / Faixa mín–máx / Shows) + cards de destaque (cachê médio geral, maior/menor cachê, shows
+  considerados, tendência), mas era uma das poucas telas de análise de shows ainda **sem** botão de exportação — as irmãs
+  cadência (D150), sazonalidade (D139), dia da semana (D140) e faixa de cachê (D142) já exportavam.
+- **Decisão:** novo serializador puro `feeTrendToCsv(trend)` + `FEE_TREND_CSV_HEADERS` em `src/lib/csv.ts`, espelhando a
+  tabela: uma linha por **mês ativo** (com show realizado e cachê registrado), em ordem cronológica crescente, com cachê
+  médio, mínimo e máximo do mês e a contagem de shows, seguida de uma linha "Total" cujos valores são os agregados gerais da
+  tela (cachê médio geral, menor cachê, maior cachê, total de shows). Colunas Mês/Cachê médio (R$)/Cachê mínimo (R$)/Cachê
+  máximo (R$)/Shows. Rota `/shows/evolucao-cache/export` reusa a mesma consulta/`feeTrend` da página + BOM UTF-8; nome fixo
+  `evolucao-cache.csv`; botão "⬇ CSV" no cabeçalho só com `trend.totalShows > 0`.
+- **Justificativa:** a série de cachê médio é um histórico de posicionamento de preço que o músico pode querer levar para
+  planilha (montar gráfico próprio, cruzar com inflação, marcar quando reajustou). Fecha mais uma lacuna de exportação
+  tabular das telas de análise de shows.
+- **Por que a chave ISO "YYYY-MM" na coluna Mês (e não o rótulo "Jan 2026" da UI):** mesma postura de D150 — o CSV é leitura
+  por máquina/planilha; a chave ISO ordena lexicograficamente igual à cronológica e é inambígua entre anos. A UI mantém o
+  rótulo amigável; o CSV registra a divergência no docstring.
+- **Por que a "Faixa" da tela vira duas colunas (mínimo/máximo):** a UI compacta a faixa num só campo ("R$ 800 – R$ 1.200")
+  por densidade; no CSV, colunas separadas abrem limpas na planilha (filtráveis/ordenáveis numericamente) sem o usuário ter
+  de quebrar a string. Mesma decomposição usada por outros serializadores que partem de um intervalo.
+- **Por que o Total carrega os agregados gerais (e não a soma das colunas mês a mês):** a média geral é ponderada por show
+  (`avgFee = totalFee/totalShows`), e o menor/maior são os extremos individuais entre todos os shows — não a média das médias
+  nem o min/máx das médias mensais. Reusar os campos já computados por `feeTrend` (`avgFee`/`lowestFee`/`highestFee`/
+  `totalShows`) garante que a linha "Total" do CSV bata exatamente com os cards de destaque da tela.
+- **Por que só meses ativos (e não preencher os parados):** mesma postura de D150 — a janela é aberta e pode abranger anos;
+  meses sem show realizado com cachê não entram (a tela também não os mostra). Distinto de sazonalidade/dia-da-semana
+  (baldes fixos).
+- **Alternativas consideradas:** (a) anexar a tendência (variação 1º↔último mês) ao CSV — descartado por baixo valor de
+  planilha e por já estar na tela; o CSV é a série crua, da qual a planilha deriva o que quiser. (b) recorte por ano `?ano=` —
+  adiado: a evolução do cachê ganha sentido como série temporal contínua (o ponto é ver o preço subir ao longo dos anos),
+  não como recorte de um único ano; se surgir demanda, segue o padrão `PeriodPicker`/D119 das telas de rentabilidade.
+- **Testes:** **+3** em `csv.test.ts` (`describe("feeTrendToCsv")`): só cabeçalho + Total zerado sem shows com cachê; uma
+  linha por mês ativo (média/mín/máx, ordem cronológica, mês parado fora) + Total com agregados gerais; ignora
+  propostos/cancelados/futuros/sem-cachê (só realizados com cachê, via gate de `feeTrend`). **939 testes** no total (eram 936).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **939 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/shows/evolucao-cache` + `/shows/evolucao-cache/export` 307 (auth-gated).
+  `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss
+  bundlado; ver D6/bloqueios); **nenhuma dependência nova**.

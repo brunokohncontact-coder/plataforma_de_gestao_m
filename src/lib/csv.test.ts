@@ -44,6 +44,8 @@ import {
   CATEGORY_VARIATION_CSV_HEADERS,
   gigCadenceToCsv,
   GIG_CADENCE_CSV_HEADERS,
+  feeTrendToCsv,
+  FEE_TREND_CSV_HEADERS,
   type CsvTransaction,
   type CsvShow,
   type CsvProfitShow,
@@ -58,6 +60,7 @@ import {
   quarterlySummary,
   gigSeasonality,
   gigCadence,
+  feeTrend,
   weekdayPerformance,
   feeDistribution,
   incomeMix,
@@ -1237,5 +1240,64 @@ describe("gigCadenceToCsv", () => {
     expect(lines).toHaveLength(3);
     expect(lines[1]).toBe("2026-02;1");
     expect(lines[2]).toBe("Total;1");
+  });
+});
+
+describe("feeTrendToCsv", () => {
+  // `now` fixo no futuro para que os shows forjados contem como realizados.
+  const NOW = "2027-01-01T00:00:00.000Z";
+  const gig = (
+    over: Partial<ReceivableShowLike> = {},
+  ): ReceivableShowLike => ({
+    id: "s",
+    fee: 100000,
+    status: "PLAYED",
+    date: "2026-03-10T00:00:00.000Z",
+    ...over,
+  });
+
+  it("só cabeçalho + Total zerado quando não há shows com cachê", () => {
+    const csv = feeTrendToCsv(feeTrend([], { now: NOW }));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(FEE_TREND_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe("Total;0,00;0,00;0,00;0");
+  });
+
+  it("uma linha por mês ativo (média/mín/máx) em ordem cronológica + Total geral", () => {
+    const trend = feeTrend(
+      [
+        gig({ id: "a", date: "2026-01-05T00:00:00.000Z", fee: 80000 }),
+        gig({ id: "b", date: "2026-01-20T00:00:00.000Z", fee: 120000 }),
+        gig({ id: "c", date: "2026-03-02T00:00:00.000Z", fee: 200000 }),
+      ],
+      { now: NOW },
+    );
+    const lines = feeTrendToCsv(trend).split("\r\n");
+    // cabeçalho + 2 meses ativos (jan, mar) + Total — fev parado não vira linha.
+    expect(lines).toHaveLength(4);
+    // jan: média (80000+120000)/2 = 100000; faixa 80000–120000; 2 shows.
+    expect(lines[1]).toBe("2026-01;1000,00;800,00;1200,00;2");
+    // mar: único show de 200000.
+    expect(lines[2]).toBe("2026-03;2000,00;2000,00;2000,00;1");
+    // Total: média geral 400000/3 = 133333; menor 80000; maior 200000; 3 shows.
+    expect(lines[3]).toBe("Total;1333,33;800,00;2000,00;3");
+  });
+
+  it("ignora propostos/cancelados/futuros/sem-cachê (só shows realizados com cachê)", () => {
+    const trend = feeTrend(
+      [
+        gig({ id: "ok", date: "2026-02-10T00:00:00.000Z", fee: 150000 }),
+        gig({ id: "prop", date: "2026-02-12T00:00:00.000Z", status: "PROPOSED" }),
+        gig({ id: "canc", date: "2026-02-14T00:00:00.000Z", status: "CANCELLED" }),
+        gig({ id: "fut", date: "2099-02-14T00:00:00.000Z", status: "CONFIRMED" }),
+        gig({ id: "zero", date: "2026-02-16T00:00:00.000Z", fee: 0 }),
+      ],
+      { now: NOW },
+    );
+    const lines = feeTrendToCsv(trend).split("\r\n");
+    expect(lines).toHaveLength(3);
+    expect(lines[1]).toBe("2026-02;1500,00;1500,00;1500,00;1");
+    expect(lines[2]).toBe("Total;1500,00;1500,00;1500,00;1");
   });
 });
