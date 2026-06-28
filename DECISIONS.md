@@ -4374,3 +4374,41 @@ contexto, decisão, justificativa e alternativas consideradas.
   smoke test (`next start`) → `/login` 200 e `/financas/fontes-de-renda` + `/financas/fontes-de-renda/export` 307
   (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
   postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## D145 — Exportação CSV da composição de despesas (`/financas/composicao-despesas/export`) (Sessão 153)
+- **Contexto:** a tela `/financas/composicao-despesas` ("Para onde vai o dinheiro", `expenseMix`/D45) é o **espelho exato**
+  de `/financas/fontes-de-renda` no eixo de gastos — mostra a composição das despesas por rubrica e o quanto um único gasto
+  domina o orçamento. Quando as fontes de renda ganharam exportação CSV na Sessão 152 (D144), a composição de despesas ficou
+  como a última das duas telas-irmãs de mix das Finanças ainda sem CSV — uma assimetria gratuita. Levar o detalhamento de
+  despesas a uma planilha/contador é tão útil quanto o de receitas (apuração, declaração, revisão de orçamento).
+- **Decisão:** adicionar um botão "⬇ CSV" ao cabeçalho da página (só com `mix.categoryCount > 0`) + a rota
+  `/financas/composicao-despesas/export`, espelhando a mesma consulta/`expenseMix` da página. Novo serializador puro
+  `expenseMixToCsv(mix)` + `EXPENSE_MIX_CSV_HEADERS` em `src/lib/csv.ts`, espelho direto de `incomeMixToCsv` (D144) no eixo
+  de despesas: recebe o objeto `ExpenseMix` (importado de `@/lib/finance`) e emite uma linha por rubrica na **mesma ordem da
+  página** (valor decrescente, empate por nome pt-BR) — colunas Categoria / Lançamentos / Total (R$) / Participação —
+  seguida de uma linha "Total". Mesma convenção pt-BR dos irmãos (delimitador `;`, decimal com vírgula via `centsToCsvAmount`,
+  participação inteira via `csvShare`, BOM UTF-8 na camada HTTP). A participação do "Total" fica em branco (sempre 100% por
+  construção); o "Total" não traz contagem de lançamentos (espelha D144 — a soma de lançamentos entre rubricas não é
+  acionável).
+- **Justificativa:** fecha a assimetria com D144 reusando o padrão já consolidado (serializador puro testado + route handler
+  fino que só consulta e embrulha no HTTP), zero dependência nova, zero mudança na camada de cálculo. Despesas sem categoria
+  já caem em "Sem categoria" no próprio `expenseMix`, então o CSV herda esse rótulo sem caso especial. A 1ª coluna é
+  "Categoria" (não "Fonte" como em D144), refletindo o vocabulário da tela de despesas.
+- **Por que sem `?ano=`:** a página `/financas/composicao-despesas` ainda não tem recorte por período (opera sobre todas as
+  despesas lançadas); o export espelha exatamente a consulta da página, como em D144. Um recorte por ano seria uma unidade de
+  trabalho à parte (página + export juntos, idealmente nas duas telas-irmãs ao mesmo tempo), registrada nos próximos passos.
+- **Alternativas consideradas:** (a) generalizar um único `categoryMixToCsv` para receita e despesa em vez de dois
+  serializadores quase idênticos — descartado: os cabeçalhos diferem (Fonte vs. Categoria) e os campos de origem diferem
+  (`mix.sources` vs. `mix.categories`); a duplicação é mínima (~12 linhas) e a clareza de ter um serializador por tela,
+  nomeado pelo domínio, vale mais que a fatoração — segue a convenção dos demais serializadores de csv.ts. (b) incluir o
+  HHI / nº efetivo de rubricas / veredito no CSV — descartado pelo mesmo motivo de D144: são leituras de tela, recalculáveis
+  trivialmente de uma planilha. (c) somar a contagem de lançamentos no "Total" — descartado por não ser acionável (espelha
+  D144).
+- **Testes:** **+3** em `csv.test.ts` (`describe("expenseMixToCsv")`): só cabeçalho + linha "Total" zerada sem despesa; uma
+  linha por rubrica em ordem decrescente com participação correta + "Total" com participação em branco; ignora receitas e
+  agrupa despesa sem categoria em "Sem categoria". A composição reusa `expenseMix` (já testado em `finance.test.ts`) e os
+  helpers puros de CSV (idem), então não duplica cobertura. **914 testes** no total (eram 911).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **914 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/financas/composicao-despesas` + `/financas/composicao-despesas/export` 307
+  (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
+  postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
