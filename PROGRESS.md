@@ -9,8 +9,20 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **933 testes**
-verdes após a Sessão 157 (**recorte por ano (`?ano=`) na Composição de despesas** em `/financas/composicao-despesas` — a tela
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **936 testes**
+verdes após a Sessão 158 (**exportação CSV da cadência de shows** em `/shows/cadencia/export` — a última tela de análise de
+shows sem botão de exportação ganhou o seu, fechando a lacuna após sazonalidade/dia-da-semana/faixa-de-cachê. Novo
+serializador puro `gigCadenceToCsv(cadence)` + `GIG_CADENCE_CSV_HEADERS` em `src/lib/csv.ts` espelha a tabela "Shows mês a
+mês": uma linha por **mês ativo** (com ao menos um show realizado), em ordem cronológica crescente, com a contagem de shows,
+seguida de uma linha "Total" — colunas Mês/Shows. A coluna "Mês" usa a chave ISO "YYYY-MM" (ordenável por máquina, inambígua
+entre anos), e não o rótulo "Jan 2026" da UI. Diferente de sazonalidade/dia-da-semana (baldes fixos de 12 meses / 7 dias), só
+emite meses ativos — a janela da cadência é aberta e pode abranger anos; `idleMonths` já resume o vazio. Rota
+`/shows/cadencia/export` reusa a mesma consulta/`gigCadence` da página (sem `?ano=`: é a série temporal inteira por design) +
+BOM UTF-8; nome fixo `cadencia-shows.csv`; botão "⬇ CSV" no cabeçalho só com `cadence.totalShows > 0`. **+3 testes**
+(`describe("gigCadenceToCsv")`: só cabeçalho + Total zerado sem shows; uma linha por mês ativo em ordem cronológica com mês
+parado fora + Total; ignora propostos/cancelados/futuros). Smoke test (`next start`) → `/login` 200 e `/shows/cadencia` +
+`/shows/cadencia/export` 307 (auth-gated). `npm audit` sem novas vulnerabilidades (mesmos advisories Next/postcss da D6). Ver
+D150; segue 933 da Sessão 157 (**recorte por ano (`?ano=`) na Composição de despesas** em `/financas/composicao-despesas` — a tela
 e seu export deixaram de somar só "todos os anos" e ganharam o seletor de período (`PeriodPicker`/D119), espelho direto da
 Sessão 156 (Fontes de renda/D148) no eixo de despesa. Novo derivador puro `expenseMixYears(txs)` em `src/lib/finance.ts`
 devolve os anos UTC (decrescente) **só** das transações de despesa (`type === "EXPENSE"`), o **mesmo** gate de `expenseMix`,

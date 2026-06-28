@@ -53,9 +53,20 @@ export default async function GigCadencePage() {
             sua agenda está mais (ou menos) cheia.
           </p>
         </div>
-        <Link href="/shows" className="btn-secondary">
-          ← Shows
-        </Link>
+        <div className="flex items-center gap-2">
+          {cadence.totalShows > 0 && (
+            <a
+              href="/shows/cadencia/export"
+              className="btn-secondary text-sm"
+              download
+            >
+              ⬇ CSV
+            </a>
+          )}
+          <Link href="/shows" className="btn-secondary">
+            ← Shows
+          </Link>
+        </div>
       </div>
 
       {cadence.totalShows === 0 ? (

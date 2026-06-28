@@ -28,6 +28,7 @@ import {
   type PaymentPromiseStatus,
   type PaymentSpeedBucketKey,
   type GigSeasonality,
+  type GigCadence,
   type WeekdayPerformance,
   type FeeDistribution,
   type IncomeMix,
@@ -1112,5 +1113,32 @@ export function categoryVariationToCsv(
   section("Despesa", cmp.expense, cmp.previousTotalExpense, cmp.totalExpense, cmp.expenseDelta);
   section("Receita", cmp.income, cmp.previousTotalIncome, cmp.totalIncome, cmp.incomeDelta);
 
+  return toCsv(out, delimiter);
+}
+
+// ── Cadência de shows (volume mês a mês ao longo do tempo) ────────────────────
+
+export const GIG_CADENCE_CSV_HEADERS = ["Mês", "Shows"] as const;
+
+/**
+ * Serializa a cadência de shows (`gigCadence`) em CSV, pronto para download.
+ * Espelha a tabela "Shows mês a mês" de `/shows/cadencia`: uma linha por mês
+ * ATIVO (com ao menos um show realizado), em ordem cronológica crescente, com a
+ * contagem de shows, seguida de uma linha "Total". Como na tela, meses parados
+ * dentro da janela NÃO viram linha (o eixo é atividade; `idleMonths` resume o
+ * vazio) — distinto de `gigSeasonalityToCsv`/`weekdayPerformanceToCsv`, que
+ * preenchem todos os baldes. A coluna "Mês" usa a chave ISO "YYYY-MM" (ordenável
+ * por máquina), e não o rótulo amigável "Jan 2026" da UI. Mesma convenção pt-BR
+ * dos irmãos (delimitador ";"). Pura.
+ */
+export function gigCadenceToCsv(
+  cadence: GigCadence,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(GIG_CADENCE_CSV_HEADERS)];
+  for (const m of cadence.months) {
+    out.push([m.month, String(m.count)]);
+  }
+  out.push(["Total", String(cadence.totalShows)]);
   return toCsv(out, delimiter);
 }
