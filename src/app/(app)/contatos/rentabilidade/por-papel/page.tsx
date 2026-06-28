@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import {
   rankRolesByProfit,
   roleConcentration,
+  compareRoleConcentration,
   MIN_MEDIAN_FEE_SAMPLE,
   showProfitYears,
   parseProfitYear,
@@ -12,6 +13,7 @@ import {
   type ShowLike,
   type ContactProfitContact,
   type RoleConcentration,
+  type RoleConcentrationComparison,
 } from "@/lib/finance";
 import { pickPayerContact } from "@/lib/billing";
 import { formatMoney } from "@/lib/money";
@@ -87,6 +89,30 @@ export default async function RoleProfitabilityPage({
   );
 
   const concentration = roleConcentration(report.rows);
+
+  // Comparativo ano a ano da concentração por papel (espelha o card por
+  // contratante/D139 e o geográfico/D120 num eixo de papel): só faz sentido com
+  // um ano específico selecionado e o ano anterior tendo papel identificado —
+  // caso contrário a leitura "melhorou/piorou" seria enganosa. Reaproveita o
+  // mesmo recorte por ano UTC (D108) sobre os shows já carregados (sem nova consulta).
+  let roleComparison: RoleConcentrationComparison | null = null;
+  let previousYear = 0;
+  if (yearFilter !== "all") {
+    previousYear = yearFilter - 1;
+    const previousReport = rankRolesByProfit(
+      filterShowsByYear(shows, previousYear) as (ShowLike & ShowRow)[],
+      txs,
+      getPayer as (s: ShowLike & ShowRow) => ContactProfitContact | null,
+    );
+    const previousConcentration = roleConcentration(previousReport.rows);
+    // Exige papel identificado nos DOIS períodos para comparar de verdade.
+    if (concentration.roleCount > 0 && previousConcentration.roleCount > 0) {
+      roleComparison = compareRoleConcentration(
+        concentration,
+        previousConcentration,
+      );
+    }
+  }
 
   const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
 
@@ -194,6 +220,14 @@ export default async function RoleProfitabilityPage({
 
           {concentration.roleCount > 0 && (
             <ConcentrationCard concentration={concentration} />
+          )}
+
+          {roleComparison && (
+            <RoleComparisonCard
+              comparison={roleComparison}
+              currentYear={yearFilter as number}
+              previousYear={previousYear}
+            />
           )}
 
           <div className="card overflow-x-auto p-0">
@@ -406,6 +440,95 @@ function ConcentrationCard({
         </div>
       </div>
       <p className="mt-3 text-xs opacity-90">{verdict.note}</p>
+    </div>
+  );
+}
+
+/** Rótulo + tom do veredito de tendência da concentração por papel entre dois anos. */
+const ROLE_TREND: Record<
+  RoleConcentrationComparison["trend"],
+  { label: string; emoji: string; classes: string; note: string }
+> = {
+  improved: {
+    label: "Mais distribuída",
+    emoji: "🟢",
+    classes: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    note: "A receita ficou menos dependente de um único tipo de comprador em relação ao ano anterior — risco de canal em queda.",
+  },
+  worsened: {
+    label: "Mais concentrada",
+    emoji: "🔴",
+    classes: "border-red-200 bg-red-50 text-red-800",
+    note: "A receita passou a depender mais de poucos tipos de comprador que no ano anterior — vale abrir frente em outros canais para reduzir o risco.",
+  },
+  stable: {
+    label: "Estável",
+    emoji: "⚪",
+    classes: "border-gray-200 bg-gray-50 text-gray-700",
+    note: "A dependência de tipos de comprador ficou praticamente igual à do ano anterior.",
+  },
+};
+
+/** Formata uma variação em pontos percentuais com sinal (ex.: −0,12 → "−12 p.p."). */
+function deltaPp(delta: number): string {
+  const points = Math.round(delta * 100);
+  if (points === 0) return "0 p.p.";
+  return `${points > 0 ? "+" : "−"}${Math.abs(points)} p.p.`;
+}
+
+/** Formata a variação de papéis efetivos com sinal (ex.: 1,3 → "+1,3"). */
+function deltaRoles(delta: number): string {
+  const rounded = Math.round(delta * 10) / 10;
+  if (rounded === 0) return "0";
+  return `${rounded > 0 ? "+" : "−"}${Math.abs(rounded).toFixed(1)}`;
+}
+
+/**
+ * Card "Concentração por papel {ano} vs. {ano-1}": compara a concentração por
+ * tipo de comprador do ano selecionado com a do ano anterior (espelha o card por
+ * contratante/D139 num eixo de papel). Mostra a variação do maior papel e dos
+ * papéis efetivos, com um veredito de tendência (mais distribuída × mais concentrada).
+ */
+function RoleComparisonCard({
+  comparison,
+  currentYear,
+  previousYear,
+}: {
+  comparison: RoleConcentrationComparison;
+  currentYear: number;
+  previousYear: number;
+}) {
+  const trend = ROLE_TREND[comparison.trend];
+  const { current, previous } = comparison;
+  return (
+    <div className={"card border " + trend.classes}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide opacity-80">
+          Concentração por papel {currentYear} vs. {previousYear}
+        </p>
+        <span className="badge bg-white/70 font-semibold">
+          {trend.emoji} {trend.label}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+        <div>
+          <p className="text-2xl font-bold">{deltaPp(comparison.topShareDelta)}</p>
+          <p className="text-xs opacity-80">
+            no maior papel: {pct(previous.topShare)} ({previousYear}) →{" "}
+            {pct(current.topShare)} ({currentYear})
+          </p>
+        </div>
+        <div>
+          <p className="text-2xl font-bold">
+            {deltaRoles(comparison.effectiveRolesDelta)}
+          </p>
+          <p className="text-xs opacity-80">
+            papéis efetivos: {previous.effectiveRoles.toFixed(1)} →{" "}
+            {current.effectiveRoles.toFixed(1)}
+          </p>
+        </div>
+      </div>
+      <p className="mt-3 text-xs opacity-90">{trend.note}</p>
     </div>
   );
 }
