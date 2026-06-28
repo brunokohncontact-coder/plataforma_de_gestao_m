@@ -4638,3 +4638,43 @@ contexto, decisão, justificativa e alternativas consideradas.
   smoke test (`next start`) → `/login` 200 e `/shows/evolucao-cache` + `/shows/evolucao-cache/export` 307 (auth-gated).
   `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss
   bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## D152 — Exportação CSV da sazonalidade financeira (`/financas/sazonalidade/export`) (Sessão 160)
+- **Contexto:** a tela `/financas/sazonalidade` ("Média por mês do ano", `monthlySeasonality`) exibe a tabela
+  Mês / Receita média / Despesa média / Resultado médio / Anos (a média por ano-ativo de cada mês do calendário) + cards
+  "Melhor mês típico" / "Mês mais fraco", mas era uma das telas de análise das Finanças ainda **sem** botão de exportação.
+  Existe há tempo o irmão no eixo dos shows (`gigSeasonalityToCsv`/D139, `/shows/sazonalidade/export`); faltava o reflexo no
+  eixo financeiro (receita × despesa).
+- **Decisão:** novo serializador puro `monthlySeasonalityToCsv(seasonality)` + `MONTHLY_SEASONALITY_CSV_HEADERS` em
+  `src/lib/csv.ts`, espelhando a tabela: **sempre as 12 linhas** de mês (janeiro→dezembro, inclusive meses sem movimento —
+  para preservar os vales da temporada que a tela destaca), com receita média, despesa média, resultado médio e o nº de
+  anos-ativos do mês, seguida de uma linha "Total". Colunas Mês/Receita média (R$)/Despesa média (R$)/Resultado médio (R$)/
+  Anos. Rota `/financas/sazonalidade/export` reusa a mesma consulta/`monthlySeasonality` da página + BOM UTF-8; nome fixo
+  `sazonalidade-financeira.csv`; botão "⬇ CSV" no cabeçalho só com `hasActivity` (algum mês com ano-ativo).
+- **Justificativa:** o padrão sazonal de caixa (em que época do ano costuma sobrar/faltar) é exatamente o tipo de série que
+  o músico leva para planilha — montar gráfico próprio, cruzar com a agenda de shows, planejar reserva nos meses fracos.
+  Fecha a assimetria com o eixo dos shows e mais uma lacuna de exportação tabular das Finanças.
+- **Por que o nome completo do mês (e não a chave ISO "YYYY-MM"):** diferente das séries temporais (cadência/D150,
+  evolução do cachê/D151, que usam ISO por serem janelas abertas que abrangem anos), a sazonalidade colapsa **todos os anos**
+  num só ciclo de 12 meses do calendário — não há ano a desambiguar. Mantém-se o nome completo da UI ("Janeiro"…"Dezembro",
+  via `MONTH_NAMES_LONG`), espelhando `annualSummaryToCsv`/`gigSeasonalityToCsv`.
+- **Por que registrar 0,00/0 nos meses sem movimento (e não o "—" da UI):** mesma postura dos irmãos
+  (gig/dia-da-semana/faixa) — o CSV é leitura por máquina; manter as 12 linhas com zeros explícitos deixa a planilha pronta
+  para gráfico/filtro sem o usuário ter de tratar o traço.
+- **Por que o "Total" é o ano típico composto (soma das médias mensais), e não a soma dos totais brutos:** a tela é sobre o
+  **mês típico** (média por ano-ativo); somar essas médias dá "o ano típico" — receita/despesa/resultado de um ano em que
+  cada mês rende o seu valor típico, um número de planejamento coerente com a leitura da página. A coluna "Anos" do Total
+  traz `yearsObserved` (amplitude do histórico, anos distintos com qualquer transação), conceitualmente distinta dos
+  anos-ativos por mês — documentado no docstring. Diferente dos irmãos dos shows, cujo Total reusa agregados já computados
+  na estrutura; aqui `MonthlySeasonality` não traz um total pronto, então o serializador o compõe a partir das médias.
+- **Alternativas consideradas:** (a) anexar as colunas de total bruto (`totalIncome`/`totalExpense`/`net`, soma de todos os
+  anos) ao lado das médias — descartado por poluir a tabela com um eixo que a tela não mostra; a média por ano-ativo é a
+  leitura canônica da sazonalidade (o total bruto favorece meses de histórico mais longo). (b) recorte por ano `?ano=` —
+  não se aplica: a sazonalidade ganha sentido **somando** os anos (D133(b), mesma postura do gig).
+- **Testes:** **+3** em `csv.test.ts` (`describe("monthlySeasonalityToCsv")`): só cabeçalho + 12 meses zerados + Total
+  zerado sem transações; média por ano-ativo (receita/despesa/resultado) por mês + Total composto com `yearsObserved`;
+  registra 0,00/0 nos meses sem movimento. **942 testes** no total (eram 939).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **942 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/financas/sazonalidade` + `/financas/sazonalidade/export` 307 (auth-gated).
+  `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss
+  bundlado; ver D6/bloqueios); **nenhuma dependência nova**.

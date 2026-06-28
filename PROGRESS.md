@@ -9,8 +9,25 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **939 testes**
-verdes após a Sessão 159 (**exportação CSV da evolução do cachê** em `/shows/evolucao-cache/export` — a tela "Evolução do
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **942 testes**
+verdes após a Sessão 160 (**exportação CSV da sazonalidade financeira** em `/financas/sazonalidade/export` — a tela
+"Média por mês do ano" (`monthlySeasonality`, receita/despesa/resultado médios por mês do calendário) ganhou botão de
+exportação, fechando a assimetria com o eixo dos shows (`gigSeasonalityToCsv`/D139, que já exportava) e mais uma lacuna de
+exportação tabular das Finanças. Novo serializador puro `monthlySeasonalityToCsv(seasonality)` +
+`MONTHLY_SEASONALITY_CSV_HEADERS` em `src/lib/csv.ts` espelha a tabela: **sempre as 12 linhas** de mês (janeiro→dezembro,
+inclusive meses sem movimento — preserva os vales que a tela destaca), com receita média, despesa média e resultado médio
+(a média por ano-ativo de cada mês) + o nº de anos-ativos, seguida de uma linha "Total". Colunas
+Mês/Receita média (R$)/Despesa média (R$)/Resultado médio (R$)/Anos. O Total é o **ano típico composto** (soma das médias
+mensais — receita/despesa/resultado de um ano em que cada mês rende o seu valor típico, número de planejamento), com a
+coluna "Anos" trazendo `yearsObserved` (amplitude do histórico, distinta dos anos-ativos por mês). Usa o nome completo do
+mês (não a chave ISO das séries temporais: a sazonalidade colapsa todos os anos num só ciclo de 12 meses, sem ano a
+desambiguar) e registra 0,00/0 nos meses parados (não o "—" da UI). Rota `/financas/sazonalidade/export` reusa a mesma
+consulta/`monthlySeasonality` da página + BOM UTF-8; nome fixo `sazonalidade-financeira.csv`; botão "⬇ CSV" no cabeçalho só
+com `hasActivity`. **+3 testes** (`describe("monthlySeasonalityToCsv")`: só cabeçalho + 12 meses zerados + Total zerado sem
+transações; média por ano-ativo por mês + Total composto com `yearsObserved`; registra 0,00/0 nos meses sem movimento).
+Smoke test (`next start`) → `/login` 200 e `/financas/sazonalidade` + `/financas/sazonalidade/export` 307 (auth-gated).
+`npm audit` sem novas vulnerabilidades (mesmos advisories Next/postcss da D6). Ver D152; segue 939 da
+Sessão 159 (**exportação CSV da evolução do cachê** em `/shows/evolucao-cache/export` — a tela "Evolução do
 cachê" (`feeTrend`, cachê médio realizado mês a mês) ganhou botão de exportação, mais uma lacuna fechada após
 cadência/sazonalidade/dia-da-semana/faixa-de-cachê. Novo serializador puro `feeTrendToCsv(trend)` + `FEE_TREND_CSV_HEADERS`
 em `src/lib/csv.ts` espelha a tabela "Cachê médio mês a mês": uma linha por **mês ativo** (show realizado com cachê), em ordem

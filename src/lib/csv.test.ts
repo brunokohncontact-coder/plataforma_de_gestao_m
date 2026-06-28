@@ -19,6 +19,8 @@ import {
   paymentLagByContactToCsv,
   paymentLagToCsv,
   gigSeasonalityToCsv,
+  monthlySeasonalityToCsv,
+  MONTHLY_SEASONALITY_CSV_HEADERS,
   TRANSACTION_CSV_HEADERS,
   SHOW_CSV_HEADERS,
   ANNUAL_SUMMARY_CSV_HEADERS,
@@ -57,6 +59,7 @@ import {
 } from "./csv";
 import {
   annualSummary,
+  monthlySeasonality,
   quarterlySummary,
   gigSeasonality,
   gigCadence,
@@ -890,6 +893,59 @@ describe("gigSeasonalityToCsv", () => {
     });
     const janeiro = gigSeasonalityToCsv(season).split("\r\n")[1].split(";");
     expect(janeiro).toEqual(["Janeiro", "0", "0,00", "0,00", "0%", "0%"]);
+  });
+});
+
+describe("monthlySeasonalityToCsv", () => {
+  const tx = (over: Partial<TxLike> = {}): TxLike => ({
+    type: "INCOME",
+    amount: 100000,
+    category: "",
+    date: "2024-03-10T00:00:00.000Z",
+    received: true,
+    showId: null,
+    ...over,
+  });
+
+  it("sempre emite as 12 linhas de mês + a linha Total mesmo sem transações", () => {
+    const csv = monthlySeasonalityToCsv(monthlySeasonality([]));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(MONTHLY_SEASONALITY_CSV_HEADERS.join(";"));
+    // cabeçalho + 12 meses + Total
+    expect(lines).toHaveLength(14);
+    expect(lines[1]).toBe("Janeiro;0,00;0,00;0,00;0");
+    expect(lines[12]).toBe("Dezembro;0,00;0,00;0,00;0");
+    // Total = ano típico composto (zerado) + amplitude do histórico (0 anos).
+    expect(lines[13]).toBe("Total;0,00;0,00;0,00;0");
+  });
+
+  it("serializa a média por ano-ativo (receita/despesa/resultado) por mês + Total composto", () => {
+    const seasonality = monthlySeasonality([
+      tx({ date: "2024-03-01T00:00:00.000Z", type: "INCOME", amount: 100000 }),
+      tx({ date: "2023-03-20T00:00:00.000Z", type: "INCOME", amount: 300000 }),
+      tx({ date: "2024-03-15T00:00:00.000Z", type: "EXPENSE", amount: 50000 }),
+    ]);
+    const lines = monthlySeasonalityToCsv(seasonality).split("\r\n");
+    const março = lines[3].split(";");
+    expect(março[0]).toBe("Março");
+    // Receita média = (1000 + 3000) / 2 anos ativos = 2000.
+    expect(março[1]).toBe("2000,00");
+    // Despesa média = 500 / 2 anos ativos = 250.
+    expect(março[2]).toBe("250,00");
+    // Resultado médio = 2000 − 250 = 1750.
+    expect(março[3]).toBe("1750,00");
+    expect(março[4]).toBe("2"); // dois anos com movimento em março
+    // Total: ano típico composto (soma das médias) + amplitude do histórico.
+    const total = lines[13].split(";");
+    expect(total).toEqual(["Total", "2000,00", "250,00", "1750,00", "2"]);
+  });
+
+  it("registra 0,00 e 0 nos meses sem movimento (não usa o '—' da UI)", () => {
+    const seasonality = monthlySeasonality([
+      tx({ date: "2024-03-01T00:00:00.000Z", amount: 100000 }),
+    ]);
+    const janeiro = monthlySeasonalityToCsv(seasonality).split("\r\n")[1].split(";");
+    expect(janeiro).toEqual(["Janeiro", "0,00", "0,00", "0,00", "0"]);
   });
 });
 

@@ -19,6 +19,7 @@ import {
   MIN_MEDIAN_LAG_SAMPLE,
   PAYMENT_SPEED_BUCKET_LABELS,
   type AnnualSummary,
+  type MonthlySeasonality,
   type QuarterlySummary,
   type ShowLike,
   type ShowProfitRow,
@@ -220,6 +221,60 @@ export function annualSummaryToCsv(
     centsToCsvAmount(summary.totalIncome),
     centsToCsvAmount(summary.totalExpense),
     centsToCsvAmount(summary.net),
+  ]);
+  return toCsv(rows, delimiter);
+}
+
+export const MONTHLY_SEASONALITY_CSV_HEADERS = [
+  "Mês",
+  "Receita média (R$)",
+  "Despesa média (R$)",
+  "Resultado médio (R$)",
+  "Anos",
+] as const;
+
+/**
+ * Serializa a sazonalidade financeira por mês do ano (`monthlySeasonality`) em
+ * CSV, pronto para download. Espelha a tabela "Média por mês do ano" da página
+ * `/financas/sazonalidade`: uma linha por mês (sempre as 12, de janeiro a
+ * dezembro, inclusive meses sem movimento — para revelar os vales da temporada),
+ * com a média por ano-ativo de receita, despesa e resultado, e o nº de anos em
+ * que aquele mês teve movimento. Diferente da UI (que mostra "—" nos meses
+ * vazios), o CSV registra 0,00 e 0 para ficar legível por máquina.
+ *
+ * A linha "Total" é o **ano típico composto**: a soma das médias mensais
+ * (receita/despesa/resultado de um ano em que cada mês rende o seu valor típico)
+ * — um número de planejamento, não a soma dos totais brutos. Na coluna "Anos"
+ * traz `yearsObserved`, a amplitude do histórico (anos distintos com qualquer
+ * transação), conceitualmente distinta dos anos-ativos por mês.
+ *
+ * Mesma convenção pt-BR de `transactionsToCsv` (delimitador ";", decimal com
+ * vírgula). Irmão de `gigSeasonalityToCsv` no eixo das Finanças. Pura.
+ */
+export function monthlySeasonalityToCsv(
+  seasonality: MonthlySeasonality,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const rows: string[][] = [Array.from(MONTHLY_SEASONALITY_CSV_HEADERS)];
+  let typicalIncome = 0;
+  let typicalExpense = 0;
+  for (const m of seasonality.months) {
+    typicalIncome += m.avgIncome;
+    typicalExpense += m.avgExpense;
+    rows.push([
+      MONTH_NAMES_LONG[m.monthIndex - 1],
+      centsToCsvAmount(m.avgIncome),
+      centsToCsvAmount(m.avgExpense),
+      centsToCsvAmount(m.avgNet),
+      String(m.years),
+    ]);
+  }
+  rows.push([
+    "Total",
+    centsToCsvAmount(typicalIncome),
+    centsToCsvAmount(typicalExpense),
+    centsToCsvAmount(typicalIncome - typicalExpense),
+    String(seasonality.yearsObserved),
   ]);
   return toCsv(rows, delimiter);
 }
