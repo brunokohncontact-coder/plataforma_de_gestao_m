@@ -3,19 +3,29 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   weekdayPerformance,
+  weekdayPerformanceYears,
+  parseProfitYear,
+  filterShowsByYear,
   WEEKDAY_SHORT,
   type ReceivableShowLike,
   type WeekdayStat,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
+import { PeriodPicker } from "@/components/PeriodPicker";
 
 export const dynamic = "force-dynamic";
+
+type SearchParams = { [key: string]: string | string[] | undefined };
 
 function pct(share: number): string {
   return `${Math.round(share * 100)}%`;
 }
 
-export default async function WeekdayPage() {
+export default async function WeekdayPage({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
   const user = await requireUser();
 
   const rows = await prisma.show.findMany({
@@ -24,7 +34,16 @@ export default async function WeekdayPage() {
     select: { id: true, date: true, status: true, fee: true },
   });
 
-  const shows: ReceivableShowLike[] = rows.map((s) => ({
+  // Recorte por período (ano), reaproveitando os helpers da D108. Os anos do
+  // seletor vêm só dos shows que de fato entram no desempenho por dia da semana
+  // (realizados com cachê > 0), via `weekdayPerformanceYears`, para não oferecer
+  // um ano vazio. Filtra-se ANTES de mapear/`weekdayPerformance`, que segue
+  // aplicando o mesmo gate sem saber do recorte.
+  const availableYears = weekdayPerformanceYears(rows);
+  const yearFilter = parseProfitYear(searchParams?.ano, availableYears);
+  const periodRows = filterShowsByYear(rows, yearFilter);
+
+  const shows: ReceivableShowLike[] = periodRows.map((s) => ({
     id: s.id,
     fee: s.fee,
     status: s.status,
@@ -32,6 +51,7 @@ export default async function WeekdayPage() {
   }));
 
   const wp = weekdayPerformance(shows);
+  const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
 
   // Escala das barras: maior cachê médio entre os dias com shows.
   const peakAvg = Math.max(1, ...wp.days.map((d) => d.avgFee));
@@ -49,7 +69,9 @@ export default async function WeekdayPage() {
         <div className="flex items-center gap-2">
           {wp.totalShows > 0 && (
             <a
-              href="/shows/dias-semana/export"
+              href={`/shows/dias-semana/export${
+                yearFilter === "all" ? "" : `?ano=${yearFilter}`
+              }`}
               className="btn-secondary text-sm"
               download
             >
@@ -62,19 +84,38 @@ export default async function WeekdayPage() {
         </div>
       </div>
 
+      {availableYears.length > 0 && (
+        <PeriodPicker
+          years={availableYears}
+          active={yearFilter}
+          basePath="/shows/dias-semana"
+        />
+      )}
+
       {wp.totalShows === 0 ? (
         <div className="card text-center text-gray-500">
-          <p>
-            Ainda não há shows realizados com cachê registrado para revelar um
-            padrão por dia da semana. Marque um show como realizado e informe o
-            cachê.
-          </p>
-          <Link
-            href="/shows/novo"
-            className="mt-3 inline-block text-brand-700 hover:underline"
-          >
-            Cadastrar um show
-          </Link>
+          {yearFilter === "all" ? (
+            <>
+              <p>
+                Ainda não há shows realizados com cachê registrado para revelar um
+                padrão por dia da semana. Marque um show como realizado e informe
+                o cachê.
+              </p>
+              <Link
+                href="/shows/novo"
+                className="mt-3 inline-block text-brand-700 hover:underline"
+              >
+                Cadastrar um show
+              </Link>
+            </>
+          ) : (
+            <>
+              <p>Nenhum show realizado com cachê em {periodLabel}.</p>
+              <p className="mt-1 text-sm">
+                Escolha outro período acima para ver o padrão por dia da semana.
+              </p>
+            </>
+          )}
         </div>
       ) : (
         <>

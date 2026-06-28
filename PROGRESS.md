@@ -9,8 +9,20 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **914 testes**
-verdes após a Sessão 153 (**exportação CSV da composição de despesas** em `/financas/composicao-despesas/export` — novo
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **919 testes**
+verdes após a Sessão 154 (**recorte por ano (`?ano=`) no desempenho por dia da semana** em `/shows/dias-semana` — a tela e
+seu export deixaram de somar só "todos os anos" e ganharam o seletor de período (`PeriodPicker`/D119), reusando os helpers da
+D108 (`parseProfitYear`/`filterShowsByYear`) + novo derivador puro `weekdayPerformanceYears(shows, { now? })` em
+`src/lib/finance.ts` que devolve os anos UTC (decrescente) **só** dos shows que entram no cálculo — realizados
+(`isHappenedGig`) com cachê > 0, o **mesmo** gate de `weekdayPerformance`, para o seletor nunca oferecer um ano de tabela
+vazia. Filtra-se ANTES de mapear/`weekdayPerformance` (que segue puro). Espelho direto da D143 (faixas de cachê) no eixo de
+dia da semana; mantido como função própria — e não reuso de `feeDistributionYears`, hoje de gate idêntico — para não acoplar
+as duas telas. Botão "⬇ CSV" e a rota `/shows/dias-semana/export` propagam o `?ano=`; arquivo passou de fixo para
+`shows-por-dia-da-semana-{ano|todos}.csv`; estado-vazio agora é ciente do período. **+5 testes**
+(`describe("weekdayPerformanceYears")`: anos UTC decrescentes/dedup só de realizados com cachê > 0; ignora
+propostos/cancelados/futuros/sem-cachê; ano UTC na virada do dia; vazio sem elegíveis; invariante de gate compartilhado).
+Smoke test (`next start`) → `/login` 200 e `/shows/dias-semana?ano=2025` + `/shows/dias-semana/export?ano=2025` 307
+(auth-gated). Ver D146; segue 914 da Sessão 153 (**exportação CSV da composição de despesas** em `/financas/composicao-despesas/export` — novo
 serializador puro `expenseMixToCsv(mix)` + `EXPENSE_MIX_CSV_HEADERS` em `src/lib/csv.ts`, espelho direto de `incomeMixToCsv`
 (D144) no eixo de gastos: recebe o objeto `ExpenseMix` (`expenseMix`/D45, importado de `@/lib/finance`) e emite uma linha
 por rubrica na mesma ordem da página (valor decrescente, empate por nome pt-BR) — colunas Categoria/Lançamentos/Total
