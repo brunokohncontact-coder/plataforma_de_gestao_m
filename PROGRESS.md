@@ -9,8 +9,18 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **901 testes**
-verdes após a Sessão 149 (**comparativo ano a ano da concentração por papel** em `/contatos/rentabilidade/por-papel` — novo
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **904 testes**
+verdes após a Sessão 150 (**exportação CSV da distribuição por faixa de cachê** em `/shows/faixas-de-cache/export` — novo
+serializador puro `feeDistributionToCsv(dist)` + `FEE_DISTRIBUTION_CSV_HEADERS` em `src/lib/csv.ts`, irmão direto de
+`gigSeasonalityToCsv`/`weekdayPerformanceToCsv` (D139/D140): recebe o objeto `FeeDistribution` (`feeDistribution`, importado
+de `@/lib/finance`) e emite sempre as 6 linhas de faixa (Até R$ 500 → Acima de R$ 5.000, na ordem de `FEE_BANDS`, inclusive
+faixas zeradas — preserva o "formato da tabela de cachês" sem pular degraus) + linha "Total", colunas
+Faixa/Shows/% dos shows/Faturamento/% do faturamento (participações via `csvShare`); como nos irmãos, o CSV registra
+`0`/`0%`/`0,00` nas faixas vazias (a UI usa "—") e os shares do Total ficam em branco (sempre 100%). Diferente da
+sazonalidade/dia-da-semana, **não** traz cachê médio por linha (faixa é um intervalo de preço, não um balde de tempo;
+`FeeBandStat` não computa média por faixa). Rota `/shows/faixas-de-cache/export` reusa a mesma consulta/`feeDistribution`
+da página, nome fixo `faixas-de-cache.csv`; botão "⬇ CSV" no cabeçalho só com `dist.totalShows > 0`. **+3 testes**; smoke
+test (`next start`) → `/login` 200 e a rota 307 (auth-gated). Ver D142; segue 901 da Sessão 149 (**comparativo ano a ano da concentração por papel** em `/contatos/rentabilidade/por-papel` — novo
 helper puro `compareRoleConcentration(current, previous)` + tipo `RoleConcentrationComparison` em `src/lib/finance.ts`,
 cópia estrutural de `compareClientConcentration`/`compareGeoConcentration` (D120) num eixo de **papel do comprador**:
 recebe duas `roleConcentration` já computadas (cada uma sobre `rankRolesByProfit` do seu período) e devolve `topShareDelta`,

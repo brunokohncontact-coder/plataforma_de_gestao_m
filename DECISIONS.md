@@ -4266,3 +4266,38 @@ contexto, decisão, justificativa e alternativas consideradas.
   cópias curtas de ~10 linhas e a indireção (tipos genéricos sobre slices diferentes) não paga o DRY, mesma postura da D140
   alt. c; (c) um `roleConcentrationHeadline` para nudge de Painel (espelho do `clientConcentrationHeadline`) — adiado pela
   mesma razão de densidade do Painel, pode vir depois se houver demanda.
+
+---
+
+## D142 — Exportação CSV da distribuição por faixa de cachê (`/shows/faixas-de-cache`) (Sessão 150)
+- **Contexto:** a tela `/shows/faixas-de-cache` (D53) mostra em que faixa de preço o músico mais toca e onde está
+  concentrado o faturamento — o "formato da tabela de cachês" —, mas era uma das poucas telas com tabela densa do acervo
+  ainda sem botão de exportação. As irmãs do mesmo eixo "balde → linhas + Total" (sazonalidade por mês/D139 e desempenho
+  por dia da semana/D140) já exportavam; faltava só o serializador + a rota + o botão para esta.
+- **Decisão:** novo serializador puro `feeDistributionToCsv(dist): string` + `FEE_DISTRIBUTION_CSV_HEADERS` em
+  `src/lib/csv.ts`, irmão direto de `gigSeasonalityToCsv`/`weekdayPerformanceToCsv`: recebe o objeto `FeeDistribution`
+  (importado de `@/lib/finance`, não reconstruído) e emite sempre as 6 linhas de faixa (na ordem de `FEE_BANDS`, da mais
+  barata à mais cara, inclusive faixas zeradas — o gráfico/tabela não pode pular degraus) + uma linha "Total". Colunas
+  **Faixa / Shows / % dos shows / Faturamento (R$) / % do faturamento**, espelhando a tabela da página (participações via
+  o `csvShare` compartilhado, valores via `centsToCsvAmount`). Diferente da UI (que mostra "—" nas faixas vazias), o CSV
+  registra `0`/`0%`/`0,00` para ficar legível por máquina; os shares do Total ficam em branco (são sempre 100% por
+  construção). Rota `/shows/faixas-de-cache/export/route.ts` espelha a consulta da página e reusa a camada pura testada
+  (`feeDistribution`); arquivo `faixas-de-cache.csv` + BOM UTF-8 na camada HTTP. Botão "⬇ CSV" no cabeçalho só com
+  `dist.totalShows > 0`.
+- **Justificativa:** simetria e reuso máximo — fecha a lacuna de exportação desta tela com o mesmo padrão (serializador
+  puro testável + rota fina que só consulta e embrulha no HTTP) já consolidado em ~16 outras exportações; mantém a
+  convenção pt-BR (delimitador ";", decimal com vírgula, BOM) para abrir direto no Excel/Sheets pt-BR.
+- **Alternativas consideradas:** (a) incluir uma coluna "Cachê médio (R$)" por faixa como nas irmãs — descartado:
+  `FeeBandStat` não computa média por faixa (faixa é um **intervalo de preço**, não um balde de tempo; a média intra-faixa
+  diz pouco e a página não a mostra), então o CSV espelha exatamente as 5 colunas da tela; (b) recorte por ano (`?ano=`)
+  no export — adiado: a página-mãe ainda soma todos os anos (a distribuição ganha sentido com o acervo inteiro), o export
+  acompanha; quando/se a página ganhar `?ano=`, o export herda o mesmo recorte.
+- **Testes:** **+3** em `csv.test.ts` (`describe("feeDistributionToCsv")`, espelhando os blocos de sazonalidade/dia-da-semana
+  sobre o eixo de faixa): sempre 6 faixas + Total mesmo sem shows (cabeçalho + 8 linhas, Total `Total;0;;0,00;`),
+  serialização de contagem/participações/faturamento por faixa (dois shows somados na faixa "R$ 1.000 – 2.000" → 67% dos
+  shows, R$ 3.300, 80% do faturamento) e o registro de `0`/`0%`/`0,00` nas faixas vazias (não o "—" da UI). 904 testes no
+  total (eram 901).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **904 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/shows/faixas-de-cache/export` 307 (redireciona ao login sem sessão, rota
+  auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
+  postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
