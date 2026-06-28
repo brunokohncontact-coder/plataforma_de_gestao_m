@@ -1864,6 +1864,23 @@ export function expenseMix(txs: TxLike[]): ExpenseMix {
   };
 }
 
+/**
+ * Anos (UTC, decrescente) das transações de DESPESA — alimenta o seletor de
+ * período de `/financas/composicao-despesas` sem oferecer um ano sem despesa.
+ * Espelho de `incomeMixYears` no eixo de gasto: parte do mesmo gate que
+ * `expenseMix` (só `type === "EXPENSE"`), então todo ano oferecido tem ao menos
+ * uma rubrica de despesa. Pura.
+ */
+export function expenseMixYears(txs: TxLike[]): number[] {
+  const years = new Set<number>();
+  for (const t of txs) {
+    if (t.type !== "EXPENSE") continue;
+    const d = t.date instanceof Date ? t.date : new Date(t.date);
+    years.add(d.getUTCFullYear());
+  }
+  return [...years].sort((a, b) => b - a);
+}
+
 export interface MonthlyTotal {
   /** Chave "YYYY-MM". */
   month: string;

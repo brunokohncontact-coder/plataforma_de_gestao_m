@@ -4532,3 +4532,40 @@ contexto, decisão, justificativa e alternativas consideradas.
   smoke test (`next start`) → `/login` 200 e `/financas/fontes-de-renda?ano=2026` + `/financas/fontes-de-renda/export?ano=2026`
   307 (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14
   / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## D149 — Recorte por ano (`?ano=`) na Composição de despesas (`/financas/composicao-despesas`) (Sessão 157)
+- **Contexto:** a tela `/financas/composicao-despesas` (mix de gastos por rubrica, `expenseMix`/D45) e seu export (D145)
+  somavam **todas as despesas lançadas** num retrato único de concentração de gasto. Sua tela-irmã `/financas/fontes-de-renda`
+  acabara de ganhar o seletor de período por ano na D148, que registrou explicitamente este recorte como "próximo passo
+  natural" (alternativa c). Composição de despesas era a última das telas-irmãs de mix das Finanças sem o `?ano=`.
+- **Decisão:** adicionar o recorte por ano à página e ao export, espelho direto da D148 no eixo de despesa: reusa o
+  `PeriodPicker` (D119) e os helpers da D108 — `parseProfitYear` (resolve o `?ano=`) e o genérico
+  `filterShowsByYear<S extends { date: Date }>` (opera sobre a transação crua do Prisma, que tem `date: Date`). Novo
+  derivador puro `expenseMixYears(txs): number[]` em `src/lib/finance.ts` devolve os anos UTC (decrescente) **só** das
+  transações de despesa (`type === "EXPENSE"`), o **mesmo** gate de `expenseMix`, para o seletor nunca oferecer um ano sem
+  despesa. Filtra-se por ano **antes** de mapear para `TxLike` e chamar `expenseMix`, que segue puro e agnóstico ao recorte.
+  O botão "⬇ CSV" e a rota `/financas/composicao-despesas/export` propagam o `?ano=`; o arquivo passou de
+  `composicao-despesas.csv` (fixo) para `composicao-despesas-{ano|todos}.csv` (mesma convenção de sufixo das D125/D143/D148).
+  Estado-vazio e nota de rodapé agora cientes do período.
+- **Justificativa:** a **evolução da composição de gasto** é uma leitura por ano — para onde foi o dinheiro *neste ano* vs. o
+  histórico, se a dependência de uma rubrica cara (transporte, equipamento) cresceu ou diminuiu. Manter só o agregado escondia
+  essa trajetória, e a assimetria com a tela-irmã (e demais telas de análise, todas com `?ano=`) não tinha razão de ser.
+  Fecha o par income/expense de mix das Finanças no eixo de período.
+- **Por que um helper novo (`expenseMixYears`) e não generalizar `incomeMixYears`:** income e expense já são funções **irmãs
+  paralelas** (mesma matemática, gate oposto: `INCOME` vs. `EXPENSE`), não uma só parametrizada. Um `expenseMixYears` espelho
+  mantém a simetria e o seletor **honesto** (toda pílula de ano tem ao menos uma despesa que entra em `expenseMix`); unificar
+  num único `mixYears(txs, type)` acoplaria duas telas independentes por ganho nulo. É exatamente o desfecho previsto na
+  alternativa (c) da D148.
+- **Alternativas consideradas:** (a) derivar os anos com `showProfitYears`/`incomeMixYears` sobre todas as datas — descartado
+  por oferecer anos sem despesa (mesma razão da D148). (b) recorte por intervalo de datas livre — descartado por consistência
+  com o `PeriodPicker` por ano das demais telas. (c) parametrizar `incomeMixYears`/`expenseMixYears` numa só função — ver
+  acima (acoplamento sem ganho).
+- **Testes:** **+6** em `finance.test.ts` (`describe("expenseMixYears")`): anos UTC decrescentes e deduplicados; ignora
+  receitas (só anos com despesa); ano **UTC** na virada do dia; aceita `date` como `Date` e como string ISO; lista vazia sem
+  despesa; invariante de gate compartilhado com `expenseMix` (todo ano oferecido rende mix não vazio). O recorte em si reusa
+  `parseProfitYear`/`filterShowsByYear`/`expenseMix` (já testados), então a página/route não duplicam cobertura. **933 testes**
+  no total (eram 927).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **933 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/financas/composicao-despesas?ano=2026` +
+  `/financas/composicao-despesas/export?ano=2026` 307 (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories —
+  4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.

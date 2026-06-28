@@ -94,6 +94,7 @@ import {
   incomeMix,
   incomeMixYears,
   expenseMix,
+  expenseMixYears,
   paymentLag,
   paymentLagHeadline,
   paymentLagByContact,
@@ -1665,6 +1666,66 @@ describe("incomeMixYears", () => {
     expect(
       incomeMixYears([tx({ type: "EXPENSE", amount: 100_00 })]),
     ).toEqual([]);
+  });
+});
+
+describe("expenseMixYears", () => {
+  it("retorna os anos UTC das despesas em ordem decrescente, deduplicados", () => {
+    const txs: TxLike[] = [
+      tx({ type: "EXPENSE", amount: 100_00, date: "2024-05-10T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 100_00, date: "2026-01-02T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 100_00, date: "2024-11-20T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 100_00, date: "2025-07-01T00:00:00.000Z" }),
+    ];
+    expect(expenseMixYears(txs)).toEqual([2026, 2025, 2024]);
+  });
+
+  it("ignora receitas — só anos com despesa aparecem no seletor", () => {
+    const txs: TxLike[] = [
+      tx({ type: "EXPENSE", amount: 100_00, date: "2026-03-01T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 999_00, date: "2024-03-01T00:00:00.000Z" }),
+    ];
+    expect(expenseMixYears(txs)).toEqual([2026]);
+  });
+
+  it("usa o ano UTC mesmo na virada do dia (string ISO)", () => {
+    // 2025-12-31 23:30 em UTC-3 ainda é 2026-01-01 em UTC.
+    const txs: TxLike[] = [
+      tx({ type: "EXPENSE", amount: 100_00, date: "2026-01-01T02:30:00.000Z" }),
+    ];
+    expect(expenseMixYears(txs)).toEqual([2026]);
+  });
+
+  it("aceita date como objeto Date e como string ISO", () => {
+    const txs: TxLike[] = [
+      tx({ type: "EXPENSE", amount: 100_00, date: new Date("2025-06-15T00:00:00.000Z") }),
+      tx({ type: "EXPENSE", amount: 100_00, date: "2024-06-15T00:00:00.000Z" }),
+    ];
+    expect(expenseMixYears(txs)).toEqual([2025, 2024]);
+  });
+
+  it("retorna vazio quando não há despesas", () => {
+    expect(
+      expenseMixYears([tx({ type: "INCOME", amount: 100_00 })]),
+    ).toEqual([]);
+  });
+
+  it("compartilha o gate de expenseMix (só anos com despesa de fato)", () => {
+    // Todo ano oferecido tem ao menos uma despesa que entra no expenseMix.
+    const txs: TxLike[] = [
+      tx({ type: "EXPENSE", amount: 300_00, date: "2025-02-01T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 900_00, date: "2023-02-01T00:00:00.000Z" }),
+    ];
+    const years = expenseMixYears(txs);
+    for (const year of years) {
+      const ofYear = txs.filter(
+        (t) =>
+          (t.date instanceof Date ? t.date : new Date(t.date)).getUTCFullYear() ===
+          year,
+      );
+      expect(expenseMix(ofYear).categoryCount).toBeGreaterThan(0);
+    }
+    expect(years).toEqual([2025]);
   });
 });
 
