@@ -5561,6 +5561,29 @@ export function feeDistribution(
   };
 }
 
+/**
+ * Anos (UTC, decrescente) dos shows que de fato entram na distribuição por
+ * faixa de cachê — i.e. realizados (`isHappenedGig`) com cachê > 0, exatamente
+ * o mesmo recorte de `feeDistribution`. Alimenta o seletor de período de
+ * `/shows/faixas-de-cache` sem oferecer anos vazios (ao contrário de
+ * `showProfitYears`, que parte de uma lista já filtrada pela própria tela e
+ * pode oferecer um ano sem shows priced). Pura; `now` injetável para teste.
+ */
+export function feeDistributionYears(
+  shows: ReceivableShowLike[],
+  opts: { now?: Date | string } = {},
+): number[] {
+  const todayMs = utcMidnight(opts.now ?? new Date());
+  const years = new Set<number>();
+  for (const s of shows) {
+    if (!isHappenedGig(s, todayMs)) continue;
+    if (s.fee <= 0) continue;
+    const d = s.date instanceof Date ? s.date : new Date(s.date);
+    years.add(d.getUTCFullYear());
+  }
+  return [...years].sort((a, b) => b - a);
+}
+
 // ── Cadência de shows (estou tocando mais ou menos ao longo do tempo?) ───────
 //
 // Responde "minha agenda está mais cheia?": conta os shows JÁ REALIZADOS (mesmo
