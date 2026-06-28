@@ -82,6 +82,7 @@ import {
   feeTrend,
   gigCadence,
   feeDistribution,
+  feeDistributionYears,
   feeBandKeyFor,
   FEE_BANDS,
   weekdayPerformance,
@@ -5707,6 +5708,60 @@ describe("feeDistribution", () => {
     );
     // ambas com 1 show; desempate → faixa mais alta com maior faturamento.
     expect(d.modalBand?.key).toBe("1kto2k");
+  });
+});
+
+describe("feeDistributionYears", () => {
+  const now = new Date("2026-06-15T12:00:00.000Z");
+
+  function gig(partial: Partial<ReceivableShowLike>): ReceivableShowLike {
+    return {
+      id: "g1",
+      fee: 500_00,
+      status: "PLAYED",
+      date: "2026-01-10T20:00:00.000Z",
+      ...partial,
+    };
+  }
+
+  it("retorna os anos (UTC, decrescente) só de shows realizados com cachê > 0", () => {
+    const years = feeDistributionYears(
+      [
+        gig({ id: "a", date: "2024-05-10T20:00:00.000Z" }),
+        gig({ id: "b", date: "2026-01-10T20:00:00.000Z" }),
+        gig({ id: "c", date: "2025-03-10T20:00:00.000Z" }),
+        gig({ id: "dup", date: "2026-09-10T20:00:00.000Z", status: "PLAYED" }), // mesmo ano 2026
+      ],
+      { now },
+    );
+    expect(years).toEqual([2026, 2025, 2024]);
+  });
+
+  it("ignora propostos, cancelados, futuros e gigs sem cachê", () => {
+    const years = feeDistributionYears(
+      [
+        gig({ id: "prop", status: "PROPOSED", date: "2023-01-10T20:00:00.000Z" }),
+        gig({ id: "canc", status: "CANCELLED", date: "2022-01-10T20:00:00.000Z" }),
+        gig({ id: "fut", status: "CONFIRMED", date: "2027-01-10T20:00:00.000Z" }),
+        gig({ id: "free", status: "PLAYED", fee: 0, date: "2021-01-10T20:00:00.000Z" }),
+        gig({ id: "ok", status: "PLAYED", date: "2025-01-10T20:00:00.000Z" }),
+      ],
+      { now },
+    );
+    expect(years).toEqual([2025]);
+  });
+
+  it("usa o ano UTC (não o local) na virada do dia", () => {
+    // 2025-12-31T23:00:00Z ainda é 2025 em UTC.
+    const years = feeDistributionYears(
+      [gig({ id: "a", date: "2025-12-31T23:00:00.000Z" })],
+      { now },
+    );
+    expect(years).toEqual([2025]);
+  });
+
+  it("sem shows elegíveis retorna lista vazia", () => {
+    expect(feeDistributionYears([], { now })).toEqual([]);
   });
 });
 

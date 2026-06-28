@@ -9,8 +9,22 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **904 testes**
-verdes após a Sessão 150 (**exportação CSV da distribuição por faixa de cachê** em `/shows/faixas-de-cache/export` — novo
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **908 testes**
+verdes após a Sessão 151 (**recorte por ano (`?ano=`) na distribuição por faixa de cachê** em `/shows/faixas-de-cache` —
+a tela e seu export deixaram de somar só "todos os anos" e ganharam o seletor de período (`PeriodPicker`/D119) das telas de
+rentabilidade, reusando os helpers da D108 (`parseProfitYear`/`filterShowsByYear`) + novo derivador puro
+`feeDistributionYears(shows, { now? })` em `src/lib/finance.ts` que devolve os anos UTC (decrescente) **só** dos shows que
+entram na distribuição — realizados (`isHappenedGig`) com cachê > 0, o **mesmo** gate de `feeDistribution` — para o seletor
+nunca oferecer um ano que renderia tabela vazia (ao contrário de `showProfitYears`, que parte de uma lista já filtrada pela
+tela). Filtra-se por ano **antes** de mapear/`feeDistribution` (que segue puro e agnóstico ao recorte). Botão "⬇ CSV" e a
+rota `/shows/faixas-de-cache/export` propagam o `?ano=` ativo; arquivo passou de fixo para `faixas-de-cache-{ano|todos}.csv`.
+Reverte conscientemente o adiamento da D142(b): a distribuição por faixa **por ano** mostra a evolução do posicionamento de
+preço (em que faixa toquei *neste ano* vs. o histórico), e fecha a assimetria com as telas de rentabilidade (todas já tinham
+`?ano=`); distinto da sazonalidade por mês (D133(b)), que colapsa os anos por design. **+4 testes**
+(`describe("feeDistributionYears")`: anos UTC decrescentes/dedup só de realizados com cachê > 0; ignora
+propostos/cancelados/futuros/sem-cachê; ano UTC na virada do dia; vazio sem elegíveis). Smoke test (`next start`) →
+`/login` 200 e `/shows/faixas-de-cache?ano=2025` + `/shows/faixas-de-cache/export?ano=2025` 307 (auth-gated). Ver D143;
+segue 904 da Sessão 150 (**exportação CSV da distribuição por faixa de cachê** em `/shows/faixas-de-cache/export` — novo
 serializador puro `feeDistributionToCsv(dist)` + `FEE_DISTRIBUTION_CSV_HEADERS` em `src/lib/csv.ts`, irmão direto de
 `gigSeasonalityToCsv`/`weekdayPerformanceToCsv` (D139/D140): recebe o objeto `FeeDistribution` (`feeDistribution`, importado
 de `@/lib/finance`) e emite sempre as 6 linhas de faixa (Até R$ 500 → Acima de R$ 5.000, na ordem de `FEE_BANDS`, inclusive

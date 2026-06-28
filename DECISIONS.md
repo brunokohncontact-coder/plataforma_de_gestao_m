@@ -4301,3 +4301,41 @@ contexto, decisão, justificativa e alternativas consideradas.
   smoke test (`next start`) → `/login` 200 e `/shows/faixas-de-cache/export` 307 (redireciona ao login sem sessão, rota
   auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
   postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## D143 — Recorte por ano (`?ano=`) na distribuição por faixa de cachê (`/shows/faixas-de-cache`) (Sessão 151)
+- **Contexto:** a tela `/shows/faixas-de-cache` (D53) e seu export (D142) somavam **todos os anos** num retrato único do
+  "formato da tabela de cachês". As telas irmãs do eixo de rentabilidade (`/shows/rentabilidade`, `/shows/locais`,
+  `/shows/cidades`, `/contatos/rentabilidade`, `.../por-papel`) já oferecem o seletor de período por ano (`PeriodPicker` +
+  helpers da D108) há várias sessões; faixas de cachê era a última tela tabular de análise de shows sem esse recorte.
+- **Decisão:** adicionar o recorte por ano à página e ao export, reusando integralmente os três helpers da D108
+  (`showProfitYears`/`parseProfitYear`/`filterShowsByYear` — só os dois últimos, mais um novo derivador de anos) e o
+  componente compartilhado `PeriodPicker` (D119), exatamente como a rentabilidade por show. Novo helper puro
+  `feeDistributionYears(shows, { now? }): number[]` em `src/lib/finance.ts` que devolve os anos (UTC, decrescente) **só**
+  dos shows que de fato entram na distribuição — i.e. realizados (`isHappenedGig`) com cachê > 0, o **mesmo** gate de
+  `feeDistribution`. Filtra-se por ano **antes** de mapear para `ReceivableShowLike` e chamar `feeDistribution`, que segue
+  puro e agnóstico ao recorte. O botão "⬇ CSV" e a rota `/shows/faixas-de-cache/export` propagam o `?ano=` ativo; o arquivo
+  passou de `faixas-de-cache.csv` (fixo) para `faixas-de-cache-{ano|todos}.csv` (mesma convenção de sufixo das D125).
+- **Justificativa:** reverte conscientemente o adiamento da D142(b) ("a distribuição ganha sentido com o acervo inteiro").
+  Revisão: a **evolução do posicionamento de preço** é justamente uma leitura por ano — em que faixa eu mais toquei *neste
+  ano* vs. o histórico, para onde meu faturamento migrou. Manter só o agregado escondia essa trajetória, e a assimetria com
+  as telas de rentabilidade (todas com `?ano=`) não tinha razão de ser. O acervo inteiro continua disponível na pílula
+  "Todos" (default), então nada se perde. Diferente da **sazonalidade por mês** (D133(b)), que colapsa os anos *por design*
+  (jan→dez de todos os anos juntos): ali o ano é o eixo a achatar; aqui o ano é um recorte legítimo do mesmo retrato.
+- **Por que um helper novo (`feeDistributionYears`) e não `showProfitYears`:** `showProfitYears` parte de uma lista de datas
+  já filtrada pela própria tela (ex.: rentabilidade passa os shows não-CANCELLED) e pode oferecer um ano sem shows
+  *priced/realizados* — aceitável lá porque o estado-vazio cobre. Aqui o gate da distribuição é mais estrito (realizado **e**
+  cachê > 0) e quis-se um seletor **honesto** que não ofereça anos que renderiam tabela vazia; `feeDistributionYears` aplica
+  exatamente o gate de `feeDistribution`, então toda pílula de ano tem dados.
+- **Alternativas consideradas:** (a) exportar `isHappenedGig` e derivar os anos inline nas duas rotas — descartado: duplicaria
+  o gate (status + cachê) em page e route e acoplaria a UI ao detalhe interno; um helper puro nomeado é testável e DRY.
+  (b) derivar os anos com `showProfitYears` sobre todas as datas — descartado por oferecer anos vazios (ver acima).
+  (c) recorte por intervalo de datas livre em vez de por ano — descartado: as outras telas usam ano e o `PeriodPicker`
+  compartilhado fala em ano; consistência > flexibilidade aqui.
+- **Testes:** **+4** em `finance.test.ts` (`describe("feeDistributionYears")`): anos UTC decrescentes e deduplicados só de
+  realizados com cachê > 0; ignora propostos/cancelados/futuros/sem-cachê; usa o ano **UTC** na virada do dia
+  (`2025-12-31T23:00Z` → 2025); lista vazia sem shows elegíveis. O recorte em si reusa `parseProfitYear`/`filterShowsByYear`
+  (já testados) e `feeDistribution` (idem), então a composição não duplica cobertura. **908 testes** no total (eram 904).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **908 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/shows/faixas-de-cache?ano=2025` + `/shows/faixas-de-cache/export?ano=2025`
+  307 (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do
+  Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
