@@ -9,8 +9,20 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **922 testes**
-verdes após a Sessão 155 (**exportação CSV da variação por categoria** em `/financas/variacao/export` — novo serializador
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **927 testes**
+verdes após a Sessão 156 (**recorte por ano (`?ano=`) nas Fontes de renda** em `/financas/fontes-de-renda` — a tela e seu
+export deixaram de somar só "todos os anos" e ganharam o seletor de período (`PeriodPicker`/D119). Novo derivador puro
+`incomeMixYears(txs)` em `src/lib/finance.ts` devolve os anos UTC (decrescente) **só** das transações de receita
+(`type === "INCOME"`), o **mesmo** gate de `incomeMix`, para o seletor nunca oferecer um ano sem fonte de renda — espelho de
+`feeDistributionYears`/`weekdayPerformanceYears` no eixo de transação. O recorte reusa os helpers da D108
+(`parseProfitYear` + o genérico `filterShowsByYear<{date: Date}>`, aplicado às transações cruas, que têm `date: Date`):
+filtra-se ANTES de mapear/`incomeMix` (que segue puro, agnóstico ao recorte). Botão "⬇ CSV" e a rota
+`/financas/fontes-de-renda/export` propagam o `?ano=`; arquivo passou de fixo para `fontes-de-renda-{ano|todos}.csv`;
+estado-vazio e nota de rodapé agora cientes do período. **+5 testes** (`describe("incomeMixYears")`: anos UTC
+decrescentes/dedup; ignora despesas; ano UTC na virada do dia; aceita `Date`|string; vazio sem receita). Smoke test
+(`next start`) → `/login` 200 e `/financas/fontes-de-renda?ano=2026` + `/financas/fontes-de-renda/export?ano=2026` 307
+(auth-gated). `npm audit` sem novas vulnerabilidades (mesmos advisories Next/postcss da D6). Ver D148; segue 922 da
+Sessão 155 (**exportação CSV da variação por categoria** em `/financas/variacao/export` — novo serializador
 puro `categoryVariationToCsv(cmp)` + `CATEGORY_VARIATION_CSV_HEADERS` em `src/lib/csv.ts`, recebendo a `CategoryReportComparison`
 já computada (`compareCategoryReports`, de `@/lib/finance`) e emitindo as **duas tabelas da tela num único arquivo** — cada
 linha marcada pela coluna `Tipo` (Despesa/Receita), despesas primeiro, na ordem da comparação (maior movimento absoluto
@@ -2998,9 +3010,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    resumo anual na Sessão 47, `/financas/anual/export`; trimestral, `/financas/trimestral/export`):
    **fontes de renda** entregue na Sessão 152 — `incomeMixToCsv` + `INCOME_MIX_CSV_HEADERS` em `src/lib/csv.ts` +
    `/financas/fontes-de-renda/export` (Fonte/Lançamentos/Total/Participação + linha Total), botão "⬇ CSV" só com
-   fontes, ver D144. Próximo possível — espelhar o mesmo serializador para a **composição de despesas**
-   (`/financas/composicao-despesas`, `expenseMix` é o espelho de `incomeMix`), e/ou adicionar recorte por ano (`?ano=`)
-   às fontes de renda (página + export juntos), hoje ambas somam todas as receitas/despesas lançadas.
+   fontes, ver D144. **Recorte por ano (`?ano=`) nas fontes de renda** (página + export) entregue na Sessão 156 —
+   `incomeMixYears` + `PeriodPicker`/`?ano=` em `/financas/fontes-de-renda` e seu export, filtrando por ano UTC antes de
+   `incomeMix` (reusa `parseProfitYear`/`filterShowsByYear` da D108), ver D148. Próximo possível — **espelhar o mesmo
+   recorte por ano na composição de despesas** (`/financas/composicao-despesas` + export, `expenseMix` é o espelho de
+   `incomeMix`; precisaria de um `expenseMixYears` análogo gated por `type === "EXPENSE"`), hoje ainda soma todas as despesas.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)
