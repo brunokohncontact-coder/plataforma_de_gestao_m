@@ -9,8 +9,21 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **927 testes**
-verdes após a Sessão 156 (**recorte por ano (`?ano=`) nas Fontes de renda** em `/financas/fontes-de-renda` — a tela e seu
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **933 testes**
+verdes após a Sessão 157 (**recorte por ano (`?ano=`) na Composição de despesas** em `/financas/composicao-despesas` — a tela
+e seu export deixaram de somar só "todos os anos" e ganharam o seletor de período (`PeriodPicker`/D119), espelho direto da
+Sessão 156 (Fontes de renda/D148) no eixo de despesa. Novo derivador puro `expenseMixYears(txs)` em `src/lib/finance.ts`
+devolve os anos UTC (decrescente) **só** das transações de despesa (`type === "EXPENSE"`), o **mesmo** gate de `expenseMix`,
+para o seletor nunca oferecer um ano sem despesa — irmão paralelo de `incomeMixYears`. O recorte reusa os helpers da D108
+(`parseProfitYear` + o genérico `filterShowsByYear<{date: Date}>` sobre as transações cruas): filtra-se ANTES de
+mapear/`expenseMix` (que segue puro, agnóstico ao recorte). Botão "⬇ CSV" e a rota `/financas/composicao-despesas/export`
+propagam o `?ano=`; arquivo passou de fixo para `composicao-despesas-{ano|todos}.csv`; estado-vazio e nota de rodapé agora
+cientes do período. Fecha o par income/expense de mix das Finanças no eixo de período. **+6 testes**
+(`describe("expenseMixYears")`: anos UTC decrescentes/dedup; ignora receitas; ano UTC na virada do dia; aceita `Date`|string;
+vazio sem despesa; invariante de gate compartilhado). Smoke test (`next start`) → `/login` 200 e
+`/financas/composicao-despesas?ano=2026` + `/financas/composicao-despesas/export?ano=2026` 307 (auth-gated). `npm audit` sem
+novas vulnerabilidades (mesmos advisories Next/postcss da D6). Ver D149; segue 927 da
+Sessão 156 (**recorte por ano (`?ano=`) nas Fontes de renda** em `/financas/fontes-de-renda` — a tela e seu
 export deixaram de somar só "todos os anos" e ganharam o seletor de período (`PeriodPicker`/D119). Novo derivador puro
 `incomeMixYears(txs)` em `src/lib/finance.ts` devolve os anos UTC (decrescente) **só** das transações de receita
 (`type === "INCOME"`), o **mesmo** gate de `incomeMix`, para o seletor nunca oferecer um ano sem fonte de renda — espelho de

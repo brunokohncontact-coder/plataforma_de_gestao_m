@@ -3,12 +3,18 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   expenseMix,
+  expenseMixYears,
+  parseProfitYear,
+  filterShowsByYear,
   type TxLike,
   type DiversificationLevel,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
+import { PeriodPicker } from "@/components/PeriodPicker";
 
 export const dynamic = "force-dynamic";
+
+type SearchParams = { [key: string]: string | string[] | undefined };
 
 const LEVEL_LABELS: Record<DiversificationLevel, string> = {
   concentrated: "Despesa concentrada",
@@ -26,7 +32,11 @@ function pct(share: number): string {
   return `${Math.round(share * 100)}%`;
 }
 
-export default async function FinanceExpenseMixPage() {
+export default async function FinanceExpenseMixPage({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
   const user = await requireUser();
 
   const transactions = await prisma.transaction.findMany({
@@ -34,7 +44,25 @@ export default async function FinanceExpenseMixPage() {
     orderBy: { date: "desc" },
   });
 
-  const allTxs: TxLike[] = transactions.map((t) => ({
+  // Recorte por período (ano). Os anos do seletor vêm só das transações que de
+  // fato entram no mix (despesas), via `expenseMixYears`, para não oferecer um
+  // ano sem despesa. Filtra-se ANTES de mapear/`expenseMix` (que segue puro,
+  // agnóstico ao recorte), reusando o `filterShowsByYear` genérico da D108 sobre
+  // as transações cruas (que têm `date: Date`). Espelho de `/financas/fontes-de-renda`.
+  const availableYears = expenseMixYears(
+    transactions.map((t) => ({
+      type: t.type as TxLike["type"],
+      amount: t.amount,
+      category: t.category,
+      date: t.date,
+      received: t.received,
+      showId: t.showId,
+    })),
+  );
+  const yearFilter = parseProfitYear(searchParams?.ano, availableYears);
+  const periodTxs = filterShowsByYear(transactions, yearFilter);
+
+  const allTxs: TxLike[] = periodTxs.map((t) => ({
     type: t.type as TxLike["type"],
     amount: t.amount,
     category: t.category,
@@ -44,6 +72,10 @@ export default async function FinanceExpenseMixPage() {
   }));
 
   const mix = expenseMix(allTxs);
+  const exportHref =
+    "/financas/composicao-despesas/export" +
+    (yearFilter === "all" ? "" : `?ano=${yearFilter}`);
+  const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
 
   return (
     <div className="space-y-6">
@@ -58,7 +90,7 @@ export default async function FinanceExpenseMixPage() {
         <div className="flex items-center gap-3">
           {mix.categoryCount > 0 && (
             <a
-              href="/financas/composicao-despesas/export"
+              href={exportHref}
               className="text-sm text-brand-700 hover:underline"
             >
               ⬇ CSV
@@ -70,15 +102,29 @@ export default async function FinanceExpenseMixPage() {
         </div>
       </div>
 
+      {availableYears.length > 0 && (
+        <PeriodPicker
+          years={availableYears}
+          active={yearFilter}
+          basePath="/financas/composicao-despesas"
+        />
+      )}
+
       {mix.categoryCount === 0 ? (
         <div className="card text-center text-gray-500">
-          <p>Ainda não há despesas para mostrar a composição dos seus gastos.</p>
-          <Link
-            href="/financas/nova"
-            className="mt-3 inline-block text-brand-700 hover:underline"
-          >
-            Registrar a primeira despesa
-          </Link>
+          {yearFilter === "all" ? (
+            <>
+              <p>Ainda não há despesas para mostrar a composição dos seus gastos.</p>
+              <Link
+                href="/financas/nova"
+                className="mt-3 inline-block text-brand-700 hover:underline"
+              >
+                Registrar a primeira despesa
+              </Link>
+            </>
+          ) : (
+            <p>Nenhuma despesa lançada em {periodLabel}.</p>
+          )}
         </div>
       ) : (
         <>
@@ -177,9 +223,10 @@ export default async function FinanceExpenseMixPage() {
           </section>
 
           <p className="text-xs text-gray-400">
-            Considera todas as despesas lançadas (pagas e a pagar), agrupadas pela
-            categoria. O número efetivo de rubricas resume a concentração: quanto maior,
-            mais pulverizado é o gasto. Espelho de{" "}
+            Considera as despesas lançadas (pagas e a pagar){" "}
+            {yearFilter === "all" ? "de todos os anos" : `de ${periodLabel}`}, agrupadas
+            pela categoria. O número efetivo de rubricas resume a concentração: quanto
+            maior, mais pulverizado é o gasto. Espelho de{" "}
             <Link href="/financas/fontes-de-renda" className="hover:underline">
               Fontes de renda
             </Link>
