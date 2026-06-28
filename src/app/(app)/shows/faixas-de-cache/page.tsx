@@ -40,9 +40,20 @@ export default async function FeeDistributionPage() {
             faturamento — o formato da sua tabela de cachês.
           </p>
         </div>
-        <Link href="/shows" className="btn-secondary">
-          ← Shows
-        </Link>
+        <div className="flex items-center gap-2">
+          {dist.totalShows > 0 && (
+            <a
+              href="/shows/faixas-de-cache/export"
+              className="btn-secondary text-sm"
+              download
+            >
+              ⬇ CSV
+            </a>
+          )}
+          <Link href="/shows" className="btn-secondary">
+            ← Shows
+          </Link>
+        </div>
       </div>
 
       {dist.totalShows === 0 ? (

@@ -34,6 +34,8 @@ import {
   GIG_SEASONALITY_CSV_HEADERS,
   weekdayPerformanceToCsv,
   WEEKDAY_PERFORMANCE_CSV_HEADERS,
+  feeDistributionToCsv,
+  FEE_DISTRIBUTION_CSV_HEADERS,
   type CsvTransaction,
   type CsvShow,
   type CsvProfitShow,
@@ -48,6 +50,7 @@ import {
   quarterlySummary,
   gigSeasonality,
   weekdayPerformance,
+  feeDistribution,
   type ShowProfitRow,
   type VenueProfitRow,
   type ContactProfitRow,
@@ -932,5 +935,62 @@ describe("weekdayPerformanceToCsv", () => {
     );
     const domingo = weekdayPerformanceToCsv(wp).split("\r\n")[1].split(";");
     expect(domingo).toEqual(["Domingo", "0", "0,00", "0,00", "0%", "0%"]);
+  });
+});
+
+describe("feeDistributionToCsv", () => {
+  // `now` fixo no futuro para que todos os shows forjados contem como realizados.
+  const NOW = "2025-01-01T00:00:00.000Z";
+  const gig = (
+    over: Partial<ReceivableShowLike> = {},
+  ): ReceivableShowLike => ({
+    id: "s",
+    fee: 100000,
+    status: "PLAYED",
+    date: "2024-03-10T00:00:00.000Z",
+    ...over,
+  });
+
+  it("sempre emite as 6 faixas + a linha Total mesmo sem shows", () => {
+    const csv = feeDistributionToCsv(feeDistribution([], { now: NOW }));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(FEE_DISTRIBUTION_CSV_HEADERS.join(";"));
+    // cabeçalho + 6 faixas + Total
+    expect(lines).toHaveLength(8);
+    expect(lines[1].startsWith("Até R$ 500;0;")).toBe(true);
+    expect(lines[6].startsWith("Acima de R$ 5.000;0;")).toBe(true);
+    expect(lines[7]).toBe("Total;0;;0,00;");
+  });
+
+  it("serializa contagem, participações e faturamento por faixa", () => {
+    const dist = feeDistribution(
+      [
+        gig({ fee: 80000 }), // R$ 800 → "R$ 500 – 1.000"
+        gig({ fee: 150000 }), // R$ 1.500 → "R$ 1.000 – 2.000"
+        gig({ fee: 180000 }), // R$ 1.800 → "R$ 1.000 – 2.000"
+      ],
+      { now: NOW },
+    );
+    const lines = feeDistributionToCsv(dist).split("\r\n");
+    // Linha 3 = terceira faixa "R$ 1.000 – 2.000" (lt500, 500to1k, 1kto2k).
+    const faixa1k = lines[3].split(";");
+    expect(faixa1k[0]).toBe("R$ 1.000 – 2.000");
+    expect(faixa1k[1]).toBe("2"); // dois shows na faixa
+    expect(faixa1k[2]).toBe("67%"); // 2 de 3 shows
+    expect(faixa1k[3]).toBe("3300,00"); // 1500 + 1800
+    expect(faixa1k[4]).toBe("80%"); // 3300 de 4100
+    // Linha Total: shares em branco (sempre 100% por construção).
+    const total = lines[7].split(";");
+    expect(total[0]).toBe("Total");
+    expect(total[1]).toBe("3");
+    expect(total[2]).toBe("");
+    expect(total[3]).toBe("4100,00");
+    expect(total[4]).toBe("");
+  });
+
+  it("registra 0, 0% e 0,00 nas faixas sem shows (não usa o '—' da UI)", () => {
+    const dist = feeDistribution([gig({ fee: 150000 })], { now: NOW });
+    const ate500 = feeDistributionToCsv(dist).split("\r\n")[1].split(";");
+    expect(ate500).toEqual(["Até R$ 500", "0", "0%", "0,00", "0%"]);
   });
 });

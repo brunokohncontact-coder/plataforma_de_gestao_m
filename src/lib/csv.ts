@@ -29,6 +29,7 @@ import {
   type PaymentSpeedBucketKey,
   type GigSeasonality,
   type WeekdayPerformance,
+  type FeeDistribution,
 } from "./finance";
 import { MONTH_NAMES_LONG } from "./calendar";
 
@@ -912,6 +913,53 @@ export function weekdayPerformanceToCsv(
     centsToCsvAmount(wp.avgFee),
     centsToCsvAmount(wp.totalFee),
     "",
+    "",
+  ]);
+  return toCsv(out, delimiter);
+}
+
+// ── Distribuição por faixa de cachê (Até R$ 500 → Acima de R$ 5.000) ──────────
+
+export const FEE_DISTRIBUTION_CSV_HEADERS = [
+  "Faixa",
+  "Shows",
+  "% dos shows",
+  "Faturamento (R$)",
+  "% do faturamento",
+] as const;
+
+/**
+ * Serializa a distribuição por faixa de cachê (`feeDistribution`) em CSV, pronto
+ * para download. Espelha a tabela de `/shows/faixas-de-cache`: uma linha por
+ * faixa (sempre as 6 de `FEE_BANDS`, da mais barata à mais cara, inclusive faixas
+ * zeradas, para o "formato da tabela de cachês" não pular degraus) com nº de
+ * shows, participação no nº de shows, faturamento e participação no faturamento,
+ * seguida de uma linha "Total". Diferente da UI (que mostra "—" nas faixas
+ * vazias), o CSV registra 0, 0% e 0,00 para ficar legível por máquina. Mesma
+ * convenção pt-BR de `transactionsToCsv` (delimitador ";", decimal com vírgula).
+ * As participações do Total ficam em branco (são sempre 100% por construção).
+ * Irmão de `gigSeasonalityToCsv`/`weekdayPerformanceToCsv` (mesmo eixo
+ * faixa/balde → linhas + Total). Pura.
+ */
+export function feeDistributionToCsv(
+  dist: FeeDistribution,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(FEE_DISTRIBUTION_CSV_HEADERS)];
+  for (const b of dist.bands) {
+    out.push([
+      b.label,
+      String(b.count),
+      csvShare(b.countShare),
+      centsToCsvAmount(b.totalFee),
+      csvShare(b.feeShare),
+    ]);
+  }
+  out.push([
+    "Total",
+    String(dist.totalShows),
+    "",
+    centsToCsvAmount(dist.totalFee),
     "",
   ]);
   return toCsv(out, delimiter);
