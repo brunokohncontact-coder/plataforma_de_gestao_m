@@ -4339,3 +4339,38 @@ contexto, decisão, justificativa e alternativas consideradas.
   smoke test (`next start`) → `/login` 200 e `/shows/faixas-de-cache?ano=2025` + `/shows/faixas-de-cache/export?ano=2025`
   307 (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do
   Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## D144 — Exportação CSV das fontes de renda (`/financas/fontes-de-renda/export`) (Sessão 152)
+- **Contexto:** a tela `/financas/fontes-de-renda` (mix de receitas por categoria, `incomeMix`/D45) mostra de onde vem o
+  dinheiro e o quanto a renda depende de uma só fonte, mas era uma das telas tabulares de análise das **Finanças** ainda sem
+  exportação CSV. O acervo de exportação já cobre praticamente todo o eixo de shows/rentabilidade/recebíveis (D125–D143);
+  do lado financeiro havia transações (D14), resumo anual (D47) e trimestral, mas não as fontes de renda — útil para levar a
+  composição de receita a uma planilha/contador (apuração, declaração).
+- **Decisão:** adicionar um botão "⬇ CSV" ao cabeçalho da página (só com `mix.sourceCount > 0`) + a rota
+  `/financas/fontes-de-renda/export`, espelhando a mesma consulta/`incomeMix` da página. Novo serializador puro
+  `incomeMixToCsv(mix)` + `INCOME_MIX_CSV_HEADERS` em `src/lib/csv.ts`, irmão direto de `feeDistributionToCsv` (D142):
+  recebe o objeto `IncomeMix` (importado de `@/lib/finance`) e emite uma linha por fonte na **mesma ordem da página**
+  (valor decrescente, empate por nome pt-BR) — colunas Fonte / Lançamentos / Total (R$) / Participação — seguida de uma
+  linha "Total". Mesma convenção pt-BR dos irmãos (delimitador `;`, decimal com vírgula via `centsToCsvAmount`, participação
+  inteira via `csvShare`, BOM UTF-8 na camada HTTP). A participação do "Total" fica em branco (é sempre 100% por construção,
+  como nas D142/D139); o "Total" não traz contagem de lançamentos (a soma de lançamentos entre categorias não é uma métrica
+  acionável — espelha o "Total" das telas de mix, que só somam valor).
+- **Justificativa:** fecha uma lacuna real de exportação do lado das Finanças com o padrão já consolidado (serializador puro
+  testado + route handler fino que só consulta e embrulha no HTTP), zero dependência nova, zero mudança na camada de cálculo.
+  Categorias em branco já caem em "Sem categoria" no próprio `incomeMix`, então o CSV herda esse rótulo sem caso especial.
+- **Por que sem `?ano=`:** a página `/financas/fontes-de-renda` ainda não tem recorte por período (opera sobre todas as
+  receitas lançadas); o export espelha exatamente a consulta da página. Um recorte por ano nas fontes de renda seria uma
+  unidade de trabalho à parte (página + export juntos), não embutida aqui — registrado nos próximos passos.
+- **Alternativas consideradas:** (a) importar `IncomeSourceSlice[]` em vez do objeto `IncomeMix` inteiro — descartado: o
+  serializador também emite a linha "Total" (`mix.total`), então receber o objeto agregado é mais coeso e evita o caller
+  recomputar o total. (b) incluir o HHI / nº efetivo de fontes / veredito no CSV — descartado: são métricas de leitura na
+  tela, não de planilha; o CSV é a composição linha-a-linha (a concentração se recalcula trivialmente de uma planilha).
+  (c) somar a contagem de lançamentos no "Total" — descartado por não ser acionável (ver Decisão).
+- **Testes:** **+3** em `csv.test.ts` (`describe("incomeMixToCsv")`): só cabeçalho + linha "Total" zerada sem receita; uma
+  linha por fonte em ordem decrescente com participação correta + "Total" com participação em branco; ignora despesas e
+  agrupa receita sem categoria em "Sem categoria". A composição reusa `incomeMix` (já testado em `finance.test.ts`) e os
+  helpers puros de CSV (idem), então não duplica cobertura. **911 testes** no total (eram 908).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **911 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/financas/fontes-de-renda` + `/financas/fontes-de-renda/export` 307
+  (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
+  postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
