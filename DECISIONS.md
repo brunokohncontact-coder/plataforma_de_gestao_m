@@ -4490,3 +4490,45 @@ contexto, decisão, justificativa e alternativas consideradas.
   smoke test (`next start`) → `/login` 200 e `/financas/variacao?mes=2026-06` + `/financas/variacao/export?mes=2026-06` 307
   (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
   postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## D148 — Recorte por ano (`?ano=`) nas Fontes de renda (`/financas/fontes-de-renda`) (Sessão 156)
+- **Contexto:** a tela `/financas/fontes-de-renda` (mix de receitas por categoria, `incomeMix`/D45) e seu export (D144)
+  somavam **todas as receitas lançadas** num retrato único de diversificação de renda. As telas de rentabilidade
+  (`/shows/rentabilidade`, `/shows/locais`, `/shows/cidades`, `/contatos/rentabilidade`, `.../por-papel`) e, desde a D143/D146,
+  também faixas de cachê e dias da semana já oferecem o seletor de período por ano (`PeriodPicker`/D119 + helpers da D108).
+  Fontes de renda era uma das telas de análise financeira ainda sem esse recorte.
+- **Decisão:** adicionar o recorte por ano à página e ao export, reusando o componente compartilhado `PeriodPicker` (D119) e os
+  helpers da D108 — `parseProfitYear` (resolve o `?ano=`) e o genérico `filterShowsByYear<S extends { date: Date }>` (apesar do
+  nome "shows", opera sobre qualquer objeto com `date: Date`, e a transação crua do Prisma tem `date: Date`). Novo derivador
+  puro `incomeMixYears(txs): number[]` em `src/lib/finance.ts` devolve os anos UTC (decrescente) **só** das transações de
+  receita (`type === "INCOME"`), o **mesmo** gate de `incomeMix`, para o seletor nunca oferecer um ano sem fonte de renda.
+  Filtra-se por ano **antes** de mapear para `TxLike` e chamar `incomeMix`, que segue puro e agnóstico ao recorte. O botão
+  "⬇ CSV" e a rota `/financas/fontes-de-renda/export` propagam o `?ano=`; o arquivo passou de `fontes-de-renda.csv` (fixo)
+  para `fontes-de-renda-{ano|todos}.csv` (mesma convenção de sufixo das D125/D143). Estado-vazio e nota de rodapé agora
+  cientes do período.
+- **Justificativa:** a **evolução da composição de renda** é uma leitura por ano — de onde veio o dinheiro *neste ano* vs. o
+  histórico, se a dependência de uma única fonte aumentou ou diminuiu ao longo do tempo. Manter só o agregado escondia essa
+  trajetória, e a assimetria com as demais telas de análise (todas com `?ano=`) não tinha razão de ser. O acervo inteiro
+  continua disponível na pílula "Todos" (default), então nada se perde.
+- **Por que um helper novo (`incomeMixYears`) e não `showProfitYears`:** `showProfitYears(dates)` parte de uma lista de datas
+  já filtrada e poderia oferecer um ano sem receita (ex.: um ano com só despesas). Quis-se um seletor **honesto** que não
+  ofereça anos que renderiam mix vazio; `incomeMixYears` aplica exatamente o gate de `incomeMix` (`type === "INCOME"`), então
+  toda pílula de ano tem ao menos uma fonte. É o espelho direto de `feeDistributionYears`/`weekdayPerformanceYears` (D143/D146)
+  no eixo de transação.
+- **Por que reusar `filterShowsByYear` (e não criar `filterTxByYear`):** o helper já é genérico (`<S extends { date: Date }>`)
+  e a única regra é "ano UTC da `date`", idêntica para shows e transações. Criar um alias seria duplicação trivial; reusar o
+  genérico mantém uma única implementação testada. O nome ("shows") é histórico (D108) — documentado aqui para o próximo leitor.
+- **Alternativas consideradas:** (a) derivar os anos com `showProfitYears` sobre todas as datas — descartado por oferecer anos
+  sem receita (ver acima). (b) recorte por intervalo de datas livre — descartado: as outras telas usam ano e o `PeriodPicker`
+  compartilhado fala em ano; consistência > flexibilidade. (c) generalizar agora `incomeMixYears` para também a composição de
+  despesas — adiado: `expenseMix` precisaria do gate `type === "EXPENSE"`, então seria um `expenseMixYears` paralelo (como
+  income/expense já são funções irmãs, não uma só); fica como próximo passo natural quando a composição de despesas ganhar o
+  recorte, evitando abstração prematura sobre um único caso.
+- **Testes:** **+5** em `finance.test.ts` (`describe("incomeMixYears")`): anos UTC decrescentes e deduplicados; ignora
+  despesas (só anos com receita); ano **UTC** na virada do dia; aceita `date` como `Date` e como string ISO; lista vazia sem
+  receita. O recorte em si reusa `parseProfitYear`/`filterShowsByYear` (já testados) e `incomeMix` (idem), então a composição
+  não duplica cobertura. **927 testes** no total (eram 922).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **927 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/financas/fontes-de-renda?ano=2026` + `/financas/fontes-de-renda/export?ano=2026`
+  307 (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14
+  / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.

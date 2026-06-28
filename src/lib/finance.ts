@@ -1773,6 +1773,24 @@ export function incomeMix(txs: TxLike[]): IncomeMix {
   };
 }
 
+/**
+ * Anos (UTC, decrescente) das transações de RECEITA — alimenta o seletor de
+ * período de `/financas/fontes-de-renda` sem oferecer um ano sem receita (ao
+ * contrário de `showProfitYears`, que parte de uma lista qualquer e poderia
+ * oferecer um ano vazio). Espelho de `feeDistributionYears`/`weekdayPerformanceYears`
+ * no eixo de transação: parte do mesmo gate que `incomeMix` (só `type === "INCOME"`),
+ * então todo ano oferecido tem ao menos uma fonte de renda. Pura.
+ */
+export function incomeMixYears(txs: TxLike[]): number[] {
+  const years = new Set<number>();
+  for (const t of txs) {
+    if (t.type !== "INCOME") continue;
+    const d = t.date instanceof Date ? t.date : new Date(t.date);
+    years.add(d.getUTCFullYear());
+  }
+  return [...years].sort((a, b) => b - a);
+}
+
 // ── Composição de despesas (para onde vai o dinheiro?) ──────────────────────
 // Espelho de `incomeMix` para o lado das despesas: agrupa as despesas (EXPENSE)
 // por categoria (= rubrica de gasto: transporte, equipamento, marketing, etc.),

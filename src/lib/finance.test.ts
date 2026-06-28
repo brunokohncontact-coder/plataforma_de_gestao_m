@@ -92,6 +92,7 @@ import {
   gigSeasonalityLull,
   STRONG_MONTH_MIN_SHOWS,
   incomeMix,
+  incomeMixYears,
   expenseMix,
   paymentLag,
   paymentLagHeadline,
@@ -1622,6 +1623,48 @@ describe("incomeMix", () => {
     const result = incomeMix(txs);
     expect(result.hhi).toBeCloseTo(1 / 3, 6);
     expect(result.level).toBe("moderate");
+  });
+});
+
+describe("incomeMixYears", () => {
+  it("retorna os anos UTC das receitas em ordem decrescente, deduplicados", () => {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 100_00, date: "2024-05-10T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 100_00, date: "2026-01-02T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 100_00, date: "2024-11-20T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 100_00, date: "2025-07-01T00:00:00.000Z" }),
+    ];
+    expect(incomeMixYears(txs)).toEqual([2026, 2025, 2024]);
+  });
+
+  it("ignora despesas — só anos com receita aparecem no seletor", () => {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 100_00, date: "2026-03-01T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 999_00, date: "2024-03-01T00:00:00.000Z" }),
+    ];
+    expect(incomeMixYears(txs)).toEqual([2026]);
+  });
+
+  it("usa o ano UTC mesmo na virada do dia (string ISO)", () => {
+    // 2025-12-31 23:30 em UTC-3 ainda é 2026-01-01 em UTC.
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 100_00, date: "2026-01-01T02:30:00.000Z" }),
+    ];
+    expect(incomeMixYears(txs)).toEqual([2026]);
+  });
+
+  it("aceita date como objeto Date e como string ISO", () => {
+    const txs: TxLike[] = [
+      tx({ type: "INCOME", amount: 100_00, date: new Date("2025-06-15T00:00:00.000Z") }),
+      tx({ type: "INCOME", amount: 100_00, date: "2024-06-15T00:00:00.000Z" }),
+    ];
+    expect(incomeMixYears(txs)).toEqual([2025, 2024]);
+  });
+
+  it("retorna vazio quando não há receitas", () => {
+    expect(
+      incomeMixYears([tx({ type: "EXPENSE", amount: 100_00 })]),
+    ).toEqual([]);
   });
 });
 
