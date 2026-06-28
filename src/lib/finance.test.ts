@@ -83,6 +83,7 @@ import {
   gigCadence,
   feeDistribution,
   feeDistributionYears,
+  weekdayPerformanceYears,
   feeBandKeyFor,
   FEE_BANDS,
   weekdayPerformance,
@@ -5762,6 +5763,82 @@ describe("feeDistributionYears", () => {
 
   it("sem shows elegíveis retorna lista vazia", () => {
     expect(feeDistributionYears([], { now })).toEqual([]);
+  });
+});
+
+describe("weekdayPerformanceYears", () => {
+  const now = new Date("2026-06-15T12:00:00.000Z");
+
+  function gig(partial: Partial<ReceivableShowLike>): ReceivableShowLike {
+    return {
+      id: "g1",
+      fee: 500_00,
+      status: "PLAYED",
+      date: "2026-01-10T20:00:00.000Z",
+      ...partial,
+    };
+  }
+
+  it("retorna os anos (UTC, decrescente) só de shows realizados com cachê > 0", () => {
+    const years = weekdayPerformanceYears(
+      [
+        gig({ id: "a", date: "2024-05-10T20:00:00.000Z" }),
+        gig({ id: "b", date: "2026-01-10T20:00:00.000Z" }),
+        gig({ id: "c", date: "2025-03-10T20:00:00.000Z" }),
+        gig({ id: "dup", date: "2026-09-10T20:00:00.000Z" }), // mesmo ano 2026
+      ],
+      { now },
+    );
+    expect(years).toEqual([2026, 2025, 2024]);
+  });
+
+  it("ignora propostos, cancelados, futuros e gigs sem cachê", () => {
+    const years = weekdayPerformanceYears(
+      [
+        gig({ id: "prop", status: "PROPOSED", date: "2023-01-10T20:00:00.000Z" }),
+        gig({ id: "canc", status: "CANCELLED", date: "2022-01-10T20:00:00.000Z" }),
+        gig({ id: "fut", status: "CONFIRMED", date: "2027-01-10T20:00:00.000Z" }),
+        gig({ id: "free", status: "PLAYED", fee: 0, date: "2021-01-10T20:00:00.000Z" }),
+        gig({ id: "ok", status: "PLAYED", date: "2025-01-10T20:00:00.000Z" }),
+      ],
+      { now },
+    );
+    expect(years).toEqual([2025]);
+  });
+
+  it("usa o ano UTC (não o local) na virada do dia", () => {
+    // 2025-12-31T23:00:00Z ainda é 2025 em UTC.
+    const years = weekdayPerformanceYears(
+      [gig({ id: "a", date: "2025-12-31T23:00:00.000Z" })],
+      { now },
+    );
+    expect(years).toEqual([2025]);
+  });
+
+  it("sem shows elegíveis retorna lista vazia", () => {
+    expect(weekdayPerformanceYears([], { now })).toEqual([]);
+  });
+
+  it("oferece exatamente os anos com dias ativos em weekdayPerformance (gate compartilhado)", () => {
+    // Invariante de reuso: o seletor nunca deve oferecer um ano que renderia
+    // tabela vazia. Para cada ano retornado, o recorte daquele ano tem
+    // totalShows > 0; e nenhum ano elegível fica de fora.
+    const dataset = [
+      gig({ id: "a", date: "2024-05-10T20:00:00.000Z" }),
+      gig({ id: "b", date: "2025-03-12T20:00:00.000Z" }),
+      gig({ id: "c", date: "2026-01-10T20:00:00.000Z" }),
+      gig({ id: "prop", status: "PROPOSED", date: "2023-01-10T20:00:00.000Z" }),
+      gig({ id: "free", fee: 0, date: "2022-01-10T20:00:00.000Z" }),
+    ];
+    const years = weekdayPerformanceYears(dataset, { now });
+    expect(years).toEqual([2026, 2025, 2024]);
+    for (const y of years) {
+      const slice = filterShowsByYear(
+        dataset.map((s) => ({ ...s, date: new Date(s.date) })),
+        y,
+      );
+      expect(weekdayPerformance(slice, { now }).totalShows).toBeGreaterThan(0);
+    }
   });
 });
 

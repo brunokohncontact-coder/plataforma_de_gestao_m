@@ -5847,6 +5847,30 @@ export function weekdayPerformance(
   };
 }
 
+/**
+ * Anos (UTC, decrescente) dos shows que de fato entram no desempenho por dia
+ * da semana — i.e. realizados (`isHappenedGig`) com cachê > 0, exatamente o
+ * mesmo recorte de `weekdayPerformance`. Alimenta o seletor de período de
+ * `/shows/dias-semana` sem oferecer anos vazios. Espelho direto de
+ * `feeDistributionYears` (o gate das duas telas é idêntico); mantido como
+ * função própria para a tela poder evoluir seu recorte sem acoplar-se à
+ * distribuição de cachês. Pura; `now` injetável para teste.
+ */
+export function weekdayPerformanceYears(
+  shows: ReceivableShowLike[],
+  opts: { now?: Date | string } = {},
+): number[] {
+  const todayMs = utcMidnight(opts.now ?? new Date());
+  const years = new Set<number>();
+  for (const s of shows) {
+    if (!isHappenedGig(s, todayMs)) continue;
+    if (s.fee <= 0) continue;
+    const d = s.date instanceof Date ? s.date : new Date(s.date);
+    years.add(d.getUTCFullYear());
+  }
+  return [...years].sort((a, b) => b - a);
+}
+
 /** Rótulos longos dos meses (Janeiro..Dezembro), índice 0 = janeiro. */
 export const GIG_MONTH_LABELS: readonly string[] = [
   "Janeiro",

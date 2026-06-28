@@ -4412,3 +4412,39 @@ contexto, decisão, justificativa e alternativas consideradas.
   smoke test (`next start`) → `/login` 200 e `/financas/composicao-despesas` + `/financas/composicao-despesas/export` 307
   (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
   postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## D146 — Recorte por ano (`?ano=`) no desempenho por dia da semana (`/shows/dias-semana`) (Sessão 154)
+- **Contexto:** a tela `/shows/dias-semana` (desempenho por dia da semana, `weekdayPerformance`) e seu export (D140) somavam
+  **todos os anos** num retrato único de "quais dias pagam melhor". A irmã `/shows/faixas-de-cache` acabara de ganhar o
+  seletor de período (D143), e as telas de rentabilidade (`/shows/rentabilidade`, `/shows/locais`, `/shows/cidades`,
+  `/contatos/rentabilidade`, `.../por-papel`) já oferecem `?ano=` há várias sessões. O dia da semana era a última tela
+  tabular de análise de shows sem esse recorte.
+- **Decisão:** adicionar o recorte por ano à página e ao export, exatamente como na D143: reusar o `PeriodPicker` (D119) e os
+  helpers `parseProfitYear`/`filterShowsByYear` (D108), mais um novo derivador de anos `weekdayPerformanceYears(shows, { now? })`
+  em `src/lib/finance.ts`. Filtra-se por ano **antes** de mapear para `ReceivableShowLike` e chamar `weekdayPerformance`, que
+  segue puro e agnóstico ao recorte. O botão "⬇ CSV" e a rota `/shows/dias-semana/export` propagam o `?ano=` ativo; o arquivo
+  passou de `shows-por-dia-da-semana.csv` (fixo) para `shows-por-dia-da-semana-{ano|todos}.csv` (mesma convenção de sufixo da
+  D143/D125). Estado-vazio da página agora é ciente do período (mensagem distinta "Nenhum show realizado com cachê em {ano}"
+  vs. o convite a cadastrar quando não há nenhum show).
+- **Justificativa:** **qual dia paga melhor varia com o ano** — mudei de público/segmento, comecei a tocar em casas que pagam
+  bem na sexta, etc.; ver só o agregado escondia essa evolução. Fecha a assimetria com as telas de rentabilidade e com a
+  faixa de cachê (D143). O acervo inteiro continua na pílula "Todos" (default), então nada se perde.
+- **Por que um helper novo (`weekdayPerformanceYears`) e não reusar `feeDistributionYears`:** o gate das duas telas é hoje
+  **idêntico** (realizado via `isHappenedGig` **e** cachê > 0), então `feeDistributionYears` devolveria exatamente o mesmo
+  conjunto. Mesmo assim manteve-se uma função própria, nomeada pela tela, para (a) não acoplar o seletor de dias-semana ao
+  detalhe interno da distribuição de cachês (se um gate evoluir, o outro não quebra silenciosamente) e (b) seguir a convenção
+  já estabelecida na D143 de "um `*Years` por tela cujo gate espelha o cálculo daquela tela". A duplicação é de ~10 linhas
+  triviais; um teste de invariante (abaixo) protege a equivalência de gate enquanto ela existir.
+- **Alternativas consideradas:** (a) reusar `feeDistributionYears` diretamente nas duas rotas — descartado pelos motivos
+  acima (acoplamento + nome enganoso na tela de dias-semana). (b) `showProfitYears` sobre todas as datas — descartado por
+  oferecer anos vazios (mesmo argumento da D143: o gate de `weekdayPerformance` é mais estrito). (c) recorte por intervalo de
+  datas livre — descartado por consistência com o `PeriodPicker` por ano das demais telas.
+- **Testes:** **+5** em `finance.test.ts` (`describe("weekdayPerformanceYears")`): anos UTC decrescentes e deduplicados só de
+  realizados com cachê > 0; ignora propostos/cancelados/futuros/sem-cachê; ano **UTC** na virada do dia (`2025-12-31T23:00Z`
+  → 2025); lista vazia sem elegíveis; e um teste de **invariante de gate compartilhado** — para todo ano oferecido, o recorte
+  daquele ano rende `weekdayPerformance(...).totalShows > 0` (o seletor nunca oferece um ano de tabela vazia). O recorte em si
+  reusa `parseProfitYear`/`filterShowsByYear` (já testados) e `weekdayPerformance` (idem). **919 testes** no total (eram 914).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **919 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/shows/dias-semana?ano=2025` + `/shows/dias-semana/export?ano=2025` 307
+  (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
+  postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
