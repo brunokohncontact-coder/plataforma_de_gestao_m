@@ -9,8 +9,24 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **951 testes**
-verdes após a Sessão 163 (**exportação CSV do fluxo de caixa mês a mês** em `/financas/folego-de-caixa/export` — a tira
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **954 testes**
+verdes após a Sessão 164 (**exportação CSV da receita agendada** em `/shows/receita-agendada/export` — a tela "Receita
+agendada" (`forecastBookedRevenue`, o pipeline de cachês de shows futuros agregado por mês: quanto já está agendado para
+receber) ganhou botão de exportação, fechando mais uma lacuna de exportação tabular do lado Shows. Novo serializador puro
+`bookedRevenueToCsv(forecast)` + `BOOKED_REVENUE_CSV_HEADERS` em `src/lib/csv.ts` recebe a `BookedRevenueForecast` já computada
+(`forecastBookedRevenue`, de `@/lib/finance`) e emite uma linha por **mês com shows futuros** (`forecast.months`, ordem
+cronológica crescente), com nº de shows, valor confirmado (CONFIRMED/PLAYED), a confirmar (PROPOSED/sem status) e o total do mês
+(confirmado + a confirmar), encerrada numa linha "Total" com os agregados da tela (`count`/`confirmedTotal`/`tentativeTotal`/
+`total` — batem com os cards de destaque). Colunas Mês/Shows/Confirmado (R$)/A confirmar (R$)/Total do mês (R$). Como em
+`gigCadenceToCsv`/`feeTrendToCsv` (séries de eixo aberto), só meses com shows viram linha e a coluna "Mês" usa a chave ISO
+"YYYY-MM" (ordenável), não o "Jul 2026" da UI. Sem `?ano=`: por design a tela olha sempre da data corrente em diante. Rota
+`/shows/receita-agendada/export` reusa a mesma consulta (shows `date >= hoje`) e o `forecastBookedRevenue` da página + BOM
+UTF-8; nome fixo `receita-agendada.csv`; botão "⬇ CSV" no cabeçalho só com `forecast.count > 0`. Herda a semântica de
+`forecastBookedRevenue`: cancelados ignorados, "futuro" = dia `>= hoje` (UTC). **+3 testes** (`describe("bookedRevenueToCsv")`:
+só cabeçalho + Total zerado sem shows; uma linha por mês com shows em ordem crescente + Total; ignora cancelados/passados,
+status ausente conta como a confirmar). Smoke test (`next start`) → `/login` 200 e `/shows/receita-agendada` +
+`/shows/receita-agendada/export` 307 (auth-gated). `npm audit` sem novas vulnerabilidades (mesmos advisories Next/postcss da
+D6). Ver D156; segue 951 da Sessão 163 (**exportação CSV do fluxo de caixa mês a mês** em `/financas/folego-de-caixa/export` — a tira
 "Cenário alternativo · ritmo de gasto real" (`cashFlowByMonth`, o fluxo de caixa realizado por trás da média de queima/burn
 rate) ganhou botão de exportação — o **candidato natural** apontado no item 10 dos próximos passos. Novo serializador puro
 `cashFlowToCsv(months)` + `CASH_FLOW_CSV_HEADERS` em `src/lib/csv.ts` recebe a saída de `cashFlowByMonth` (`CashFlowMonth[]`, de
@@ -3128,7 +3144,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    mês a mês** entregue na Sessão 163 — `cashFlowToCsv` + `CASH_FLOW_CSV_HEADERS` em `src/lib/csv.ts` +
    `/financas/folego-de-caixa/export` (Mês/Recebido/Pago/Líquido + linha Total), janela parametrizável via `?meses=`
    (`parseBurnWindow`), nome `fluxo-de-caixa-mensal-{n}m.csv`, emite a janela inteira (meses zerados inclusos), botão "⬇ CSV" no
-   card "Cenário alternativo" só com movimento, ver D155 — fecha o candidato natural apontado abaixo. Próximo possível — as
+   card "Cenário alternativo" só com movimento, ver D155 — fecha o candidato natural apontado abaixo. **Exportação CSV da receita
+   agendada** entregue na Sessão 164 — `bookedRevenueToCsv` + `BOOKED_REVENUE_CSV_HEADERS` em `src/lib/csv.ts` +
+   `/shows/receita-agendada/export` (Mês/Shows/Confirmado/A confirmar/Total do mês + linha Total), do lado Shows: o pipeline de
+   cachês futuros agregado por mês (`forecastBookedRevenue`), só meses com shows, nome fixo `receita-agendada.csv`, botão "⬇ CSV"
+   só com `forecast.count > 0`, ver D156. Próximo possível — as
    telas de Finanças que ainda não exportam são agora sobretudo painéis de cenário/projeção de número único (metas,
    projeção-ano, ponto-de-equilíbrio, reserva-impostos): menos óbvias como planilha; avaliar caso a caso se o tabular agrega.
 

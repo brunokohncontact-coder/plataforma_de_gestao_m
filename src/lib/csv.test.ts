@@ -54,6 +54,8 @@ import {
   YEARLY_HISTORY_CSV_HEADERS,
   cashFlowToCsv,
   CASH_FLOW_CSV_HEADERS,
+  bookedRevenueToCsv,
+  BOOKED_REVENUE_CSV_HEADERS,
   type CsvTransaction,
   type CsvShow,
   type CsvProfitShow,
@@ -71,6 +73,7 @@ import {
   gigCadence,
   feeTrend,
   cashFlowByMonth,
+  forecastBookedRevenue,
   yearlyHistory,
   weekdayPerformance,
   feeDistribution,
@@ -83,6 +86,7 @@ import {
   type ContactProfitRow,
   type RoleProfitRow,
   type ReceivableShowLike,
+  type BookedRevenueShowLike,
 } from "./finance";
 import { clientRetention, type ContactRankLike } from "./contacts";
 
@@ -860,7 +864,7 @@ describe("gigSeasonalityToCsv", () => {
   });
 
   it("sempre emite as 12 linhas de mês + a linha Total mesmo sem shows", () => {
-    const csv = gigSeasonalityToCsv(gigSeasonality([], { now: NOW }));
+    const csv = gigSeasonalityToCsv(gigSeasonality([], { now: new Date(NOW) }));
     const lines = csv.split("\r\n");
     expect(lines[0]).toBe(GIG_SEASONALITY_CSV_HEADERS.join(";"));
     // cabeçalho + 12 meses + Total
@@ -877,7 +881,7 @@ describe("gigSeasonalityToCsv", () => {
         gig({ date: "2023-03-20T00:00:00.000Z", fee: 300000 }), // mesmo balde "Março"
         gig({ date: "2024-07-04T00:00:00.000Z", fee: 200000 }),
       ],
-      { now: NOW },
+      { now: new Date(NOW) },
     );
     const lines = gigSeasonalityToCsv(season).split("\r\n");
     const março = lines[3].split(";");
@@ -972,7 +976,7 @@ describe("weekdayPerformanceToCsv", () => {
   });
 
   it("sempre emite os 7 dias (domingo→sábado) + a linha Total mesmo sem shows", () => {
-    const csv = weekdayPerformanceToCsv(weekdayPerformance([], { now: NOW }));
+    const csv = weekdayPerformanceToCsv(weekdayPerformance([], { now: new Date(NOW) }));
     const lines = csv.split("\r\n");
     expect(lines[0]).toBe(WEEKDAY_PERFORMANCE_CSV_HEADERS.join(";"));
     // cabeçalho + 7 dias + Total
@@ -989,7 +993,7 @@ describe("weekdayPerformanceToCsv", () => {
         gig({ date: "2023-03-05T00:00:00.000Z", fee: 300000 }), // domingo (outro ano)
         gig({ date: "2024-07-04T00:00:00.000Z", fee: 200000 }), // quinta
       ],
-      { now: NOW },
+      { now: new Date(NOW) },
     );
     const lines = weekdayPerformanceToCsv(wp).split("\r\n");
     const domingo = lines[1].split(";");
@@ -1012,7 +1016,7 @@ describe("weekdayPerformanceToCsv", () => {
     // Único show numa sexta-feira: domingo deve sair zerado.
     const wp = weekdayPerformance(
       [gig({ date: "2024-03-01T00:00:00.000Z" })],
-      { now: NOW },
+      { now: new Date(NOW) },
     );
     const domingo = weekdayPerformanceToCsv(wp).split("\r\n")[1].split(";");
     expect(domingo).toEqual(["Domingo", "0", "0,00", "0,00", "0%", "0%"]);
@@ -1033,7 +1037,7 @@ describe("feeDistributionToCsv", () => {
   });
 
   it("sempre emite as 6 faixas + a linha Total mesmo sem shows", () => {
-    const csv = feeDistributionToCsv(feeDistribution([], { now: NOW }));
+    const csv = feeDistributionToCsv(feeDistribution([], { now: new Date(NOW) }));
     const lines = csv.split("\r\n");
     expect(lines[0]).toBe(FEE_DISTRIBUTION_CSV_HEADERS.join(";"));
     // cabeçalho + 6 faixas + Total
@@ -1050,7 +1054,7 @@ describe("feeDistributionToCsv", () => {
         gig({ fee: 150000 }), // R$ 1.500 → "R$ 1.000 – 2.000"
         gig({ fee: 180000 }), // R$ 1.800 → "R$ 1.000 – 2.000"
       ],
-      { now: NOW },
+      { now: new Date(NOW) },
     );
     const lines = feeDistributionToCsv(dist).split("\r\n");
     // Linha 3 = terceira faixa "R$ 1.000 – 2.000" (lt500, 500to1k, 1kto2k).
@@ -1070,7 +1074,7 @@ describe("feeDistributionToCsv", () => {
   });
 
   it("registra 0, 0% e 0,00 nas faixas sem shows (não usa o '—' da UI)", () => {
-    const dist = feeDistribution([gig({ fee: 150000 })], { now: NOW });
+    const dist = feeDistribution([gig({ fee: 150000 })], { now: new Date(NOW) });
     const ate500 = feeDistributionToCsv(dist).split("\r\n")[1].split(";");
     expect(ate500).toEqual(["Até R$ 500", "0", "0%", "0,00", "0%"]);
   });
@@ -1267,7 +1271,7 @@ describe("gigCadenceToCsv", () => {
   });
 
   it("só cabeçalho + Total zerado quando não há shows realizados", () => {
-    const csv = gigCadenceToCsv(gigCadence([], { now: NOW }));
+    const csv = gigCadenceToCsv(gigCadence([], { now: new Date(NOW) }));
     const lines = csv.split("\r\n");
     expect(lines[0]).toBe(GIG_CADENCE_CSV_HEADERS.join(";"));
     expect(lines).toHaveLength(2);
@@ -1281,7 +1285,7 @@ describe("gigCadenceToCsv", () => {
         gig({ id: "b", date: "2026-01-20T00:00:00.000Z" }),
         gig({ id: "c", date: "2026-03-02T00:00:00.000Z" }),
       ],
-      { now: NOW },
+      { now: new Date(NOW) },
     );
     const lines = gigCadenceToCsv(cadence).split("\r\n");
     // cabeçalho + 2 meses ativos (jan, mar) + Total — fev parado não vira linha.
@@ -1299,7 +1303,7 @@ describe("gigCadenceToCsv", () => {
         gig({ id: "canc", date: "2026-02-14T00:00:00.000Z", status: "CANCELLED" }),
         gig({ id: "fut", date: "2099-02-14T00:00:00.000Z", status: "CONFIRMED" }),
       ],
-      { now: NOW },
+      { now: new Date(NOW) },
     );
     const lines = gigCadenceToCsv(cadence).split("\r\n");
     expect(lines).toHaveLength(3);
@@ -1322,7 +1326,7 @@ describe("feeTrendToCsv", () => {
   });
 
   it("só cabeçalho + Total zerado quando não há shows com cachê", () => {
-    const csv = feeTrendToCsv(feeTrend([], { now: NOW }));
+    const csv = feeTrendToCsv(feeTrend([], { now: new Date(NOW) }));
     const lines = csv.split("\r\n");
     expect(lines[0]).toBe(FEE_TREND_CSV_HEADERS.join(";"));
     expect(lines).toHaveLength(2);
@@ -1336,7 +1340,7 @@ describe("feeTrendToCsv", () => {
         gig({ id: "b", date: "2026-01-20T00:00:00.000Z", fee: 120000 }),
         gig({ id: "c", date: "2026-03-02T00:00:00.000Z", fee: 200000 }),
       ],
-      { now: NOW },
+      { now: new Date(NOW) },
     );
     const lines = feeTrendToCsv(trend).split("\r\n");
     // cabeçalho + 2 meses ativos (jan, mar) + Total — fev parado não vira linha.
@@ -1358,7 +1362,7 @@ describe("feeTrendToCsv", () => {
         gig({ id: "fut", date: "2099-02-14T00:00:00.000Z", status: "CONFIRMED" }),
         gig({ id: "zero", date: "2026-02-16T00:00:00.000Z", fee: 0 }),
       ],
-      { now: NOW },
+      { now: new Date(NOW) },
     );
     const lines = feeTrendToCsv(trend).split("\r\n");
     expect(lines).toHaveLength(3);
@@ -1560,5 +1564,60 @@ describe("cashFlowToCsv", () => {
     expect(lines[2]).toBe("2026-05;2000,00;0,00;2000,00");
     expect(lines[3]).toBe("2026-06;0,00;0,00;0,00");
     expect(lines[4]).toBe("Total;2000,00;0,00;2000,00");
+  });
+});
+
+describe("bookedRevenueToCsv", () => {
+  // `now` fixo: "futuro" = dia do show >= hoje (UTC). Shows antes de hoje e
+  // cancelados não entram.
+  const NOW = "2026-06-29T00:00:00.000Z";
+  const show = (
+    fee: number,
+    date: string,
+    status = "CONFIRMED",
+  ): BookedRevenueShowLike => ({ fee, date, status });
+
+  it("só cabeçalho + Total zerado sem shows agendados", () => {
+    const csv = bookedRevenueToCsv(forecastBookedRevenue([], { now: new Date(NOW) }));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(BOOKED_REVENUE_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe("Total;0;0,00;0,00;0,00");
+  });
+
+  it("uma linha por mês com shows (confirmado/a confirmar/total) em ordem crescente + Total", () => {
+    const forecast = forecastBookedRevenue(
+      [
+        // julho: 1 confirmado (2000) + 1 proposto (500) → total 2500
+        show(200000, "2026-07-05T00:00:00.000Z", "CONFIRMED"),
+        show(50000, "2026-07-20T00:00:00.000Z", "PROPOSED"),
+        // agosto: 1 realizado (conta como confirmado) 1000
+        show(100000, "2026-08-10T00:00:00.000Z", "PLAYED"),
+      ],
+      { now: new Date(NOW) },
+    );
+    const lines = bookedRevenueToCsv(forecast).split("\r\n");
+    expect(lines).toHaveLength(4);
+    expect(lines[1]).toBe("2026-07;2;2000,00;500,00;2500,00");
+    expect(lines[2]).toBe("2026-08;1;1000,00;0,00;1000,00");
+    expect(lines[3]).toBe("Total;3;3000,00;500,00;3500,00");
+  });
+
+  it("ignora cancelados e shows passados; status ausente conta como a confirmar", () => {
+    const forecast = forecastBookedRevenue(
+      [
+        // cancelado: fora
+        show(900000, "2026-07-05T00:00:00.000Z", "CANCELLED"),
+        // passado (antes de hoje): fora
+        show(800000, "2026-06-01T00:00:00.000Z", "CONFIRMED"),
+        // sem status → tentativo (a confirmar)
+        { fee: 70000, date: "2026-07-15T00:00:00.000Z" },
+      ],
+      { now: new Date(NOW) },
+    );
+    const lines = bookedRevenueToCsv(forecast).split("\r\n");
+    expect(lines).toHaveLength(3);
+    expect(lines[1]).toBe("2026-07;1;0,00;700,00;700,00");
+    expect(lines[2]).toBe("Total;1;0,00;700,00;700,00");
   });
 });
