@@ -5129,6 +5129,119 @@ export function currentMonthPace(
   };
 }
 
+export type MonthYoYVerdict = "ahead" | "onPace" | "behind" | "insufficient";
+
+export interface MonthYoYPace {
+  /** Mês corrente "YYYY-MM" (UTC). */
+  month: string;
+  /** Mesmo mês do calendário, um ano antes ("YYYY-MM", UTC). */
+  lastYearMonth: string;
+  /** Dia de referência dentro do mês (1–31), de `now` (UTC). */
+  dayOfMonth: number;
+  /** Total de dias do mês corrente. */
+  daysInMonth: number;
+  /** Fração do mês já decorrida (0 < elapsed ≤ 1). */
+  elapsed: number;
+  /** Receitas/despesas lançadas no mês corrente até `now` (competência), em centavos. */
+  income: number;
+  expense: number;
+  /** Projeção pro-rata do fechamento do mês corrente (mesma base de `currentMonthPace`). */
+  projectedIncome: number;
+  projectedExpense: number;
+  /** `projectedIncome − projectedExpense`. */
+  projectedNet: number;
+  /**
+   * Mesmo mês do ano anterior — mês **inteiro** já fechado (regime de competência,
+   * pela `date`), em centavos. Âncora sazonal: compara igual-com-igual (mês cheio
+   * projetado × mês cheio realizado), distinta da média móvel de `currentMonthPace`.
+   */
+  lastYearIncome: number;
+  lastYearExpense: number;
+  /** `lastYearIncome − lastYearExpense`. */
+  lastYearNet: number;
+  /** Houve qualquer movimento no mesmo mês do ano anterior? */
+  lastYearHasMovement: boolean;
+  /** Comparação da projeção do mês vs. o mesmo mês do ano anterior. */
+  incomeVsLastYear: MetricDelta;
+  expenseVsLastYear: MetricDelta;
+  netVsLastYear: MetricDelta;
+  /**
+   * Veredito do ritmo pela **receita** (sinal mais limpo). `insufficient` quando o
+   * mesmo mês do ano anterior não teve receita (sem âncora sazonal).
+   */
+  verdict: MonthYoYVerdict;
+}
+
+/**
+ * Ritmo do mês corrente contra o **mesmo mês do ano anterior** (eixo sazonal),
+ * complemento de `currentMonthPace` (que compara contra a média móvel recente).
+ *
+ * Projeta o fechamento do mês corrente por extrapolação pro-rata (reaproveitando
+ * `currentMonthPace`) e compara com o mês inteiro, já fechado, do mesmo mês um ano
+ * atrás (competência, pela `date`). É comparação igual-com-igual — mês cheio × mês
+ * cheio — útil quando o negócio é sazonal (dezembro contra dezembro, não contra a
+ * média dos últimos meses). `insufficient` sem receita no mês de referência.
+ *
+ * Pura; `now` é injetável. UTC via `monthKey`, consistente com as demais agregações.
+ */
+export function monthYoYPace(
+  txs: TxLike[],
+  options: { now?: Date | string } = {},
+): MonthYoYPace {
+  const now = typeof options.now === "string" ? new Date(options.now) : (options.now ?? new Date());
+  const pace = currentMonthPace(txs, { now });
+
+  const y = now.getUTCFullYear();
+  const mo = now.getUTCMonth();
+  // Mesmo mês, ano anterior — mês inteiro (regime de competência, pela `date`).
+  const lyStartMs = Date.UTC(y - 1, mo, 1);
+  const lyEndMs = Date.UTC(y - 1, mo + 1, 1);
+  let lastYearIncome = 0;
+  let lastYearExpense = 0;
+  for (const t of txs) {
+    const ts = txTime(t);
+    if (ts < lyStartMs || ts >= lyEndMs) continue;
+    if (t.type === "INCOME") lastYearIncome += t.amount;
+    else lastYearExpense += t.amount;
+  }
+  const lastYearNet = lastYearIncome - lastYearExpense;
+  const lastYearHasMovement = lastYearIncome > 0 || lastYearExpense > 0;
+
+  let verdict: MonthYoYVerdict;
+  if (lastYearIncome === 0) {
+    verdict = "insufficient";
+  } else {
+    const ratio = pace.projectedIncome / lastYearIncome;
+    verdict =
+      ratio >= 1 + MONTH_PACE_EPSILON
+        ? "ahead"
+        : ratio <= 1 - MONTH_PACE_EPSILON
+          ? "behind"
+          : "onPace";
+  }
+
+  return {
+    month: pace.month,
+    lastYearMonth: monthKey(new Date(lyStartMs)),
+    dayOfMonth: pace.dayOfMonth,
+    daysInMonth: pace.daysInMonth,
+    elapsed: pace.elapsed,
+    income: pace.income,
+    expense: pace.expense,
+    projectedIncome: pace.projectedIncome,
+    projectedExpense: pace.projectedExpense,
+    projectedNet: pace.projectedNet,
+    lastYearIncome,
+    lastYearExpense,
+    lastYearNet,
+    lastYearHasMovement,
+    incomeVsLastYear: computeDelta(pace.projectedIncome, lastYearIncome),
+    expenseVsLastYear: computeDelta(pace.projectedExpense, lastYearExpense),
+    netVsLastYear: computeDelta(pace.projectedNet, lastYearNet),
+    verdict,
+  };
+}
+
 export interface CashBurnHeadline {
   /**
    * Deve aparecer no Painel? Só quando o fôlego pelo ritmo real **morde**

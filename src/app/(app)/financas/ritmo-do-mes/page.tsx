@@ -3,10 +3,12 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   currentMonthPace,
+  monthYoYPace,
   parseBurnWindow,
   BURN_WINDOW_PRESETS,
   type TxLike,
   type MonthPace,
+  type MonthYoYPace,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { formatMonthKey } from "@/lib/format";
@@ -41,6 +43,13 @@ const VERDICT_META: Record<
     icon: "📭",
     blurb: "Ainda não há meses anteriores com receita para servir de referência.",
   },
+};
+
+const YOY_META: Record<MonthYoYPace["verdict"], { label: string; tone: string; icon: string }> = {
+  ahead: { label: "Acima do ano passado", tone: "bg-emerald-50 text-emerald-800 ring-emerald-200", icon: "🚀" },
+  onPace: { label: "Em linha com o ano passado", tone: "bg-brand-50 text-brand-800 ring-brand-200", icon: "🎯" },
+  behind: { label: "Abaixo do ano passado", tone: "bg-amber-50 text-amber-900 ring-amber-200", icon: "🐢" },
+  insufficient: { label: "Sem base de comparação", tone: "bg-gray-50 text-gray-700 ring-gray-200", icon: "📭" },
 };
 
 /** "+25%" / "−30%" / "—" a partir do `pct` de um MetricDelta. */
@@ -79,6 +88,8 @@ export default async function MonthPacePage({
   }));
 
   const pace = currentMonthPace(allTxs, { months: windowMonths });
+  const yoy = monthYoYPace(allTxs);
+  const yoyVerdict = YOY_META[yoy.verdict];
   const verdict = VERDICT_META[pace.verdict];
   const elapsedPct = Math.round(pace.elapsed * 100);
   const hasCurrentMonth = pace.income > 0 || pace.expense > 0;
@@ -210,9 +221,52 @@ export default async function MonthPacePage({
         </table>
       </section>
 
+      {/* Comparação sazonal: o mesmo mês, um ano atrás */}
+      <section className="card overflow-x-auto">
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-semibold">Mesmo mês no ano passado</h2>
+          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${yoyVerdict.tone}`}>
+            <span aria-hidden>{yoyVerdict.icon}</span> {yoyVerdict.label}
+          </span>
+        </div>
+        <p className="mb-4 text-xs text-gray-500">
+          Compara a projeção de {formatMonthKey(yoy.month)} com {formatMonthKey(yoy.lastYearMonth)}{" "}
+          fechado — um eixo sazonal (mês cheio × mês cheio), útil quando o trabalho tem alta e baixa
+          temporada.
+        </p>
+        {yoy.lastYearHasMovement ? (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-xs uppercase tracking-wide text-gray-500">
+                <th className="pb-2 pr-3 font-medium"></th>
+                <th className="pb-2 px-3 text-right font-medium">Projeção do mês</th>
+                <th className="pb-2 px-3 text-right font-medium">{formatMonthKey(yoy.lastYearMonth)}</th>
+                <th className="pb-2 pl-3 text-right font-medium">Variação</th>
+              </tr>
+            </thead>
+            <tbody>
+              <Row
+                label="Receitas"
+                delta={yoy.incomeVsLastYear}
+                goodWhenUp
+                insufficient={yoy.verdict === "insufficient"}
+              />
+              <Row label="Despesas" delta={yoy.expenseVsLastYear} goodWhenUp={false} />
+              <Row label="Resultado" delta={yoy.netVsLastYear} goodWhenUp strong />
+            </tbody>
+          </table>
+        ) : (
+          <p className="text-sm text-gray-500">
+            Não há lançamentos em {formatMonthKey(yoy.lastYearMonth)} para comparar. Esta leitura
+            sazonal aparece assim que houver um ano de histórico no mesmo mês.
+          </p>
+        )}
+      </section>
+
       <p className="text-xs text-gray-400">
         O mês corrente é medido por regime de competência (pela data do lançamento). O “mês típico” é
-        a média dos meses fechados com movimento dos últimos {windowMonths} meses.
+        a média dos meses fechados com movimento dos últimos {windowMonths} meses; o comparativo
+        sazonal usa o mesmo mês do ano anterior, já fechado.
       </p>
     </div>
   );
