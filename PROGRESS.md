@@ -9,8 +9,26 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **942 testes**
-verdes após a Sessão 160 (**exportação CSV da sazonalidade financeira** em `/financas/sazonalidade/export` — a tela
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **945 testes**
+verdes após a Sessão 161 (**exportação CSV da fidelização de contratantes** em `/contatos/retencao/export` — a tela
+"Fidelização de contratantes" (`clientRetention`, quem volta a te contratar) ganhou botão de exportação, mais uma lacuna de
+exportação tabular fechada (do lado Contatos, onde só ranking/rentabilidade exportavam). Novo serializador puro
+`clientRetentionToCsv(retention)` + `CLIENT_RETENTION_CSV_HEADERS` em `src/lib/csv.ts` recebe a `ClientRetention` já computada
+(`clientRetention`, de `@/lib/contacts`). **Diferente da tela** (cuja tabela lista só os recorrentes), o CSV emite **todas** as
+linhas — `retention.rows`, todos os contratantes com ≥1 show não cancelado, na mesma ordem da página (shows desc, cachê desc,
+nome pt-BR) — marcando cada uma com a coluna "Recorrente" (Sim/Não), de modo que a planilha abra tanto os fiéis quanto os de
+um show só (candidatos a follow-up, que a tela só conta no card "Contratantes únicos"). Colunas
+Contratante/Papel/Shows/Cachê total (R$)/Último show/Recorrente, encerradas numa linha "Total" com a soma de shows e cachê de
+toda a carteira e, na coluna "Recorrente", "recorrentes/total" (ex.: "1/2"). Cachê é por contato (um show com vários contatos
+conta para cada); cancelados ficam de fora; futuros confirmados contam (re-contratação agendada também é fidelização). Rota
+`/contatos/retencao/export` reusa a mesma consulta/`clientRetention` da página + BOM UTF-8; nome fixo
+`fidelizacao-contratantes.csv`; botão "⬇ CSV" no cabeçalho só com `retention.totalClients > 0`. Primeiro import de tipo de
+`@/lib/contacts` em `csv.ts` (sem ciclo: `contacts.ts` não importa `csv.ts`). **+3 testes**
+(`describe("clientRetentionToCsv")`: só cabeçalho + Total zerado sem contratantes; uma linha por contratante em ordem de shows
+desc com Recorrente Sim/Não + Total "1/2"; exclui contratantes só-cancelados e conta futuro confirmado na recorrência). Smoke
+test (`next start`) → `/login` 200 e `/contatos/retencao` + `/contatos/retencao/export` 307 (auth-gated). `npm audit` sem novas
+vulnerabilidades (mesmos advisories Next/postcss da D6). Ver D153; segue 942 da
+Sessão 160 (**exportação CSV da sazonalidade financeira** em `/financas/sazonalidade/export` — a tela
 "Média por mês do ano" (`monthlySeasonality`, receita/despesa/resultado médios por mês do calendário) ganhou botão de
 exportação, fechando a assimetria com o eixo dos shows (`gigSeasonalityToCsv`/D139, que já exportava) e mais uma lacuna de
 exportação tabular das Finanças. Novo serializador puro `monthlySeasonalityToCsv(seasonality)` +

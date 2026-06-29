@@ -4678,3 +4678,37 @@ contexto, decisão, justificativa e alternativas consideradas.
   smoke test (`next start`) → `/login` 200 e `/financas/sazonalidade` + `/financas/sazonalidade/export` 307 (auth-gated).
   `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss
   bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## D153 — Exportação CSV da fidelização de contratantes (`/contatos/retencao/export`) (Sessão 161)
+- **Contexto:** a tela `/contatos/retencao` ("Fidelização de contratantes", `clientRetention`) mede a recompra (quem volta a
+  te contratar) e mostra cards (taxa de recompra, receita de recorrentes, contratantes únicos, shows por contratante) + uma
+  tabela de **contratantes recorrentes**. Era uma das telas de análise dos Contatos ainda **sem** botão de exportação — do
+  lado Contatos só ranking (D127) e rentabilidade (D105/D137) exportavam.
+- **Decisão:** novo serializador puro `clientRetentionToCsv(retention)` + `CLIENT_RETENTION_CSV_HEADERS` em `src/lib/csv.ts`,
+  recebendo a `ClientRetention` já computada (`clientRetention`, importada de `@/lib/contacts`). Colunas
+  Contratante/Papel/Shows/Cachê total (R$)/Último show/Recorrente, encerradas numa linha "Total" (soma de shows e cachê da
+  carteira; na coluna "Recorrente", "recorrentes/total", ex.: "1/2"). Rota `/contatos/retencao/export` reusa a mesma
+  consulta/`clientRetention` da página + BOM UTF-8; nome fixo `fidelizacao-contratantes.csv`; botão "⬇ CSV" no cabeçalho só
+  com `retention.totalClients > 0`.
+- **Por que exportar TODAS as linhas (`retention.rows`) e não só os recorrentes da tela:** a tabela da página lista apenas os
+  recorrentes, mas o valor de levar a carteira para planilha é justamente ver os dois lados — os fiéis **e** os de um show só
+  (candidatos a follow-up, que a tela só conta no card "Contratantes únicos"). A coluna "Recorrente" (Sim/Não) preserva a
+  distinção da tela e deixa o usuário filtrar/ordenar no Excel. Espelha a postura do `categoryVariationToCsv` (D147), que
+  também leva ao CSV mais do que a tela isola visualmente.
+- **Semântica herdada de `clientRetention` (D47):** cachê é por contato (um show com vários contatos conta para cada);
+  CANCELLED ficam de fora; shows futuros não cancelados contam (uma re-contratação já agendada também é fidelização);
+  contratantes só com shows cancelados não entram em `rows`. O serializador é fino e não reinterpreta nada disso.
+- **Por que sem `?ano=`:** a fidelização é uma leitura **acumulada** da carteira (recompra ao longo da relação); recortar por
+  ano quebraria o próprio conceito de "voltou a contratar". Mesma postura de ranking de atividade (D127).
+- **Nota de arquitetura:** primeiro import de tipo de `@/lib/contacts` dentro de `csv.ts` (antes só de `@/lib/finance`,
+  `@/lib/domain`, `@/lib/calendar`). Sem ciclo de import: `contacts.ts` não importa `csv.ts` (verificado). Apenas `import type`.
+- **Alternativas consideradas:** (a) exportar só os recorrentes, espelhando 1:1 a tabela — descartado: perde os one-time, que
+  são exatamente quem o músico quer reativar. (b) acrescentar os agregados dos cards (repeatRate/recurringFeeShare) como
+  metalinhas no topo do CSV — descartado por poluir a leitura tabular; os cards são derivados triviais das colunas exportadas.
+- **Testes:** **+3** em `csv.test.ts` (`describe("clientRetentionToCsv")`): só cabeçalho + Total zerado sem contratantes; uma
+  linha por contratante (ordem shows desc) com Recorrente Sim/Não + Total "1/2"; exclui contratantes só-cancelados e conta
+  futuro confirmado na recorrência. **945 testes** no total (eram 942).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **945 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/contatos/retencao` + `/contatos/retencao/export` 307 (auth-gated). `npm audit`
+  **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver
+  D6/bloqueios); **nenhuma dependência nova**.
