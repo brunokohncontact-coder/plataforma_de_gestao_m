@@ -58,6 +58,8 @@ import {
   CASH_FLOW_CSV_HEADERS,
   bookedRevenueToCsv,
   BOOKED_REVENUE_CSV_HEADERS,
+  pipelineToCsv,
+  PIPELINE_CSV_HEADERS,
   dueAgendaToCsv,
   DUE_AGENDA_CSV_HEADERS,
   type DueAgendaCsvTx,
@@ -83,6 +85,7 @@ import {
   yearlyHistory,
   weekdayPerformance,
   feeDistribution,
+  showPipeline,
   incomeMix,
   expenseMix,
   compareCategoryReports,
@@ -93,6 +96,7 @@ import {
   type RoleProfitRow,
   type ReceivableShowLike,
   type BookedRevenueShowLike,
+  type ShowLike,
 } from "./finance";
 import {
   clientRetention,
@@ -1701,6 +1705,51 @@ describe("bookedRevenueToCsv", () => {
     expect(lines).toHaveLength(3);
     expect(lines[1]).toBe("2026-07;1;0,00;700,00;700,00");
     expect(lines[2]).toBe("Total;1;0,00;700,00;700,00");
+  });
+});
+
+describe("pipelineToCsv", () => {
+  const show = (fee: number, status?: string, id = "s"): ShowLike => ({ id, fee, status });
+
+  it("sem shows: cabeçalho + as quatro etapas zeradas + Total zerado", () => {
+    const lines = pipelineToCsv(showPipeline([])).split("\r\n");
+    expect(lines[0]).toBe(PIPELINE_CSV_HEADERS.join(";"));
+    // O funil sempre lista as quatro etapas (é um retrato do estado), mesmo vazias.
+    expect(lines).toHaveLength(6);
+    expect(lines[1]).toBe("Proposto;0;0%;0,00");
+    expect(lines[5]).toBe("Total;0;;0,00");
+  });
+
+  it("uma linha por etapa com contagem/participação/cachê + Total", () => {
+    const pipeline = showPipeline([
+      show(100000, "PROPOSED"),
+      show(50000, "PROPOSED"),
+      show(200000, "CONFIRMED"),
+      show(300000, "PLAYED"),
+    ]);
+    const lines = pipelineToCsv(pipeline).split("\r\n");
+    expect(lines).toHaveLength(6);
+    expect(lines[1]).toBe("Proposto;2;50%;1500,00");
+    expect(lines[2]).toBe("Confirmado;1;25%;2000,00");
+    expect(lines[3]).toBe("Realizado;1;25%;3000,00");
+    expect(lines[4]).toBe("Cancelado;0;0%;0,00");
+    // Total soma TODAS as etapas (inclusive realizadas/canceladas); participação em branco.
+    expect(lines[5]).toBe("Total;4;;6500,00");
+  });
+
+  it("cancelados viram linha; shows sem status ficam de fora do funil", () => {
+    const pipeline = showPipeline([
+      show(100000, "PROPOSED"),
+      show(80000, "CANCELLED"),
+      show(999999), // sem status → ignorado por showPipeline
+    ]);
+    const lines = pipelineToCsv(pipeline).split("\r\n");
+    expect(lines).toHaveLength(6);
+    expect(lines[1]).toBe("Proposto;1;50%;1000,00");
+    expect(lines[4]).toBe("Cancelado;1;50%;800,00");
+    expect(lines[5]).toBe("Total;2;;1800,00");
+    // Sem coluna de taxa de concretização (escalar de destaque, não tabular).
+    expect(lines[0].split(";")).toHaveLength(4);
   });
 });
 
