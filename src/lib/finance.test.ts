@@ -71,6 +71,7 @@ import {
   cashBurnHeadline,
   currentMonthPace,
   monthYoYPace,
+  yearToDatePace,
   MONTH_PACE_EPSILON,
   cashFlowByMonth,
   cashFlowTrend,
@@ -6976,5 +6977,107 @@ describe("monthYoYPace", () => {
     expect(pace.lastYearNet).toBe(700_00); // 1000 − 300
     expect(pace.netVsLastYear.current).toBe(pace.projectedNet);
     expect(pace.netVsLastYear.previous).toBe(700_00);
+  });
+});
+
+describe("yearToDatePace", () => {
+  // 15/jun/2026: meio do ano. 2026 não é bissexto → dia do ano = 166, total 365.
+  const NOW = "2026-06-15T00:00:00.000Z";
+
+  const ytx = (date: string, amount: number, type: TxLike["type"] = "INCOME"): TxLike =>
+    tx({ type, amount, date: `${date}T00:00:00.000Z` });
+
+  it("acumula o ano corrente até o corte e calcula dayOfYear/elapsed (UTC)", () => {
+    const pace = yearToDatePace(
+      [
+        ytx("2026-01-10", 300_00),
+        ytx("2026-06-15", 200_00), // dia do corte: entra (dia inteiro)
+        ytx("2026-06-16", 999_00), // depois do corte: fora
+        ytx("2026-12-31", 999_00), // depois do corte: fora
+      ],
+      { now: NOW },
+    );
+    expect(pace.year).toBe(2026);
+    expect(pace.lastYear).toBe(2025);
+    expect(pace.dayOfYear).toBe(166); // 31+28+31+30+31+15
+    expect(pace.daysInYear).toBe(365);
+    expect(pace.elapsed).toBeCloseTo(166 / 365);
+    expect(pace.income).toBe(500_00);
+  });
+
+  it("compara com o MESMO período do ano anterior (1º jan → mesmo mês/dia)", () => {
+    const pace = yearToDatePace(
+      [
+        ytx("2026-03-01", 400_00),
+        ytx("2026-05-01", 600_00), // ano corrente até jun: 1000_00
+        ytx("2025-02-10", 500_00),
+        ytx("2025-06-15", 300_00), // ano anterior até 15/jun: 800_00
+        ytx("2025-06-16", 999_00), // ano anterior depois do corte: fora
+        ytx("2025-11-01", 999_00), // ano anterior depois do corte: fora
+      ],
+      { now: NOW },
+    );
+    expect(pace.income).toBe(1000_00);
+    expect(pace.lastYearIncome).toBe(800_00);
+    expect(pace.lastYearHasMovement).toBe(true);
+    expect(pace.incomeVsLastYear.current).toBe(1000_00);
+    expect(pace.incomeVsLastYear.previous).toBe(800_00);
+    expect(pace.verdict).toBe("ahead"); // 1000 vs 800 → +25%
+  });
+
+  it("classifica 'onPace' na folga e 'behind' abaixo dela", () => {
+    const onPace = yearToDatePace(
+      [ytx("2026-03-01", 1000_00), ytx("2025-03-01", 1000_00)],
+      { now: NOW },
+    );
+    expect(onPace.verdict).toBe("onPace");
+    const behind = yearToDatePace(
+      [ytx("2026-03-01", 700_00), ytx("2025-03-01", 1000_00)],
+      { now: NOW },
+    );
+    expect(behind.verdict).toBe("behind"); // −30%
+  });
+
+  it("veredito 'insufficient' quando o mesmo período do ano anterior não teve receita", () => {
+    const pace = yearToDatePace([ytx("2026-03-01", 500_00)], { now: NOW });
+    expect(pace.lastYearIncome).toBe(0);
+    expect(pace.lastYearHasMovement).toBe(false);
+    expect(pace.verdict).toBe("insufficient");
+    expect(pace.incomeVsLastYear.pct).toBeNull();
+  });
+
+  it("acumula despesa e líquido e os compara ao mesmo período do ano anterior", () => {
+    const pace = yearToDatePace(
+      [
+        ytx("2026-02-01", 1000_00),
+        ytx("2026-04-01", 200_00, "EXPENSE"),
+        ytx("2025-02-01", 900_00),
+        ytx("2025-04-01", 300_00, "EXPENSE"),
+      ],
+      { now: NOW },
+    );
+    expect(pace.expense).toBe(200_00);
+    expect(pace.net).toBe(800_00); // 1000 − 200
+    expect(pace.lastYearExpense).toBe(300_00);
+    expect(pace.lastYearNet).toBe(600_00); // 900 − 300
+    expect(pace.netVsLastYear.current).toBe(800_00);
+    expect(pace.netVsLastYear.previous).toBe(600_00);
+  });
+
+  it("alinha o ano bissexto: 29/fev cai para 28/fev no ano anterior", () => {
+    // now = 29/fev/2024 (bissexto); 2023 não tem 29/fev → corte vira 28/fev/2023.
+    const pace = yearToDatePace(
+      [
+        ytx("2024-02-29", 100_00), // dia do corte no ano corrente: entra
+        ytx("2023-02-28", 700_00), // 28/fev/2023: entra (último dia do mês)
+        ytx("2023-03-01", 999_00), // 1º/mar/2023: fora do período
+      ],
+      { now: "2024-02-29T00:00:00.000Z" },
+    );
+    expect(pace.daysInYear).toBe(366); // 2024 é bissexto
+    expect(pace.cutoffMonth).toBe(1); // fevereiro
+    expect(pace.cutoffDay).toBe(29);
+    expect(pace.income).toBe(100_00);
+    expect(pace.lastYearIncome).toBe(700_00);
   });
 });
