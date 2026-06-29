@@ -9,8 +9,26 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **945 testes**
-verdes após a Sessão 161 (**exportação CSV da fidelização de contratantes** em `/contatos/retencao/export` — a tela
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **948 testes**
+verdes após a Sessão 162 (**exportação CSV do crescimento ano a ano** em `/financas/crescimento/export` — a tela
+"Crescimento ano a ano" (`yearlyHistory`, a trajetória de longo prazo: a carreira está faturando mais com o tempo?) ganhou
+botão de exportação, mais uma lacuna de exportação tabular das Finanças fechada (irmã das já-exportáveis
+anual/trimestral/sazonalidade/variação/fontes/composição). Novo serializador puro `yearlyHistoryToCsv(history)` +
+`YEARLY_HISTORY_CSV_HEADERS` em `src/lib/csv.ts` espelha a tabela "Ano a ano": uma linha por **ano com movimento** (receita ou
+despesa > 0), em ordem cronológica crescente, com receitas, despesas e resultado (regime de competência) do ano + a variação
+relativa do resultado frente ao ano ativo anterior (`netDelta` via `csvDeltaPct`: "+25%"/"-30%"/"0%"/"novo"), encerrada numa
+linha "Total" com os somatórios da série (os números do rodapé `<tfoot>` da tabela). Colunas
+Ano/Receitas (R$)/Despesas (R$)/Resultado (R$)/Variação do resultado (%). O primeiro ano não tem base de comparação → célula de
+variação vazia; o "Total" também (a `trend` de longo prazo, último vs. primeiro ano, é comparação distinta da variação ano a
+ano, então não vai na coluna). **Diferente da página** (que oculta a variação quando o ano anterior teve resultado 0, para não
+exibir "novo"), o CSV emite "novo" nesses casos, mantendo a convenção legível por máquina de `categoryVariationToCsv`. Rota
+`/financas/crescimento/export` reusa a mesma consulta/`yearlyHistory` da página (série inteira por design, sem `?ano=`) +
+BOM UTF-8; nome fixo `crescimento-ano-a-ano.csv`; botão "⬇ CSV" no cabeçalho só com `history.years.length > 0`. **+3 testes**
+(`describe("yearlyHistoryToCsv")`: só cabeçalho + Total zerado sem transações; uma linha por ano ativo em ordem crescente com a
+variação do resultado (+100%) + Total; emite "novo" quando o ano anterior teve resultado 0 e ignora anos sem movimento). Smoke
+test (`next start`) → `/login` 200 e `/financas/crescimento` + `/financas/crescimento/export` 307 (auth-gated). `npm audit` sem
+novas vulnerabilidades (mesmos advisories Next/postcss da D6). Ver D154; segue 945 da
+Sessão 161 (**exportação CSV da fidelização de contratantes** em `/contatos/retencao/export` — a tela
 "Fidelização de contratantes" (`clientRetention`, quem volta a te contratar) ganhou botão de exportação, mais uma lacuna de
 exportação tabular fechada (do lado Contatos, onde só ranking/rentabilidade exportavam). Novo serializador puro
 `clientRetentionToCsv(retention)` + `CLIENT_RETENTION_CSV_HEADERS` em `src/lib/csv.ts` recebe a `ClientRetention` já computada
@@ -3086,9 +3104,14 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `/financas/fontes-de-renda/export` (Fonte/Lançamentos/Total/Participação + linha Total), botão "⬇ CSV" só com
    fontes, ver D144. **Recorte por ano (`?ano=`) nas fontes de renda** (página + export) entregue na Sessão 156 —
    `incomeMixYears` + `PeriodPicker`/`?ano=` em `/financas/fontes-de-renda` e seu export, filtrando por ano UTC antes de
-   `incomeMix` (reusa `parseProfitYear`/`filterShowsByYear` da D108), ver D148. Próximo possível — **espelhar o mesmo
-   recorte por ano na composição de despesas** (`/financas/composicao-despesas` + export, `expenseMix` é o espelho de
-   `incomeMix`; precisaria de um `expenseMixYears` análogo gated por `type === "EXPENSE"`), hoje ainda soma todas as despesas.
+   `incomeMix` (reusa `parseProfitYear`/`filterShowsByYear` da D108), ver D148. **Recorte por ano na composição de despesas**
+   (`/financas/composicao-despesas` + export) entregue na Sessão 157 — `expenseMixYears` + `?ano=`, espelho de D148 no eixo de
+   despesa, ver D149. **Exportação CSV do crescimento ano a ano** entregue na Sessão 162 — `yearlyHistoryToCsv` +
+   `YEARLY_HISTORY_CSV_HEADERS` em `src/lib/csv.ts` + `/financas/crescimento/export` (Ano/Receitas/Despesas/Resultado/Variação
+   do resultado % + linha Total), série inteira por design, botão "⬇ CSV" só com anos, ver D154. Próximo possível — as telas
+   de Finanças que ainda não exportam são sobretudo painéis de cenário/projeção (metas, projeção-ano, ponto-de-equilíbrio,
+   fôlego/fluxo de caixa, reserva-impostos): avaliar caso a caso se o tabular agrega (ex.: fluxo de caixa mês a mês é candidato
+   natural; cards de cenário único, menos).
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

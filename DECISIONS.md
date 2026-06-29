@@ -4712,3 +4712,38 @@ contexto, decisão, justificativa e alternativas consideradas.
   smoke test (`next start`) → `/login` 200 e `/contatos/retencao` + `/contatos/retencao/export` 307 (auth-gated). `npm audit`
   **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver
   D6/bloqueios); **nenhuma dependência nova**.
+
+## D154 — Exportação CSV do crescimento ano a ano (`/financas/crescimento/export`) (Sessão 162)
+- **Contexto:** a tela `/financas/crescimento` ("Crescimento ano a ano", `yearlyHistory`) responde "minha carreira está
+  faturando mais com o tempo?" — cards (resultado acumulado, média por ano, melhor/pior ano), card de tendência de longo prazo
+  e a tabela "Ano a ano" (receitas/despesas/resultado por ano + a variação do resultado frente ao ano anterior). Era uma das
+  telas de análise das Finanças ainda **sem** botão de exportação, irmã das já-exportáveis anual (D40)/trimestral
+  (D40b)/sazonalidade (D152)/variação (D147)/fontes (D144)/composição (D146).
+- **Decisão:** novo serializador puro `yearlyHistoryToCsv(history)` + `YEARLY_HISTORY_CSV_HEADERS` em `src/lib/csv.ts`,
+  recebendo a `YearlyHistory` já computada (`yearlyHistory`, de `@/lib/finance`). Colunas
+  Ano/Receitas (R$)/Despesas (R$)/Resultado (R$)/Variação do resultado (%): uma linha por **ano com movimento** (receita ou
+  despesa > 0), em ordem cronológica crescente, encerrada numa linha "Total" com os somatórios da série (espelha o `<tfoot>` da
+  tabela). Rota `/financas/crescimento/export` reusa a mesma consulta/`yearlyHistory` da página + BOM UTF-8; nome fixo
+  `crescimento-ano-a-ano.csv`; botão "⬇ CSV" no cabeçalho só com `history.years.length > 0`.
+- **Variação do resultado (`netDelta`) na coluna 5:** reusa `csvDeltaPct` (D147) — "+25%"/"-30%"/"0%"/"novo". O primeiro ano da
+  série não tem base de comparação (`netDelta === null`) → célula vazia. A linha "Total" também fica com a coluna de variação
+  vazia: a tendência de longo prazo (`trend`, último vs. primeiro ano) é uma comparação **distinta** da variação ano a ano, e
+  misturá-la na mesma coluna confundiria a leitura; quem quiser a trajetória tem os cards/tendência na própria tela.
+- **Divergência deliberada da página (emite "novo"):** a tabela oculta a variação quando o ano anterior teve resultado 0
+  (`y.netDelta.previous !== 0`) para não exibir "novo"/sem-base na UI; o CSV emite "novo" nesses casos, mantendo a convenção
+  legível por máquina de `categoryVariationToCsv` (D147), que também leva ao CSV mais do que a tela isola visualmente.
+- **Por que sem `?ano=`:** é a série inteira por definição (a trajetória entre anos); recortar por um ano só anularia o sentido.
+  Mesma postura de cadência (D150) e evolução do cachê (D151).
+- **Semântica herdada de `yearlyHistory`:** só anos com movimento entram em `years` (anos vazios não viram linha nem base de
+  comparação); resultado em regime de competência (income − expense); deltas comparam com o ano ativo **imediatamente
+  anterior** na série. O serializador é fino e não reinterpreta nada disso.
+- **Alternativas consideradas:** (a) acrescentar uma coluna "Variação receitas (%)" e "Variação despesas (%)" (a estrutura tem
+  `incomeDelta`/`expenseDelta`) — descartado por ora: a tela só destaca a variação do resultado; pode-se acrescentar se houver
+  pedido. (b) levar a tendência de longo prazo como metalinha no topo do CSV — descartado por poluir a leitura tabular.
+- **Testes:** **+3** em `csv.test.ts` (`describe("yearlyHistoryToCsv")`): só cabeçalho + Total zerado sem transações; uma linha
+  por ano ativo em ordem crescente com a variação do resultado (+100%) + Total; emite "novo" quando o ano anterior teve
+  resultado 0 e ignora anos sem movimento. **948 testes** no total (eram 945).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **948 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/financas/crescimento` + `/financas/crescimento/export` 307 (auth-gated).
+  `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss
+  bundlado; ver D6/bloqueios); **nenhuma dependência nova**.

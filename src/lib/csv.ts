@@ -33,6 +33,7 @@ import {
   type WeekdayPerformance,
   type FeeDistribution,
   type FeeTrend,
+  type YearlyHistory,
   type IncomeMix,
   type ExpenseMix,
   type MetricDelta,
@@ -1291,6 +1292,57 @@ export function clientRetentionToCsv<C extends ContactRankLike & { role: string 
     centsToCsvAmount(retention.totalFee),
     "",
     `${retention.recurringClients}/${retention.totalClients}`,
+  ]);
+  return toCsv(out, delimiter);
+}
+
+// ── Crescimento ano a ano (a trajetória de longo prazo da carreira) ───────────
+
+export const YEARLY_HISTORY_CSV_HEADERS = [
+  "Ano",
+  "Receitas (R$)",
+  "Despesas (R$)",
+  "Resultado (R$)",
+  "Variação do resultado (%)",
+] as const;
+
+/**
+ * Serializa o crescimento ano a ano (`yearlyHistory`) em CSV, pronto para
+ * download — espelha a tabela "Ano a ano" de `/financas/crescimento`. Uma linha
+ * por ano COM movimento (receita ou despesa > 0), em ordem cronológica crescente,
+ * com receitas, despesas e resultado (regime de competência) do ano, encerrada
+ * numa linha "Total" com os somatórios da série (os mesmos números do rodapé da
+ * tabela). Colunas: ano, receitas, despesas, resultado e a variação relativa do
+ * resultado frente ao ano ativo anterior (`netDelta`, via `csvDeltaPct`:
+ * "+25%"/"-30%"/"0%"/"novo"). O primeiro ano não tem base de comparação → a célula
+ * de variação fica vazia; a linha "Total" também (a trajetória de longo prazo
+ * `trend` é uma comparação distinta — último vs. primeiro ano —, não ano a ano).
+ *
+ * Diferente da página (que oculta a variação quando o ano anterior teve resultado
+ * 0, para não exibir "novo"), o CSV emite "novo" nesses casos, mantendo a mesma
+ * convenção legível por máquina de `categoryVariationToCsv`. Mesma convenção pt-BR
+ * dos irmãos (delimitador ";", decimal com vírgula). Pura.
+ */
+export function yearlyHistoryToCsv(
+  history: YearlyHistory,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(YEARLY_HISTORY_CSV_HEADERS)];
+  for (const y of history.years) {
+    out.push([
+      String(y.year),
+      centsToCsvAmount(y.income),
+      centsToCsvAmount(y.expense),
+      centsToCsvAmount(y.net),
+      y.netDelta ? csvDeltaPct(y.netDelta) : "",
+    ]);
+  }
+  out.push([
+    "Total",
+    centsToCsvAmount(history.totalIncome),
+    centsToCsvAmount(history.totalExpense),
+    centsToCsvAmount(history.net),
+    "",
   ]);
   return toCsv(out, delimiter);
 }

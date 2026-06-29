@@ -46,9 +46,16 @@ export default async function FinanceGrowthPage() {
             tempo.
           </p>
         </div>
-        <Link href="/financas" className="btn-secondary">
-          ← Finanças
-        </Link>
+        <div className="flex items-center gap-2">
+          {history.years.length > 0 && (
+            <a href="/financas/crescimento/export" className="btn-secondary">
+              ⬇ CSV
+            </a>
+          )}
+          <Link href="/financas" className="btn-secondary">
+            ← Finanças
+          </Link>
+        </div>
       </div>
 
       {history.years.length === 0 ? (

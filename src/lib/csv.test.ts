@@ -50,6 +50,8 @@ import {
   FEE_TREND_CSV_HEADERS,
   clientRetentionToCsv,
   CLIENT_RETENTION_CSV_HEADERS,
+  yearlyHistoryToCsv,
+  YEARLY_HISTORY_CSV_HEADERS,
   type CsvTransaction,
   type CsvShow,
   type CsvProfitShow,
@@ -66,6 +68,7 @@ import {
   gigSeasonality,
   gigCadence,
   feeTrend,
+  yearlyHistory,
   weekdayPerformance,
   feeDistribution,
   incomeMix,
@@ -1420,5 +1423,65 @@ describe("clientRetentionToCsv", () => {
     expect(lines).toHaveLength(3);
     expect(lines[1]).toBe("Casa Nova;Outro;2;4000,00;01/06/2099;Sim");
     expect(lines[2]).toBe("Total;;2;4000,00;;1/1");
+  });
+});
+
+describe("yearlyHistoryToCsv", () => {
+  const tx = (
+    type: TxLike["type"],
+    amount: number,
+    date: string,
+  ): TxLike => ({
+    type,
+    amount,
+    category: "",
+    date,
+    received: true,
+    showId: null,
+  });
+
+  it("só cabeçalho + Total zerado quando não há transações", () => {
+    const csv = yearlyHistoryToCsv(yearlyHistory([]));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(YEARLY_HISTORY_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe("Total;0,00;0,00;0,00;");
+  });
+
+  it("uma linha por ano ativo (ordem crescente) com variação do resultado + Total", () => {
+    const lines = yearlyHistoryToCsv(
+      yearlyHistory([
+        tx("INCOME", 100000, "2024-05-10T00:00:00.000Z"),
+        tx("EXPENSE", 40000, "2024-08-01T00:00:00.000Z"),
+        // 2025: resultado 120000 (+100% vs. 60000 de 2024).
+        tx("INCOME", 150000, "2025-03-20T00:00:00.000Z"),
+        tx("EXPENSE", 30000, "2025-09-15T00:00:00.000Z"),
+      ]),
+    ).split("\r\n");
+    // cabeçalho + 2 anos + Total.
+    expect(lines).toHaveLength(4);
+    // 2024: primeiro ano → sem base → variação vazia.
+    expect(lines[1]).toBe("2024;1000,00;400,00;600,00;");
+    // 2025: resultado 1200,00; +100% frente a 600,00.
+    expect(lines[2]).toBe("2025;1500,00;300,00;1200,00;+100%");
+    // Total: receitas 2500,00; despesas 700,00; resultado 1800,00; variação vazia.
+    expect(lines[3]).toBe("Total;2500,00;700,00;1800,00;");
+  });
+
+  it("emite 'novo' quando o ano anterior teve resultado 0 e ignora anos sem movimento", () => {
+    const lines = yearlyHistoryToCsv(
+      yearlyHistory([
+        // 2024: receita = despesa → resultado 0 (mas ano ativo, há movimento).
+        tx("INCOME", 50000, "2024-04-10T00:00:00.000Z"),
+        tx("EXPENSE", 50000, "2024-06-10T00:00:00.000Z"),
+        // 2026: resultado 80000, base anterior (2024) = 0 → "novo". 2025 sem movimento some.
+        tx("INCOME", 80000, "2026-02-01T00:00:00.000Z"),
+      ]),
+    ).split("\r\n");
+    // cabeçalho + 2024 + 2026 (2025 vazio não entra) + Total.
+    expect(lines).toHaveLength(4);
+    expect(lines[1]).toBe("2024;500,00;500,00;0,00;");
+    expect(lines[2]).toBe("2026;800,00;0,00;800,00;novo");
+    expect(lines[3]).toBe("Total;1300,00;500,00;800,00;");
   });
 });
