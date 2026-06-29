@@ -9,7 +9,7 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **970 testes** verdes após consolidar a **exportação CSV da agenda de contas a pagar/receber** em `/financas/agenda/export` (PR #180, D157 — a tela "A pagar e receber"/`buildDueAgenda` ganhou botão "⬇ CSV"; serializador puro `dueAgendaToCsv` + `DUE_AGENDA_CSV_HEADERS` em `src/lib/csv.ts`, rótulos de janela extraídos para `DUE_BUCKET_LABELS` em `@/lib/finance` (DRY com a página); **+3 testes**) sobre a Sessão 166. Segue 967 da Sessão 166
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **973 testes** verdes após a **exportação CSV do funil de propostas** em `/shows/funil/export` (Sessão 167, D160 — a tela "Funil de propostas"/`showPipeline` ganhou botão "⬇ CSV"; serializador puro `pipelineToCsv(pipeline)` + `PIPELINE_CSV_HEADERS` em `src/lib/csv.ts` emite uma linha por etapa (proposto → confirmado → realizado → cancelado, ordem de `PIPELINE_STAGE_ORDER`) com contagem, participação (`csvShare`) e cachê somado, encerrada num "Total"; participação do Total em branco (100% por construção, como `incomeMixToCsv`); `conversionRate` é escalar de destaque e não vira coluna; nome fixo `funil-de-propostas.csv`, botão só com `pipeline.total > 0`; **+3 testes**) sobre a Sessão 166. Segue 970 verdes após consolidar a **exportação CSV da agenda de contas a pagar/receber** em `/financas/agenda/export` (PR #180, D157 — a tela "A pagar e receber"/`buildDueAgenda` ganhou botão "⬇ CSV"; serializador puro `dueAgendaToCsv` + `DUE_AGENDA_CSV_HEADERS` em `src/lib/csv.ts`, rótulos de janela extraídos para `DUE_BUCKET_LABELS` em `@/lib/finance` (DRY com a página); **+3 testes**) sobre a Sessão 166. Segue 967 da Sessão 166
 (**exportação CSV dos contatos para reativar** em `/contatos/reativar/export` — a tela "Contatos para reativar"
 (`findContactsToReengage`, a fila de follow-up dos dormentes: quem já tocou, está sem nada agendado e há mais de `staleDays`=60
 dias sem show) ganhou botão de exportação, fechando mais uma lacuna tabular do lado Contatos (ao lado de
@@ -2909,7 +2909,10 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    já é denso).
 2b. **Funil de propostas — evoluções** (entregue na Sessão 51, `/shows/funil` + `showPipeline`,
    ver D42; **card do funil no Painel** entregue na Sessão 52 — cachê em aberto + taxa de
-   concretização, ver D43): hoje é um retrato do estado atual. Próximo possível — registrar
+   concretização, ver D43; **exportação CSV do funil** entregue na Sessão 167 — `pipelineToCsv` +
+   `PIPELINE_CSV_HEADERS` em `src/lib/csv.ts` + `/shows/funil/export` (Etapa/Shows/Participação/Cachê
+   + linha Total), uma linha por etapa na ordem de `PIPELINE_STAGE_ORDER`, botão "⬇ CSV" só com
+   `pipeline.total > 0`, ver D160): hoje é um retrato do estado atual. Próximo possível — registrar
    **transições de status** (log) para uma taxa de conversão proposta→realizado de verdade e
    tempo médio em cada etapa.
 3. **Filtros — evoluções**: persistência do último filtro entregue para Finanças (Sessão 32),

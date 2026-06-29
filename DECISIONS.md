@@ -4931,3 +4931,32 @@ contexto, decisão, justificativa e alternativas consideradas.
   D6/bloqueios); **nenhuma dependência nova**.
 - **Nota de concorrência:** **D157** segue reservado à PR paralela #180 (export CSV da agenda) ainda em aberto; esta sessão usa
   **D159** (após o D158 já mergeado da Sessão 165) para evitar colisão de numeração na `main`.
+
+## D160 — Exportação CSV do funil de propostas (`/shows/funil/export`) (Sessão 167)
+- **Contexto:** a tela `/shows/funil` (`showPipeline`) é o **retrato do estado atual** dos shows por etapa (proposto →
+  confirmado → realizado → cancelado), com contagem e cachê somado por etapa + a taxa de concretização. Era uma das poucas
+  telas tabulares de Shows ainda **sem** exportação (ao lado de cadência/sazonalidade/locais/cidades/receita-agendada, que já
+  exportavam). Levar a distribuição do funil para a planilha permite acompanhar o pipeline fora do app (relatório de status,
+  divisão por responsável, série histórica manual mês a mês).
+- **Decisão:** novo serializador puro `pipelineToCsv(pipeline)` + `PIPELINE_CSV_HEADERS` em `src/lib/csv.ts` recebe a
+  `ShowPipeline` já computada por `showPipeline` (de `@/lib/finance`) e emite **uma linha por etapa** em `pipeline.stages` (na
+  ordem canônica `PIPELINE_STAGE_ORDER`: proposto → confirmado → realizado → cancelado), com contagem de shows, participação no
+  total (o mesmo `pct` da barra da página, via `csvShare`) e cachê somado da etapa, encerrada numa linha "Total" com o total de
+  shows e a soma de **todos** os cachês. Rota `/shows/funil/export` reusa a **mesma consulta** da página (todos os shows do
+  usuário, `select` id/status/fee) + BOM UTF-8; nome fixo `funil-de-propostas.csv`; botão "⬇ CSV" no cabeçalho só com
+  `pipeline.total > 0` (mesmo gate do estado vazio "Nenhum show para analisar").
+- **Colunas:** Etapa / Shows / Participação / Cachê (R$). A participação do "Total" fica **em branco** (é 100% por construção,
+  como em `incomeMixToCsv`/D144). Todas as **quatro** etapas viram linha — inclusive cancelados, presentes na tela, porque o
+  funil é um retrato, não um histórico de conversão. A **taxa de concretização** (`conversionRate`) é um escalar de destaque
+  (card), não tabular, e não vira coluna — as colunas Shows/Participação já decompõem cada etapa (mesma filosofia de deixar a
+  barra confirmado/total fora do `bookedRevenueToCsv`/D156).
+- **Sem recorte por `?ano=`:** a página em si não tem `PeriodPicker` (o funil é o estado corrente de todos os shows), então o
+  export herda o mesmo escopo — coerente com a tela.
+- **Testes:** **+3** em `csv.test.ts` (`describe("pipelineToCsv")`): sem shows → cabeçalho + as quatro etapas zeradas + Total
+  zerado; uma linha por etapa com contagem/participação/cachê + Total somando todas as etapas; cancelados viram linha e shows
+  **sem status** ficam de fora do funil (herdado de `showPipeline`). **973 testes** no total (eram 970).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **973 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/shows/funil` + `/shows/funil/export` 307 (auth-gated). `npm audit` **inalterado**
+  vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios);
+  **nenhuma dependência nova**.
+- **Nota de concorrência:** numeração **D160** após D159 (Sessão 166, já mergeado); **D157** segue reservado à PR paralela #180.

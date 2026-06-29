@@ -44,6 +44,7 @@ import {
   type MetricDelta,
   type CategoryDelta,
   type CategoryReportComparison,
+  type ShowPipeline,
 } from "./finance";
 import type { ClientRetention, ContactRankLike, ReengageList } from "./contacts";
 import { MONTH_NAMES_LONG } from "./calendar";
@@ -1498,6 +1499,52 @@ export function bookedRevenueToCsv(
     centsToCsvAmount(forecast.tentativeTotal),
     centsToCsvAmount(forecast.total),
   ]);
+  return toCsv(out, delimiter);
+}
+
+// ── Funil de propostas (onde estão os shows hoje) ───────────────────────────
+
+export const PIPELINE_CSV_HEADERS = [
+  "Etapa",
+  "Shows",
+  "Participação",
+  "Cachê (R$)",
+] as const;
+
+/**
+ * Serializa o funil de propostas (`showPipeline`) em CSV, pronto para download —
+ * espelha a tabela "Shows por etapa" de `/shows/funil`. Uma linha por etapa, na
+ * mesma ordem da página (`pipeline.stages`, isto é, `PIPELINE_STAGE_ORDER`:
+ * proposto → confirmado → realizado → cancelado), com a contagem de shows, a
+ * participação no total (o mesmo `pct` da barra da página) e o cachê somado da
+ * etapa, encerrada numa linha "Total" com o total de shows e a soma de todos os
+ * cachês.
+ *
+ * O funil é um RETRATO do estado atual (não um histórico de conversão), então
+ * todas as quatro etapas viram linha — inclusive cancelados, presentes na tela.
+ * A participação do "Total" fica em branco (é 100% por construção, como em
+ * `incomeMixToCsv`). A taxa de concretização (`conversionRate`) é um escalar de
+ * destaque, não tabular, e não vira coluna — as colunas Shows/Participação já
+ * decompõem cada etapa. Mesma convenção pt-BR dos irmãos (delimitador ";",
+ * decimal com vírgula). Pura.
+ */
+export function pipelineToCsv(
+  pipeline: ShowPipeline,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(PIPELINE_CSV_HEADERS)];
+  let feeTotal = 0;
+  for (const stage of pipeline.stages) {
+    feeTotal += stage.fee;
+    const share = pipeline.total > 0 ? stage.count / pipeline.total : 0;
+    out.push([
+      SHOW_STATUS_LABELS[stage.status as ShowStatus],
+      String(stage.count),
+      csvShare(share),
+      centsToCsvAmount(stage.fee),
+    ]);
+  }
+  out.push(["Total", String(pipeline.total), "", centsToCsvAmount(feeTotal)]);
   return toCsv(out, delimiter);
 }
 

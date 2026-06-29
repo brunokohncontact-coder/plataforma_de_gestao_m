@@ -33,9 +33,16 @@ export default async function ShowFunnelPage() {
             negociação ou confirmado, mas ainda não realizado.
           </p>
         </div>
-        <Link href="/shows" className="btn-secondary">
-          ← Shows
-        </Link>
+        <div className="flex items-center gap-2">
+          {pipeline.total > 0 && (
+            <a href="/shows/funil/export" className="btn-secondary text-sm" download>
+              ⬇ CSV
+            </a>
+          )}
+          <Link href="/shows" className="btn-secondary">
+            ← Shows
+          </Link>
+        </div>
       </div>
 
       {pipeline.total === 0 ? (
