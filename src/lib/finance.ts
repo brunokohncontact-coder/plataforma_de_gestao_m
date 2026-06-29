@@ -4943,6 +4943,184 @@ export function parseBurnWindow(
   return sanitizeBurnWindow(n);
 }
 
+// ── Ritmo do mês corrente ("como vai o mês até agora?") ──────────────────────
+
+/**
+ * Veredito do ritmo do mês: comparando a **projeção** de receita do mês corrente
+ * (extrapolação pro-rata do que já foi lançado) contra o "mês típico" recente.
+ * `insufficient` quando não há histórico de receita para servir de base.
+ */
+export type MonthPaceVerdict = "ahead" | "onPace" | "behind" | "insufficient";
+
+/**
+ * Folga relativa (±10%) em torno do mês típico dentro da qual o ritmo é
+ * considerado "no ritmo" — evita classificar oscilações normais como alerta.
+ */
+export const MONTH_PACE_EPSILON = 0.1;
+
+export interface MonthPace {
+  /** Mês corrente "YYYY-MM" (UTC). */
+  month: string;
+  /** Dia de referência dentro do mês (1–31), extraído de `now` (UTC). */
+  dayOfMonth: number;
+  /** Total de dias do mês corrente. */
+  daysInMonth: number;
+  /** Fração do mês já decorrida = `dayOfMonth / daysInMonth` (0 < elapsed ≤ 1). */
+  elapsed: number;
+  /**
+   * Receitas/despesas **lançadas** no mês corrente até `now` (regime de
+   * competência, pela `date` da transação — a mesma base de `summarizeFinances`
+   * e da sazonalidade), em centavos.
+   */
+  income: number;
+  expense: number;
+  /** `income − expense` do mês corrente até agora. */
+  net: number;
+  /**
+   * Projeção linear (pro-rata) do fechamento do mês: valor até agora ÷ `elapsed`,
+   * arredondado. Pressupõe lançamentos uniformes no mês (hipótese frágil cedo no
+   * mês — a UI deve sinalizar; ver DECISIONS).
+   */
+  projectedIncome: number;
+  projectedExpense: number;
+  /** `projectedIncome − projectedExpense`. */
+  projectedNet: number;
+  /**
+   * "Mês típico" recente: média dos meses **completos com movimento** na janela
+   * (centavos). Base para dizer se o mês corrente vai acima/abaixo do normal.
+   */
+  baselineIncome: number;
+  baselineExpense: number;
+  /** `baselineIncome − baselineExpense`. */
+  baselineNet: number;
+  /** Quanto se esperaria já ter lançado a esta altura num mês típico = baseline × `elapsed`. */
+  expectedIncomeByNow: number;
+  expectedExpenseByNow: number;
+  /** Nº de meses completos (com movimento) que entraram na baseline. */
+  baselineMonths: number;
+  /** Janela (em meses completos anteriores) considerada para a baseline. */
+  windowMonths: number;
+  /** Comparação da **projeção** vs. o mês típico (`current` = projeção, `previous` = baseline). */
+  incomeVsBaseline: MetricDelta;
+  expenseVsBaseline: MetricDelta;
+  netVsBaseline: MetricDelta;
+  /**
+   * Veredito do ritmo, decidido pela **receita** (o sinal mais limpo: despesas
+   * costumam ser esporádicas). `insufficient` quando não há base de receita.
+   */
+  verdict: MonthPaceVerdict;
+}
+
+/**
+ * Ritmo do mês corrente: "estou faturando no ritmo de um mês normal?".
+ *
+ * Soma o que já foi **lançado** no mês corrente (regime de competência, pela
+ * `date`), projeta o fechamento do mês por extrapolação pro-rata (valor ÷ fração
+ * do mês decorrida) e compara essa projeção com o "mês típico" recente — a média
+ * dos meses **completos com movimento** dentro da janela (default
+ * `DEFAULT_BURN_WINDOW_MONTHS`, mesma família de janela do burn rate / D102,
+ * saneada por `sanitizeBurnWindow`).
+ *
+ * A baseline ignora o mês corrente (parcial) e os meses sem movimento, para que a
+ * referência seja "um mês típico em que houve trabalho" (mesmo critério de
+ * `monthlySeasonality`/D35), não diluída por meses parados de um histórico curto.
+ *
+ * Pura; `now` e a janela são injetáveis. Usa UTC via `monthKey` (consistente com
+ * as demais agregações financeiras).
+ */
+export function currentMonthPace(
+  txs: TxLike[],
+  options: { now?: Date | string; months?: number } = {},
+): MonthPace {
+  const now = typeof options.now === "string" ? new Date(options.now) : (options.now ?? new Date());
+  const windowMonths = sanitizeBurnWindow(options.months);
+
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  const dayOfMonth = now.getUTCDate();
+  const daysInMonth = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  const elapsed = dayOfMonth / daysInMonth;
+
+  const monthStartMs = Date.UTC(y, m, 1);
+  const monthEndMs = Date.UTC(y, m + 1, 1);
+
+  // Mês corrente até agora (inclui o dia de hoje inteiro, regime de competência).
+  let income = 0;
+  let expense = 0;
+  for (const t of txs) {
+    const ts = txTime(t);
+    if (ts < monthStartMs || ts >= monthEndMs) continue;
+    if (t.type === "INCOME") income += t.amount;
+    else expense += t.amount;
+  }
+  const net = income - expense;
+
+  const projectedIncome = Math.round(income / elapsed);
+  const projectedExpense = Math.round(expense / elapsed);
+  const projectedNet = projectedIncome - projectedExpense;
+
+  // Baseline: meses completos anteriores ao mês corrente, dentro da janela,
+  // agregados por mês; só os que tiveram movimento entram na média.
+  const windowStartMs = Date.UTC(y, m - windowMonths, 1);
+  const perMonth = new Map<string, { income: number; expense: number }>();
+  for (const t of txs) {
+    const ts = txTime(t);
+    if (ts < windowStartMs || ts >= monthStartMs) continue;
+    const key = monthKey(t.date);
+    const entry = perMonth.get(key) ?? { income: 0, expense: 0 };
+    if (t.type === "INCOME") entry.income += t.amount;
+    else entry.expense += t.amount;
+    perMonth.set(key, entry);
+  }
+  const active = Array.from(perMonth.values()).filter((e) => e.income > 0 || e.expense > 0);
+  const baselineMonths = active.length;
+  const baselineIncome =
+    baselineMonths === 0 ? 0 : Math.round(sum(active.map((e) => e.income)) / baselineMonths);
+  const baselineExpense =
+    baselineMonths === 0 ? 0 : Math.round(sum(active.map((e) => e.expense)) / baselineMonths);
+  const baselineNet = baselineIncome - baselineExpense;
+
+  const expectedIncomeByNow = Math.round(baselineIncome * elapsed);
+  const expectedExpenseByNow = Math.round(baselineExpense * elapsed);
+
+  let verdict: MonthPaceVerdict;
+  if (baselineMonths === 0 || baselineIncome === 0) {
+    verdict = "insufficient";
+  } else {
+    const ratio = projectedIncome / baselineIncome;
+    verdict =
+      ratio >= 1 + MONTH_PACE_EPSILON
+        ? "ahead"
+        : ratio <= 1 - MONTH_PACE_EPSILON
+          ? "behind"
+          : "onPace";
+  }
+
+  return {
+    month: monthKey(now),
+    dayOfMonth,
+    daysInMonth,
+    elapsed,
+    income,
+    expense,
+    net,
+    projectedIncome,
+    projectedExpense,
+    projectedNet,
+    baselineIncome,
+    baselineExpense,
+    baselineNet,
+    expectedIncomeByNow,
+    expectedExpenseByNow,
+    baselineMonths,
+    windowMonths,
+    incomeVsBaseline: computeDelta(projectedIncome, baselineIncome),
+    expenseVsBaseline: computeDelta(projectedExpense, baselineExpense),
+    netVsBaseline: computeDelta(projectedNet, baselineNet),
+    verdict,
+  };
+}
+
 export interface CashBurnHeadline {
   /**
    * Deve aparecer no Painel? Só quando o fôlego pelo ritmo real **morde**

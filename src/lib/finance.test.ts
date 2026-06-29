@@ -69,6 +69,8 @@ import {
   cashRunway,
   cashBurnRunway,
   cashBurnHeadline,
+  currentMonthPace,
+  MONTH_PACE_EPSILON,
   cashFlowByMonth,
   cashFlowTrend,
   parseBurnWindow,
@@ -6783,5 +6785,115 @@ describe("monthlyGoalProgress", () => {
     expect(m.goal).toBe(0);
     expect(m.months.every((x) => x.target === 0)).toBe(true);
     expect(m.hitCount).toBe(0);
+  });
+});
+
+describe("currentMonthPace", () => {
+  // 15/jun/2026: metade do mês (junho tem 30 dias) → elapsed = 15/30 = 0.5.
+  // Janela default = 6 meses fechados (dez/2025 → mai/2026).
+  const NOW = "2026-06-15T00:00:00.000Z";
+
+  const monthTx = (date: string, amount: number, type: TxLike["type"] = "INCOME"): TxLike =>
+    tx({ type, amount, date: `${date}T00:00:00.000Z` });
+
+  // 6 meses fechados, cada um com 1000_00 de receita → mês típico = 1000_00.
+  const baseline1000 = (): TxLike[] =>
+    ["2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05"].map((mk) =>
+      monthTx(`${mk}-10`, 1000_00),
+    );
+
+  it("agrega o mês corrente (competência) e calcula elapsed/projeção pro-rata", () => {
+    const pace = currentMonthPace([monthTx("2026-06-05", 300_00), monthTx("2026-06-12", 200_00)], {
+      now: NOW,
+    });
+    expect(pace.month).toBe("2026-06");
+    expect(pace.dayOfMonth).toBe(15);
+    expect(pace.daysInMonth).toBe(30);
+    expect(pace.elapsed).toBeCloseTo(0.5);
+    expect(pace.income).toBe(500_00);
+    // metade do mês decorrida → projeção = 500_00 / 0.5 = 1000_00.
+    expect(pace.projectedIncome).toBe(1000_00);
+  });
+
+  it("ignora transações fora do mês corrente na parte de cima", () => {
+    const pace = currentMonthPace(
+      [
+        monthTx("2026-06-10", 400_00),
+        monthTx("2026-05-31", 999_00), // mês anterior
+        monthTx("2026-07-01", 999_00), // mês seguinte
+      ],
+      { now: NOW },
+    );
+    expect(pace.income).toBe(400_00);
+  });
+
+  it("monta o mês típico só com meses completos COM movimento na janela", () => {
+    const pace = currentMonthPace([...baseline1000(), monthTx("2026-06-10", 500_00)], { now: NOW });
+    expect(pace.windowMonths).toBe(6);
+    expect(pace.baselineMonths).toBe(6);
+    expect(pace.baselineIncome).toBe(1000_00);
+    // esperado a esta altura (metade do mês) = baseline × elapsed = 500_00.
+    expect(pace.expectedIncomeByNow).toBe(500_00);
+  });
+
+  it("classifica 'onPace' quando a projeção bate o mês típico", () => {
+    // 500_00 na metade do mês → projeção 1000_00 = baseline 1000_00.
+    const pace = currentMonthPace([...baseline1000(), monthTx("2026-06-10", 500_00)], { now: NOW });
+    expect(pace.projectedIncome).toBe(1000_00);
+    expect(pace.verdict).toBe("onPace");
+  });
+
+  it("classifica 'ahead' acima da folga e 'behind' abaixo dela", () => {
+    // ahead: 700_00 → projeção 1400_00 (+40% > +10%).
+    const ahead = currentMonthPace([...baseline1000(), monthTx("2026-06-10", 700_00)], { now: NOW });
+    expect(ahead.verdict).toBe("ahead");
+    // behind: 300_00 → projeção 600_00 (−40% < −10%).
+    const behind = currentMonthPace([...baseline1000(), monthTx("2026-06-10", 300_00)], { now: NOW });
+    expect(behind.verdict).toBe("behind");
+  });
+
+  it("respeita o limiar MONTH_PACE_EPSILON na fronteira", () => {
+    // projeção exatamente no teto da folga (1000_00 × (1+ε)) → ainda 'ahead' (>=).
+    const atCeil = Math.round((1000_00 * (1 + MONTH_PACE_EPSILON)) / 2); // metade do mês
+    const pace = currentMonthPace([...baseline1000(), monthTx("2026-06-10", atCeil)], { now: NOW });
+    expect(pace.verdict).toBe("ahead");
+  });
+
+  it("veredito 'insufficient' sem histórico de receita na janela", () => {
+    const pace = currentMonthPace([monthTx("2026-06-10", 500_00)], { now: NOW });
+    expect(pace.baselineMonths).toBe(0);
+    expect(pace.baselineIncome).toBe(0);
+    expect(pace.verdict).toBe("insufficient");
+    expect(pace.expectedIncomeByNow).toBe(0);
+  });
+
+  it("a janela é parametrizável e exclui meses fora dela", () => {
+    // janela de 3 meses (mar/abr/mai 2026); dez/2025 fica de fora.
+    const pace = currentMonthPace(baseline1000(), { now: NOW, months: 3 });
+    expect(pace.windowMonths).toBe(3);
+    expect(pace.baselineMonths).toBe(3);
+  });
+
+  it("a baseline ignora o mês corrente (parcial) e meses parados", () => {
+    const txs = [
+      monthTx("2026-04-10", 800_00),
+      monthTx("2026-05-10", 1200_00),
+      monthTx("2026-06-10", 5000_00), // mês corrente: não entra na baseline
+      // mar/2026 só com despesa de R$0 não conta; jan/fev sem movimento não contam
+    ];
+    const pace = currentMonthPace(txs, { now: NOW });
+    expect(pace.baselineMonths).toBe(2);
+    expect(pace.baselineIncome).toBe(1000_00); // (800 + 1200) / 2
+  });
+
+  it("projeta despesas e o líquido por pro-rata também", () => {
+    const pace = currentMonthPace(
+      [...baseline1000(), monthTx("2026-06-10", 600_00), monthTx("2026-06-11", 200_00, "EXPENSE")],
+      { now: NOW },
+    );
+    expect(pace.expense).toBe(200_00);
+    expect(pace.projectedExpense).toBe(400_00); // 200 / 0.5
+    expect(pace.projectedNet).toBe(pace.projectedIncome - pace.projectedExpense);
+    expect(pace.net).toBe(400_00);
   });
 });

@@ -9,8 +9,20 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **954 testes**
-verdes após a Sessão 164 (**exportação CSV da receita agendada** em `/shows/receita-agendada/export` — a tela "Receita
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **964 testes** verdes após a Sessão 165
+(**ritmo do mês corrente** em `/financas/ritmo-do-mes` — novo helper puro `currentMonthPace(txs, { now?, months? })` em
+`src/lib/finance.ts` responde "estou faturando no ritmo de um mês normal?": soma o que já foi lançado no mês corrente (regime de
+competência, pela `date`), projeta o fechamento por extrapolação pro-rata (valor ÷ fração do mês decorrida, UTC) e compara a
+projeção de receita com o "mês típico" — a média dos meses **completos com movimento** numa janela `?meses=` (3/6/12/24, default
+6, reusa `parseBurnWindow`/`sanitizeBurnWindow`/`BURN_WINDOW_PRESETS` da D102). Veredito pela receita (sinal mais limpo;
+despesas são esporádicas): `ahead`/`onPace`/`behind` conforme a projeção fica ±`MONTH_PACE_EPSILON` (=10%) do mês típico,
+`insufficient` sem histórico de receita. A página dedicada (não mais um card — o Painel já está denso) mostra barra de "% do mês
+decorrido", veredito com tom/ícone, cards Receita até agora / Projeção / Mês típico (com `expectedIncomeByNow` = baseline ×
+elapsed como leitura alternativa) e tabela projeção × mês típico (receitas/despesas/resultado). Registrada no hub
+(`REPORT_GROUPS`, Finanças/"Fechamentos"). Projeção pro-rata é hipótese frágil cedo no mês (lançamentos não-uniformes) — a UI
+sinaliza o caráter de estimativa. **+10 testes** (`describe("currentMonthPace")`). Smoke test (`next start`) → `/login` 200 e
+`/financas/ritmo-do-mes` (+ `?meses=12`) 307 (auth-gated). `npm audit` sem novas vulnerabilidades (mesmos advisories Next/postcss
+da D6). Ver D158 — número D157 deixado para a PR paralela #180 (export da agenda). Segue 954 da Sessão 164 (**exportação CSV da receita agendada** em `/shows/receita-agendada/export` — a tela "Receita
 agendada" (`forecastBookedRevenue`, o pipeline de cachês de shows futuros agregado por mês: quanto já está agendado para
 receber) ganhou botão de exportação, fechando mais uma lacuna de exportação tabular do lado Shows. Novo serializador puro
 `bookedRevenueToCsv(forecast)` + `BOOKED_REVENUE_CSV_HEADERS` em `src/lib/csv.ts` recebe a `BookedRevenueForecast` já computada
@@ -2997,6 +3009,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `monthlyGoalProgress` (mapa de cor unificado `GOAL_BAR`), ver D88. Próximo possível — alerta proativo
    (e-mail/badge) quando a meta passa a depender só de shows a confirmar, ou um scroll-spy/scroll para o
    mês corrente na tira.
+6b. **Ritmo do mês corrente** (entregue na Sessão 165, `/financas/ritmo-do-mes` + `currentMonthPace` em
+   `src/lib/finance.ts`, ver D158): "estou faturando no ritmo de um mês normal?" — projeção pro-rata do mês
+   corrente (competência) vs. o mês típico recente (média dos meses completos com movimento na janela `?meses=`),
+   veredito pela receita (`ahead`/`onPace`/`behind`/`insufficient`, ±10%). Próximo possível — uma linha-nudge no
+   Painel só quando `behind` e o mês já passou da metade (adiado por densidade do Painel); ponderar a projeção por
+   dia-da-semana/sazonalidade do mês (hoje é pro-rata uniforme, hipótese frágil cedo no mês); ou comparar contra o
+   mesmo mês do ano anterior (eixo sazonal) em vez da média móvel.
 7. **Resiliência / fôlego de caixa** (entregue na Sessão 107, `/financas/folego-de-caixa` + `cashRunway`,
    ver D99): cruza o caixa realizado com o custo fixo mensal (D39) → por quantos meses o caixa cobre os
    custos fixos se as receitas pararem, com veredito (limiares 3/6 meses, hipótese) e data de esgotamento.
