@@ -35,6 +35,9 @@ import {
   type FeeTrend,
   type CashFlowMonth,
   type BookedRevenueForecast,
+  type DueAgenda,
+  type TxLike,
+  DUE_BUCKET_LABELS,
   type YearlyHistory,
   type IncomeMix,
   type ExpenseMix,
@@ -1447,6 +1450,80 @@ export function bookedRevenueToCsv(
     centsToCsvAmount(forecast.confirmedTotal),
     centsToCsvAmount(forecast.tentativeTotal),
     centsToCsvAmount(forecast.total),
+  ]);
+  return toCsv(out, delimiter);
+}
+
+// ── Agenda de contas a pagar/receber (o que vence quando) ───────────────────
+
+export const DUE_AGENDA_CSV_HEADERS = [
+  "Vencimento",
+  "Descrição",
+  "Categoria",
+  "Janela",
+  "Tipo",
+  "Dias até vencer",
+  "Show",
+  "A receber (R$)",
+  "A pagar (R$)",
+] as const;
+
+/**
+ * Forma mínima de uma transação pendente para a exportação da agenda. Estende
+ * `TxLike` (de `@/lib/finance`) com a descrição (sempre presente na tela) e o
+ * show vinculado, mantendo o serializador desacoplado do Prisma. É a transação
+ * que `buildDueAgenda` distribui nas janelas de vencimento.
+ */
+export interface DueAgendaCsvTx extends TxLike {
+  description?: string | null;
+  show?: { title: string } | null;
+}
+
+/**
+ * Serializa a agenda de contas a pagar e a receber (`buildDueAgenda`) em CSV,
+ * pronto para download. Espelha a página `/financas/agenda`: uma linha por
+ * pendência, achatando as quatro janelas na ordem canônica (vencidas → hoje →
+ * próximos 7 dias → mais tarde) e, dentro de cada janela, por vencimento
+ * crescente (a ordem que `buildDueAgenda` já produz). A coluna "Dias até vencer"
+ * traz o `daysUntil` cru (negativo = vencida há N dias; 0 = hoje), legível por
+ * máquina, e não o texto relativo ("venceu há 2 dias") da UI. O valor é
+ * decomposto em duas colunas (A receber / A pagar) — cada linha preenche só uma,
+ * conforme o tipo — de modo que cada coluna some direto na planilha (os totais
+ * batem com os cards "A receber"/"A pagar" da tela). Encerra numa linha "Total"
+ * com `totalIncome`/`totalExpense`. Mesma convenção pt-BR dos irmãos (delimitador
+ * ";", decimal com vírgula, datas em UTC via `csvDate`). Pura.
+ */
+export function dueAgendaToCsv(
+  agenda: DueAgenda<DueAgendaCsvTx>,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(DUE_AGENDA_CSV_HEADERS)];
+  for (const bucket of agenda.buckets) {
+    for (const { tx, daysUntil } of bucket.items) {
+      const isIncome = tx.type === "INCOME";
+      out.push([
+        csvDate(tx.date),
+        tx.description ?? "",
+        tx.category,
+        DUE_BUCKET_LABELS[bucket.key],
+        isIncome ? "A receber" : "A pagar",
+        String(daysUntil),
+        tx.show?.title ?? "",
+        isIncome ? centsToCsvAmount(tx.amount) : "0,00",
+        isIncome ? "0,00" : centsToCsvAmount(tx.amount),
+      ]);
+    }
+  }
+  out.push([
+    "Total",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    centsToCsvAmount(agenda.totalIncome),
+    centsToCsvAmount(agenda.totalExpense),
   ]);
   return toCsv(out, delimiter);
 }

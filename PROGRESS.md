@@ -9,8 +9,24 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **954 testes**
-verdes após a Sessão 164 (**exportação CSV da receita agendada** em `/shows/receita-agendada/export` — a tela "Receita
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **957 testes**
+verdes após a Sessão 165 (**exportação CSV da agenda de contas a pagar/receber** em `/financas/agenda/export` — a tela
+"A pagar e receber" (`buildDueAgenda`, as pendências `received: false` distribuídas em janelas de vencimento: vencidas / hoje /
+próximos 7 dias / mais tarde) ganhou botão de exportação, fechando mais uma lacuna de exportação tabular das Finanças. Novo
+serializador puro `dueAgendaToCsv(agenda)` + `DUE_AGENDA_CSV_HEADERS` em `src/lib/csv.ts` recebe a `DueAgenda` já computada
+(`buildDueAgenda`, de `@/lib/finance`) e achata as quatro janelas na ordem canônica (`DUE_BUCKET_ORDER`) — dentro de cada uma,
+por vencimento crescente — emitindo uma linha por pendência, encerrada numa linha "Total" com `totalIncome`/`totalExpense` (batem
+com os cards "A receber"/"A pagar" da tela). Colunas Vencimento/Descrição/Categoria/Janela/Tipo/Dias até vencer/Show/A receber
+(R$)/A pagar (R$). O valor é decomposto em duas colunas (A receber / A pagar) — cada linha preenche só uma conforme o tipo, para
+somar direto na planilha (como `bookedRevenueToCsv`); a coluna "Dias até vencer" traz o `daysUntil` cru (negativo = vencida há N
+dias), não o texto relativo da UI. **DRY:** rótulos das janelas extraídos para `DUE_BUCKET_LABELS` em `@/lib/finance`,
+compartilhados entre o CSV e o `BUCKET_META` da página. Rota `/financas/agenda/export` reusa a mesma consulta (`received: false`)
+e o `buildDueAgenda` da página + BOM UTF-8; nome fixo `agenda-pagar-receber.csv`; botão "⬇ CSV" no cabeçalho só com
+`agenda.count > 0`. Herda a semântica de `buildDueAgenda`: só pendências, janelas por dia UTC, `weekHorizon` 7. **+3 testes**
+(`describe("dueAgendaToCsv")`: só cabeçalho + Total zerado sem pendências; uma linha por pendência nas quatro janelas em ordem
+canônica + Total; ignora já realizadas, ordena por vencimento na janela e trata descrição ausente). Smoke test (`next start`) →
+`/login` 200 e `/financas/agenda` + `/financas/agenda/export` 307 (auth-gated). `npm audit` sem novas vulnerabilidades (mesmos
+advisories Next/postcss da D6). Ver D157; segue 954 da Sessão 164 (**exportação CSV da receita agendada** em `/shows/receita-agendada/export` — a tela "Receita
 agendada" (`forecastBookedRevenue`, o pipeline de cachês de shows futuros agregado por mês: quanto já está agendado para
 receber) ganhou botão de exportação, fechando mais uma lacuna de exportação tabular do lado Shows. Novo serializador puro
 `bookedRevenueToCsv(forecast)` + `BOOKED_REVENUE_CSV_HEADERS` em `src/lib/csv.ts` recebe a `BookedRevenueForecast` já computada
@@ -3148,7 +3164,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    agendada** entregue na Sessão 164 — `bookedRevenueToCsv` + `BOOKED_REVENUE_CSV_HEADERS` em `src/lib/csv.ts` +
    `/shows/receita-agendada/export` (Mês/Shows/Confirmado/A confirmar/Total do mês + linha Total), do lado Shows: o pipeline de
    cachês futuros agregado por mês (`forecastBookedRevenue`), só meses com shows, nome fixo `receita-agendada.csv`, botão "⬇ CSV"
-   só com `forecast.count > 0`, ver D156. Próximo possível — as
+   só com `forecast.count > 0`, ver D156. **Exportação CSV da agenda de contas a pagar/receber** entregue na Sessão 165 —
+   `dueAgendaToCsv` + `DUE_AGENDA_CSV_HEADERS` em `src/lib/csv.ts` + `/financas/agenda/export`
+   (Vencimento/Descrição/Categoria/Janela/Tipo/Dias até vencer/Show/A receber/A pagar + linha Total), achata as quatro janelas de
+   `buildDueAgenda` na ordem canônica, valor em duas colunas (somável), rótulos de janela compartilhados via `DUE_BUCKET_LABELS`,
+   nome fixo `agenda-pagar-receber.csv`, botão "⬇ CSV" só com `agenda.count > 0`, ver D157. Próximo possível — as
    telas de Finanças que ainda não exportam são agora sobretudo painéis de cenário/projeção de número único (metas,
    projeção-ano, ponto-de-equilíbrio, reserva-impostos): menos óbvias como planilha; avaliar caso a caso se o tabular agrega.
 

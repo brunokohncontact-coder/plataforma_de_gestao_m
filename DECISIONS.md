@@ -4815,3 +4815,41 @@ contexto, decisão, justificativa e alternativas consideradas.
   smoke test (`next start`) → `/login` 200 e `/shows/receita-agendada` + `/shows/receita-agendada/export` 307 (auth-gated).
   `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss
   bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## D157 — Exportação CSV da agenda de contas a pagar/receber (`/financas/agenda/export`) (Sessão 165)
+- **Contexto:** `/financas/agenda` ("A pagar e receber", F3) lista as pendências (`received: false`) distribuídas em janelas de
+  vencimento por `buildDueAgenda` — vencidas / hoje / próximos 7 dias / mais tarde — com cards "A receber"/"A pagar"/"Saldo
+  pendente". Era uma das telas tabulares das Finanças que ainda não exportava (ao lado das já exportáveis transações/anual/
+  trimestral/sazonalidade/variação/fontes/composição/crescimento/fluxo-de-caixa). A agenda de vencimentos é exatamente o que o
+  músico leva para planejar o caixa do mês / negociar prazos — candidato direto a planilha.
+- **Decisão:** novo serializador puro `dueAgendaToCsv(agenda)` + `DUE_AGENDA_CSV_HEADERS` em `src/lib/csv.ts`, recebendo a
+  `DueAgenda` já computada (`buildDueAgenda`, de `@/lib/finance`). Achata as quatro janelas na ordem canônica
+  (`DUE_BUCKET_ORDER`: vencidas → hoje → próximos 7 dias → mais tarde) e, dentro de cada uma, por vencimento crescente (a ordem
+  que `buildDueAgenda` já produz). Colunas Vencimento/Descrição/Categoria/Janela/Tipo/Dias até vencer/Show/A receber (R$)/A
+  pagar (R$), encerradas numa linha "Total" com `totalIncome`/`totalExpense` (batem com os cards "A receber"/"A pagar" da tela).
+  Rota `/financas/agenda/export` reusa a mesma consulta (`received: false`, `include: show.title`) e o mesmo `buildDueAgenda` da
+  página + BOM UTF-8; nome fixo `agenda-pagar-receber.csv`; botão "⬇ CSV" no cabeçalho só com `agenda.count > 0`.
+- **Valor decomposto em duas colunas (A receber / A pagar):** cada linha preenche só uma conforme o tipo, de modo que cada
+  coluna some direto na planilha e os totais batam com os cards da tela — mesma filosofia de `bookedRevenueToCsv`
+  (confirmado/a confirmar). A coluna "Tipo" (A receber / A pagar) fica redundante com a coluna preenchida, mas mantém a linha
+  legível isoladamente (filtro/leitura rápida).
+- **"Dias até vencer" cru:** a coluna traz o `daysUntil` inteiro (negativo = vencida há N dias; 0 = hoje), legível por máquina e
+  ordenável, e não o texto relativo da UI ("venceu há 2 dias"/"vence amanhã"). A coluna "Janela" carrega o rótulo amigável.
+- **Rótulos de janela compartilhados (DRY):** extraído `DUE_BUCKET_LABELS: Record<DueBucketKey, string>` para `@/lib/finance`
+  (ao lado de `DUE_BUCKET_ORDER`), consumido tanto pelo `dueAgendaToCsv` quanto pelo `BUCKET_META` da página — antes os rótulos
+  ("Vencidas"/"Hoje"/...) viviam só no `page.tsx`. Evita divergência entre a tela e o CSV.
+- **Semântica herdada de `buildDueAgenda`:** só pendências (`received === false`); janelas comparadas por dia UTC; `weekHorizon`
+  padrão 7. O serializador é fino e não reinterpreta nada; `now`/`weekHorizon` são injetáveis (puro, testável). Sem `?ano=`: a
+  agenda é uma visão "o que vence quando" a partir de hoje, não tem recorte por ano.
+- **Alternativas consideradas:** (a) um único valor com sinal (+receber/−pagar) numa coluna só — descartado: duas colunas somam
+  melhor na planilha e refletem os dois cards da tela. (b) omitir a coluna "Janela" e deduzir pela ordem — descartado: a
+  planilha perde a textura ao ser reordenada/filtrada; o rótulo explícito custa pouco. (c) uma linha de subtotal por janela
+  (espelhando o cabeçalho de cada seção da tela) — descartado por ora: a coluna "Janela" já permite o subtotal via tabela
+  dinâmica; um único "Total" basta para o uso típico.
+- **Testes:** **+3** em `csv.test.ts` (`describe("dueAgendaToCsv")`): só cabeçalho + Total zerado sem pendências; uma linha por
+  pendência nas quatro janelas (ordem canônica) + Total; ignora pendências já realizadas, ordena por vencimento dentro da
+  janela e trata descrição ausente (`null` → ""). **957 testes** no total (eram 954).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **957 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/financas/agenda` + `/financas/agenda/export` 307 (auth-gated). `npm audit`
+  **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver
+  D6/bloqueios); **nenhuma dependência nova**.

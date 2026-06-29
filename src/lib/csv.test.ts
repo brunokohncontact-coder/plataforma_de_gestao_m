@@ -56,6 +56,9 @@ import {
   CASH_FLOW_CSV_HEADERS,
   bookedRevenueToCsv,
   BOOKED_REVENUE_CSV_HEADERS,
+  dueAgendaToCsv,
+  DUE_AGENDA_CSV_HEADERS,
+  type DueAgendaCsvTx,
   type CsvTransaction,
   type CsvShow,
   type CsvProfitShow,
@@ -74,6 +77,7 @@ import {
   feeTrend,
   cashFlowByMonth,
   forecastBookedRevenue,
+  buildDueAgenda,
   yearlyHistory,
   weekdayPerformance,
   feeDistribution,
@@ -1619,5 +1623,66 @@ describe("bookedRevenueToCsv", () => {
     expect(lines).toHaveLength(3);
     expect(lines[1]).toBe("2026-07;1;0,00;700,00;700,00");
     expect(lines[2]).toBe("Total;1;0,00;700,00;700,00");
+  });
+});
+
+describe("dueAgendaToCsv", () => {
+  // `now` fixo: as janelas e o `daysUntil` são relativos a este dia (UTC).
+  const NOW = "2026-06-29T00:00:00.000Z";
+  const tx = (
+    over: Partial<DueAgendaCsvTx> & { type: DueAgendaCsvTx["type"]; date: string },
+  ): DueAgendaCsvTx => ({
+    amount: 0,
+    category: "Geral",
+    received: false,
+    ...over,
+  });
+
+  it("só cabeçalho + Total zerado sem pendências", () => {
+    const csv = dueAgendaToCsv(buildDueAgenda([], { now: new Date(NOW) }));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(DUE_AGENDA_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe("Total;;;;;;;0,00;0,00");
+  });
+
+  it("uma linha por pendência nas quatro janelas (ordem canônica) + Total", () => {
+    const agenda = buildDueAgenda(
+      [
+        tx({ type: "INCOME", date: "2026-07-02T00:00:00.000Z", amount: 20000, category: "Cachê", description: "Casamento" }),
+        tx({ type: "EXPENSE", date: "2026-07-20T00:00:00.000Z", amount: 10000, category: "Equipamento", description: "Cabo" }),
+        tx({ type: "EXPENSE", date: "2026-06-20T00:00:00.000Z", amount: 30000, category: "Aluguel", description: "Sala de ensaio" }),
+        tx({ type: "INCOME", date: "2026-06-29T00:00:00.000Z", amount: 50000, category: "Cachê", description: "Show X", show: { title: "Bar do Zé" } }),
+      ],
+      { now: new Date(NOW) },
+    );
+    const lines = dueAgendaToCsv(agenda).split("\r\n");
+    expect(lines).toHaveLength(6);
+    // overdue → today → week → later
+    expect(lines[1]).toBe("20/06/2026;Sala de ensaio;Aluguel;Vencidas;A pagar;-9;;0,00;300,00");
+    expect(lines[2]).toBe("29/06/2026;Show X;Cachê;Hoje;A receber;0;Bar do Zé;500,00;0,00");
+    expect(lines[3]).toBe("02/07/2026;Casamento;Cachê;Próximos 7 dias;A receber;3;;200,00;0,00");
+    expect(lines[4]).toBe("20/07/2026;Cabo;Equipamento;Mais tarde;A pagar;21;;0,00;100,00");
+    expect(lines[5]).toBe("Total;;;;;;;700,00;400,00");
+  });
+
+  it("ignora pendências já realizadas, ordena por vencimento na janela e trata descrição ausente", () => {
+    const agenda = buildDueAgenda(
+      [
+        // já realizada (received): fora da agenda
+        tx({ type: "INCOME", date: "2026-06-15T00:00:00.000Z", amount: 99999, received: true, category: "Cachê" }),
+        // vencida mais recente
+        tx({ type: "INCOME", date: "2026-06-25T00:00:00.000Z", amount: 8000, category: "Cachê", description: "Cachê atrasado" }),
+        // vencida mais antiga, sem descrição
+        tx({ type: "EXPENSE", date: "2026-06-10T00:00:00.000Z", amount: 5000, category: "Transporte", description: null }),
+      ],
+      { now: new Date(NOW) },
+    );
+    const lines = dueAgendaToCsv(agenda).split("\r\n");
+    expect(lines).toHaveLength(4);
+    // dentro de "Vencidas", a mais antiga (10/06) vem antes da mais recente (25/06)
+    expect(lines[1]).toBe("10/06/2026;;Transporte;Vencidas;A pagar;-19;;0,00;50,00");
+    expect(lines[2]).toBe("25/06/2026;Cachê atrasado;Cachê;Vencidas;A receber;-4;;80,00;0,00");
+    expect(lines[3]).toBe("Total;;;;;;;80,00;50,00");
   });
 });
