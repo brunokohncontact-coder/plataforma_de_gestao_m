@@ -4857,3 +4857,33 @@ contexto, decisão, justificativa e alternativas consideradas.
   D6/bloqueios); **nenhuma dependência nova**.
 - **Nota de concorrência:** o número de decisão **D157** foi deixado para a PR paralela #180 (export CSV da agenda) em andamento;
   esta sessão usa **D158** para evitar colisão de numeração na `main`.
+
+## D159 — Exportação CSV dos contatos para reativar (`/contatos/reativar/export`) (Sessão 166)
+- **Contexto:** a tela `/contatos/reativar` (`findContactsToReengage`) lista os contatos **dormentes** — quem já tocou com você,
+  está sem nada agendado e há mais de `staleDays` (=60) dias sem show — ordenados pelos mais esquecidos primeiro. É exatamente a
+  **fila de follow-up** de uma campanha de reativação, mas era uma das poucas telas tabulares de Contatos ainda sem exportação
+  (ao lado de ranking/rentabilidade/retenção, que já exportavam). Levar a lista para a planilha permite trabalhá-la como
+  campanha de prospecção (mala direta, divisão por responsável, anotações de contato).
+- **Decisão:** novo serializador puro `reengageToCsv(list)` + `REENGAGE_CSV_HEADERS` em `src/lib/csv.ts` (espelho direto de
+  `clientRetentionToCsv`/D153: genérico `<C extends ContactRankLike & { role: string }>`, reusa `contactRoleLabel`/`csvDate`/
+  `centsToCsvAmount`) recebe a `ReengageList` já computada por `findContactsToReengage` e emite uma linha por dormente em
+  `list.rows`, na **mesma ordem da página** (mais esquecidos primeiro, desempate por cachê histórico, depois nome pt-BR),
+  encerrada numa linha "Total" com a soma de shows passados e do cachê histórico da fila. Rota `/contatos/reativar/export` reusa
+  a **mesma consulta** da página (`findContactsToReengage` sobre os contatos do usuário) + BOM UTF-8; nome fixo
+  `contatos-para-reativar.csv`; botão "⬇ CSV" no cabeçalho só com `list.count > 0`.
+- **Colunas:** Contato / Papel / Último show / Dias sem contato / Shows / Cachê histórico (R$). A coluna "Dias sem contato" traz
+  o `daysSinceLastShow` **cru** (inteiro, legível por máquina), não o "há 2 meses" relativo da UI — mesma filosofia de
+  `paymentLagToCsv` (D132) e da coluna "Dias até vencer" da agenda (D157/#180). Adiciona "Papel" (ausente da tabela da tela, mas
+  presente como badge) para a planilha abrir auto-suficiente, como `clientRetentionToCsv`. O cachê é por contato (um show com
+  vários contatos conta para cada), herdando a semântica de `findContactsToReengage`; cancelados ficam de fora.
+- **Sem recorte por `?ano=`:** por design a tela é uma fotografia do estado dormente **agora** (depende de `now` e de não haver
+  nada agendado adiante); um recorte por ano não faria sentido — segue o mesmo princípio de `clientRetentionToCsv`.
+- **Testes:** **+3** em `csv.test.ts` (`describe("reengageToCsv")`): só cabeçalho + Total zerado sem dormentes; uma linha por
+  dormente (mais esquecido primeiro, `daysSinceLastShow` cru) + Total; ignora quem tem show futuro, só-cancelado ou ainda
+  recente (< `staleDays`). **967 testes** no total (eram 964).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **967 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/contatos/reativar` + `/contatos/reativar/export` 307 (auth-gated). `npm audit`
+  **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver
+  D6/bloqueios); **nenhuma dependência nova**.
+- **Nota de concorrência:** **D157** segue reservado à PR paralela #180 (export CSV da agenda) ainda em aberto; esta sessão usa
+  **D159** (após o D158 já mergeado da Sessão 165) para evitar colisão de numeração na `main`.

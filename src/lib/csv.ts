@@ -42,7 +42,7 @@ import {
   type CategoryDelta,
   type CategoryReportComparison,
 } from "./finance";
-import type { ClientRetention, ContactRankLike } from "./contacts";
+import type { ClientRetention, ContactRankLike, ReengageList } from "./contacts";
 import { MONTH_NAMES_LONG } from "./calendar";
 
 const DEFAULT_DELIMITER = ";";
@@ -1295,6 +1295,53 @@ export function clientRetentionToCsv<C extends ContactRankLike & { role: string 
     "",
     `${retention.recurringClients}/${retention.totalClients}`,
   ]);
+  return toCsv(out, delimiter);
+}
+
+// ── Contatos para reativar (lista de follow-up dos dormentes) ─────────────────
+
+export const REENGAGE_CSV_HEADERS = [
+  "Contato",
+  "Papel",
+  "Último show",
+  "Dias sem contato",
+  "Shows",
+  "Cachê histórico (R$)",
+] as const;
+
+/**
+ * Serializa a lista de contatos dormentes (`findContactsToReengage`) em CSV,
+ * pronto para download — a fila de follow-up que a tela `/contatos/reativar`
+ * mostra, agora abrível na planilha para uma campanha de reativação. Emite uma
+ * linha por contato dormente em `list.rows` (mesma ordem da página: mais
+ * esquecidos primeiro, desempate por cachê histórico, depois nome pt-BR),
+ * encerrada numa linha "Total" com a soma de shows passados e do cachê
+ * histórico de toda a fila. Colunas: contato, papel, data do último show, dias
+ * sem contato (o `daysSinceLastShow` cru, legível por máquina — não o "há 2
+ * meses" da UI), nº de shows passados não cancelados e cachê histórico (por
+ * contato). Mesma convenção pt-BR dos irmãos (delimitador ";", decimal com
+ * vírgula). Pura.
+ */
+export function reengageToCsv<C extends ContactRankLike & { role: string }>(
+  list: ReengageList<C>,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(REENGAGE_CSV_HEADERS)];
+  let totalPastShows = 0;
+  let totalFee = 0;
+  for (const row of list.rows) {
+    totalPastShows += row.pastShows;
+    totalFee += row.totalFee;
+    out.push([
+      row.contact.name,
+      contactRoleLabel(row.contact.role),
+      csvDate(row.lastShowDate),
+      String(row.daysSinceLastShow),
+      String(row.pastShows),
+      centsToCsvAmount(row.totalFee),
+    ]);
+  }
+  out.push(["Total", "", "", "", String(totalPastShows), centsToCsvAmount(totalFee)]);
   return toCsv(out, delimiter);
 }
 

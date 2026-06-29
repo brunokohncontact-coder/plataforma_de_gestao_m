@@ -49,6 +49,8 @@ import {
   feeTrendToCsv,
   FEE_TREND_CSV_HEADERS,
   clientRetentionToCsv,
+  reengageToCsv,
+  REENGAGE_CSV_HEADERS,
   CLIENT_RETENTION_CSV_HEADERS,
   yearlyHistoryToCsv,
   YEARLY_HISTORY_CSV_HEADERS,
@@ -88,7 +90,11 @@ import {
   type ReceivableShowLike,
   type BookedRevenueShowLike,
 } from "./finance";
-import { clientRetention, type ContactRankLike } from "./contacts";
+import {
+  clientRetention,
+  findContactsToReengage,
+  type ContactRankLike,
+} from "./contacts";
 
 describe("escapeCsvField", () => {
   it("não envolve em aspas campos simples", () => {
@@ -1430,6 +1436,78 @@ describe("clientRetentionToCsv", () => {
     expect(lines).toHaveLength(3);
     expect(lines[1]).toBe("Casa Nova;Outro;2;4000,00;01/06/2099;Sim");
     expect(lines[2]).toBe("Total;;2;4000,00;;1/1");
+  });
+});
+
+describe("reengageToCsv", () => {
+  // `now` fixo para datar a defasagem (`daysSinceLastShow`) de forma estável.
+  const NOW = "2026-07-01T00:00:00.000Z";
+  interface C extends ContactRankLike {
+    role: string;
+  }
+  const item = (
+    contact: C,
+    shows: { status: string; date: string; fee: number }[],
+  ) => ({ contact, shows });
+
+  it("só cabeçalho + Total zerado quando não há dormentes", () => {
+    const csv = reengageToCsv(findContactsToReengage<C>([], { now: new Date(NOW) }));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(REENGAGE_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe("Total;;;;0;0,00");
+  });
+
+  it("uma linha por dormente (mais esquecido primeiro) + Total", () => {
+    const list = findContactsToReengage<C>(
+      [
+        item({ id: "a", name: "Bar Velho", role: "VENUE" }, [
+          { status: "PLAYED", date: "2024-06-01T00:00:00.000Z", fee: 50000 },
+          { status: "PLAYED", date: "2025-01-01T00:00:00.000Z", fee: 100000 },
+        ]),
+        item({ id: "b", name: "Produtora Lua", role: "PROMOTER" }, [
+          { status: "PLAYED", date: "2026-03-01T00:00:00.000Z", fee: 200000 },
+        ]),
+      ],
+      { now: new Date(NOW) },
+    );
+    const lines = reengageToCsv(list).split("\r\n");
+    // cabeçalho + 2 dormentes (maior defasagem primeiro) + Total.
+    expect(lines).toHaveLength(4);
+    expect(lines[1]).toBe("Bar Velho;Casa de show;01/01/2025;546;2;1500,00");
+    expect(lines[2]).toBe("Produtora Lua;Produtor/Promoter;01/03/2026;122;1;2000,00");
+    // Total: 3 shows passados, 3500,00 em cachê histórico.
+    expect(lines[3]).toBe("Total;;;;3;3500,00");
+  });
+
+  it("ignora quem tem show futuro, só-cancelado ou ainda recente (< staleDays)", () => {
+    const list = findContactsToReengage<C>(
+      [
+        // tem show futuro confirmado → não está dormente.
+        item({ id: "f", name: "Tem Futuro", role: "VENUE" }, [
+          { status: "PLAYED", date: "2025-01-01T00:00:00.000Z", fee: 100000 },
+          { status: "CONFIRMED", date: "2099-01-01T00:00:00.000Z", fee: 300000 },
+        ]),
+        // só cancelado → sem histórico passado.
+        item({ id: "c", name: "Só Cancelado", role: "VENUE" }, [
+          { status: "CANCELLED", date: "2024-04-01T00:00:00.000Z", fee: 500000 },
+        ]),
+        // último show há ~16 dias → abaixo do limiar de 60.
+        item({ id: "r", name: "Recente", role: "OTHER" }, [
+          { status: "PLAYED", date: "2026-06-15T00:00:00.000Z", fee: 80000 },
+        ]),
+        // dormente de verdade.
+        item({ id: "d", name: "Dormente", role: "OTHER" }, [
+          { status: "PLAYED", date: "2025-12-01T00:00:00.000Z", fee: 50000 },
+        ]),
+      ],
+      { now: new Date(NOW) },
+    );
+    const lines = reengageToCsv(list).split("\r\n");
+    // só "Dormente" vira linha.
+    expect(lines).toHaveLength(3);
+    expect(lines[1]).toBe("Dormente;Outro;01/12/2025;212;1;500,00");
+    expect(lines[2]).toBe("Total;;;;1;500,00");
   });
 });
 
