@@ -3085,6 +3085,14 @@ export type DueBucketKey = "overdue" | "today" | "week" | "later";
 /** Ordem canônica das janelas (do mais urgente ao menos). */
 export const DUE_BUCKET_ORDER: DueBucketKey[] = ["overdue", "today", "week", "later"];
 
+/** Rótulo pt-BR de cada janela de vencimento (compartilhado entre a página e o CSV). */
+export const DUE_BUCKET_LABELS: Record<DueBucketKey, string> = {
+  overdue: "Vencidas",
+  today: "Hoje",
+  week: "Próximos 7 dias",
+  later: "Mais tarde",
+};
+
 export interface DueAgendaItem<T extends TxLike = TxLike> {
   tx: T;
   bucket: DueBucketKey;

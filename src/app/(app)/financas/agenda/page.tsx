@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   buildDueAgenda,
+  DUE_BUCKET_LABELS,
   type DueAgendaItem,
   type DueBucketKey,
   type TxLike,
@@ -24,25 +25,25 @@ const BUCKET_META: Record<
   { label: string; hint: string; tone: string; accent: string }
 > = {
   overdue: {
-    label: "Vencidas",
+    label: DUE_BUCKET_LABELS.overdue,
     hint: "Já passaram do vencimento",
     tone: "text-red-700",
     accent: "border-red-200 bg-red-50",
   },
   today: {
-    label: "Hoje",
+    label: DUE_BUCKET_LABELS.today,
     hint: "Vencem hoje",
     tone: "text-amber-700",
     accent: "border-amber-200 bg-amber-50",
   },
   week: {
-    label: "Próximos 7 dias",
+    label: DUE_BUCKET_LABELS.week,
     hint: "Vencem na próxima semana",
     tone: "text-brand-700",
     accent: "border-brand-200 bg-brand-50",
   },
   later: {
-    label: "Mais tarde",
+    label: DUE_BUCKET_LABELS.later,
     hint: "Vencem depois de 7 dias",
     tone: "text-gray-700",
     accent: "border-gray-200 bg-gray-50",
@@ -90,9 +91,20 @@ export default async function FinancasAgendaPage() {
             Contas pendentes organizadas pelo vencimento.
           </p>
         </div>
-        <Link href="/financas" className="btn-secondary">
-          ← Finanças
-        </Link>
+        <div className="flex items-center gap-2">
+          {agenda.count > 0 && (
+            <a
+              href="/financas/agenda/export"
+              className="btn-secondary text-sm"
+              download
+            >
+              ⬇ CSV
+            </a>
+          )}
+          <Link href="/financas" className="btn-secondary">
+            ← Finanças
+          </Link>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
