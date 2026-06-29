@@ -29,6 +29,8 @@ import {
   cashRunway,
   cashBurnRunway,
   cashBurnHeadline,
+  yearToDatePace,
+  yearToDatePaceHeadline,
   rankContactsByProfit,
   clientConcentration,
   clientConcentrationHeadline,
@@ -250,6 +252,14 @@ export default async function DashboardPage() {
   // entrou — só dispara quando o músico de fato queima caixa no ritmo recente. Mesma
   // disciplina: vira nudge só quando o fôlego morde (tight/critical), via cashBurnHeadline.
   const burnHeadline = cashBurnHeadline(cashBurnRunway(txs));
+
+  // Ritmo do ano (D162): "estou atrás de onde eu estava nesta época do ano passado?".
+  // Compara o acumulado de receita do ano corrente (1º jan → hoje, competência) com o
+  // mesmo período do ano anterior (yearToDatePace) — apples-to-apples, sem projeção.
+  // Reaproveita as transações já carregadas. Vira nudge só quando está de fato atrás
+  // (yearToDatePaceHeadline → verdict "behind"); com ritmo bom/em linha ou sem base de
+  // comparação o aviso seria ruído. O detalhe completo está em /financas/ritmo-do-ano.
+  const ytdPaceHeadline = yearToDatePaceHeadline(yearToDatePace(txs));
 
   // Concentração de clientes (D109): "quanto da minha receita depende de poucos
   // contratantes?". Reaproveita os shows (com contatos) e transações já carregados;
@@ -527,6 +537,34 @@ export default async function DashboardPage() {
             (queima de {formatMoney(burnHeadline.monthlyBurn)}/mês)
           </span>
           <span className={burnHeadline.critical ? "text-red-600" : "text-amber-600"}>Ver →</span>
+        </Link>
+      )}
+
+      {/* Ritmo do ano (D162): acumulado de receita do ano corrente vs. o mesmo período
+          do ano passado — só aparece quando está atrás (behind). Escala para vermelho
+          no atraso acentuado (≤ 75% do ano passado). */}
+      {ytdPaceHeadline.show && (
+        <Link
+          href="/financas/ritmo-do-ano"
+          className={
+            "flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3 text-sm transition " +
+            (ytdPaceHeadline.critical
+              ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100")
+          }
+        >
+          <span className="font-semibold">
+            {ytdPaceHeadline.critical ? "🔴" : "🐢"} Atrás do ritmo de {ytdPaceHeadline.lastYear}
+          </span>
+          <span>
+            Até agora você acumula{" "}
+            <strong>{formatMoney(ytdPaceHeadline.income)}</strong> em receita —{" "}
+            {ytdPaceHeadline.pct !== null && (
+              <strong>{Math.round(Math.abs(ytdPaceHeadline.pct) * 100)}% abaixo</strong>
+            )}{" "}
+            do mesmo ponto de {ytdPaceHeadline.lastYear} ({formatMoney(ytdPaceHeadline.lastYearIncome)}).
+          </span>
+          <span className={ytdPaceHeadline.critical ? "text-red-600" : "text-amber-600"}>Ver →</span>
         </Link>
       )}
 
