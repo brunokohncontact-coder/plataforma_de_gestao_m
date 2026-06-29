@@ -52,6 +52,11 @@ export default async function ContatosRetencaoPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {retention.totalClients > 0 && (
+            <a href="/contatos/retencao/export" className="btn-secondary">
+              ⬇ CSV
+            </a>
+          )}
           <Link href="/contatos/ranking" className="btn-secondary">
             Ranking
           </Link>

@@ -48,6 +48,8 @@ import {
   GIG_CADENCE_CSV_HEADERS,
   feeTrendToCsv,
   FEE_TREND_CSV_HEADERS,
+  clientRetentionToCsv,
+  CLIENT_RETENTION_CSV_HEADERS,
   type CsvTransaction,
   type CsvShow,
   type CsvProfitShow,
@@ -76,6 +78,7 @@ import {
   type RoleProfitRow,
   type ReceivableShowLike,
 } from "./finance";
+import { clientRetention, type ContactRankLike } from "./contacts";
 
 describe("escapeCsvField", () => {
   it("não envolve em aspas campos simples", () => {
@@ -1355,5 +1358,67 @@ describe("feeTrendToCsv", () => {
     expect(lines).toHaveLength(3);
     expect(lines[1]).toBe("2026-02;1500,00;1500,00;1500,00;1");
     expect(lines[2]).toBe("Total;1500,00;1500,00;1500,00;1");
+  });
+});
+
+describe("clientRetentionToCsv", () => {
+  // `now` fixo no futuro para datar `lastShowDate` de forma estável.
+  const NOW = "2030-01-01T00:00:00.000Z";
+  interface C extends ContactRankLike {
+    role: string;
+  }
+  const item = (
+    contact: C,
+    shows: { status: string; date: string; fee: number }[],
+  ) => ({ contact, shows });
+
+  it("só cabeçalho + Total zerado quando não há contratantes", () => {
+    const csv = clientRetentionToCsv(clientRetention<C>([], new Date(NOW)));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(CLIENT_RETENTION_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe("Total;;0;0,00;;0/0");
+  });
+
+  it("uma linha por contratante (ordem shows desc) com Recorrente Sim/Não + Total", () => {
+    const retention = clientRetention<C>(
+      [
+        item({ id: "a", name: "Bar do Zé", role: "VENUE" }, [
+          { status: "PLAYED", date: "2026-02-10T00:00:00.000Z", fee: 100000 },
+          { status: "PLAYED", date: "2026-05-15T00:00:00.000Z", fee: 150000 },
+        ]),
+        item({ id: "b", name: "Produtora Lua", role: "PROMOTER" }, [
+          { status: "PLAYED", date: "2026-03-20T00:00:00.000Z", fee: 200000 },
+        ]),
+      ],
+      new Date(NOW),
+    );
+    const lines = clientRetentionToCsv(retention).split("\r\n");
+    // cabeçalho + 2 contratantes (mais shows primeiro) + Total.
+    expect(lines).toHaveLength(4);
+    expect(lines[1]).toBe("Bar do Zé;Casa de show;2;2500,00;15/05/2026;Sim");
+    expect(lines[2]).toBe("Produtora Lua;Produtor/Promoter;1;2000,00;20/03/2026;Não");
+    // Total: 3 shows, 4500,00; "recorrentes/total" = 1/2.
+    expect(lines[3]).toBe("Total;;3;4500,00;;1/2");
+  });
+
+  it("exclui contratantes só com shows cancelados; futuro confirmado conta para recorrência", () => {
+    const retention = clientRetention<C>(
+      [
+        item({ id: "n", name: "Casa Nova", role: "OTHER" }, [
+          { status: "PLAYED", date: "2026-01-10T00:00:00.000Z", fee: 100000 },
+          { status: "CONFIRMED", date: "2099-06-01T00:00:00.000Z", fee: 300000 },
+        ]),
+        item({ id: "x", name: "Só Cancelado", role: "VENUE" }, [
+          { status: "CANCELLED", date: "2026-04-01T00:00:00.000Z", fee: 500000 },
+        ]),
+      ],
+      new Date(NOW),
+    );
+    const lines = clientRetentionToCsv(retention).split("\r\n");
+    // só "Casa Nova" vira linha — o cancelado-puro fica de fora.
+    expect(lines).toHaveLength(3);
+    expect(lines[1]).toBe("Casa Nova;Outro;2;4000,00;01/06/2099;Sim");
+    expect(lines[2]).toBe("Total;;2;4000,00;;1/1");
   });
 });

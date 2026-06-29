@@ -39,6 +39,7 @@ import {
   type CategoryDelta,
   type CategoryReportComparison,
 } from "./finance";
+import type { ClientRetention, ContactRankLike } from "./contacts";
 import { MONTH_NAMES_LONG } from "./calendar";
 
 const DEFAULT_DELIMITER = ";";
@@ -1239,6 +1240,57 @@ export function feeTrendToCsv(trend: FeeTrend, delimiter = DEFAULT_DELIMITER): s
     centsToCsvAmount(trend.lowestFee),
     centsToCsvAmount(trend.highestFee),
     String(trend.totalShows),
+  ]);
+  return toCsv(out, delimiter);
+}
+
+// ── Fidelização / retenção de contratantes (quem volta a te contratar?) ──────
+
+export const CLIENT_RETENTION_CSV_HEADERS = [
+  "Contratante",
+  "Papel",
+  "Shows",
+  "Cachê total (R$)",
+  "Último show",
+  "Recorrente",
+] as const;
+
+/**
+ * Serializa a fidelização da carteira (`clientRetention`) em CSV, pronto para
+ * download. Diferente da tela `/contatos/retencao` (cuja tabela lista só os
+ * contratantes recorrentes), o CSV emite **todas** as linhas — `retention.rows`,
+ * todos os contratantes com ≥1 show não cancelado, na mesma ordem da página
+ * (shows desc, cachê desc, nome pt-BR) —, marcando cada uma com a coluna
+ * "Recorrente" (Sim/Não). Assim a planilha abre tanto os fiéis quanto os de um
+ * show só (candidatos a follow-up, que a tela só conta no card "Contratantes
+ * únicos"). Colunas: contratante, papel, nº de shows não cancelados, cachê total
+ * (por contato), data do último show (vazia quando não há) e o selo de recorrência.
+ * Encerra numa linha "Total" com a soma de shows e cachê de toda a carteira; a
+ * coluna "Recorrente" do Total traz "recorrentes/total" (ex.: "3/8"). Mesma
+ * convenção pt-BR dos irmãos (delimitador ";", decimal com vírgula). Pura.
+ */
+export function clientRetentionToCsv<C extends ContactRankLike & { role: string }>(
+  retention: ClientRetention<C>,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(CLIENT_RETENTION_CSV_HEADERS)];
+  for (const row of retention.rows) {
+    out.push([
+      row.contact.name,
+      contactRoleLabel(row.contact.role),
+      String(row.activeShows),
+      centsToCsvAmount(row.totalFee),
+      row.lastShowDate ? csvDate(row.lastShowDate) : "",
+      row.recurring ? "Sim" : "Não",
+    ]);
+  }
+  out.push([
+    "Total",
+    "",
+    String(retention.totalShows),
+    centsToCsvAmount(retention.totalFee),
+    "",
+    `${retention.recurringClients}/${retention.totalClients}`,
   ]);
   return toCsv(out, delimiter);
 }
