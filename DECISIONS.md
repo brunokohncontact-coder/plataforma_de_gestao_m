@@ -4815,3 +4815,45 @@ contexto, decisão, justificativa e alternativas consideradas.
   smoke test (`next start`) → `/login` 200 e `/shows/receita-agendada` + `/shows/receita-agendada/export` 307 (auth-gated).
   `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss
   bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## D158 — Ritmo do mês corrente (`/financas/ritmo-do-mes` + `currentMonthPace`) (Sessão 165)
+- **Contexto:** o acervo respondia bem a "como fechei o mês/ano?" (fechamentos, projeção do ano, sazonalidade) e a "por quantos
+  meses o caixa dura?" (fôlego/burn rate), mas faltava a pergunta do **dia a dia**: "estou faturando no ritmo de um mês normal,
+  ou este mês está atrasado?". É a leitura que o músico quer no meio do mês para decidir se empurra prospecção/cobrança — distinta
+  da projeção do ano (D60, horizonte anual) e do burn rate (D101, fôlego de caixa). O Painel já está denso (≈15 cards/nudges,
+  novos nudges repetidamente adiados por densidade — D126/D138/D141), então o lar natural é uma página dedicada, não mais um card.
+- **Decisão:** novo helper puro `currentMonthPace(txs, { now?, months? })` em `src/lib/finance.ts` + tipo `MonthPace` +
+  `MonthPaceVerdict` + `MONTH_PACE_EPSILON` (=0.1), e a página `/financas/ritmo-do-mes`. O helper soma o que já foi **lançado**
+  no mês corrente (regime de **competência**, pela `date` — a mesma base de `summarizeFinances`/`monthlySeasonality`, e a mesma
+  dos números de receita do Painel), projeta o fechamento por extrapolação **pro-rata** (valor ÷ fração do mês decorrida =
+  `dayOfMonth/daysInMonth`, UTC) e compara a projeção de receita com o **"mês típico"**: a média dos meses **completos com
+  movimento** dentro de uma janela (default `DEFAULT_BURN_WINDOW_MONTHS`=6, mesma família de janela do burn rate, saneada por
+  `sanitizeBurnWindow`; `?meses=` lido com `parseBurnWindow`/`BURN_WINDOW_PRESETS` 3/6/12/24, D102). Veredito pela **receita**
+  (sinal mais limpo; despesas são esporádicas): `ahead`/`onPace`/`behind` conforme a projeção fica ±`MONTH_PACE_EPSILON` do mês
+  típico; `insufficient` sem histórico de receita na janela.
+- **Regime de competência (não caixa):** a pergunta "como vai o mês" casa com o que foi *agendado/realizado no mês* (lançamentos
+  por data), não só com o que pingou no caixa — e mantém paridade com o headline de receita do app e com a sazonalidade.
+  Alternativa caixa (`received`) descartada para v1: introduziria assimetria com o resto e dependeria do hábito de marcar
+  recebimentos em dia.
+- **Baseline = meses completos COM movimento (D35):** o mês corrente (parcial) e os meses parados ficam de fora, para a referência
+  ser "um mês típico em que houve trabalho", não diluída por meses vazios de um histórico curto — mesmo critério de
+  `monthlySeasonality`. `baselineMonths`/`baselineIncome` ficam expostos para a UI explicar a base.
+- **Projeção pro-rata é hipótese frágil cedo no mês:** lançamentos não são uniformes (shows concentram em fins de semana). Cedo
+  no mês a projeção é sensível a um único cachê. Aceito para v1 por ser transparente e barato; a página **sinaliza** o caráter de
+  estimativa (texto + barra de "% do mês decorrido") e expõe `expectedIncomeByNow` (baseline × elapsed) como leitura alternativa
+  ("quanto se esperaria a esta altura"). Refinamentos futuros: ponderar por dia-da-semana/sazonalidade do mês.
+- **Alternativas consideradas:** (a) mais um card no Painel — descartado pela densidade já registrada; a página é cross-linkada
+  pelo hub de relatórios (`/relatorios`), registrada em `REPORT_GROUPS` sob Finanças/"Fechamentos". (b) comparar contra o mês
+  imediatamente anterior em vez da média — descartado: um mês pode ser atípico (um show grande), a média é mais estável (mesma
+  motivação de `averageSummaries`). (c) veredito pelo resultado líquido — descartado: despesas esporádicas embaralhariam o sinal;
+  o líquido ainda aparece na tabela, só não decide o veredito.
+- **Testes:** **+10** em `finance.test.ts` (`describe("currentMonthPace")`): agregação do mês corrente + elapsed/projeção pro-rata;
+  filtro do mês corrente; baseline só com meses ativos da janela; `onPace`/`ahead`/`behind` e a fronteira de `MONTH_PACE_EPSILON`;
+  `insufficient` sem histórico; janela parametrizável; baseline ignorando o mês corrente e meses parados; projeção de despesa/
+  líquido. **964 testes** no total (eram 954).
+- **DoD:** build de produção, typecheck (`tsc --noEmit` via `next build`) e lint (`next lint`, 0 avisos) verdes; **964 testes**
+  (`vitest run`); smoke test (`next start`) → `/login` 200 e `/financas/ritmo-do-mes` (+ `?meses=12`) 307 (auth-gated). `npm audit`
+  **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver
+  D6/bloqueios); **nenhuma dependência nova**.
+- **Nota de concorrência:** o número de decisão **D157** foi deixado para a PR paralela #180 (export CSV da agenda) em andamento;
+  esta sessão usa **D158** para evitar colisão de numeração na `main`.

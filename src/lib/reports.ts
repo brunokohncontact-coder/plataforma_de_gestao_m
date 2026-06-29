@@ -167,6 +167,14 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
     label: "Finanças",
     entries: [
       {
+        title: "Ritmo do mês",
+        href: "/financas/ritmo-do-mes",
+        description:
+          "Como o mês corrente vai até agora e como deve fechar, comparado a um mês típico recente.",
+        subtopic: "Fechamentos",
+        icon: "⏱️",
+      },
+      {
         title: "Relatório mensal",
         href: "/financas/relatorio",
         description: "O fechamento de um mês com receitas, despesas, saldo e quebra por categoria.",
