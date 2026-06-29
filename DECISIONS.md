@@ -4992,3 +4992,41 @@ contexto, decisão, justificativa e alternativas consideradas.
   smoke test (`next start`) → `/login` 200 e `/financas/ritmo-do-mes` 307 (auth-gated). `npm audit` **inalterado** vs. baseline
   (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma
   dependência nova**.
+
+## D162 — Ritmo do ano: acumulado vs. mesmo período do ano anterior (`/financas/ritmo-do-ano` + `yearToDatePace`) (Sessão 169)
+- **Contexto:** o eixo "ano" já tinha três telas, mas nenhuma respondia "estou à frente de onde eu estava nesta época do ano
+  passado?". `yearlyHistory`/`crescimento` (D154) comparam anos **fechados** inteiros — inúteis no meio do ano corrente, que
+  ainda está aberto; `projectYearEnd`/`projecao-ano` (D60) **projeta** o fechamento (estimativa, não fato consumado); e
+  `monthYoYPace`/`ritmo-do-mes` (D161) cobre só o mês corrente. Faltava o acumulado ano-a-ano (year-to-date) lado a lado: o
+  número que um freelancer olha no meio do ano para saber se está adiante ou atrás do ano anterior.
+- **Decisão:** novo helper puro `yearToDatePace(txs, { now? })` em `src/lib/finance.ts` (logo após `monthYoYPace`). Soma o
+  acumulado do ano corrente de 1º de janeiro até o **fim do dia do corte** (`now`, competência pela `date`, UTC) e o compara
+  com o acumulado do ano anterior até o **mesmo mês/dia**. É comparação igual-com-igual — a mesma fração do ano percorrida dos
+  dois lados, ambos números **reais** (sem projeção, ao contrário de `currentMonthPace`/`monthYoYPace`, que extrapolam o mês
+  corrente). Devolve `YearToDatePace` com `dayOfYear`/`daysInYear`/`elapsed`, os acumulados dos dois anos (income/expense/net),
+  três `MetricDelta` (via `computeDelta`) e um `verdict`.
+- **Veredito pela receita** (mesmo limiar da família de ritmo): `ahead`/`onPace`/`behind` conforme o acumulado do ano corrente
+  fica ±`MONTH_PACE_EPSILON` (10%) do mesmo período do ano anterior; `insufficient` quando o período de referência **não teve
+  receita** (primeiro ano de operação). Reusa `MONTH_PACE_EPSILON` (D158), sem novo limiar.
+- **Alinhamento de calendário:** o dia do corte no ano anterior é limitado ao último dia do mês daquele ano —
+  `min(cutoffDay, diasDoMês(year−1, cutoffMonth))` — para que 29/fev recue para 28/fev e a janela continue alinhada. `dayOfYear`
+  e `daysInYear` são derivados por diferença de `Date.UTC` (lida com anos bissextos sem tabela fixa).
+- **UI:** página dedicada `/financas/ritmo-do-ano` (não um card no Painel, que já é denso) — barra de "% do ano decorrido",
+  selo de veredito (`VERDICT_META`), dois cards de receita acumulada (ano corrente × mesmo ponto do ano anterior) e tabela de
+  três linhas (Receitas/Despesas/Resultado) ano × ano × variação. Espelha o layout de `ritmo-do-mes` (mesmo padrão de
+  `Row`/`Metric`/`formatPct`/`deltaTone`), com estado vazio quando não há ano corrente lançado. Registrada no hub
+  (`REPORT_GROUPS`, Finanças/"Fechamentos", ao lado de "Ritmo do mês"). Sem `?ano=`: por design o eixo é sempre ano corrente ×
+  anterior, no ponto de hoje.
+- **Alternativas consideradas:** (a) também projetar o fechamento do ano nesta tela — **descartado**, é trabalho de
+  `projecao-ano`; aqui o valor é justamente comparar dois acumulados **reais**; (b) recorte por dia-do-ano em vez de mês/dia —
+  **descartado**, mês/dia é mais legível ("até 29 de junho") e o clamp de fim-de-mês já resolve o desalinhamento bissexto; (c)
+  um nudge no Painel quando `behind` — **adiado** (o Painel já tem vários nudges; a página dedicada basta por ora); (d)
+  exportação CSV — **adiada**, são poucas linhas (dois acumulados) e a tela é leitura de tela, não planilha.
+- **Testes:** **+6** em `finance.test.ts` (`describe("yearToDatePace")`): acumula o ano corrente até o corte e calcula
+  `dayOfYear`/`elapsed`; compara com o mesmo período do ano anterior (ignora o que vem depois do corte); classifica
+  `onPace`/`behind`; `insufficient` sem receita de referência (`pct` nulo); acumula despesa/líquido; alinha o ano bissexto
+  (29/fev → 28/fev). **984 testes** no total (eram 978).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **984 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/financas/ritmo-do-ano` 307 (auth-gated). `npm audit` **inalterado** vs. baseline
+  (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma
+  dependência nova**.

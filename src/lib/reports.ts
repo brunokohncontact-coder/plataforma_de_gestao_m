@@ -175,6 +175,14 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "⏱️",
       },
       {
+        title: "Ritmo do ano",
+        href: "/financas/ritmo-do-ano",
+        description:
+          "O acumulado do ano até hoje comparado ao mesmo ponto do ano passado — estou à frente de onde estava nesta época?",
+        subtopic: "Fechamentos",
+        icon: "📅",
+      },
+      {
         title: "Relatório mensal",
         href: "/financas/relatorio",
         description: "O fechamento de um mês com receitas, despesas, saldo e quebra por categoria.",

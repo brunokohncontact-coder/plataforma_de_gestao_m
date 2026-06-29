@@ -5242,6 +5242,151 @@ export function monthYoYPace(
   };
 }
 
+export type YearToDateVerdict = "ahead" | "onPace" | "behind" | "insufficient";
+
+export interface YearToDatePace {
+  /** Ano corrente (UTC). */
+  year: number;
+  /** Ano anterior (year − 1). */
+  lastYear: number;
+  /** Mês do corte (0–11, UTC) — o "até aqui" comum aos dois anos. */
+  cutoffMonth: number;
+  /** Dia do corte no ano corrente (1–31, UTC). */
+  cutoffDay: number;
+  /**
+   * Dia do ano já decorrido (1–366, UTC) e total de dias do ano corrente.
+   * `elapsed = dayOfYear / daysInYear` é a fração do ano percorrida.
+   */
+  dayOfYear: number;
+  daysInYear: number;
+  elapsed: number;
+  /**
+   * Acumulado do ano corrente do 1º de janeiro até o fim do dia do corte
+   * (regime de competência, pela `date` da transação), em centavos.
+   */
+  income: number;
+  expense: number;
+  /** `income − expense` do ano corrente até o corte. */
+  net: number;
+  /**
+   * Mesmo período do ano anterior — do 1º de janeiro até o **mesmo** mês/dia,
+   * já decorrido (competência), em centavos. Comparação igual-com-igual (mesma
+   * fração do ano), o eixo que responde "estou à frente de onde eu estava nesta
+   * época no ano passado?". O dia do corte é limitado ao último dia do mês no ano
+   * anterior (ex.: 29/fev cai para 28/fev) para manter a janela alinhada.
+   */
+  lastYearIncome: number;
+  lastYearExpense: number;
+  /** `lastYearIncome − lastYearExpense`. */
+  lastYearNet: number;
+  /** Houve qualquer movimento no mesmo período do ano anterior? */
+  lastYearHasMovement: boolean;
+  /** Comparação do acumulado do ano corrente vs. o mesmo período do ano anterior. */
+  incomeVsLastYear: MetricDelta;
+  expenseVsLastYear: MetricDelta;
+  netVsLastYear: MetricDelta;
+  /**
+   * Veredito pela **receita** (sinal mais limpo). `insufficient` quando o mesmo
+   * período do ano anterior não teve receita (sem base de comparação).
+   */
+  verdict: YearToDateVerdict;
+}
+
+/**
+ * Ritmo do ano corrente contra o **mesmo período do ano anterior** (acumulado
+ * ano-a-ano até a data), complemento anual de `monthYoYPace`.
+ *
+ * Soma o acumulado do ano corrente (1º jan → corte, competência pela `date`) e o
+ * compara com o acumulado do ano anterior até o **mesmo** mês/dia. É comparação
+ * igual-com-igual — mesma fração do ano percorrida nos dois lados — distinta de:
+ * `yearlyHistory`/`crescimento` (anos **fechados** inteiros), `projectYearEnd`/
+ * `projecao-ano` (projeta o fechamento do ano) e `monthYoYPace` (só o mês corrente).
+ * Responde "estou à frente de onde eu estava nesta época do ano passado?".
+ *
+ * Não projeta o fechamento (isso é trabalho de `projectYearEnd`): aqui são dois
+ * acumulados reais lado a lado. Usa a folga relativa `MONTH_PACE_EPSILON` (±10%)
+ * para o veredito; `insufficient` sem receita no período de referência.
+ *
+ * Pura; `now` é injetável. UTC, consistente com as demais agregações financeiras.
+ */
+export function yearToDatePace(
+  txs: TxLike[],
+  options: { now?: Date | string } = {},
+): YearToDatePace {
+  const now = typeof options.now === "string" ? new Date(options.now) : (options.now ?? new Date());
+
+  const year = now.getUTCFullYear();
+  const lastYear = year - 1;
+  const cutoffMonth = now.getUTCMonth();
+  const cutoffDay = now.getUTCDate();
+
+  const startMs = Date.UTC(year, 0, 1);
+  // Inclui o dia do corte inteiro (até o início do dia seguinte).
+  const cutoffMs = Date.UTC(year, cutoffMonth, cutoffDay + 1);
+
+  const dayOfYear = Math.round((Date.UTC(year, cutoffMonth, cutoffDay) - startMs) / 86_400_000) + 1;
+  const daysInYear = Math.round((Date.UTC(year + 1, 0, 1) - startMs) / 86_400_000);
+  const elapsed = dayOfYear / daysInYear;
+
+  // Ano anterior: mesmo mês/dia, limitando o dia ao último do mês (29/fev → 28/fev).
+  const lyMonthDays = new Date(Date.UTC(lastYear, cutoffMonth + 1, 0)).getUTCDate();
+  const lyCutoffDay = Math.min(cutoffDay, lyMonthDays);
+  const lyStartMs = Date.UTC(lastYear, 0, 1);
+  const lyCutoffMs = Date.UTC(lastYear, cutoffMonth, lyCutoffDay + 1);
+
+  let income = 0;
+  let expense = 0;
+  let lastYearIncome = 0;
+  let lastYearExpense = 0;
+  for (const t of txs) {
+    const ts = txTime(t);
+    if (ts >= startMs && ts < cutoffMs) {
+      if (t.type === "INCOME") income += t.amount;
+      else expense += t.amount;
+    } else if (ts >= lyStartMs && ts < lyCutoffMs) {
+      if (t.type === "INCOME") lastYearIncome += t.amount;
+      else lastYearExpense += t.amount;
+    }
+  }
+  const net = income - expense;
+  const lastYearNet = lastYearIncome - lastYearExpense;
+  const lastYearHasMovement = lastYearIncome > 0 || lastYearExpense > 0;
+
+  let verdict: YearToDateVerdict;
+  if (lastYearIncome === 0) {
+    verdict = "insufficient";
+  } else {
+    const ratio = income / lastYearIncome;
+    verdict =
+      ratio >= 1 + MONTH_PACE_EPSILON
+        ? "ahead"
+        : ratio <= 1 - MONTH_PACE_EPSILON
+          ? "behind"
+          : "onPace";
+  }
+
+  return {
+    year,
+    lastYear,
+    cutoffMonth,
+    cutoffDay,
+    dayOfYear,
+    daysInYear,
+    elapsed,
+    income,
+    expense,
+    net,
+    lastYearIncome,
+    lastYearExpense,
+    lastYearNet,
+    lastYearHasMovement,
+    incomeVsLastYear: computeDelta(income, lastYearIncome),
+    expenseVsLastYear: computeDelta(expense, lastYearExpense),
+    netVsLastYear: computeDelta(net, lastYearNet),
+    verdict,
+  };
+}
+
 export interface CashBurnHeadline {
   /**
    * Deve aparecer no Painel? Só quando o fôlego pelo ritmo real **morde**
