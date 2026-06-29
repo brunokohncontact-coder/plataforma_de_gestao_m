@@ -4960,3 +4960,35 @@ contexto, decisão, justificativa e alternativas consideradas.
   vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios);
   **nenhuma dependência nova**.
 - **Nota de concorrência:** numeração **D160** após D159 (Sessão 166, já mergeado); **D157** segue reservado à PR paralela #180.
+
+## D161 — Comparativo sazonal do mês corrente vs. mesmo mês do ano anterior (`/financas/ritmo-do-mes` + `monthYoYPace`) (Sessão 168)
+- **Contexto:** a tela "Ritmo do mês" (`currentMonthPace`/D158) responde "estou faturando no ritmo de um mês normal?" comparando
+  a projeção pro-rata do mês corrente contra o **mês típico** — a média móvel dos meses fechados com movimento na janela. Essa
+  baseline é cega à **sazonalidade**: para um músico, dezembro não se compara à média de set–nov, e sim a dezembro do ano
+  passado. O item 6b dos próximos passos já apontava "comparar contra o mesmo mês do ano anterior (eixo sazonal)" como evolução.
+- **Decisão:** novo helper puro `monthYoYPace(txs, { now? })` em `src/lib/finance.ts` (logo após `currentMonthPace`). Reaproveita
+  `currentMonthPace` para a projeção pro-rata do fechamento do mês corrente e a compara com o **mesmo mês do calendário um ano
+  antes**, já fechado (mês **inteiro**, regime de competência pela `date`, UTC via `monthKey`). É comparação igual-com-igual —
+  mês cheio projetado × mês cheio realizado —, distinta da média móvel: não há fração nem pro-rata do lado de referência (o ano
+  passado já fechou). Devolve `MonthYoYPace` com a projeção (income/expense/net), os totais do ano anterior, três `MetricDelta`
+  (`incomeVsLastYear`/`expenseVsLastYear`/`netVsLastYear`, via `computeDelta`) e um `verdict`.
+- **Veredito pela receita** (mesmo critério/limiar de `currentMonthPace`): `ahead`/`onPace`/`behind` conforme a projeção fica
+  ±`MONTH_PACE_EPSILON` (10%) do mesmo mês do ano anterior; `insufficient` quando o mês de referência **não teve receita** (sem
+  âncora sazonal — primeiro ano de operação naquele mês). Reusa a constante `MONTH_PACE_EPSILON` (D158), sem novo limiar.
+- **UI:** card "Mesmo mês no ano passado" em `/financas/ritmo-do-mes`, abaixo da tabela "Projeção do mês × mês típico", com selo
+  de veredito (`YOY_META`) e uma tabela de três linhas (Receitas/Despesas/Resultado) projeção × `{mês do ano anterior}` ×
+  variação, reusando o componente `Row` já existente da página. Sem movimento no mês de referência → mensagem de estado vazio
+  ("aparece assim que houver um ano de histórico no mesmo mês") em vez da tabela. Não lê `?meses=` (a janela é do mês típico; o
+  eixo sazonal é sempre o mesmo mês −1 ano), mantendo a pílula de janela atuando só sobre a baseline.
+- **Alternativas consideradas:** (a) ponderar a projeção por dia-da-semana/sazonalidade intra-mês — **adiado**, é hipótese frágil
+  e ortogonal a este eixo; (b) um nudge no Painel quando `behind` no eixo sazonal — **adiado** (o Painel já tem vários nudges; o
+  card na página dedicada basta por ora); (c) comparar mês corrente *parcial* vs. ano anterior *parcial até o mesmo dia* — **descartado**:
+  exigiria recortar o mês de referência por dia, e a projeção pro-rata já normaliza o mês corrente para mês cheio, então cheio×cheio
+  é a comparação mais limpa.
+- **Testes:** **+5** em `finance.test.ts` (`describe("monthYoYPace")`): compara projeção com o mês inteiro do ano anterior; isola o
+  mesmo mês (ignora meses vizinhos de 2025 e o mesmo mês de 2024); classifica `ahead`/`behind`; `insufficient` sem receita no mês
+  de referência (`pct` nulo); projeta despesas/líquido e compara. **978 testes** no total (eram 973).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **978 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/financas/ritmo-do-mes` 307 (auth-gated). `npm audit` **inalterado** vs. baseline
+  (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma
+  dependência nova**.

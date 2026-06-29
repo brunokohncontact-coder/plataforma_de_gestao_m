@@ -70,6 +70,7 @@ import {
   cashBurnRunway,
   cashBurnHeadline,
   currentMonthPace,
+  monthYoYPace,
   MONTH_PACE_EPSILON,
   cashFlowByMonth,
   cashFlowTrend,
@@ -6895,5 +6896,85 @@ describe("currentMonthPace", () => {
     expect(pace.projectedExpense).toBe(400_00); // 200 / 0.5
     expect(pace.projectedNet).toBe(pace.projectedIncome - pace.projectedExpense);
     expect(pace.net).toBe(400_00);
+  });
+});
+
+describe("monthYoYPace", () => {
+  // 15/jun/2026: metade do mês → projeção = receita até agora ÷ 0.5.
+  const NOW = "2026-06-15T00:00:00.000Z";
+
+  const monthTx = (date: string, amount: number, type: TxLike["type"] = "INCOME"): TxLike =>
+    tx({ type, amount, date: `${date}T00:00:00.000Z` });
+
+  it("compara a projeção do mês com o MESMO mês do ano anterior (mês inteiro)", () => {
+    const pace = monthYoYPace(
+      [
+        monthTx("2026-06-10", 500_00), // mês corrente: 500_00 na metade → projeção 1000_00
+        monthTx("2025-06-05", 600_00), // jun/2025 inteiro
+        monthTx("2025-06-20", 400_00), // jun/2025 inteiro → total 1000_00
+      ],
+      { now: NOW },
+    );
+    expect(pace.month).toBe("2026-06");
+    expect(pace.lastYearMonth).toBe("2025-06");
+    expect(pace.projectedIncome).toBe(1000_00);
+    expect(pace.lastYearIncome).toBe(1000_00);
+    expect(pace.lastYearHasMovement).toBe(true);
+    expect(pace.incomeVsLastYear.current).toBe(1000_00);
+    expect(pace.incomeVsLastYear.previous).toBe(1000_00);
+    expect(pace.verdict).toBe("onPace");
+  });
+
+  it("usa só o mesmo mês do ano anterior — ignora outros meses de 2025", () => {
+    const pace = monthYoYPace(
+      [
+        monthTx("2026-06-10", 500_00),
+        monthTx("2025-06-15", 800_00), // referência
+        monthTx("2025-05-15", 999_00), // mês vizinho do ano anterior: fora
+        monthTx("2025-07-15", 999_00), // mês vizinho do ano anterior: fora
+        monthTx("2024-06-15", 999_00), // dois anos atrás: fora
+      ],
+      { now: NOW },
+    );
+    expect(pace.lastYearIncome).toBe(800_00);
+  });
+
+  it("classifica 'ahead' acima da folga e 'behind' abaixo dela", () => {
+    // projeção 1000_00 (500_00 na metade do mês) contra jun/2025 de referência.
+    const ahead = monthYoYPace(
+      [monthTx("2026-06-10", 500_00), monthTx("2025-06-10", 700_00)],
+      { now: NOW },
+    );
+    expect(ahead.verdict).toBe("ahead"); // 1000 vs 700 → +43%
+    const behind = monthYoYPace(
+      [monthTx("2026-06-10", 500_00), monthTx("2025-06-10", 1400_00)],
+      { now: NOW },
+    );
+    expect(behind.verdict).toBe("behind"); // 1000 vs 1400 → −29%
+  });
+
+  it("veredito 'insufficient' quando o mesmo mês do ano anterior não teve receita", () => {
+    const pace = monthYoYPace([monthTx("2026-06-10", 500_00)], { now: NOW });
+    expect(pace.lastYearIncome).toBe(0);
+    expect(pace.lastYearHasMovement).toBe(false);
+    expect(pace.verdict).toBe("insufficient");
+    expect(pace.incomeVsLastYear.pct).toBeNull();
+  });
+
+  it("projeta despesas e líquido e os compara ao mesmo mês do ano anterior", () => {
+    const pace = monthYoYPace(
+      [
+        monthTx("2026-06-10", 600_00),
+        monthTx("2026-06-11", 200_00, "EXPENSE"), // projeção despesa 400_00
+        monthTx("2025-06-10", 1000_00),
+        monthTx("2025-06-12", 300_00, "EXPENSE"),
+      ],
+      { now: NOW },
+    );
+    expect(pace.projectedExpense).toBe(400_00); // 200 / 0.5
+    expect(pace.lastYearExpense).toBe(300_00);
+    expect(pace.lastYearNet).toBe(700_00); // 1000 − 300
+    expect(pace.netVsLastYear.current).toBe(pace.projectedNet);
+    expect(pace.netVsLastYear.previous).toBe(700_00);
   });
 });
