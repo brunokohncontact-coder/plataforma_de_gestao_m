@@ -4782,3 +4782,36 @@ contexto, decisão, justificativa e alternativas consideradas.
   smoke test (`next start`) → `/login` 200 e `/financas/folego-de-caixa` + `/financas/folego-de-caixa/export?meses=12` 307
   (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
   postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## D156 — Exportação CSV da receita agendada (`/shows/receita-agendada/export`) (Sessão 164)
+- **Contexto:** `/shows/receita-agendada` (D31) mostra a tabela "Receita agendada" — o pipeline de cachês de shows futuros
+  agregados por mês, decomposto em confirmado (CONFIRMED/PLAYED) × a confirmar (PROPOSED/sem status), com cards de destaque
+  (total/confirmado/a confirmar/nº de shows). Era uma das telas tabulares de Shows que ainda não exportava (ao lado das já
+  exportáveis cadência/evolução-cachê/sazonalidade/faixas/dias-semana/locais/cidades/rentabilidade/a-receber). O pipeline de
+  cachês futuros é justamente o número que o músico leva para o contador/planejamento — candidato direto a planilha.
+- **Decisão:** novo serializador puro `bookedRevenueToCsv(forecast)` + `BOOKED_REVENUE_CSV_HEADERS` em `src/lib/csv.ts`,
+  recebendo a `BookedRevenueForecast` já computada (`forecastBookedRevenue`, de `@/lib/finance`). Colunas
+  Mês/Shows/Confirmado (R$)/A confirmar (R$)/Total do mês (R$): uma linha por mês com shows futuros (`forecast.months`, em ordem
+  cronológica crescente), encerrada numa linha "Total" com os agregados da tela (`count`/`confirmedTotal`/`tentativeTotal`/
+  `total` — os mesmos números dos cards de destaque). Rota `/shows/receita-agendada/export` reusa a mesma consulta (só shows
+  `date >= hoje`) e o mesmo `forecastBookedRevenue` da página + BOM UTF-8; nome fixo `receita-agendada.csv`; botão "⬇ CSV" no
+  cabeçalho só com `forecast.count > 0`.
+- **Só meses com shows viram linha:** como em `gigCadenceToCsv`/`feeTrendToCsv` (séries de eixo aberto), e diferente de
+  `cashFlowToCsv`/`monthlySeasonalityToCsv` (baldes fixos). A janela da receita agendada é aberta (do mês corrente em diante,
+  pode abranger vários meses futuros); meses sem show simplesmente não aparecem (`forecast.months` já só traz meses povoados). A
+  coluna "Mês" usa a chave ISO "YYYY-MM" (ordenável por máquina), não o rótulo "Jul 2026" da UI.
+- **Semântica herdada de `forecastBookedRevenue`:** "futuro" = dia do show `>= hoje` (UTC); cancelados ignorados; confirmado =
+  CONFIRMED/PLAYED, a confirmar = PROPOSED/sem status; total do mês = confirmado + a confirmar (invariante). O serializador é
+  fino e não reinterpreta nada; `now` é injetável (puro, testável). Sem `?ano=`: por design a tela olha sempre da data corrente
+  em diante (pipeline futuro), não há recorte por ano a propagar.
+- **Alternativas consideradas:** (a) emitir também a barra confirmado/total (a `confirmedPct` da tela) como coluna de
+  porcentagem — descartado: é informação visual, e as colunas Confirmado/A confirmar já decompõem o total numericamente. (b)
+  uma linha por show (granularidade de gig, não de mês) — descartado: a tela é mês a mês e os shows individuais já têm sua
+  própria lista/export em `/shows`; o valor aqui é o resumo do pipeline por mês.
+- **Testes:** **+3** em `csv.test.ts` (`describe("bookedRevenueToCsv")`): só cabeçalho + Total zerado sem shows agendados; uma
+  linha por mês com shows (confirmado/a confirmar/total) em ordem crescente + Total; ignora cancelados e shows passados, status
+  ausente conta como a confirmar. **954 testes** no total (eram 951).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **954 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/shows/receita-agendada` + `/shows/receita-agendada/export` 307 (auth-gated).
+  `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss
+  bundlado; ver D6/bloqueios); **nenhuma dependência nova**.

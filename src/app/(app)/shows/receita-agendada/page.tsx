@@ -37,9 +37,20 @@ export default async function BookedRevenuePage() {
             cachês dos shows futuros. Cancelados são ignorados.
           </p>
         </div>
-        <Link href="/shows" className="btn-secondary">
-          ← Shows
-        </Link>
+        <div className="flex items-center gap-2">
+          {forecast.count > 0 && (
+            <a
+              href="/shows/receita-agendada/export"
+              className="btn-secondary text-sm"
+              download
+            >
+              ⬇ CSV
+            </a>
+          )}
+          <Link href="/shows" className="btn-secondary">
+            ← Shows
+          </Link>
+        </div>
       </div>
 
       {forecast.count === 0 ? (

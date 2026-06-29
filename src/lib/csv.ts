@@ -34,6 +34,7 @@ import {
   type FeeDistribution,
   type FeeTrend,
   type CashFlowMonth,
+  type BookedRevenueForecast,
   type YearlyHistory,
   type IncomeMix,
   type ExpenseMix,
@@ -1395,6 +1396,57 @@ export function cashFlowToCsv(
     centsToCsvAmount(totalReceived),
     centsToCsvAmount(totalPaid),
     centsToCsvAmount(totalReceived - totalPaid),
+  ]);
+  return toCsv(out, delimiter);
+}
+
+// ── Receita agendada (pipeline de cachês futuros mês a mês) ───────────────────
+
+export const BOOKED_REVENUE_CSV_HEADERS = [
+  "Mês",
+  "Shows",
+  "Confirmado (R$)",
+  "A confirmar (R$)",
+  "Total do mês (R$)",
+] as const;
+
+/**
+ * Serializa a receita agendada (`forecastBookedRevenue`) em CSV, pronto para
+ * download — espelha a tabela "Receita agendada" de `/shows/receita-agendada`.
+ * Uma linha por mês COM shows futuros (`forecast.months`, em ordem cronológica
+ * crescente), com a contagem de shows, o valor já confirmado (CONFIRMED/PLAYED),
+ * o ainda a confirmar (PROPOSED/sem status) e o total do mês (confirmado + a
+ * confirmar), encerrada numa linha "Total" com os agregados da tela
+ * (`count`/`confirmedTotal`/`tentativeTotal`/`total` — os mesmos números dos
+ * cards de destaque).
+ *
+ * Como em `gigCadenceToCsv`/`feeTrendToCsv`, a coluna "Mês" usa a chave ISO
+ * "YYYY-MM" (ordenável por máquina), e não o rótulo amigável "Jan 2026" da UI, e
+ * só meses com shows viram linha (a janela é aberta, do mês corrente em diante).
+ * A barra confirmado/total da página (informação visual, não tabular) não tem
+ * coluna; as colunas Confirmado/A confirmar já decompõem o total. Mesma convenção
+ * pt-BR dos irmãos (delimitador ";", decimal com vírgula). Pura.
+ */
+export function bookedRevenueToCsv(
+  forecast: BookedRevenueForecast,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(BOOKED_REVENUE_CSV_HEADERS)];
+  for (const m of forecast.months) {
+    out.push([
+      m.month,
+      String(m.count),
+      centsToCsvAmount(m.confirmed),
+      centsToCsvAmount(m.tentative),
+      centsToCsvAmount(m.total),
+    ]);
+  }
+  out.push([
+    "Total",
+    String(forecast.count),
+    centsToCsvAmount(forecast.confirmedTotal),
+    centsToCsvAmount(forecast.tentativeTotal),
+    centsToCsvAmount(forecast.total),
   ]);
   return toCsv(out, delimiter);
 }
