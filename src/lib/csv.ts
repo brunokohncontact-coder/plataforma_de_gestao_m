@@ -33,6 +33,7 @@ import {
   type WeekdayPerformance,
   type FeeDistribution,
   type FeeTrend,
+  type CashFlowMonth,
   type YearlyHistory,
   type IncomeMix,
   type ExpenseMix,
@@ -1343,6 +1344,57 @@ export function yearlyHistoryToCsv(
     centsToCsvAmount(history.totalExpense),
     centsToCsvAmount(history.net),
     "",
+  ]);
+  return toCsv(out, delimiter);
+}
+
+// ── Fluxo de caixa mês a mês (a textura por trás do burn rate) ────────────────
+
+export const CASH_FLOW_CSV_HEADERS = [
+  "Mês",
+  "Recebido (R$)",
+  "Pago (R$)",
+  "Líquido (R$)",
+] as const;
+
+/**
+ * Serializa o fluxo de caixa realizado mês a mês (`cashFlowByMonth`) em CSV,
+ * pronto para download — espelha a tira "Cenário alternativo · ritmo de gasto
+ * real" de `/financas/folego-de-caixa`. Uma linha por mês da janela de burn rate,
+ * em ordem cronológica crescente, com o recebido, o pago e o líquido (recebido −
+ * pago) do mês, encerrada numa linha "Total" com os somatórios da janela (o
+ * `received`/`paid`/`net` agregados, cujo `net ÷ janela` reproduz o `avgMonthlyNet`
+ * de `cashBurnRunway`).
+ *
+ * Diferente de `gigCadenceToCsv`/`feeTrendToCsv` (que só emitem meses ativos), o
+ * CSV emite **todos** os meses da janela, inclusive os zerados: numa série de
+ * caixa um mês de líquido 0 é informação (preserva a textura da tira, que mostra a
+ * janela inteira). A coluna "Mês" usa a chave ISO "YYYY-MM" (ordenável por
+ * máquina), e não o rótulo curto "jan" da UI. Mesma convenção pt-BR dos irmãos
+ * (delimitador ";", decimal com vírgula). Pura.
+ */
+export function cashFlowToCsv(
+  months: CashFlowMonth[],
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(CASH_FLOW_CSV_HEADERS)];
+  let totalReceived = 0;
+  let totalPaid = 0;
+  for (const m of months) {
+    out.push([
+      m.monthKey,
+      centsToCsvAmount(m.received),
+      centsToCsvAmount(m.paid),
+      centsToCsvAmount(m.net),
+    ]);
+    totalReceived += m.received;
+    totalPaid += m.paid;
+  }
+  out.push([
+    "Total",
+    centsToCsvAmount(totalReceived),
+    centsToCsvAmount(totalPaid),
+    centsToCsvAmount(totalReceived - totalPaid),
   ]);
   return toCsv(out, delimiter);
 }

@@ -4747,3 +4747,38 @@ contexto, decisão, justificativa e alternativas consideradas.
   smoke test (`next start`) → `/login` 200 e `/financas/crescimento` + `/financas/crescimento/export` 307 (auth-gated).
   `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss
   bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## D155 — Exportação CSV do fluxo de caixa mês a mês (`/financas/folego-de-caixa/export`) (Sessão 163)
+- **Contexto:** o card "Cenário alternativo · ritmo de gasto real" de `/financas/folego-de-caixa` (D101) traz a tira
+  `MonthlyFlowStrip` (D104) com o fluxo de caixa realizado mês a mês na janela de burn rate — a textura por trás da média de
+  queima (`avgMonthlyNet`). O item 10 dos próximos passos (PROGRESS) já apontava o fluxo de caixa mês a mês como o **candidato
+  natural** a exportação tabular entre as telas de Finanças que ainda não exportavam (a maioria das demais são cards de
+  cenário/projeção de número único, menos óbvias como planilha).
+- **Decisão:** novo serializador puro `cashFlowToCsv(months)` + `CASH_FLOW_CSV_HEADERS` em `src/lib/csv.ts`, recebendo a saída
+  de `cashFlowByMonth` (`CashFlowMonth[]`, de `@/lib/finance`). Colunas Mês/Recebido (R$)/Pago (R$)/Líquido (R$): uma linha por
+  mês da janela, em ordem cronológica crescente, encerrada numa linha "Total" com os somatórios da janela (recebido/pago/líquido
+  agregados; o `net ÷ janela` reproduz o `avgMonthlyNet` de `cashBurnRunway`). Rota `/financas/folego-de-caixa/export` reusa a
+  mesma consulta/`cashFlowByMonth` da página + BOM UTF-8; botão "⬇ CSV" no card "Cenário alternativo", ao lado das pílulas de
+  janela, só com movimento de caixa na janela (`months.some(...)`, mesmo gate da tira).
+- **Janela parametrizável (`?meses=`):** diferente dos exports de série temporal sem recorte (cadência D150, evolução do cachê
+  D151, crescimento D154), aqui a janela **é** o eixo (3/6/12/24 meses, `BURN_WINDOW_PRESETS`/D102). A rota lê `?meses=` e o
+  sanea com `parseBurnWindow` (a mesma da página), e o botão propaga a janela ativa; o nome do arquivo carrega a janela
+  (`fluxo-de-caixa-mensal-{n}m.csv`) para distinguir downloads de janelas diferentes.
+- **Emite todos os meses da janela, inclusive zerados:** distinto de `gigCadenceToCsv`/`feeTrendToCsv` (só meses ativos), o CSV
+  emite a janela inteira — `cashFlowByMonth` já pré-popula meses sem movimento como zerados. Numa série de caixa um mês de
+  líquido 0 é informação (preserva a textura da tira, que mostra a janela completa); é a mesma postura de
+  `monthlySeasonalityToCsv` (12 meses sempre, D152). A coluna "Mês" usa a chave ISO "YYYY-MM" (ordenável por máquina), não o
+  rótulo curto "jan" da UI.
+- **Semântica herdada de `cashFlowByMonth`:** só caixa realizado (`received === true`); a janela são os meses **completos**
+  anteriores ao mês corrente (exclui o mês em curso); INCOME soma em "recebido", EXPENSE em "pago", líquido = recebido − pago. O
+  serializador é fino e não reinterpreta nada disso; `now`/janela são injetáveis (puro, testável).
+- **Alternativas consideradas:** (a) levar também o veredito de tendência (`cashFlowTrend`/D126) como metalinha — descartado por
+  poluir a leitura tabular; quem quiser a direção tem o badge na tela. (b) exportar o número de fôlego/burn agregado (cenário de
+  card único) — descartado: cabe melhor na tela; o valor de planilha está na série mês a mês, não no número-resumo.
+- **Testes:** **+3** em `csv.test.ts` (`describe("cashFlowToCsv")`): só cabeçalho + todos os meses da janela zerados + Total
+  zerado sem movimento; uma linha por mês da janela (recebido/pago/líquido, mês parado zerado) em ordem cronológica + Total;
+  ignora não-recebidos e movimento fora da janela (mês corrente e anterior à janela). **951 testes** no total (eram 948).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **951 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/financas/folego-de-caixa` + `/financas/folego-de-caixa/export?meses=12` 307
+  (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
+  postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
