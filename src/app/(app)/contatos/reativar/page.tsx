@@ -70,9 +70,16 @@ export default async function ContatosReativarPage() {
             {list.staleDays} dias sem show. Um alô pode render o próximo gig.
           </p>
         </div>
-        <Link href="/contatos" className="btn-secondary">
-          ← Contatos
-        </Link>
+        <div className="flex items-center gap-2">
+          {list.count > 0 && (
+            <a href="/contatos/reativar/export" className="btn-secondary">
+              ⬇ CSV
+            </a>
+          )}
+          <Link href="/contatos" className="btn-secondary">
+            ← Contatos
+          </Link>
+        </div>
       </div>
 
       {list.count === 0 ? (

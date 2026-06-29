@@ -9,7 +9,23 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **964 testes** verdes após a Sessão 165
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **967 testes** verdes após a Sessão 166
+(**exportação CSV dos contatos para reativar** em `/contatos/reativar/export` — a tela "Contatos para reativar"
+(`findContactsToReengage`, a fila de follow-up dos dormentes: quem já tocou, está sem nada agendado e há mais de `staleDays`=60
+dias sem show) ganhou botão de exportação, fechando mais uma lacuna tabular do lado Contatos (ao lado de
+ranking/rentabilidade/retenção). Novo serializador puro `reengageToCsv(list)` + `REENGAGE_CSV_HEADERS` em `src/lib/csv.ts`
+(espelho de `clientRetentionToCsv`/D153: genérico, reusa `contactRoleLabel`/`csvDate`/`centsToCsvAmount`) recebe a `ReengageList`
+já computada e emite uma linha por dormente em `list.rows`, na mesma ordem da página (mais esquecidos primeiro, desempate por
+cachê histórico, depois nome pt-BR), encerrada numa linha "Total" com a soma de shows passados e do cachê histórico da fila.
+Colunas Contato/Papel/Último show/Dias sem contato/Shows/Cachê histórico (R$). A coluna "Dias sem contato" traz o
+`daysSinceLastShow` cru (legível por máquina), não o "há 2 meses" relativo da UI; "Papel" entra para a planilha abrir
+auto-suficiente. Sem `?ano=` (a tela é fotografia do estado dormente agora). Rota `/contatos/reativar/export` reusa a mesma
+consulta/`findContactsToReengage` da página + BOM UTF-8; nome fixo `contatos-para-reativar.csv`; botão "⬇ CSV" no cabeçalho só
+com `list.count > 0`. Herda a semântica de `findContactsToReengage`: cancelados de fora, cachê por contato. **+3 testes**
+(`describe("reengageToCsv")`: só cabeçalho + Total zerado sem dormentes; uma linha por dormente em ordem de defasagem + Total;
+ignora quem tem show futuro, só-cancelado ou ainda recente). Smoke test (`next start`) → `/login` 200 e `/contatos/reativar` +
+`/contatos/reativar/export` 307 (auth-gated). `npm audit` sem novas vulnerabilidades (mesmos advisories Next/postcss da D6). Ver
+D159 — D157 segue reservado à PR paralela #180 (export da agenda). Segue 964 da Sessão 165
 (**ritmo do mês corrente** em `/financas/ritmo-do-mes` — novo helper puro `currentMonthPace(txs, { now?, months? })` em
 `src/lib/finance.ts` responde "estou faturando no ritmo de um mês normal?": soma o que já foi lançado no mês corrente (regime de
 competência, pela `date`), projeta o fechamento por extrapolação pro-rata (valor ÷ fração do mês decorrida, UTC) e compara a
