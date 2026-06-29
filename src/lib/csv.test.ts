@@ -52,6 +52,8 @@ import {
   CLIENT_RETENTION_CSV_HEADERS,
   yearlyHistoryToCsv,
   YEARLY_HISTORY_CSV_HEADERS,
+  cashFlowToCsv,
+  CASH_FLOW_CSV_HEADERS,
   type CsvTransaction,
   type CsvShow,
   type CsvProfitShow,
@@ -68,6 +70,7 @@ import {
   gigSeasonality,
   gigCadence,
   feeTrend,
+  cashFlowByMonth,
   yearlyHistory,
   weekdayPerformance,
   feeDistribution,
@@ -1483,5 +1486,79 @@ describe("yearlyHistoryToCsv", () => {
     expect(lines[1]).toBe("2024;500,00;500,00;0,00;");
     expect(lines[2]).toBe("2026;800,00;0,00;800,00;novo");
     expect(lines[3]).toBe("Total;1300,00;500,00;800,00;");
+  });
+});
+
+describe("cashFlowToCsv", () => {
+  // `now` fixo: a janela são os meses COMPLETOS antes do mês corrente (exclui o
+  // mês em curso). Com NOW em julho e janela 3, a janela é abr/mai/jun de 2026.
+  const NOW = "2026-07-15T00:00:00.000Z";
+  const tx = (
+    type: TxLike["type"],
+    amount: number,
+    date: string,
+    received = true,
+  ): TxLike => ({
+    type,
+    amount,
+    category: "",
+    date,
+    received,
+    showId: null,
+  });
+
+  it("só cabeçalho + todos os meses da janela zerados + Total zerado sem movimento", () => {
+    const csv = cashFlowToCsv(cashFlowByMonth([], { now: NOW, months: 3 }));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(CASH_FLOW_CSV_HEADERS.join(";"));
+    // cabeçalho + 3 meses da janela (abr, mai, jun) + Total — janela cheia mesmo vazia.
+    expect(lines).toHaveLength(5);
+    expect(lines[1]).toBe("2026-04;0,00;0,00;0,00");
+    expect(lines[2]).toBe("2026-05;0,00;0,00;0,00");
+    expect(lines[3]).toBe("2026-06;0,00;0,00;0,00");
+    expect(lines[4]).toBe("Total;0,00;0,00;0,00");
+  });
+
+  it("uma linha por mês da janela (recebido/pago/líquido) em ordem cronológica + Total", () => {
+    const months = cashFlowByMonth(
+      [
+        tx("INCOME", 300000, "2026-04-10T00:00:00.000Z"),
+        tx("EXPENSE", 100000, "2026-04-20T00:00:00.000Z"),
+        // maio sem movimento → linha zerada (preserva a textura da janela)
+        tx("EXPENSE", 50000, "2026-06-05T00:00:00.000Z"),
+      ],
+      { now: NOW, months: 3 },
+    );
+    const lines = cashFlowToCsv(months).split("\r\n");
+    expect(lines).toHaveLength(5);
+    // abr: recebeu 3000, pagou 1000, líquido +2000.
+    expect(lines[1]).toBe("2026-04;3000,00;1000,00;2000,00");
+    // mai: parado, mas a linha aparece zerada.
+    expect(lines[2]).toBe("2026-05;0,00;0,00;0,00");
+    // jun: só pagou 500, líquido negativo.
+    expect(lines[3]).toBe("2026-06;0,00;500,00;-500,00");
+    // Total: recebido 3000, pago 1500, líquido +1500.
+    expect(lines[4]).toBe("Total;3000,00;1500,00;1500,00");
+  });
+
+  it("ignora não-recebidos e movimento fora da janela (mês corrente e anterior à janela)", () => {
+    const months = cashFlowByMonth(
+      [
+        tx("INCOME", 200000, "2026-05-10T00:00:00.000Z"),
+        // pendente (received=false) não entra no caixa
+        tx("INCOME", 999900, "2026-05-12T00:00:00.000Z", false),
+        // mês corrente (julho) está fora da janela
+        tx("INCOME", 500000, "2026-07-02T00:00:00.000Z"),
+        // anterior à janela (março) está fora
+        tx("EXPENSE", 700000, "2026-03-20T00:00:00.000Z"),
+      ],
+      { now: NOW, months: 3 },
+    );
+    const lines = cashFlowToCsv(months).split("\r\n");
+    expect(lines).toHaveLength(5);
+    expect(lines[1]).toBe("2026-04;0,00;0,00;0,00");
+    expect(lines[2]).toBe("2026-05;2000,00;0,00;2000,00");
+    expect(lines[3]).toBe("2026-06;0,00;0,00;0,00");
+    expect(lines[4]).toBe("Total;2000,00;0,00;2000,00");
   });
 });

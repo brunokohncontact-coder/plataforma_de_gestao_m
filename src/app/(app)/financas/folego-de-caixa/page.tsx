@@ -244,13 +244,25 @@ function BurnRunwayCard({
     verdict,
   } = burn;
 
+  // O CSV (e a tira) só fazem sentido com algum movimento de caixa na janela.
+  const hasMovement = months.some((m) => m.received !== 0 || m.paid !== 0);
+
   return (
     <section className="card">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
           Cenário alternativo · ritmo de gasto real
         </p>
-        <div className="flex flex-wrap items-center gap-1" aria-label="Janela de meses">
+        <div className="flex flex-wrap items-center gap-2">
+          {hasMovement && (
+            <a
+              href={`/financas/folego-de-caixa/export?meses=${window}`}
+              className="btn-secondary"
+            >
+              ⬇ CSV
+            </a>
+          )}
+          <div className="flex flex-wrap items-center gap-1" aria-label="Janela de meses">
           {BURN_WINDOW_PRESETS.map((m) => {
             const active = m === window;
             return (
@@ -269,6 +281,7 @@ function BurnRunwayCard({
               </Link>
             );
           })}
+          </div>
         </div>
       </div>
       <p className="mt-1 text-sm text-gray-500">

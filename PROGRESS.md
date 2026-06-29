@@ -9,8 +9,24 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **948 testes**
-verdes após a Sessão 162 (**exportação CSV do crescimento ano a ano** em `/financas/crescimento/export` — a tela
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **951 testes**
+verdes após a Sessão 163 (**exportação CSV do fluxo de caixa mês a mês** em `/financas/folego-de-caixa/export` — a tira
+"Cenário alternativo · ritmo de gasto real" (`cashFlowByMonth`, o fluxo de caixa realizado por trás da média de queima/burn
+rate) ganhou botão de exportação — o **candidato natural** apontado no item 10 dos próximos passos. Novo serializador puro
+`cashFlowToCsv(months)` + `CASH_FLOW_CSV_HEADERS` em `src/lib/csv.ts` recebe a saída de `cashFlowByMonth` (`CashFlowMonth[]`, de
+`@/lib/finance`) e emite uma linha por **mês da janela** (cronológica crescente), com recebido, pago e líquido (recebido − pago)
+do mês, encerrada numa linha "Total" com os somatórios da janela (o `net ÷ janela` reproduz o `avgMonthlyNet` de
+`cashBurnRunway`). Colunas Mês/Recebido (R$)/Pago (R$)/Líquido (R$). **Diferente de cadência/evolução do cachê** (sem recorte),
+a janela **é** o eixo: a rota lê `?meses=` (saneada por `parseBurnWindow`, pílulas 3/6/12/24 da D102), o botão propaga a janela
+ativa e o nome do arquivo a carrega (`fluxo-de-caixa-mensal-{n}m.csv`). **Diferente de cadência/evolução** (só meses ativos), o
+CSV emite a janela inteira, inclusive meses zerados — numa série de caixa um líquido 0 é informação (preserva a textura da
+tira), como `monthlySeasonalityToCsv`. Mês na chave ISO "YYYY-MM" (ordenável), não o "jan" da UI. Herda de `cashFlowByMonth`: só
+caixa realizado (`received`), meses **completos** anteriores ao mês corrente (exclui o em curso). Botão "⬇ CSV" no card, ao lado
+das pílulas, só com movimento na janela (`months.some(...)`, mesmo gate da tira). **+3 testes** (`describe("cashFlowToCsv")`: só
+cabeçalho + meses da janela zerados + Total zerado sem movimento; uma linha por mês (mês parado zerado) em ordem cronológica +
+Total; ignora não-recebidos e movimento fora da janela). Smoke test (`next start`) → `/login` 200 e `/financas/folego-de-caixa`
++ `/financas/folego-de-caixa/export?meses=12` 307 (auth-gated). `npm audit` sem novas vulnerabilidades (mesmos advisories
+Next/postcss da D6). Ver D155; segue 948 da Sessão 162 (**exportação CSV do crescimento ano a ano** em `/financas/crescimento/export` — a tela
 "Crescimento ano a ano" (`yearlyHistory`, a trajetória de longo prazo: a carreira está faturando mais com o tempo?) ganhou
 botão de exportação, mais uma lacuna de exportação tabular das Finanças fechada (irmã das já-exportáveis
 anual/trimestral/sazonalidade/variação/fontes/composição). Novo serializador puro `yearlyHistoryToCsv(history)` +
@@ -3108,10 +3124,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    (`/financas/composicao-despesas` + export) entregue na Sessão 157 — `expenseMixYears` + `?ano=`, espelho de D148 no eixo de
    despesa, ver D149. **Exportação CSV do crescimento ano a ano** entregue na Sessão 162 — `yearlyHistoryToCsv` +
    `YEARLY_HISTORY_CSV_HEADERS` em `src/lib/csv.ts` + `/financas/crescimento/export` (Ano/Receitas/Despesas/Resultado/Variação
-   do resultado % + linha Total), série inteira por design, botão "⬇ CSV" só com anos, ver D154. Próximo possível — as telas
-   de Finanças que ainda não exportam são sobretudo painéis de cenário/projeção (metas, projeção-ano, ponto-de-equilíbrio,
-   fôlego/fluxo de caixa, reserva-impostos): avaliar caso a caso se o tabular agrega (ex.: fluxo de caixa mês a mês é candidato
-   natural; cards de cenário único, menos).
+   do resultado % + linha Total), série inteira por design, botão "⬇ CSV" só com anos, ver D154. **Exportação CSV do fluxo de caixa
+   mês a mês** entregue na Sessão 163 — `cashFlowToCsv` + `CASH_FLOW_CSV_HEADERS` em `src/lib/csv.ts` +
+   `/financas/folego-de-caixa/export` (Mês/Recebido/Pago/Líquido + linha Total), janela parametrizável via `?meses=`
+   (`parseBurnWindow`), nome `fluxo-de-caixa-mensal-{n}m.csv`, emite a janela inteira (meses zerados inclusos), botão "⬇ CSV" no
+   card "Cenário alternativo" só com movimento, ver D155 — fecha o candidato natural apontado abaixo. Próximo possível — as
+   telas de Finanças que ainda não exportam são agora sobretudo painéis de cenário/projeção de número único (metas,
+   projeção-ano, ponto-de-equilíbrio, reserva-impostos): menos óbvias como planilha; avaliar caso a caso se o tabular agrega.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)
