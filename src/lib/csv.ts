@@ -49,6 +49,7 @@ import {
   type YearToDatePace,
   type MonthlyGoalProgress,
   type MonthGoalStatus,
+  type QuarterlyGoalProgress,
 } from "./finance";
 import type {
   ClientRetention,
@@ -1850,6 +1851,57 @@ export function monthlyGoalProgressToCsv(
     centsToCsvAmount(Math.max(0, monthly.goal - monthly.realized)),
     "",
     `${monthly.hitCount}/12 batidos`,
+  ]);
+  return toCsv(out, delimiter);
+}
+
+export const QUARTERLY_GOAL_CSV_HEADERS = [
+  "Trimestre",
+  "Alvo (R$)",
+  "Recebido (R$)",
+  "Falta (R$)",
+  "Atingido (%)",
+  "Situação",
+] as const;
+
+/**
+ * Serializa a quebra trimestral da meta de faturamento (`quarterlyGoalProgress`)
+ * em CSV — espelho mais grosso de `monthlyGoalProgressToCsv` (a meta anual em 4
+ * alvos iguais em vez de 12), reflete o card "Meta por trimestre" de
+ * `/financas/metas`. Uma linha por trimestre (1º→4º tri), com o alvo do trimestre,
+ * o recebido (caixa), quanto falta (`remaining`), o percentual atingido (via
+ * `csvShare`) e a situação rotulada (Batido/Abaixo/Em andamento/A seguir), reusando
+ * o mesmo `MONTH_GOAL_STATUS_LABELS` (o status trimestral é o mesmo union do mensal).
+ *
+ * Encerra numa linha "Total" cujo alvo é a meta anual e cujo recebido é a soma dos
+ * 4 trimestres (a participação do Total fica em branco — 100% por construção, como
+ * no irmão mensal); a coluna Situação do Total resume os trimestres batidos
+ * ("N/4 batidos"). O ano concreto vai no nome do arquivo
+ * (`metas-trimestral-{ano}.csv`), por isso não vira coluna. Mesma convenção pt-BR
+ * dos irmãos (";" e decimal com vírgula). Pura.
+ */
+export function quarterlyGoalProgressToCsv(
+  quarterly: QuarterlyGoalProgress,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(QUARTERLY_GOAL_CSV_HEADERS)];
+  for (const q of quarterly.quarters) {
+    out.push([
+      q.label,
+      centsToCsvAmount(q.target),
+      centsToCsvAmount(q.realized),
+      centsToCsvAmount(q.remaining),
+      csvShare(q.ratio),
+      MONTH_GOAL_STATUS_LABELS[q.status],
+    ]);
+  }
+  out.push([
+    "Total",
+    centsToCsvAmount(quarterly.goal),
+    centsToCsvAmount(quarterly.realized),
+    centsToCsvAmount(Math.max(0, quarterly.goal - quarterly.realized)),
+    "",
+    `${quarterly.hitCount}/4 batidos`,
   ]);
   return toCsv(out, delimiter);
 }

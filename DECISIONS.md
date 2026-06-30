@@ -5208,3 +5208,39 @@ contexto, decisão, justificativa e alternativas consideradas.
   0 avisos) verdes; typecheck (`tsc --noEmit`) limpo; **1005 testes** (`vitest run`). `npm audit` **inalterado** vs.
   baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios);
   **nenhuma dependência nova**.
+
+## D168 — Exportação CSV da meta de faturamento por trimestre (`/financas/metas/trimestral/export` + `quarterlyGoalProgressToCsv`) (Sessão 175)
+- **Contexto:** a tela "Meta de faturamento" (`/financas/metas`) tem, além do card "Meta por mês" (já exportável via D167),
+  um card "Meta por trimestre" (`quarterlyGoalProgress`, D83) que quebra a meta anual em 4 alvos iguais e cruza cada um com
+  o recebido (caixa) do trimestre — genuinamente tabular (4 linhas: alvo × recebido × situação). Era a **rota irmã** explicitamente
+  adiada na D167(c) ("é a mesma quebra mais grossa, vale uma rota irmã própria se pedir") e o "próximo possível" do item 10 dos
+  próximos passos. Os demais quadros da página (progresso anual, ritmo necessário, comparativo de cenários) seguem número-único
+  e fora do CSV, como na D167.
+- **Decisão:** novo serializador puro `quarterlyGoalProgressToCsv(quarterly)` + `QUARTERLY_GOAL_CSV_HEADERS` em `src/lib/csv.ts`
+  (recebe a `QuarterlyGoalProgress` já computada por `quarterlyGoalProgress`, de `@/lib/finance`). Espelho mais grosso de
+  `monthlyGoalProgressToCsv` (D167): **uma linha por trimestre** (1º→4º tri), com o alvo (`target`), o recebido (`realized`),
+  quanto falta (`remaining`), o percentual atingido (`ratio` via `csvShare`) e a situação rotulada em pt-BR
+  (Batido/Abaixo/Em andamento/A seguir). Reusa **o mesmo** `MONTH_GOAL_STATUS_LABELS` da D167 sem renomear — `QuarterGoalStatus`
+  e `MonthGoalStatus` são o mesmo union (`type MonthGoalStatus = QuarterGoalStatus`), então o mapa de rótulos é literalmente o
+  mesmo; não vale um clone só pelo nome. Colunas Trimestre / Alvo (R$) / Recebido (R$) / Falta (R$) / Atingido (%) / Situação.
+  Rota `/financas/metas/trimestral/export?ano=YYYY` (sub-rota de `metas/`, ao lado da mensal em `metas/export`) reusa a mesma
+  consulta da página (meta do ano + transações) + BOM UTF-8; nome `metas-trimestral-{ano}.csv`; botão "⬇ CSV" no cabeçalho do
+  card "Meta por trimestre" — surge na mesma condição que renderiza o card (`quarterly.goal > 0`), passando o `year` para o card.
+- **Linha Total:** encerra com "Total" cujo alvo é a meta anual (`quarterly.goal`), recebido é a soma dos 4 trimestres
+  (`quarterly.realized`) e falta é `max(0, goal − realized)`; a coluna Atingido (%) do Total fica **em branco** (100% por
+  construção, como na D167) e a Situação resume os trimestres batidos ("N/4 batidos", espelhando o "N de 4 batidos" da página).
+- **Estrutura da rota:** colocada em `metas/trimestral/export` (e não, p.ex., num `?periodo=trimestral` na rota mensal existente)
+  para manter cada export com um único formato/nome de arquivo fixo e a mesma forma das outras rotas de export do app —
+  evita ramificar a rota mensal por query e mantém a paridade de padrão com D167.
+- **Alternativas consideradas:** (a) parametrizar a rota mensal com `?granularidade=` — **descartado**: dobra a lógica de uma
+  rota e o nome do arquivo passa a depender de query; rota dedicada é mais simples e segue o padrão; (b) renomear
+  `MONTH_GOAL_STATUS_LABELS` para algo neutro (`GOAL_STATUS_LABELS`) — **descartado** por ora: churn sem ganho, o tipo já é
+  compartilhado; renomear se um terceiro consumidor surgir.
+- **Testes:** **+4** em `csv.test.ts` (`describe("quarterlyGoalProgressToCsv")`: cabeçalho + 4 trimestres 1º→4º + Total;
+  alvo/recebido/falta/percentual/situação por trimestre cobrindo Batido/Em andamento/A seguir; linha Total com meta anual,
+  recebido somado e "N/4 batidos"; sem meta (0) → alvos zerados e "0/4 batidos"). **1009 testes** no total (eram 1005).
+- **DoD:** build de produção (`✓ Compiled successfully`, rota `/financas/metas/trimestral/export` registrada) e lint
+  (`next lint`, 0 avisos) verdes; typecheck (`tsc --noEmit`) limpo; **1009 testes** (`vitest run`); smoke test (`next start`) →
+  `/login` 200 e `/financas/metas/trimestral/export?ano=2026` 307 (auth-gated). `npm audit` **inalterado** vs. baseline
+  (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios);
+  **nenhuma dependência nova**.
