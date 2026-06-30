@@ -34,6 +34,7 @@ import {
   type FeeDistribution,
   type FeeTrend,
   type CashFlowMonth,
+  type CashflowProjection,
   type BookedRevenueForecast,
   type DueAgenda,
   type TxLike,
@@ -1447,6 +1448,67 @@ export function cashFlowToCsv(
     centsToCsvAmount(totalReceived),
     centsToCsvAmount(totalPaid),
     centsToCsvAmount(totalReceived - totalPaid),
+  ]);
+  return toCsv(out, delimiter);
+}
+
+// ── Projeção de caixa (saldo projetado mês a mês) ─────────────────────────────
+
+export const CASHFLOW_PROJECTION_CSV_HEADERS = [
+  "Mês",
+  "A receber (R$)",
+  "A pagar (R$)",
+  "Variação (R$)",
+  "Saldo ao fim (R$)",
+] as const;
+
+/**
+ * Serializa a projeção de caixa (`projectCashflow`) em CSV, pronto para download —
+ * espelha a tabela "Mês a mês" de `/financas/fluxo-de-caixa`. Uma linha por mês do
+ * horizonte (do mês atual em diante, ordem cronológica crescente), com o a receber,
+ * o a pagar, a variação (a receber − a pagar) e o **saldo de caixa projetado ao fim
+ * do mês** (acumulado a partir do caixa realizado atual).
+ *
+ * Diferente de `cashFlowToCsv` (caixa realizado, sem saldo acumulado), aqui a coluna
+ * "Saldo ao fim" carrega o saldo corrente do mês — por isso a linha "Total" traz a
+ * soma do a receber/a pagar/variação do horizonte e, na última coluna, o **saldo
+ * projetado final** (= caixa atual + soma das variações = "Saldo ao fim" do último
+ * mês), não uma soma de saldos (que não teria sentido). Como em `cashFlowToCsv`,
+ * emite **todos** os meses do horizonte, inclusive os sem pendência (variação 0):
+ * num runway de caixa um mês parado ainda move a linha do tempo do saldo. A coluna
+ * "Mês" usa a chave ISO "YYYY-MM" (ordenável), não o rótulo curto da UI. Mesma
+ * convenção pt-BR dos irmãos (";" e decimal com vírgula). Pura.
+ */
+export function cashflowProjectionToCsv(
+  projection: CashflowProjection,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(CASHFLOW_PROJECTION_CSV_HEADERS)];
+  let totalIncome = 0;
+  let totalExpense = 0;
+  for (const m of projection.months) {
+    out.push([
+      m.month,
+      centsToCsvAmount(m.income),
+      centsToCsvAmount(m.expense),
+      centsToCsvAmount(m.net),
+      centsToCsvAmount(m.endBalance),
+    ]);
+    totalIncome += m.income;
+    totalExpense += m.expense;
+  }
+  // Saldo final projetado: "Saldo ao fim" do último mês, ou o caixa atual se o
+  // horizonte estiver vazio (nunca acontece: horizonte mínimo é 1).
+  const endBalance =
+    projection.months.length > 0
+      ? projection.months[projection.months.length - 1].endBalance
+      : projection.startBalance;
+  out.push([
+    "Total",
+    centsToCsvAmount(totalIncome),
+    centsToCsvAmount(totalExpense),
+    centsToCsvAmount(totalIncome - totalExpense),
+    centsToCsvAmount(endBalance),
   ]);
   return toCsv(out, delimiter);
 }

@@ -9,7 +9,16 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **988 testes** verdes após o **nudge de ritmo do ano
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **995 testes** verdes após a **exportação CSV da
+projeção de caixa** em `/financas/fluxo-de-caixa/export` (Sessão 171, D164 — a tela "Fluxo de caixa projetado"
+(`projectCashflow`) ganhou botão "⬇ CSV"; serializador puro `cashflowProjectionToCsv(projection)` +
+`CASHFLOW_PROJECTION_CSV_HEADERS` em `src/lib/csv.ts` emite uma linha por mês do horizonte (Mês/A receber/A pagar/Variação/
+Saldo ao fim, ISO "YYYY-MM", todos os meses inclusive os parados) + linha "Total" (soma dos fluxos + saldo projetado final
+na coluna de saldo, distinto da soma-de-saldos sem sentido); horizonte compartilhado via `parseCashflowHorizon`/
+`CASHFLOW_HORIZON_PRESETS`/`CASHFLOW_HORIZON_DEFAULT` extraídos para `@/lib/finance` (preset-only, distinto do clamp de
+`parseBurnWindow`; página passou a importá-los no lugar do `resolveHorizon` local); rota reusa consulta+horizonte da página
++ BOM UTF-8, nome `fluxo-de-caixa-projetado-{n}m.csv`, botão só com `hasPending || startBalance !== 0`; **+7 testes**)
+sobre os **988 testes** do **nudge de ritmo do ano
 no Painel** (Sessão 170, D163 — novo helper puro `yearToDatePaceHeadline(pace)` em `src/lib/finance.ts`, espelho de
 `cashBurnHeadline`/`geoConcentrationHeadline`: decide só a exibição a partir do `yearToDatePace` já computado e mostra a
 manchete **só quando `behind`** — atrás do mesmo ponto do ano passado; `YTD_PACE_CRITICAL_RATIO=0.75` escala para 🔴/vermelho
@@ -3214,8 +3223,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `dueAgendaToCsv` + `DUE_AGENDA_CSV_HEADERS` em `src/lib/csv.ts` + `/financas/agenda/export`
    (Vencimento/Descrição/Categoria/Janela/Tipo/Dias até vencer/Show/A receber/A pagar + linha Total), achata as quatro janelas de
    `buildDueAgenda` na ordem canônica, valor em duas colunas (somável), rótulos de janela compartilhados via `DUE_BUCKET_LABELS`,
-   nome fixo `agenda-pagar-receber.csv`, botão "⬇ CSV" só com `agenda.count > 0`, ver D157. Próximo possível — as
-   telas de Finanças que ainda não exportam são agora sobretudo painéis de cenário/projeção de número único (metas,
+   nome fixo `agenda-pagar-receber.csv`, botão "⬇ CSV" só com `agenda.count > 0`, ver D157. **Exportação CSV da projeção de
+   caixa** entregue na Sessão 171 — `cashflowProjectionToCsv` + `CASHFLOW_PROJECTION_CSV_HEADERS` em `src/lib/csv.ts` +
+   `/financas/fluxo-de-caixa/export` (Mês/A receber/A pagar/Variação/Saldo ao fim + linha Total cujo saldo é o projetado
+   final, não soma-de-saldos), horizonte `?meses=` compartilhado via `parseCashflowHorizon`/`CASHFLOW_HORIZON_PRESETS`
+   (preset-only, distinto do clamp de `parseBurnWindow`), nome `fluxo-de-caixa-projetado-{n}m.csv`, emite a janela inteira
+   (meses parados inclusos), botão "⬇ CSV" só com `hasPending || startBalance !== 0`, ver D164. Próximo possível — as
+   telas de Finanças que ainda não exportam são agora **só** painéis de cenário/projeção de número único (metas,
    projeção-ano, ponto-de-equilíbrio, reserva-impostos): menos óbvias como planilha; avaliar caso a caso se o tabular agrega.
 
 ## Bloqueios / dúvidas (para validação humana)

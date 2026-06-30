@@ -5060,3 +5060,43 @@ contexto, decisão, justificativa e alternativas consideradas.
   smoke test (`next start`) → `/login` 200 e `/dashboard` 307 (auth-gated). `npm audit` **inalterado** vs. baseline
   (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma
   dependência nova**.
+
+## D164 — Exportação CSV da projeção de caixa (`/financas/fluxo-de-caixa/export` + `cashflowProjectionToCsv`) (Sessão 171)
+- **Contexto:** a tela "Fluxo de caixa projetado" (`/financas/fluxo-de-caixa`, `projectCashflow`, F3) mostra uma tabela
+  mês a mês (Mês / A receber / A pagar / Variação / Saldo ao fim) do saldo de caixa projetado a partir do caixa realizado
+  atual, com horizonte parametrizável (`?meses=` 3/6/12/24, default 6) — mas era a última tela de **projeção tabular** das
+  Finanças sem exportação CSV (suas irmãs anual/trimestral/sazonalidade/variação/fontes/composição/crescimento/fôlego já
+  exportavam). Item 10 dos próximos passos: as telas sem export que sobram são sobretudo painéis de cenário de número único;
+  esta é a exceção — uma série multi-linha que abre limpa como planilha de planejamento.
+- **Decisão:** novo serializador puro `cashflowProjectionToCsv(projection)` + `CASHFLOW_PROJECTION_CSV_HEADERS` em
+  `src/lib/csv.ts` (recebe a `CashflowProjection` já computada por `projectCashflow`, de `@/lib/finance`); emite uma linha por
+  mês do horizonte (cronológica crescente), com a receber/a pagar/variação/saldo ao fim, encerrada numa linha "Total". Rota
+  `/financas/fluxo-de-caixa/export` reusa a mesma consulta e o mesmo horizonte da página + BOM UTF-8; nome
+  `fluxo-de-caixa-projetado-{n}m.csv`; botão "⬇ CSV" no cabeçalho da página (ao lado de "← Finanças"), propagando o horizonte
+  ativo, exibido com `hasPending || startBalance !== 0` (há algo a projetar ou um caixa de fato).
+- **Saldo no "Total":** diferente de `cashFlowToCsv`/D155 (caixa realizado, sem saldo acumulado), a coluna "Saldo ao fim"
+  carrega o saldo **corrente** projetado de cada mês. Por isso o "Total" traz a soma do a receber/a pagar/variação do
+  horizonte e, na última coluna, o **saldo projetado final** (= "Saldo ao fim" do último mês = caixa atual + Σ variações),
+  não uma soma de saldos (que seria sem sentido). Como em `cashFlowToCsv`, emite **todos** os meses do horizonte, inclusive
+  os sem pendência (variação 0): num runway de caixa um mês parado ainda move a linha do tempo do saldo. Mês na chave ISO
+  "YYYY-MM" (ordenável), não o rótulo curto da UI.
+- **Horizonte compartilhado (DRY):** extraído `CASHFLOW_HORIZON_PRESETS`/`CASHFLOW_HORIZON_DEFAULT` + parser puro
+  `parseCashflowHorizon(raw)` para `@/lib/finance` (logo após `projectCashflow`), e a página passou a importá-los no lugar
+  do `resolveHorizon`/`HORIZON_OPTIONS` locais — assim página e export honram exatamente o mesmo conjunto de horizontes.
+  **Diferente de `parseBurnWindow`** (que clampa qualquer inteiro para [1,24]), `parseCashflowHorizon` é **preset-only**:
+  valor fora de {3,6,12,24} cai no default — fiel ao comportamento que a página já tinha (`.includes(n)`).
+- **Alternativas consideradas:** (a) reusar `parseBurnWindow` no export — **descartado**, mudaria a semântica preset-only
+  da página (ex.: `?meses=5` viraria 5 em vez de 6); (b) inserir uma linha "Caixa atual" no corpo do CSV para tornar o
+  saldo inicial explícito — **descartado**, quebra o padrão "uma linha por mês + Total" dos irmãos; o saldo inicial é
+  recuperável do primeiro mês (Saldo ao fim − Variação) e o "Total" já entrega o saldo final; (c) gate só por `hasPending`
+  — **ajustado** para `hasPending || startBalance !== 0`, para um músico com caixa de fato mas sem pendências ainda poder
+  exportar o runway plano.
+- **Testes:** **+3** em `csv.test.ts` (`describe("cashflowProjectionToCsv")`: sem movimento → saldo constante por mês +
+  Total; acumula o saldo a partir do caixa atual e o Total soma fluxos e traz o saldo final; saldo final negativo) e **+4**
+  em `finance.test.ts` (`describe("parseCashflowHorizon")`: aceita cada preset; default p/ ausente/vazio/não-numérico;
+  default p/ inteiro fora dos presets, distinto do clamp de `parseBurnWindow`; usa o primeiro de um param repetido).
+  **995 testes** no total (eram 988).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **995 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/financas/fluxo-de-caixa` + `/financas/fluxo-de-caixa/export` (+ `?meses=12`)
+  307 (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do
+  Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.

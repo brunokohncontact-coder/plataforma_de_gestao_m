@@ -3077,6 +3077,30 @@ export function projectCashflow(
   return { startBalance, months };
 }
 
+/** Horizontes (em meses) oferecidos no seletor da projeção de caixa. */
+export const CASHFLOW_HORIZON_PRESETS = [3, 6, 12, 24] as const;
+
+/** Horizonte default da projeção de caixa (em meses). */
+export const CASHFLOW_HORIZON_DEFAULT = 6;
+
+/**
+ * Lê o horizonte da projeção de caixa de um query param (`?meses=`) e o restringe
+ * aos presets oferecidos no seletor (`CASHFLOW_HORIZON_PRESETS`); qualquer outro
+ * valor — ausente, vazio, não-numérico ou fora dos presets — cai no
+ * `CASHFLOW_HORIZON_DEFAULT`. Aceita string única ou repetida (usa a primeira).
+ *
+ * Diferente de `parseBurnWindow` (que clampa para [1,24] qualquer inteiro), aqui
+ * só os quatro presets do seletor valem — assim a página `/financas/fluxo-de-caixa`
+ * e a rota de export compartilham exatamente o mesmo conjunto de horizontes. Pura.
+ */
+export function parseCashflowHorizon(raw: string | string[] | undefined): number {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const n = Number(value);
+  return (CASHFLOW_HORIZON_PRESETS as readonly number[]).includes(n)
+    ? n
+    : CASHFLOW_HORIZON_DEFAULT;
+}
+
 // ── Agenda de contas a pagar/receber (F3 — "o que vence quando") ────────────
 
 /** Janela de vencimento de uma pendência (relativa a hoje, comparada por dia UTC). */
