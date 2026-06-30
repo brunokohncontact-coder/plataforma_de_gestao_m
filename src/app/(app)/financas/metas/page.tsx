@@ -155,7 +155,7 @@ export default async function GoalsPage({
             <QuarterlyCard quarterly={quarterly} />
           )}
 
-          {monthly && monthly.goal > 0 && <MonthlyCard monthly={monthly} />}
+          {monthly && monthly.goal > 0 && <MonthlyCard monthly={monthly} year={year} />}
 
           <section className="card space-y-4">
             <div className="flex items-center justify-between gap-3">
@@ -487,15 +487,20 @@ function QuarterlyCard({ quarterly }: { quarterly: QuarterlyGoalProgress }) {
   );
 }
 
-function MonthlyCard({ monthly }: { monthly: MonthlyGoalProgress }) {
+function MonthlyCard({ monthly, year }: { monthly: MonthlyGoalProgress; year: number }) {
   return (
     <section className="card space-y-4">
-      <div>
-        <h2 className="font-semibold">Meta por mês</h2>
-        <p className="mt-1 text-sm text-gray-500">
-          A meta anual dividida em doze alvos iguais, cada um comparado ao que você
-          já recebeu no mês · {monthly.hitCount} de 12 batidos
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-semibold">Meta por mês</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            A meta anual dividida em doze alvos iguais, cada um comparado ao que você
+            já recebeu no mês · {monthly.hitCount} de 12 batidos
+          </p>
+        </div>
+        <a href={`/financas/metas/export?ano=${year}`} className="btn-secondary shrink-0">
+          ⬇ CSV
+        </a>
       </div>
 
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">

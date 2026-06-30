@@ -5171,3 +5171,40 @@ contexto, decisão, justificativa e alternativas consideradas.
   (`next start`) → `/login` 200 e `/financas/ritmo-do-ano` + `/financas/ritmo-do-ano/export` 307 (auth-gated). `npm audit`
   **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver
   D6/bloqueios); **nenhuma dependência nova**.
+
+## D167 — Exportação CSV da meta de faturamento por mês (`/financas/metas/export` + `monthlyGoalProgressToCsv`) (Sessão 174)
+- **Contexto:** a tela "Meta de faturamento" (`/financas/metas`) tem um card "Meta por mês" (`monthlyGoalProgress`, D87)
+  que quebra a meta anual em 12 alvos iguais e cruza cada um com o recebido (caixa) do mês — genuinamente tabular
+  (12 linhas: alvo × recebido × situação). Era a quebra mensal mais detalhada da página e a candidata mais óbvia das
+  telas de Finanças "de cenário" ainda sem CSV (a ressalva apontada no item 10 dos próximos passos: "metas… menos
+  óbvias como planilha; avaliar caso a caso se o tabular agrega"). Os outros quadros da página (progresso anual, ritmo
+  necessário, comparativo de cenários) são número-único/destaque — não tabulares — então ficam de fora; o trimestral
+  (`quarterlyGoalProgress`) é a mesma quebra mais grossa e cabe num mesmo padrão se pedir.
+- **Decisão:** novo serializador puro `monthlyGoalProgressToCsv(monthly)` + `MONTHLY_GOAL_CSV_HEADERS` em `src/lib/csv.ts`
+  (recebe a `MonthlyGoalProgress` já computada por `monthlyGoalProgress`, de `@/lib/finance`). Emite **uma linha por mês**
+  (jan→dez), com o alvo do mês (`target`), o recebido (`realized`), quanto falta (`remaining`), o percentual atingido
+  (`ratio` via `csvShare`, como na página) e a situação rotulada em pt-BR (Batido/Abaixo/Em andamento/A seguir, espelhando
+  o `GOAL_STATUS` da tela via novo mapa local `MONTH_GOAL_STATUS_LABELS`). Colunas Mês / Alvo (R$) / Recebido (R$) /
+  Falta (R$) / Atingido (%) / Situação. Rota `/financas/metas/export?ano=YYYY` reusa a mesma consulta da página (meta do
+  ano + transações) + BOM UTF-8; nome `metas-mensal-{ano}.csv` (o ano concreto vai no nome, como em D166); botão "⬇ CSV"
+  no cabeçalho do card "Meta por mês" — surge na mesma condição que renderiza o card (`monthly.goal > 0`).
+- **Linha Total:** encerra com "Total" cujo alvo é a meta anual (`monthly.goal`), recebido é a soma dos 12 meses
+  (`monthly.realized`) e falta é `max(0, goal − realized)`; a coluna Atingido (%) do Total fica **em branco** (100% por
+  construção, como em `clientConcentrationToCsv`/`incomeMixToCsv`) e a Situação resume os meses batidos ("N/12 batidos",
+  espelhando o "N de 12 batidos" da página). Distinto de D166 (`yearPaceToCsv`, sem Total) porque aqui as 12 linhas
+  somam de fato na meta anual.
+- **`?ano=` herdado da página:** ao contrário de D166 (tela "fotografia do agora", sem seletor de ano), a página de metas
+  já navega por ano (`?ano=`), então o export herda o mesmo `parseYear` (1970–2999, fallback ao ano atual) e exporta o ano
+  visível. Sem meta definida no ano, a planilha sai com alvos zerados (meta 0) e Total "0/12 batidos", espelhando o estado
+  "sem meta" — sem caso especial na rota.
+- **Alternativas consideradas:** (a) exportar também o resumo anual/ritmo necessário em linhas de contexto — **descartado**:
+  são número-único, não tabular, e polui o quadro de 12 linhas (mesma escolha de D166 quanto ao corte); (b) coluna "Mês"
+  numérica (1..12) em vez do rótulo "jan" — **descartado**: o rótulo curto pt-BR é o que a tela mostra e abre legível na
+  planilha; (c) exportar o trimestral junto — **adiado**: é a mesma quebra mais grossa, vale uma rota irmã própria se pedir.
+- **Testes:** **+4** em `csv.test.ts` (`describe("monthlyGoalProgressToCsv")`: cabeçalho + 12 meses jan→dez + Total;
+  alvo/recebido/falta/percentual/situação por mês cobrindo Batido/Abaixo/Em andamento/A seguir; linha Total com meta anual,
+  recebido somado e "N/12 batidos"; sem meta (0) → alvos zerados e "0/12 batidos"). **1005 testes** no total (eram 1001).
+- **DoD:** build de produção (`✓ Compiled successfully`, rota `/financas/metas/export` registrada) e lint (`next lint`,
+  0 avisos) verdes; typecheck (`tsc --noEmit`) limpo; **1005 testes** (`vitest run`). `npm audit` **inalterado** vs.
+  baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios);
+  **nenhuma dependência nova**.
