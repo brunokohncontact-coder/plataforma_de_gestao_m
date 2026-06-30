@@ -47,7 +47,12 @@ import {
   type CategoryReportComparison,
   type ShowPipeline,
 } from "./finance";
-import type { ClientRetention, ContactRankLike, ReengageList } from "./contacts";
+import type {
+  ClientRetention,
+  ClientConcentration,
+  ContactRankLike,
+  ReengageList,
+} from "./contacts";
 import { MONTH_NAMES_LONG } from "./calendar";
 
 const DEFAULT_DELIMITER = ";";
@@ -1299,6 +1304,55 @@ export function clientRetentionToCsv<C extends ContactRankLike & { role: string 
     centsToCsvAmount(retention.totalFee),
     "",
     `${retention.recurringClients}/${retention.totalClients}`,
+  ]);
+  return toCsv(out, delimiter);
+}
+
+// ── Concentração de contratantes (risco de dependência da carteira) ───────────
+
+export const CLIENT_CONCENTRATION_CSV_HEADERS = [
+  "Contratante",
+  "Papel",
+  "Shows",
+  "Cachê (R$)",
+  "Participação (%)",
+] as const;
+
+/**
+ * Serializa a concentração da carteira (`clientConcentration`) em CSV, pronto
+ * para download. Espelha a tabela "Composição por contratante" de
+ * `/contatos/concentracao`: uma linha por contratante com faturamento
+ * (`concentration.rows`, já ordenado por cachê desc, nome pt-BR), com nº de
+ * shows não cancelados, cachê somado (por contato) e a participação no cachê
+ * total da carteira ("37%", via `csvShare`, como na página). A coluna "Papel"
+ * entra para a planilha abrir auto-suficiente (a tela a mostra como selo).
+ * Encerra numa linha "Total" com a soma de shows e o cachê total da carteira;
+ * a participação do Total fica em branco (100% por construção, como
+ * `clientRetentionToCsv`/`incomeMixToCsv`). Mesma convenção pt-BR dos irmãos
+ * (delimitador ";", decimal com vírgula). Pura.
+ */
+export function clientConcentrationToCsv<C extends ContactRankLike & { role: string }>(
+  concentration: ClientConcentration<C>,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(CLIENT_CONCENTRATION_CSV_HEADERS)];
+  let totalShows = 0;
+  for (const row of concentration.rows) {
+    totalShows += row.activeShows;
+    out.push([
+      row.contact.name,
+      contactRoleLabel(row.contact.role),
+      String(row.activeShows),
+      centsToCsvAmount(row.totalFee),
+      csvShare(row.share),
+    ]);
+  }
+  out.push([
+    "Total",
+    "",
+    String(totalShows),
+    centsToCsvAmount(concentration.totalFee),
+    "",
   ]);
   return toCsv(out, delimiter);
 }

@@ -9,7 +9,15 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **995 testes** verdes após a **exportação CSV da
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **998 testes** verdes após a **exportação CSV da
+concentração de contratantes** em `/contatos/concentracao/export` (Sessão 172, D165 — a tela "Concentração de contratantes"
+(`clientConcentration`, o risco de depender de poucos pagadores) ganhou botão "⬇ CSV"; serializador puro
+`clientConcentrationToCsv(concentration)` + `CLIENT_CONCENTRATION_CSV_HEADERS` em `src/lib/csv.ts` emite uma linha por
+contratante com faturamento (Contratante/Papel/Shows/Cachê (R$)/Participação (%), ordem cachê desc / nome pt-BR, `csvShare`
+"37%") + linha "Total" (soma de shows e cachê da carteira, participação em branco = 100% por construção, como
+`clientRetentionToCsv`); rota reusa a consulta/`clientConcentration` da página + BOM UTF-8, nome `concentracao-contratantes.csv`,
+botão só com `conc.clientCount > 0`; distinta da concentração geográfica (cidades/locais) — aqui o eixo é o pagador; **+3 testes**)
+sobre os **995 testes** da **exportação CSV da
 projeção de caixa** em `/financas/fluxo-de-caixa/export` (Sessão 171, D164 — a tela "Fluxo de caixa projetado"
 (`projectCashflow`) ganhou botão "⬇ CSV"; serializador puro `cashflowProjectionToCsv(projection)` +
 `CASHFLOW_PROJECTION_CSV_HEADERS` em `src/lib/csv.ts` emite uma linha por mês do horizonte (Mês/A receber/A pagar/Variação/

@@ -49,6 +49,8 @@ import {
   feeTrendToCsv,
   FEE_TREND_CSV_HEADERS,
   clientRetentionToCsv,
+  clientConcentrationToCsv,
+  CLIENT_CONCENTRATION_CSV_HEADERS,
   reengageToCsv,
   REENGAGE_CSV_HEADERS,
   CLIENT_RETENTION_CSV_HEADERS,
@@ -103,6 +105,7 @@ import {
 } from "./finance";
 import {
   clientRetention,
+  clientConcentration,
   findContactsToReengage,
   type ContactRankLike,
 } from "./contacts";
@@ -1447,6 +1450,60 @@ describe("clientRetentionToCsv", () => {
     expect(lines).toHaveLength(3);
     expect(lines[1]).toBe("Casa Nova;Outro;2;4000,00;01/06/2099;Sim");
     expect(lines[2]).toBe("Total;;2;4000,00;;1/1");
+  });
+});
+
+describe("clientConcentrationToCsv", () => {
+  interface C extends ContactRankLike {
+    role: string;
+  }
+  const item = (
+    contact: C,
+    shows: { status: string; date: string; fee: number }[],
+  ) => ({ contact, shows });
+
+  it("só cabeçalho + Total zerado quando não há faturamento", () => {
+    const csv = clientConcentrationToCsv(clientConcentration<C>([]));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(CLIENT_CONCENTRATION_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe("Total;;0;0,00;");
+  });
+
+  it("uma linha por contratante (cachê desc) com participação + Total", () => {
+    const conc = clientConcentration<C>([
+      item({ id: "a", name: "Bar do Zé", role: "VENUE" }, [
+        { status: "PLAYED", date: "2026-02-10T00:00:00.000Z", fee: 200000 },
+        { status: "PLAYED", date: "2026-05-15T00:00:00.000Z", fee: 100000 },
+      ]),
+      item({ id: "b", name: "Produtora Lua", role: "PROMOTER" }, [
+        { status: "PLAYED", date: "2026-03-20T00:00:00.000Z", fee: 100000 },
+      ]),
+    ]);
+    const lines = clientConcentrationToCsv(conc).split("\r\n");
+    // cabeçalho + 2 contratantes (maior cachê primeiro) + Total.
+    expect(lines).toHaveLength(4);
+    expect(lines[1]).toBe("Bar do Zé;Casa de show;2;3000,00;75%");
+    expect(lines[2]).toBe("Produtora Lua;Produtor/Promoter;1;1000,00;25%");
+    // Total: 3 shows, 4000,00; participação em branco (100% por construção).
+    expect(lines[3]).toBe("Total;;3;4000,00;");
+  });
+
+  it("ignora shows cancelados e contratantes sem faturamento", () => {
+    const conc = clientConcentration<C>([
+      item({ id: "n", name: "Casa Nova", role: "OTHER" }, [
+        { status: "PLAYED", date: "2026-01-10T00:00:00.000Z", fee: 100000 },
+        { status: "CANCELLED", date: "2026-04-01T00:00:00.000Z", fee: 500000 },
+      ]),
+      item({ id: "x", name: "Só Cancelado", role: "VENUE" }, [
+        { status: "CANCELLED", date: "2026-04-01T00:00:00.000Z", fee: 300000 },
+      ]),
+    ]);
+    const lines = clientConcentrationToCsv(conc).split("\r\n");
+    // só "Casa Nova" vira linha; o cancelado conta 0 no cachê e nos shows.
+    expect(lines).toHaveLength(3);
+    expect(lines[1]).toBe("Casa Nova;Outro;1;1000,00;100%");
+    expect(lines[2]).toBe("Total;;1;1000,00;");
   });
 });
 

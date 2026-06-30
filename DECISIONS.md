@@ -5100,3 +5100,35 @@ contexto, decisão, justificativa e alternativas consideradas.
   smoke test (`next start`) → `/login` 200 e `/financas/fluxo-de-caixa` + `/financas/fluxo-de-caixa/export` (+ `?meses=12`)
   307 (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do
   Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## D165 — Exportação CSV da concentração de contratantes (`/contatos/concentracao/export` + `clientConcentrationToCsv`) (Sessão 172)
+- **Contexto:** a tela "Concentração de contratantes" (`/contatos/concentracao`, `clientConcentration`, o risco de
+  dependência: quanto do cachê total vem de poucos contratantes — topShare/top3Share/HHI/nº efetivo de contratantes)
+  exibe uma tabela "Composição por contratante" (Contratante / Shows / Cachê / Participação) mas era uma das telas
+  tabulares dos Contatos ainda sem exportação CSV (suas irmãs ranking/rentabilidade/retenção/reativar já exportavam).
+  Distinta da concentração **geográfica** (cidades/locais): aqui o eixo é o pagador, não o lugar.
+- **Decisão:** novo serializador puro `clientConcentrationToCsv(concentration)` + `CLIENT_CONCENTRATION_CSV_HEADERS`
+  em `src/lib/csv.ts` (recebe a `ClientConcentration<C>` já computada por `clientConcentration`, de `@/lib/contacts`,
+  genérico em `C extends ContactRankLike & { role: string }`, como `clientRetentionToCsv`/D153). Emite uma linha por
+  contratante com faturamento (`concentration.rows`, já ordenado por cachê desc / nome pt-BR), com nº de shows não
+  cancelados, cachê somado (por contato) e a participação no cachê total (`csvShare`, "37%", como na página), encerrada
+  numa linha "Total" com a soma de shows e o cachê total da carteira. Colunas Contratante/Papel/Shows/Cachê (R$)/
+  Participação (%). Rota `/contatos/concentracao/export` reusa a mesma consulta/`clientConcentration` da página + BOM
+  UTF-8; nome fixo `concentracao-contratantes.csv`; botão "⬇ CSV" no cabeçalho só com `conc.clientCount > 0` (mesmo gate
+  do estado-vazio da tela).
+- **Papel na planilha; participação do Total em branco:** a coluna "Papel" entra para o arquivo abrir auto-suficiente
+  (a tela mostra o papel como selo abaixo do nome, não como coluna), espelhando `clientRetentionToCsv`. A participação
+  da linha "Total" fica em branco — é 100% por construção (o denominador é a soma das participações), mesma convenção de
+  `clientRetentionToCsv`/`incomeMixToCsv`. O nº de shows do Total é a soma dos `activeShows` das linhas (um show com
+  vários contatos conta para cada contato, herdando a semântica por-contato de `clientConcentration`).
+- **Alternativas consideradas:** (a) incluir colunas de HHI / topShare / nº efetivo no CSV — **descartado**: são escalares
+  de carteira (um valor só), não propriedades de linha; já estão nos cards de destaque da página e poluiriam o "uma linha
+  por contratante + Total"; (b) emitir só os contratantes "concentradores" (acima de algum corte) — **descartado**: o CSV
+  abre a carteira inteira por design (como `clientRetentionToCsv` emite todas as linhas), o recorte é leitura da tela.
+- **Testes:** **+3** em `csv.test.ts` (`describe("clientConcentrationToCsv")`: só cabeçalho + Total zerado sem
+  faturamento; uma linha por contratante em ordem de cachê desc com participação (75%/25%) + Total com participação em
+  branco; ignora shows cancelados e contratantes sem faturamento). **998 testes** no total (eram 995).
+- **DoD:** build de produção e lint (`next lint`, 0 avisos) verdes; typecheck (`tsc --noEmit`) limpo; **998 testes**
+  (`vitest run`); smoke test (`next start`) → `/login` 200 e `/contatos/concentracao` + `/contatos/concentracao/export`
+  307 (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do
+  Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
