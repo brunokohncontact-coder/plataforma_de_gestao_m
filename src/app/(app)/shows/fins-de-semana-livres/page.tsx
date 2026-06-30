@@ -68,6 +68,13 @@ export default async function OpenWeekendsPage({
           </p>
         </div>
         <div className="flex gap-2">
+          <a
+            href={`/shows/fins-de-semana-livres/export?semanas=${weeks}`}
+            className="btn-secondary text-sm"
+            download
+          >
+            ⬇ CSV
+          </a>
           <Link href="/shows/calendario" className="btn-secondary">
             Calendário
           </Link>

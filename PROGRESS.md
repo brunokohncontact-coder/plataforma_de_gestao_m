@@ -9,7 +9,15 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1009 testes** verdes após a **exportação CSV da
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1012 testes** verdes após a **exportação CSV dos
+fins de semana livres** em `/shows/fins-de-semana-livres/export` (Sessão 176, D169 — a tela "Fins de semana livres"
+(`findOpenWeekends`, D96/D98) ganhou botão "⬇ CSV"; serializador puro `openWeekendsToCsv(report)` + `OPEN_WEEKENDS_CSV_HEADERS`
+em `src/lib/csv.ts` (1º consumidor de `csv.ts` que importa tipo de `shows.ts`: `OpenWeekendsReport`) emite uma linha por fim de
+semana da janela (De/Até como datas ISO-formatadas em vez do rótulo "13–15 de mar"; Situação Livre/Ocupado; Shows; Cachê
+marcado), **toda a janela inclusive os livres** (Shows 0 — é o vazio que importa, distinto das séries de eixo ativo), + linha
+"Total" (Situação="N/M livres", shows e cachês somados); rota reusa consulta+`parseWeekendWindow` da página + BOM UTF-8, nome
+`fins-de-semana-livres-{n}sem.csv`, botão sempre visível (janela tem ≥1 fim de semana); **+3 testes**) sobre os **1009 testes**
+da **exportação CSV da
 meta de faturamento por trimestre** em `/financas/metas/trimestral/export` (Sessão 175, D168 — rota irmã da exportação mensal
 (D167) explicitamente adiada na D167(c): a tela "Meta de faturamento" tem um card "Meta por trimestre" (`quarterlyGoalProgress`,
 D83) que quebra a meta anual em 4 alvos iguais cruzados com o recebido (caixa) do trimestre; serializador puro
@@ -2938,7 +2946,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    Sessão 105 — banner-nudge "🎸 Fim de semana livre" em `dashboard/page.tsx` reaproveitando
    `findOpenWeekends` + helpers `formatWeekendLabel`/`weekendKeyToDate` extraídos para `shows.ts`,
    só com agenda futura, ver D97; **janela parametrizável** entregue na Sessão 106 — `parseWeekendWindow`
-   em `shows.ts` + pílulas 4/8/12/26 semanas via `?semanas=` em `/shows/fins-de-semana-livres`, ver D98.)
+   em `shows.ts` + pílulas 4/8/12/26 semanas via `?semanas=` em `/shows/fins-de-semana-livres`, ver D98;
+   **exportação CSV dos fins de semana livres** entregue na Sessão 176 — `openWeekendsToCsv` + `OPEN_WEEKENDS_CSV_HEADERS`
+   em `src/lib/csv.ts` + `/shows/fins-de-semana-livres/export?semanas=N` (De/Até/Situação/Shows/Cachê marcado + Total
+   "N/M livres"), uma linha por fim de semana da janela inclusive os livres, nome `fins-de-semana-livres-{n}sem.csv`,
+   botão "⬇ CSV" propagando a janela, ver D169.)
    Próximo possível — um mini-calendário de salto rápido na agenda, ou estimar a receita parada por fim de
    semana livre (adiada na D96 por ser hipótese frágil).
 2c. **Sazonalidade de shows** (entregue na Sessão 141, `/shows/sazonalidade` + `gigSeasonality` em
