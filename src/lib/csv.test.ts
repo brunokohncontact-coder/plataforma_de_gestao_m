@@ -66,6 +66,8 @@ import {
   PIPELINE_CSV_HEADERS,
   dueAgendaToCsv,
   DUE_AGENDA_CSV_HEADERS,
+  yearPaceToCsv,
+  YEAR_PACE_CSV_HEADERS,
   type DueAgendaCsvTx,
   type CsvTransaction,
   type CsvShow,
@@ -94,6 +96,7 @@ import {
   incomeMix,
   expenseMix,
   compareCategoryReports,
+  yearToDatePace,
   type TxLike,
   type ShowProfitRow,
   type VenueProfitRow,
@@ -1932,5 +1935,56 @@ describe("dueAgendaToCsv", () => {
     expect(lines[1]).toBe("10/06/2026;;Transporte;Vencidas;A pagar;-19;;0,00;50,00");
     expect(lines[2]).toBe("25/06/2026;Cachê atrasado;Cachê;Vencidas;A receber;-4;;80,00;0,00");
     expect(lines[3]).toBe("Total;;;;;;;80,00;50,00");
+  });
+});
+
+describe("yearPaceToCsv", () => {
+  // 15/jun/2026: meio do ano (espelha a fixture de yearToDatePace em finance.test).
+  const NOW = "2026-06-15T00:00:00.000Z";
+  const ytx = (date: string, amount: number, type: TxLike["type"] = "INCOME"): TxLike => ({
+    type,
+    amount,
+    category: type === "INCOME" ? "Show" : "Transporte",
+    date: `${date}T00:00:00.000Z`,
+    received: false,
+  });
+
+  it("emite o cabeçalho e três linhas (Receitas/Despesas/Resultado) sem Total", () => {
+    const csv = yearPaceToCsv(yearToDatePace([], { now: NOW }));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(YEAR_PACE_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(4); // cabeçalho + 3 métricas, sem linha Total
+    expect(lines[1]).toBe("Receitas;0,00;0,00;"); // sem base → variação em branco
+    expect(lines[2]).toBe("Despesas;0,00;0,00;");
+    expect(lines[3]).toBe("Resultado;0,00;0,00;");
+  });
+
+  it("serializa o acumulado dos dois anos e a variação relativa com sinal", () => {
+    const csv = yearPaceToCsv(
+      yearToDatePace(
+        [
+          ytx("2026-02-01", 1000_00),
+          ytx("2026-04-01", 200_00, "EXPENSE"),
+          ytx("2025-02-01", 800_00),
+          ytx("2025-04-01", 400_00, "EXPENSE"),
+        ],
+        { now: NOW },
+      ),
+    );
+    const lines = csv.split("\r\n");
+    // Receitas: 1000 vs 800 → +25%
+    expect(lines[1]).toBe("Receitas;1000,00;800,00;+25%");
+    // Despesas: 200 vs 400 → −50% (queda)
+    expect(lines[2]).toBe("Despesas;200,00;400,00;-50%");
+    // Resultado: 800 (1000−200) vs 400 (800−400) → +100%
+    expect(lines[3]).toBe("Resultado;800,00;400,00;+100%");
+  });
+
+  it("deixa a variação em branco quando não há base no ano anterior", () => {
+    const csv = yearPaceToCsv(yearToDatePace([ytx("2026-03-01", 500_00)], { now: NOW }));
+    const lines = csv.split("\r\n");
+    // Sem receita/despesa em 2025 até o corte → previous 0 → pct null → "".
+    expect(lines[1]).toBe("Receitas;500,00;0,00;");
+    expect(lines[3]).toBe("Resultado;500,00;0,00;");
   });
 });

@@ -46,6 +46,7 @@ import {
   type CategoryDelta,
   type CategoryReportComparison,
   type ShowPipeline,
+  type YearToDatePace,
 } from "./finance";
 import type {
   ClientRetention,
@@ -1735,5 +1736,57 @@ export function dueAgendaToCsv(
     centsToCsvAmount(agenda.totalIncome),
     centsToCsvAmount(agenda.totalExpense),
   ]);
+  return toCsv(out, delimiter);
+}
+
+// ── Ritmo do ano (acumulado YTD vs. mesmo período do ano anterior) ────────────
+
+export const YEAR_PACE_CSV_HEADERS = [
+  "Métrica",
+  "Ano corrente (R$)",
+  "Mesmo período do ano anterior (R$)",
+  "Variação (%)",
+] as const;
+
+/** Variação relativa (`pct` de um MetricDelta) -> "+25%" / "-30%" / "0%" / "" (sem base). */
+function csvSignedPct(pct: number | null): string {
+  if (pct === null) return "";
+  const rounded = Math.round(pct * 100);
+  return `${rounded > 0 ? "+" : ""}${rounded}%`;
+}
+
+/**
+ * Serializa o ritmo do ano (`yearToDatePace`) em CSV, pronto para download —
+ * espelha a tabela "{ano} × {ano-1} (mesmo período)" de `/financas/ritmo-do-ano`.
+ * Uma linha por métrica (Receitas → Despesas → Resultado, a ordem da página), com
+ * o acumulado do ano corrente (1º jan → corte), o acumulado do ano anterior até o
+ * **mesmo** mês/dia e a variação relativa entre os dois.
+ *
+ * É comparação igual-com-igual (mesma fração do ano dos dois lados), não uma
+ * projeção do fechamento (isso é `projectYearEnd`/`cashflowProjectionToCsv`) nem
+ * anos fechados inteiros (`annualSummaryToCsv`/`crescimento`). As colunas de ano
+ * ficam genéricas ("Ano corrente"/"do ano anterior") porque os anos concretos vão
+ * no nome do arquivo (`ritmo-do-ano-{ano}.csv`) — como o horizonte vai no nome em
+ * `cashflowProjectionToCsv`. A variação herda o `pct` do MetricDelta: "" quando não
+ * há base de comparação (sem receita/despesa no período do ano anterior), espelhando
+ * o "—" da UI. Sem linha "Total" (as três métricas não somam entre si: Resultado já
+ * é Receitas − Despesas). Mesma convenção pt-BR dos irmãos (";" e decimal com
+ * vírgula). Pura.
+ */
+export function yearPaceToCsv(pace: YearToDatePace, delimiter = DEFAULT_DELIMITER): string {
+  const out: string[][] = [Array.from(YEAR_PACE_CSV_HEADERS)];
+  const rows: Array<[string, MetricDelta]> = [
+    ["Receitas", pace.incomeVsLastYear],
+    ["Despesas", pace.expenseVsLastYear],
+    ["Resultado", pace.netVsLastYear],
+  ];
+  for (const [label, delta] of rows) {
+    out.push([
+      label,
+      centsToCsvAmount(delta.current),
+      centsToCsvAmount(delta.previous),
+      csvSignedPct(delta.pct),
+    ]);
+  }
   return toCsv(out, delimiter);
 }
