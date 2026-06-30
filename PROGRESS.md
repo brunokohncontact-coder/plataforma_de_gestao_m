@@ -9,7 +9,17 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1022 testes** verdes após a **exportação CSV dos
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1024 testes** verdes após a **exportação CSV dos
+custos fixos recorrentes** em `/financas/custos-fixos/export` (Sessão 180, D173 — a tela "Custos fixos" (`recurringExpenses`/D39, o
+piso a faturar todo mês) ganhou botão "⬇ CSV"; serializador puro `recurringExpensesToCsv(report)` + `RECURRING_EXPENSES_CSV_HEADERS`
+em `src/lib/csv.ts` emite uma linha por categoria recorrente na ordem da página (conta típica desc): Categoria/Conta típica/mês (R$)/
+Meses ativos/Janela (meses)/Última/Total (R$)/Situação — "Última" na chave ISO "YYYY-MM" (não o "jun/26" da UI), "Situação"
+Ativa/Encerrada espelhando o selo da tela; + linha "Total" cuja coluna "Conta típica/mês" traz o **custo fixo mensal estimado**
+(`estimatedMonthlyFixedCost`, soma só das ativas — não a soma cega da coluna), "Total" somando o histórico de todas e "Situação"
+= "N/M ativas" (como o "recorrentes/total" de `clientRetentionToCsv`), com meses/janela/última em branco; sem `?ano=` (retrato de
+todo o histórico de despesas), nome fixo `custos-fixos.csv` + BOM UTF-8, botão gated por `categories.length > 0`; **+2 testes**.
+Ao varrer as páginas sem subpasta `export/` ressurgiu também `/financas/relatorio` (mensal + média móvel), tabular e ainda sem export
+— próximo candidato natural) sobre os **1022 testes** da **exportação CSV dos
 conflitos de agenda** em `/shows/conflitos/export` (Sessão 179, D172 — a tela "Conflitos de agenda" (`findScheduleConflicts`, dias
 com 2+ shows não cancelados) ganhou botão "⬇ CSV"; serializador puro `scheduleConflictsToCsv(report)` + `SCHEDULE_CONFLICTS_CSV_HEADERS`
 em `src/lib/csv.ts` (2º consumidor de `csv.ts` que importa tipo de `shows.ts`: `ScheduleConflicts`, depois de `openWeekendsToCsv`) achata
@@ -3324,9 +3334,15 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    **Exportação CSV dos conflitos de agenda** entregue na Sessão 179 — `scheduleConflictsToCsv` + `SCHEDULE_CONFLICTS_CSV_HEADERS`
    em `src/lib/csv.ts` + `/shows/conflitos/export` (Dia/Situação/Show/Horário/Local/Cidade/Status/Cachê (R$) + linha Total
    "N/M a resolver"), do lado Shows: uma linha por show dos dias em conflito (`findScheduleConflicts`), nome fixo
-   `conflitos-de-agenda.csv`, botão "⬇ CSV" só com `dayCount > 0`, ver D172 — fecha a última tela **tabular** sem export.
-   Próximo possível — as telas que ainda não exportam são agora **só** painéis de número único
-   (ponto-de-equilíbrio, reserva-impostos): menos óbvios como planilha; provavelmente não vale uma planilha de uma linha.
+   `conflitos-de-agenda.csv`, botão "⬇ CSV" só com `dayCount > 0`, ver D172. **Exportação CSV dos custos fixos recorrentes**
+   entregue na Sessão 180 — `recurringExpensesToCsv` + `RECURRING_EXPENSES_CSV_HEADERS` em `src/lib/csv.ts` +
+   `/financas/custos-fixos/export` (Categoria/Conta típica/mês/Meses ativos/Janela/Última/Total/Situação + linha Total cuja conta
+   típica é o custo fixo mensal estimado só-ativas e cuja situação resume "N/M ativas"), uma linha por categoria recorrente na ordem
+   da página, sem `?ano=`, nome fixo `custos-fixos.csv`, botão "⬇ CSV" só com `categories.length > 0`, ver D173.
+   Próximo possível — a varredura por páginas sem subpasta `export/` revelou que `/financas/relatorio` (relatório mensal
+   comparativo + média móvel) **ainda é tabular e não exporta** — candidato natural da próxima sessão. Depois disso, as telas
+   restantes sem export são **só** painéis de número único (ponto-de-equilíbrio, reserva-impostos): menos óbvios como planilha;
+   provavelmente não vale uma planilha de uma linha.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)
