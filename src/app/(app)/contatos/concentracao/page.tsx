@@ -67,6 +67,11 @@ export default async function ContatosConcentracaoPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {conc.clientCount > 0 && (
+            <a href="/contatos/concentracao/export" className="btn-secondary">
+              ⬇ CSV
+            </a>
+          )}
           <Link href="/contatos/retencao" className="btn-secondary">
             Fidelização
           </Link>
