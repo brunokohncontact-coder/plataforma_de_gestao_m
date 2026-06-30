@@ -5369,3 +5369,37 @@ contexto, decisão, justificativa e alternativas consideradas.
   `/financas/projecao-ano/export?ano=2026&cenario=conservador` 307 (auth-gated). `npm audit` **inalterado** vs. baseline
   (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência
   nova**.
+
+## D172 — Exportação CSV dos conflitos de agenda (`/shows/conflitos/export` + `scheduleConflictsToCsv`) (Sessão 179)
+- **Contexto:** "Conflitos de agenda" (`/shows/conflitos`, `findScheduleConflicts`) lista os dias com 2+ shows não cancelados —
+  sobreposições para revisar ("fechei dois compromissos no mesmo dia sem querer?"). Estava no catálogo do hub (subtopic "Agenda &
+  pipeline") mas era uma das poucas telas **tabulares** ainda sem botão "⬇ CSV": as demais lacunas de export viraram número único
+  (ponto-de-equilíbrio, reserva-impostos), explicitamente descartadas no item 10 dos próximos passos. Esta tem material de
+  planilha de sobra (lista de shows por dia, com horário/local/status/cachê).
+- **Decisão:** novo serializador puro `scheduleConflictsToCsv(report)` + `SCHEDULE_CONFLICTS_CSV_HEADERS` em `src/lib/csv.ts`
+  (recebe o `ScheduleConflicts` já computado, de `@/lib/shows` — 2º consumidor de `csv.ts` que importa tipo de `shows.ts`, depois
+  de `openWeekendsToCsv`/D169). Rota `/shows/conflitos/export` + botão "⬇ CSV" no cabeçalho da página, gated por `dayCount > 0`.
+- **Achatamento (uma linha por show, não por dia):** diferente dos irmãos que emitem uma linha por dia/categoria, aqui o detalhe
+  que importa é **cada show envolvido** (é o que se compara para decidir o que remarcar). A tabela é achatada: uma linha por show
+  dos dias em conflito, na ordem da tela (dias cronológicos crescentes; dentro do dia, por horário/título, como
+  `findScheduleConflicts` já entrega). O "Dia" repete em cada show do mesmo dia → planilha auto-suficiente, ordenável/filtrável.
+- **Colunas:** Dia / Situação / Show / Horário / Local / Cidade / Status / Cachê (R$). "Situação" reproduz o veredito da página
+  ("A resolver" para dias de hoje em diante via `upcoming`, "Passado" para os já vividos); "Horário" em UTC (`csvTime`, como a UI);
+  "Status" com os rótulos pt-BR da tela (`SHOW_STATUS_LABELS`). Cancelados nunca aparecem (a lógica pura já os exclui).
+- **Linha Total:** Situação resume os dias acionáveis (`{upcomingDayCount}/{dayCount} a resolver`, espelhando o "N/M livres" de
+  `openWeekendsToCsv`) e Cachê soma os cachês de todos os shows envolvidos; demais colunas em branco. O nº de shows envolvidos é a
+  própria contagem de linhas de detalhe (`showCount`), então não vira coluna própria.
+- **Sem parâmetros de janela:** a tela é um retrato de toda a agenda (passado + futuro), sem `?ano=`/`?semanas=`; o export usa a
+  mesma consulta enxuta da página e nome fixo `conflitos-de-agenda.csv` + BOM UTF-8.
+- **Alternativas consideradas:** (a) uma linha por **dia** com os shows concatenados numa célula — **descartado**: o valor está em
+  comparar shows individualmente (horário/local/cachê), que não cabe numa célula; (b) coluna "Shows" com a contagem do dia por
+  linha — **descartado**: redundante (o achatamento já dá uma linha por show); (c) recorte `?futuros=1` (só conflitos a resolver) —
+  **adiado**: a coluna "Situação" + filtro do Excel já resolvem; sem demanda. Botão escondido sem conflitos (`dayCount === 0`),
+  como os demais gated.
+- **Testes:** **+3** em `csv.test.ts` (`describe("scheduleConflictsToCsv")`: sem conflitos → só cabeçalho + Total zerado
+  ("0/0 a resolver"); uma linha por show ordenada por dia e horário, dias passado/futuro classificados, dia sem conflito de fora,
+  Total "1/2 a resolver" somando só os envolvidos; cancelado não conflita). **1022 testes** no total (eram 1019).
+- **DoD:** build de produção (`✓ Compiled successfully`, rota `/shows/conflitos/export` registrada) e lint (`next lint`, 0 avisos)
+  verdes; typecheck (`tsc --noEmit`) limpo; **1022 testes** (`vitest run`); smoke test (`next start`) → `/login` 200,
+  `/shows/conflitos` + `/shows/conflitos/export` 307 (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4
+  moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.

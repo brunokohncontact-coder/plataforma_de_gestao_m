@@ -87,8 +87,14 @@ import {
   OPEN_WEEKENDS_CSV_HEADERS,
   yearEndProjectionToCsv,
   YEAR_END_PROJECTION_CSV_HEADERS,
+  scheduleConflictsToCsv,
+  SCHEDULE_CONFLICTS_CSV_HEADERS,
 } from "./csv";
-import { findOpenWeekends, type ConflictShowLike } from "./shows";
+import {
+  findOpenWeekends,
+  findScheduleConflicts,
+  type ConflictShowLike,
+} from "./shows";
 import {
   annualSummary,
   monthlySeasonality,
@@ -2256,6 +2262,91 @@ describe("openWeekendsToCsv", () => {
     expect(lines).toHaveLength(3);
     expect(lines[1]).toBe("13/03/2026;15/03/2026;Ocupado;1;0,00");
     expect(lines[2]).toBe("Total;;0/1 livres;1;0,00");
+  });
+});
+
+describe("scheduleConflictsToCsv", () => {
+  // 2026-03-15 como "hoje" para separar dias acionáveis (≥ hoje) dos passados.
+  const NOW = "2026-03-15";
+  const mkShow = (
+    id: string,
+    date: string,
+    over: Partial<ConflictShowLike> = {},
+  ): ConflictShowLike => ({
+    id,
+    title: id,
+    date,
+    status: "CONFIRMED",
+    ...over,
+  });
+
+  it("sem conflitos: só cabeçalho + Total zerado", () => {
+    const report = findScheduleConflicts(
+      [mkShow("a", "2026-03-20T20:00:00Z")],
+      { now: NOW },
+    );
+    const lines = scheduleConflictsToCsv(report).split("\r\n");
+    expect(lines[0]).toBe(SCHEDULE_CONFLICTS_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe("Total;0/0 a resolver;;;;;;0,00");
+  });
+
+  it("uma linha por show envolvido, ordenada por dia e horário + Total", () => {
+    const report = findScheduleConflicts(
+      [
+        // Dia futuro com 2 shows (a resolver) — fora de ordem cronológica na entrada.
+        mkShow("noite", "2026-03-20T22:00:00Z", {
+          venue: "Bar X",
+          city: "Recife",
+          fee: 200000,
+        }),
+        mkShow("matine", "2026-03-20T15:00:00Z", {
+          venue: "Praça",
+          city: "Recife",
+          status: "PROPOSED",
+          fee: 50000,
+        }),
+        // Dia passado com 2 shows (já vivido).
+        mkShow("passado1", "2026-03-10T20:00:00Z", { fee: 100000 }),
+        mkShow("passado2", "2026-03-10T21:00:00Z"),
+        // Dia sem conflito → não entra.
+        mkShow("solo", "2026-03-25T20:00:00Z", { fee: 999999 }),
+      ],
+      { now: NOW },
+    );
+    const lines = scheduleConflictsToCsv(report).split("\r\n");
+    // 1 cabeçalho + 4 shows (2 dias em conflito) + Total.
+    expect(lines).toHaveLength(6);
+    // Dias em ordem cronológica: 10/03 (passado) antes de 20/03 (a resolver).
+    expect(lines[1]).toBe("10/03/2026;Passado;passado1;20:00;;;Confirmado;1000,00");
+    expect(lines[2]).toBe("10/03/2026;Passado;passado2;21:00;;;Confirmado;0,00");
+    // Dentro do dia, a matinê (15:00) vem antes da noite (22:00).
+    expect(lines[3]).toBe(
+      "20/03/2026;A resolver;matine;15:00;Praça;Recife;Proposto;500,00",
+    );
+    expect(lines[4]).toBe(
+      "20/03/2026;A resolver;noite;22:00;Bar X;Recife;Confirmado;2000,00",
+    );
+    // Total: 1 de 2 dias ainda por resolver; soma só os cachês dos envolvidos
+    // (o "solo" de 9999,99 fica de fora por não conflitar).
+    expect(lines[5]).toBe("Total;1/2 a resolver;;;;;;3500,00");
+  });
+
+  it("cancelados não conflitam (excluídos pela lógica pura)", () => {
+    const report = findScheduleConflicts(
+      [
+        mkShow("real", "2026-03-20T20:00:00Z", { fee: 100000 }),
+        mkShow("cancelado", "2026-03-20T21:00:00Z", {
+          status: "CANCELLED",
+          fee: 500000,
+        }),
+      ],
+      { now: NOW },
+    );
+    const lines = scheduleConflictsToCsv(report).split("\r\n");
+    // O dia tem só 1 show não cancelado → não é conflito; só cabeçalho + Total.
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe("Total;0/0 a resolver;;;;;;0,00");
   });
 });
 
