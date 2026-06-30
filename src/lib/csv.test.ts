@@ -70,6 +70,8 @@ import {
   YEAR_PACE_CSV_HEADERS,
   monthlyGoalProgressToCsv,
   MONTHLY_GOAL_CSV_HEADERS,
+  quarterlyGoalProgressToCsv,
+  QUARTERLY_GOAL_CSV_HEADERS,
   type DueAgendaCsvTx,
   type CsvTransaction,
   type CsvShow,
@@ -100,6 +102,7 @@ import {
   compareCategoryReports,
   yearToDatePace,
   monthlyGoalProgress,
+  quarterlyGoalProgress,
   type TxLike,
   type ShowProfitRow,
   type VenueProfitRow,
@@ -2058,5 +2061,72 @@ describe("monthlyGoalProgressToCsv", () => {
     // jan já encerrado, alvo 0 (sem meta) → "Abaixo" (target 0 nunca conta como batido).
     expect(lines[1]).toBe("jan;0,00;0,00;0,00;0%;Abaixo");
     expect(lines[13]).toBe("Total;0,00;0,00;0,00;;0/12 batidos");
+  });
+});
+
+describe("quarterlyGoalProgressToCsv", () => {
+  // 15/jun/2026: ano corrente, 2º trimestre (abr–jun) em andamento.
+  const NOW = "2026-06-15T00:00:00.000Z";
+  const inc = (date: string, amount: number, received = true): TxLike => ({
+    type: "INCOME",
+    amount,
+    category: "Show",
+    date: `${date}T00:00:00.000Z`,
+    received,
+  });
+
+  it("emite cabeçalho, 4 trimestres (1º→4º) e linha Total", () => {
+    const csv = quarterlyGoalProgressToCsv(
+      quarterlyGoalProgress([], 2026, 1200_00, { now: NOW }),
+    );
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(QUARTERLY_GOAL_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(6); // cabeçalho + 4 trimestres + Total
+    expect(lines[1].startsWith("1º tri;")).toBe(true);
+    expect(lines[4].startsWith("4º tri;")).toBe(true);
+    expect(lines[5].startsWith("Total;")).toBe(true);
+  });
+
+  it("serializa alvo, recebido, falta, percentual e situação por trimestre", () => {
+    // Meta 1200,00 → alvo de 300,00/tri. Q1 (jan–mar) encerrado e batido (320,00);
+    // Q2 (abr–jun) corrente e abaixo (100,00); Q3/Q4 futuros.
+    const csv = quarterlyGoalProgressToCsv(
+      quarterlyGoalProgress(
+        [inc("2026-02-10", 320_00), inc("2026-05-10", 100_00)],
+        2026,
+        1200_00,
+        { now: NOW },
+      ),
+    );
+    const lines = csv.split("\r\n");
+    // Q1: alvo 300,00, recebido 320,00, falta 0,00, 107%, Batido
+    expect(lines[1]).toBe("1º tri;300,00;320,00;0,00;107%;Batido");
+    // Q2 (corrente): recebido 100,00, falta 200,00, 33%, Em andamento
+    expect(lines[2]).toBe("2º tri;300,00;100,00;200,00;33%;Em andamento");
+    // Q3 (futuro): A seguir
+    expect(lines[3]).toBe("3º tri;300,00;0,00;300,00;0%;A seguir");
+  });
+
+  it("a linha Total traz a meta anual, o recebido somado e o resumo de batidos", () => {
+    const csv = quarterlyGoalProgressToCsv(
+      quarterlyGoalProgress(
+        [inc("2026-02-10", 320_00), inc("2026-05-10", 320_00)],
+        2026,
+        1200_00,
+        { now: NOW },
+      ),
+    );
+    const lines = csv.split("\r\n");
+    // Total: meta 1200,00, recebido 640,00, falta 560,00, participação em branco,
+    // 2 trimestres batidos de 4 (Q1 e Q2 com 320,00 ≥ 300,00).
+    expect(lines[5]).toBe("Total;1200,00;640,00;560,00;;2/4 batidos");
+  });
+
+  it("sem meta (0) emite alvos zerados e Total 0/4 batidos", () => {
+    const csv = quarterlyGoalProgressToCsv(quarterlyGoalProgress([], 2026, 0, { now: NOW }));
+    const lines = csv.split("\r\n");
+    // Q1 já encerrado, alvo 0 (sem meta) → "Abaixo" (target 0 nunca conta como batido).
+    expect(lines[1]).toBe("1º tri;0,00;0,00;0,00;0%;Abaixo");
+    expect(lines[5]).toBe("Total;0,00;0,00;0,00;;0/4 batidos");
   });
 });

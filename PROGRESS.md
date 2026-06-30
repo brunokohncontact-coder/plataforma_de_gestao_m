@@ -9,7 +9,17 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1001 testes** verdes após a **exportação CSV do
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1009 testes** verdes após a **exportação CSV da
+meta de faturamento por trimestre** em `/financas/metas/trimestral/export` (Sessão 175, D168 — rota irmã da exportação mensal
+(D167) explicitamente adiada na D167(c): a tela "Meta de faturamento" tem um card "Meta por trimestre" (`quarterlyGoalProgress`,
+D83) que quebra a meta anual em 4 alvos iguais cruzados com o recebido (caixa) do trimestre; serializador puro
+`quarterlyGoalProgressToCsv(quarterly)` + `QUARTERLY_GOAL_CSV_HEADERS` em `src/lib/csv.ts` emite uma linha por trimestre
+(1º→4º tri: Trimestre/Alvo (R$)/Recebido (R$)/Falta (R$)/Atingido (%)/Situação, situação via o **mesmo** `MONTH_GOAL_STATUS_LABELS`
+da D167 — `QuarterGoalStatus` e `MonthGoalStatus` são o mesmo union) + linha "Total" cujo alvo é a meta anual, recebido somado e
+situação "N/4 batidos" (Atingido em branco = 100% por construção); rota reusa a consulta/`?ano=` da página + BOM UTF-8, nome
+`metas-trimestral-{ano}.csv`, botão "⬇ CSV" no card "Meta por trimestre" só com `quarterly.goal > 0`; **+4 testes**) sobre os
+**1005 testes** da **exportação CSV da
+meta de faturamento por mês** em `/financas/metas/export` (Sessão 174, D167) sobre os **1001 testes** da **exportação CSV do
 ritmo do ano** em `/financas/ritmo-do-ano/export` (Sessão 173, D166 — a tela "Ritmo do ano" (`yearToDatePace`, o acumulado
 do ano corrente até hoje vs. o mesmo ponto do ano passado, comparação igual-com-igual) ganhou botão "⬇ CSV"; serializador
 puro `yearPaceToCsv(pace)` + `YEAR_PACE_CSV_HEADERS` em `src/lib/csv.ts` emite uma linha por métrica na ordem da página
@@ -3254,10 +3264,14 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    faturamento por mês** entregue na Sessão 174 — `monthlyGoalProgressToCsv` + `MONTHLY_GOAL_CSV_HEADERS` em `src/lib/csv.ts` +
    `/financas/metas/export?ano=YYYY` (Mês/Alvo/Recebido/Falta/Atingido %/Situação + linha Total cujo alvo é a meta anual e cuja
    situação resume "N/12 batidos"), reusa a consulta da página, herda o `?ano=` do seletor de ano da tela, nome
-   `metas-mensal-{ano}.csv`, botão "⬇ CSV" no card "Meta por mês" (só com `monthly.goal > 0`), ver D167. Próximo possível — as
-   telas de Finanças que ainda não exportam são agora **só** painéis de cenário/projeção de número único (projeção-ano,
-   ponto-de-equilíbrio, reserva-impostos) e a quebra **trimestral** da meta (`quarterlyGoalProgress`, a mesma da D167 mais
-   grossa — vale uma rota irmã se pedir): os painéis de número único são menos óbvios como planilha; avaliar caso a caso.
+   `metas-mensal-{ano}.csv`, botão "⬇ CSV" no card "Meta por mês" (só com `monthly.goal > 0`), ver D167. **Exportação CSV da
+   meta de faturamento por trimestre** entregue na Sessão 175 — `quarterlyGoalProgressToCsv` + `QUARTERLY_GOAL_CSV_HEADERS` em
+   `src/lib/csv.ts` + `/financas/metas/trimestral/export?ano=YYYY` (Trimestre/Alvo/Recebido/Falta/Atingido %/Situação + linha
+   Total cujo alvo é a meta anual e cuja situação resume "N/4 batidos"), espelho mais grosso da mensal (D167), reusa a
+   consulta/`?ano=` da página, nome `metas-trimestral-{ano}.csv`, botão "⬇ CSV" no card "Meta por trimestre" (só com
+   `quarterly.goal > 0`), ver D168 — fecha a rota irmã adiada na D167(c). Próximo possível — as telas de Finanças que ainda
+   não exportam são agora **só** painéis de cenário/projeção de número único (projeção-ano, ponto-de-equilíbrio,
+   reserva-impostos): são menos óbvios como planilha; avaliar caso a caso.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

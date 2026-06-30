@@ -152,7 +152,7 @@ export default async function GoalsPage({
           )}
 
           {quarterly && quarterly.goal > 0 && (
-            <QuarterlyCard quarterly={quarterly} />
+            <QuarterlyCard quarterly={quarterly} year={year} />
           )}
 
           {monthly && monthly.goal > 0 && <MonthlyCard monthly={monthly} year={year} />}
@@ -428,15 +428,20 @@ const GOAL_STATUS: Record<
   },
 };
 
-function QuarterlyCard({ quarterly }: { quarterly: QuarterlyGoalProgress }) {
+function QuarterlyCard({ quarterly, year }: { quarterly: QuarterlyGoalProgress; year: number }) {
   return (
     <section className="card space-y-4">
-      <div>
-        <h2 className="font-semibold">Meta por trimestre</h2>
-        <p className="mt-1 text-sm text-gray-500">
-          A meta anual dividida em quatro alvos iguais, cada um comparado ao que você
-          já recebeu no trimestre · {quarterly.hitCount} de 4 batidos
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-semibold">Meta por trimestre</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            A meta anual dividida em quatro alvos iguais, cada um comparado ao que você
+            já recebeu no trimestre · {quarterly.hitCount} de 4 batidos
+          </p>
+        </div>
+        <a href={`/financas/metas/trimestral/export?ano=${year}`} className="btn-secondary shrink-0">
+          ⬇ CSV
+        </a>
       </div>
 
       <ul className="space-y-3">
