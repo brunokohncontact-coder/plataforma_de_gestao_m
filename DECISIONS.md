@@ -5030,3 +5030,33 @@ contexto, decisão, justificativa e alternativas consideradas.
   smoke test (`next start`) → `/login` 200 e `/financas/ritmo-do-ano` 307 (auth-gated). `npm audit` **inalterado** vs. baseline
   (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma
   dependência nova**.
+
+## D163 — Nudge de ritmo do ano no Painel (`yearToDatePaceHeadline`) (Sessão 170)
+- **Contexto:** a D162 entregou `yearToDatePace` + a página `/financas/ritmo-do-ano`, mas deixou o nudge no Painel
+  **adiado** (alt. (c), "o Painel já tem vários nudges; a página dedicada basta por ora"). O ponto fraco de só ter a
+  página dedicada é que o sinal "estou atrás de onde eu estava nesta época do ano passado?" só aparece se o músico
+  **navegar até a tela** — exatamente o sinal que ele deveria ver de relance ao abrir o app. Os demais alertas de risco
+  (fôlego de caixa, concentração de carteira/geográfica, atraso de recebimento) já vivem como manchete no Painel; faltava
+  este, no eixo "ano".
+- **Decisão:** novo helper puro `yearToDatePaceHeadline(pace: YearToDatePace)` em `src/lib/finance.ts` (logo após
+  `yearToDatePace`), espelhando a forma de `cashBurnHeadline`/`geoConcentrationHeadline` (recebe um veredito já computado
+  e decide só a **exibição**, sem I/O). O nudge aparece **somente** quando `verdict === "behind"` — com `ahead`/`onPace`
+  (ritmo bom/em linha) ou `insufficient` (primeiro ano, sem base) seria ruído, não alerta. Mesma disciplina dos outros
+  headlines: a regra de exibição mora no helper testável, o `dashboard/page.tsx` só consome.
+- **Limiar crítico:** `YTD_PACE_CRITICAL_RATIO = 0.75` — quando a receita acumulada do ano cai a ≤ 75% da do mesmo período
+  do ano passado (≥ 25% de atraso), o nudge vira `critical` (vermelho 🔴 em vez de âmbar 🐢), espelhando a escala
+  crítica dos demais headlines. Reaproveita as transações já carregadas no Painel (zero I/O extra) e linka para
+  `/financas/ritmo-do-ano`.
+- **Alternativas consideradas:** (a) mostrar o nudge também quando `ahead` (reforço positivo) — **descartado**, o Painel é
+  para o que **pede ação**; ritmo bom não exige nada do músico e adensaria a régua de manchetes; (b) um guard de fração
+  mínima do ano decorrido para evitar ruído em janeiro — **descartado**, a comparação já é apples-to-apples (mesmo mês/dia
+  nos dois anos) e o veredito só dispara com ≥ 10% de gap real sobre um ano anterior **com receita**, então não é volátil
+  por ser cedo; (c) generalizar um componente de nudge único para todas as manchetes — **adiado**, fora de escopo desta
+  sessão e as molduras textuais divergem.
+- **Testes:** **+4** em `finance.test.ts` (`describe("yearToDatePaceHeadline")`): mostra não-crítico quando atrás mas acima
+  de 75%; vira crítico em ≤ 75%; não mostra quando à frente/em linha; não mostra (e `pct` nulo) quando `insufficient`.
+  **988 testes** no total (eram 984).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **988 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/dashboard` 307 (auth-gated). `npm audit` **inalterado** vs. baseline
+  (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma
+  dependência nova**.

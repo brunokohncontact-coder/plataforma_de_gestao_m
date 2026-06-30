@@ -72,6 +72,7 @@ import {
   currentMonthPace,
   monthYoYPace,
   yearToDatePace,
+  yearToDatePaceHeadline,
   MONTH_PACE_EPSILON,
   cashFlowByMonth,
   cashFlowTrend,
@@ -7079,5 +7080,55 @@ describe("yearToDatePace", () => {
     expect(pace.cutoffDay).toBe(29);
     expect(pace.income).toBe(100_00);
     expect(pace.lastYearIncome).toBe(700_00);
+  });
+});
+
+describe("yearToDatePaceHeadline", () => {
+  const NOW = "2026-06-15T00:00:00.000Z";
+  const ytx = (date: string, amount: number, type: TxLike["type"] = "INCOME"): TxLike =>
+    tx({ type, amount, date: `${date}T00:00:00.000Z` });
+
+  it("mostra (não-crítico) quando o ano está atrás, mas acima de 75% do ano passado", () => {
+    // 800 vs 1000 → −20% (behind, mas ratio 0,8 > 0,75 → não crítico).
+    const h = yearToDatePaceHeadline(
+      yearToDatePace([ytx("2026-03-01", 800_00), ytx("2025-03-01", 1000_00)], { now: NOW }),
+    );
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(false);
+    expect(h.verdict).toBe("behind");
+    expect(h.income).toBe(800_00);
+    expect(h.lastYearIncome).toBe(1000_00);
+    expect(h.pct).toBeCloseTo(-0.2);
+    expect(h.year).toBe(2026);
+    expect(h.lastYear).toBe(2025);
+  });
+
+  it("vira crítico quando a receita YTD cai a 75% ou menos da do ano passado", () => {
+    // 700 vs 1000 → ratio 0,7 ≤ 0,75 → crítico.
+    const h = yearToDatePaceHeadline(
+      yearToDatePace([ytx("2026-03-01", 700_00), ytx("2025-03-01", 1000_00)], { now: NOW }),
+    );
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(true);
+  });
+
+  it("não mostra quando está à frente ou em linha com o ano passado", () => {
+    const ahead = yearToDatePaceHeadline(
+      yearToDatePace([ytx("2026-03-01", 1300_00), ytx("2025-03-01", 1000_00)], { now: NOW }),
+    );
+    expect(ahead.show).toBe(false);
+    expect(ahead.critical).toBe(false);
+    const onPace = yearToDatePaceHeadline(
+      yearToDatePace([ytx("2026-03-01", 1000_00), ytx("2025-03-01", 1000_00)], { now: NOW }),
+    );
+    expect(onPace.show).toBe(false);
+  });
+
+  it("não mostra quando não há base de comparação (insufficient)", () => {
+    const h = yearToDatePaceHeadline(yearToDatePace([ytx("2026-03-01", 500_00)], { now: NOW }));
+    expect(h.verdict).toBe("insufficient");
+    expect(h.show).toBe(false);
+    expect(h.critical).toBe(false);
+    expect(h.pct).toBeNull();
   });
 });

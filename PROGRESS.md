@@ -9,7 +9,12 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **984 testes** verdes após o **ritmo do ano**
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **988 testes** verdes após o **nudge de ritmo do ano
+no Painel** (Sessão 170, D163 — novo helper puro `yearToDatePaceHeadline(pace)` em `src/lib/finance.ts`, espelho de
+`cashBurnHeadline`/`geoConcentrationHeadline`: decide só a exibição a partir do `yearToDatePace` já computado e mostra a
+manchete **só quando `behind`** — atrás do mesmo ponto do ano passado; `YTD_PACE_CRITICAL_RATIO=0.75` escala para 🔴/vermelho
+quando a receita YTD cai a ≤75% da do ano anterior; manchete 🐢/🔴 no `dashboard/page.tsx` reaproveita as transações já
+carregadas, linka para `/financas/ritmo-do-ano`; entrega a alt. (c) adiada na D162; **+4 testes**) sobre as **984 testes** do **ritmo do ano**
 em `/financas/ritmo-do-ano` (Sessão 169, D162 — novo helper puro `yearToDatePace(txs, { now? })` em `src/lib/finance.ts`
 responde "estou à frente de onde eu estava nesta época do ano passado?": soma o acumulado do ano corrente (1º jan → hoje,
 competência, UTC) e o compara com o acumulado do ano anterior até o **mesmo mês/dia** — comparação igual-com-igual, dois
@@ -3047,10 +3052,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    (1º jan → hoje, competência, UTC) e compara com o acumulado do ano anterior até o mesmo mês/dia (dois acumulados **reais**,
    sem projeção; clamp de fim-de-mês alinha bissexto) + página `/financas/ritmo-do-ano` (barra de % do ano, selo de veredito,
    cards de receita acumulada e tabela ano × ano × variação), registrada no hub, ver D162. Distinto de `crescimento` (anos
-   fechados), `projecao-ano` (projeção do fechamento) e `monthYoYPace` (só o mês). Próximo possível — uma linha-nudge no
-   Painel só quando `behind` e o mês já passou da metade (adiado por densidade do Painel); ponderar a projeção por
-   dia-da-semana/sazonalidade do mês (hoje é pro-rata uniforme, hipótese frágil cedo no mês); ou um seletor que alterne
-   o card entre o eixo "mês típico" (média móvel) e o eixo sazonal (ano anterior) na própria página.
+   fechados), `projecao-ano` (projeção do fechamento) e `monthYoYPace` (só o mês). **Nudge de ritmo do ano no Painel**
+   entregue na Sessão 170 — `yearToDatePaceHeadline(pace)` em `src/lib/finance.ts` (espelho de
+   `cashBurnHeadline`/`geoConcentrationHeadline`: decide só a exibição, mostra só quando `behind`; `YTD_PACE_CRITICAL_RATIO=0.75`
+   escala para 🔴 no atraso ≥25%) + manchete 🐢/🔴 no `dashboard/page.tsx` (reusa as transações já carregadas, linka para
+   `/financas/ritmo-do-ano`), ver D163. Próximo possível — ponderar a projeção do mês por dia-da-semana/sazonalidade (hoje é
+   pro-rata uniforme, hipótese frágil cedo no mês); ou um seletor que alterne o card de `/financas/ritmo-do-mes` entre o eixo
+   "mês típico" (média móvel) e o eixo sazonal (ano anterior).
 7. **Resiliência / fôlego de caixa** (entregue na Sessão 107, `/financas/folego-de-caixa` + `cashRunway`,
    ver D99): cruza o caixa realizado com o custo fixo mensal (D39) → por quantos meses o caixa cobre os
    custos fixos se as receitas pararem, com veredito (limiares 3/6 meses, hipótese) e data de esgotamento.

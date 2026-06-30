@@ -5387,6 +5387,61 @@ export function yearToDatePace(
   };
 }
 
+/**
+ * Abaixo de 75% da receita do mesmo período do ano passado (≥ 25% de atraso) o
+ * nudge de ritmo do ano vira `critical` — passou de "vale empurrar" para "está
+ * ficando para trás de verdade". Espelha a lógica de limiar crítico dos demais
+ * headlines do Painel.
+ */
+export const YTD_PACE_CRITICAL_RATIO = 0.75;
+
+export interface YearToDatePaceHeadline {
+  /**
+   * Deve aparecer no Painel? Só quando o acumulado do ano corrente está **atrás**
+   * do mesmo ponto do ano passado (`verdict === "behind"`). Com `ahead`/`onPace`
+   * (ritmo bom/em linha) ou `insufficient` (sem base de comparação) o aviso seria
+   * ruído — mesma disciplina de `cashBurnHeadline`/`geoConcentrationHeadline`.
+   */
+  show: boolean;
+  /** Atraso acentuado (receita YTD ≤ 75% da do ano passado, ou seja ≥ 25% abaixo)? */
+  critical: boolean;
+  /** Receita acumulada do ano corrente até o corte (centavos). */
+  income: number;
+  /** Receita acumulada do mesmo período do ano anterior (centavos). */
+  lastYearIncome: number;
+  /** Variação relativa da receita YTD vs. ano anterior (ex.: −0,3 = 30% abaixo); `null` sem base. */
+  pct: number | null;
+  /** Ano corrente e anterior, para a moldura textual. */
+  year: number;
+  lastYear: number;
+  /** Veredito completo do ritmo do ano (para quem quiser o detalhe). */
+  verdict: YearToDateVerdict;
+}
+
+/**
+ * Resumo de Painel do **ritmo do ano** (acumulado ano-a-ano até a data): deriva, de
+ * um `yearToDatePace` já computado, se o nudge deve aparecer e com que urgência.
+ * Pura, sem I/O — espelha `cashBurnHeadline`/`geoConcentrationHeadline`: a regra de
+ * exibição vive aqui, o dashboard só consome. Complementa o nudge mensal de meta
+ * (`goalRun`/ritmo necessário): este olha o acumulado do ano **contra o próprio
+ * ano passado**, respondendo "estou atrás de onde eu estava nesta época?".
+ */
+export function yearToDatePaceHeadline(pace: YearToDatePace): YearToDatePaceHeadline {
+  const show = pace.verdict === "behind";
+  const critical =
+    show && pace.lastYearIncome > 0 && pace.income / pace.lastYearIncome <= YTD_PACE_CRITICAL_RATIO;
+  return {
+    show,
+    critical,
+    income: pace.income,
+    lastYearIncome: pace.lastYearIncome,
+    pct: pace.incomeVsLastYear.pct,
+    year: pace.year,
+    lastYear: pace.lastYear,
+    verdict: pace.verdict,
+  };
+}
+
 export interface CashBurnHeadline {
   /**
    * Deve aparecer no Painel? Só quando o fôlego pelo ritmo real **morde**
