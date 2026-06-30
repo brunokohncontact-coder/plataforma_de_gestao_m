@@ -9,7 +9,18 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1012 testes** verdes após a **exportação CSV dos
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1015 testes** verdes após a **exportação CSV do ritmo
+do mês** em `/financas/ritmo-do-mes/export` (Sessão 177, D170 — a tela "Ritmo do mês" (`currentMonthPace`/D158 + `monthYoYPace`/D161)
+ganhou botão "⬇ CSV"; serializador puro `monthPaceToCsv(pace, yoy)` + `MONTH_PACE_CSV_HEADERS` em `src/lib/csv.ts` achata os dois
+eixos de comparação numa única tabela com a coluna "Base de comparação" (Mês típico × Mesmo mês do ano anterior), uma linha por
+métrica em cada eixo (Receitas → Despesas → Resultado: Base/Métrica/Projeção do mês (R$)/Comparação (R$)/Variação (%)); a coluna
+"Projeção do mês" é a projeção pro-rata do fechamento (idêntica nos dois eixos, como na UI), a "Comparação" é a baseline do eixo e
+a "Variação" reusa `csvSignedPct` ("+25%"/"0%"/"" sem base); **sem linha Total** (métricas não somam — Resultado já é Receitas −
+Despesas, como `yearPaceToCsv`); o eixo do ano anterior é **sempre emitido** (mesmo sem movimento no mês de referência — Comparação
+0,00 e variação em branco, embora a página oculte essa tabela nesse caso); rota reusa consulta+`parseBurnWindow` da página + BOM
+UTF-8, nome `ritmo-do-mes-{YYYY-MM}-{n}m.csv`, botão só com `hasData` (movimento no mês, baseline ou ano anterior); **+3 testes**)
+sobre os **1012 testes**
+da **exportação CSV dos
 fins de semana livres** em `/shows/fins-de-semana-livres/export` (Sessão 176, D169 — a tela "Fins de semana livres"
 (`findOpenWeekends`, D96/D98) ganhou botão "⬇ CSV"; serializador puro `openWeekendsToCsv(report)` + `OPEN_WEEKENDS_CSV_HEADERS`
 em `src/lib/csv.ts` (1º consumidor de `csv.ts` que importa tipo de `shows.ts`: `OpenWeekendsReport`) emite uma linha por fim de
@@ -3108,8 +3119,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `/financas/ritmo-do-ano`), ver D163. **Exportação CSV do ritmo do ano** entregue na Sessão 173 — `yearPaceToCsv(pace)` +
    `YEAR_PACE_CSV_HEADERS` em `src/lib/csv.ts` + `/financas/ritmo-do-ano/export` (Métrica/Ano corrente/Mesmo período do ano
    anterior/Variação (%)), uma linha por métrica (Receitas/Despesas/Resultado), variação assinada via `csvSignedPct` (branco
-   sem base), sem linha Total, nome `ritmo-do-ano-{ano}.csv`, botão "⬇ CSV" só com `hasData`, ver D166. Próximo possível —
-   exportação CSV de `/financas/ritmo-do-mes` (ainda sem export, mas mais densa: vários cards + projeção pro-rata);
+   sem base), sem linha Total, nome `ritmo-do-ano-{ano}.csv`, botão "⬇ CSV" só com `hasData`, ver D166. **Exportação CSV do ritmo do mês** entregue na
+   Sessão 177 — `monthPaceToCsv(pace, yoy)` + `MONTH_PACE_CSV_HEADERS` em `src/lib/csv.ts` + `/financas/ritmo-do-mes/export?meses=N`
+   achata os dois eixos de comparação numa única tabela (coluna "Base de comparação": Mês típico × Mesmo mês do ano anterior; uma
+   linha por métrica em cada eixo, Base/Métrica/Projeção do mês/Comparação/Variação), reusa `csvSignedPct`, sem linha Total (como
+   `yearPaceToCsv`), eixo do ano anterior sempre emitido (0,00 + variação em branco sem âncora sazonal), nome
+   `ritmo-do-mes-{YYYY-MM}-{n}m.csv`, botão "⬇ CSV" só com `hasData`, ver D170.
+   Próximo possível —
    ponderar a projeção do mês por dia-da-semana/sazonalidade (hoje é pro-rata uniforme, hipótese frágil cedo no mês); ou um
    seletor que alterne o card de `/financas/ritmo-do-mes` entre o eixo "mês típico" (média móvel) e o eixo sazonal (ano anterior).
 7. **Resiliência / fôlego de caixa** (entregue na Sessão 107, `/financas/folego-de-caixa` + `cashRunway`,

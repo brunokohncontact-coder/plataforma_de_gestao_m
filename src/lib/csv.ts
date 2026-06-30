@@ -47,6 +47,8 @@ import {
   type CategoryReportComparison,
   type ShowPipeline,
   type YearToDatePace,
+  type MonthPace,
+  type MonthYoYPace,
   type MonthlyGoalProgress,
   type MonthGoalStatus,
   type QuarterlyGoalProgress,
@@ -1791,6 +1793,78 @@ export function yearPaceToCsv(pace: YearToDatePace, delimiter = DEFAULT_DELIMITE
       centsToCsvAmount(delta.previous),
       csvSignedPct(delta.pct),
     ]);
+  }
+  return toCsv(out, delimiter);
+}
+
+// ── Ritmo do mês (projeção do mês corrente vs. mês típico e vs. ano anterior) ──
+
+export const MONTH_PACE_CSV_HEADERS = [
+  "Base de comparação",
+  "Métrica",
+  "Projeção do mês (R$)",
+  "Comparação (R$)",
+  "Variação (%)",
+] as const;
+
+/**
+ * Serializa o ritmo do mês (`currentMonthPace` + `monthYoYPace`) em CSV, pronto
+ * para download — espelha as duas tabelas de `/financas/ritmo-do-mes`:
+ * "Projeção do mês × mês típico" e "Mesmo mês no ano passado".
+ *
+ * Achata os dois eixos numa única tabela com a coluna "Base de comparação"
+ * separando o "Mês típico" (a média móvel dos meses fechados com movimento) do
+ * "Mesmo mês do ano anterior" (âncora sazonal, mês cheio já fechado). Dentro de
+ * cada eixo, uma linha por métrica (Receitas → Despesas → Resultado, a ordem da
+ * página). A coluna "Projeção do mês" é o `current` do MetricDelta — a mesma
+ * projeção pro-rata do fechamento do mês corrente, idêntica nos dois eixos (como
+ * na UI); a "Comparação" é o `previous` (a baseline do eixo); e a "Variação"
+ * herda o `pct` (assinada via `csvSignedPct`, "" quando não há base — espelhando
+ * o "—" da UI / o veredito `insufficient`).
+ *
+ * Sem linha "Total" (as métricas não somam entre si: Resultado já é Receitas −
+ * Despesas, como em `yearPaceToCsv`). O eixo do ano anterior é **sempre** emitido,
+ * inclusive quando não há movimento no mês de referência (Comparação 0,00,
+ * Variação em branco) — mantém o arquivo auto-suficiente e legível por máquina,
+ * embora a página oculte essa tabela nesse caso. A janela do "mês típico" e o
+ * recorte do mês corrente já vêm resolvidos no `pace`/`yoy`; o nome do arquivo
+ * carrega a janela. Mesma convenção pt-BR dos irmãos (";" e decimal com vírgula).
+ * Pura.
+ */
+export function monthPaceToCsv(
+  pace: MonthPace,
+  yoy: MonthYoYPace,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(MONTH_PACE_CSV_HEADERS)];
+  const sections: Array<[string, Array<[string, MetricDelta]>]> = [
+    [
+      "Mês típico",
+      [
+        ["Receitas", pace.incomeVsBaseline],
+        ["Despesas", pace.expenseVsBaseline],
+        ["Resultado", pace.netVsBaseline],
+      ],
+    ],
+    [
+      "Mesmo mês do ano anterior",
+      [
+        ["Receitas", yoy.incomeVsLastYear],
+        ["Despesas", yoy.expenseVsLastYear],
+        ["Resultado", yoy.netVsLastYear],
+      ],
+    ],
+  ];
+  for (const [base, rows] of sections) {
+    for (const [label, delta] of rows) {
+      out.push([
+        base,
+        label,
+        centsToCsvAmount(delta.current),
+        centsToCsvAmount(delta.previous),
+        csvSignedPct(delta.pct),
+      ]);
+    }
   }
   return toCsv(out, delimiter);
 }

@@ -5282,3 +5282,48 @@ contexto, decisão, justificativa e alternativas consideradas.
   `/login` 200 e `/shows/fins-de-semana-livres` + `/shows/fins-de-semana-livres/export?semanas=8` 307 (auth-gated). `npm audit`
   **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver
   D6/bloqueios); **nenhuma dependência nova**.
+
+## D170 — Exportação CSV do ritmo do mês (`/financas/ritmo-do-mes/export` + `monthPaceToCsv`) (Sessão 177)
+- **Contexto:** a tela "Ritmo do mês" (`/financas/ritmo-do-mes`, `currentMonthPace`/D158 + `monthYoYPace`/D161) responde "estou
+  faturando no ritmo de um mês normal?": projeta o fechamento do mês corrente (pro-rata) e o compara em duas tabelas — contra o
+  "mês típico" (média móvel dos meses fechados com movimento, janela `?meses=`) e contra o mesmo mês do ano anterior (eixo
+  sazonal, mês cheio já fechado). Era a tela da família "ritmo" ainda **sem** exportação CSV (a irmã `/financas/ritmo-do-ano`
+  já exporta desde a D166). Apontada como próximo possível no item 6b dos próximos passos, com a ressalva de ser "mais densa"
+  (dois eixos de comparação em vez de um).
+- **Decisão:** novo serializador puro `monthPaceToCsv(pace, yoy)` + `MONTH_PACE_CSV_HEADERS` em `src/lib/csv.ts` (recebe os dois
+  objetos já computados, `MonthPace` de `currentMonthPace` e `MonthYoYPace` de `monthYoYPace`, ambos de `@/lib/finance`). Achata
+  os **dois eixos numa única tabela** com a coluna "Base de comparação" separando "Mês típico" de "Mesmo mês do ano anterior";
+  dentro de cada eixo, uma linha por métrica (Receitas → Despesas → Resultado, a ordem da página). Colunas:
+  Base de comparação / Métrica / Projeção do mês (R$) / Comparação (R$) / Variação (%).
+- **Colunas vindas do `MetricDelta`:** "Projeção do mês" é o `current` do delta — a mesma projeção pro-rata do fechamento do mês
+  corrente, **idêntica nos dois eixos** (como na UI, onde os dois cards mostram a mesma projeção contra bases diferentes);
+  "Comparação" é o `previous` (a baseline do eixo: o mês típico ou o mês do ano anterior); "Variação" herda o `pct`, assinada via
+  o `csvSignedPct` já existente (reuso, não duplicação) — "+25%"/"-50%"/"0%" e **"" (em branco)** quando não há base (previous 0),
+  espelhando o "—" da UI e o veredito `insufficient`.
+- **Sem linha Total:** as três métricas não somam entre si (Resultado já é Receitas − Despesas), exatamente como em
+  `yearPaceToCsv`/D166. O CSV é a tabela de comparação, não um balanço.
+- **Eixo do ano anterior sempre emitido:** mesmo quando não há movimento no mês de referência (`yoy.lastYearHasMovement === false`,
+  caso em que a **página oculta** a segunda tabela), o CSV emite as 3 linhas do eixo do ano anterior com Comparação 0,00 e Variação
+  em branco. Mantém o arquivo auto-suficiente e de forma fixa (6 linhas + cabeçalho), legível por máquina — mesma convenção de
+  `yearPaceToCsv`, que emite linhas zeradas com variação em branco. A ausência de âncora sazonal fica explícita (0,00 + variação
+  vazia), não omitida.
+- **Rota e botão:** `/financas/ritmo-do-mes/export?meses=N` reusa a mesma consulta da página (todas as transações do usuário) e o
+  mesmo `parseBurnWindow` (D102) para sanear a janela do mês típico + BOM UTF-8; nome `ritmo-do-mes-{YYYY-MM}-{n}m.csv` (o mês
+  corrente e a janela ativa entram no nome — o mês porque a "fotografia" é do mês em curso, a janela como em
+  `cashFlowToCsv`/`fluxo-de-caixa-mensal-{n}m.csv`). Botão "⬇ CSV" no cabeçalho da página propaga a janela ativa, gated por
+  `hasData` (`hasCurrentMonth || pace.baselineMonths > 0 || yoy.lastYearHasMovement` — há ao menos um número real a comparar).
+- **Alternativas consideradas:** (a) duas tabelas separadas no CSV (cada eixo com seu próprio bloco de cabeçalho) — **descartado**:
+  uma única tabela com a coluna "Base de comparação" abre mais limpa numa planilha (filtrável/pivotável) e evita dois cabeçalhos
+  no mesmo arquivo; (b) incluir os escalares de contexto (receita até agora, projeção bruta, % do mês decorrido, dia do mês) como
+  linhas/colunas extras — **descartado**: fugiria do formato tabular dos exports irmãos (`yearPaceToCsv` também só emite a tabela
+  de comparação); esses números já estão nos cards da tela; (c) ocultar o eixo do ano anterior quando não há base (espelhando a
+  página) — **descartado**: forma variável quebra a leitura por máquina; o 0,00 + variação vazia já comunica a ausência.
+- **Testes:** **+3** em `csv.test.ts` (`describe("monthPaceToCsv")`: sem dados → cabeçalho + 6 linhas zeradas (3 por eixo) com
+  variação em branco; projeção do mês × mês típico (0%) e × ano anterior (+25%) com a fixture de `currentMonthPace`
+  (`now`=15/jun/2026, elapsed 0,5, baseline de 6 meses a 1000); eixo do ano anterior emitido com Comparação 0,00 + variação em
+  branco quando não há jun/2025). **1015 testes** no total (eram 1012).
+- **DoD:** build de produção (`✓ Compiled successfully`, rota `/financas/ritmo-do-mes/export` registrada) e lint (`next lint`, 0
+  avisos) verdes; typecheck (`tsc --noEmit`) limpo; **1015 testes** (`vitest run`); smoke test (`next start`) → `/login` 200 e
+  `/financas/ritmo-do-mes` + `/financas/ritmo-do-mes/export?meses=12` 307 (auth-gated). `npm audit` **inalterado** vs. baseline
+  (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência
+  nova**.
