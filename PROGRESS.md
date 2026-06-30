@@ -9,7 +9,16 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1015 testes** verdes após a **exportação CSV do ritmo
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1019 testes** verdes após a **exportação CSV da
+projeção de fechamento do ano** em `/financas/projecao-ano/export` (Sessão 178, D171 — a tela "Projeção de fechamento"
+(`projectYearEnd`/`yearEndScenarioView`, com seletor de cenário otimista/conservador/pior caso, D73) ganhou botão "⬇ CSV";
+serializador puro `yearEndProjectionToCsv(view)` + `YEAR_END_PROJECTION_CSV_HEADERS` em `src/lib/csv.ts` emite a composição dos
+dois cards da página numa tabela agrupada (Grupo/Componente/Valor (R$)/Participação (%)): Receitas (Já recebido/A receber/Cachês
+agendados/Total projetado) → Despesas (Já pago/A pagar/[Custo fixo estimado]/Total projetado) → Resultado (Resultado projetado),
+com a participação de cada componente no total do grupo via `csvShare` e linhas Total/Resultado com participação em branco
+(100%/o próprio total por construção); a linha "Custo fixo estimado" só sai quando `> 0` (espelha o card, só no pior caso); rota
+reusa a consulta+parsing de `?ano=`/`?cenario=` da página + BOM UTF-8, nome `projecao-ano-{ano}-{cenario}.csv` (cenário e ano no
+nome, cabeçalhos genéricos), botão gated por `hasAnything`; **+4 testes**) sobre os **1015 testes** da **exportação CSV do ritmo
 do mês** em `/financas/ritmo-do-mes/export` (Sessão 177, D170 — a tela "Ritmo do mês" (`currentMonthPace`/D158 + `monthYoYPace`/D161)
 ganhou botão "⬇ CSV"; serializador puro `monthPaceToCsv(pace, yoy)` + `MONTH_PACE_CSV_HEADERS` em `src/lib/csv.ts` achata os dois
 eixos de comparação numa única tabela com a coluna "Base de comparação" (Mês típico × Mesmo mês do ano anterior), uma linha por
@@ -3297,9 +3306,14 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `src/lib/csv.ts` + `/financas/metas/trimestral/export?ano=YYYY` (Trimestre/Alvo/Recebido/Falta/Atingido %/Situação + linha
    Total cujo alvo é a meta anual e cuja situação resume "N/4 batidos"), espelho mais grosso da mensal (D167), reusa a
    consulta/`?ano=` da página, nome `metas-trimestral-{ano}.csv`, botão "⬇ CSV" no card "Meta por trimestre" (só com
-   `quarterly.goal > 0`), ver D168 — fecha a rota irmã adiada na D167(c). Próximo possível — as telas de Finanças que ainda
-   não exportam são agora **só** painéis de cenário/projeção de número único (projeção-ano, ponto-de-equilíbrio,
-   reserva-impostos): são menos óbvios como planilha; avaliar caso a caso.
+   `quarterly.goal > 0`), ver D168 — fecha a rota irmã adiada na D167(c). **Exportação CSV da projeção de fechamento do ano**
+   entregue na Sessão 178 — `yearEndProjectionToCsv(view)` + `YEAR_END_PROJECTION_CSV_HEADERS` em `src/lib/csv.ts` +
+   `/financas/projecao-ano/export?ano=YYYY&cenario=...` (Grupo/Componente/Valor (R$)/Participação (%): composição de Receitas,
+   Despesas e Resultado projetado do cenário escolhido, espelhando os dois cards da página; linha "Custo fixo estimado" só no pior
+   caso; cenário+ano no nome `projecao-ano-{ano}-{cenario}.csv`), reusa consulta/parsing da página, botão gated por `hasAnything`,
+   ver D171 — a avaliação caso a caso da projeção-ano deu positiva (a tela tem composição tabular, não só número único).
+   Próximo possível — as telas de Finanças que ainda não exportam são agora **só** painéis de número único
+   (ponto-de-equilíbrio, reserva-impostos): menos óbvios como planilha; provavelmente não vale uma planilha de uma linha.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

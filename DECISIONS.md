@@ -5327,3 +5327,45 @@ contexto, decisão, justificativa e alternativas consideradas.
   `/financas/ritmo-do-mes` + `/financas/ritmo-do-mes/export?meses=12` 307 (auth-gated). `npm audit` **inalterado** vs. baseline
   (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência
   nova**.
+
+## D171 — Exportação CSV da projeção de fechamento do ano (`/financas/projecao-ano/export` + `yearEndProjectionToCsv`) (Sessão 178)
+- **Contexto:** a tela "Projeção de fechamento" (`/financas/projecao-ano`, `projectYearEnd`/`yearEndScenarioView`) mostra como o
+  ano deve fechar somando o realizado, o pendente lançado e os cachês de shows futuros, sob um seletor de três cenários
+  (otimista × conservador × pior caso — D73). Era uma das telas de Finanças ainda sem exportação CSV; o item 10 dos próximos
+  passos a listava entre os "painéis de cenário/projeção" a avaliar caso a caso ("menos óbvios como planilha"). A avaliação:
+  a tela tem **dois cards de composição tabular** (Receitas projetadas e Despesas projetadas, cada componente com seu %), além
+  do número de destaque (resultado projetado) — material genuinamente tabular, ao contrário de ponto-de-equilíbrio/reserva que
+  são número único.
+- **Decisão:** novo serializador puro `yearEndProjectionToCsv(view)` + `YEAR_END_PROJECTION_CSV_HEADERS` em `src/lib/csv.ts`
+  (recebe o `YearEndScenarioView` já computado, de `@/lib/finance`). Emite uma linha por componente, agrupada em três blocos:
+  Receitas (Já recebido / A receber lançado / Cachês agendados / Total projetado), Despesas (Já pago / A pagar lançado /
+  [Custo fixo estimado] / Total projetado) e Resultado (Resultado projetado). Colunas: Grupo / Componente / Valor (R$) /
+  Participação (%).
+- **Participação:** reproduz o % que cada componente ocupa no total do seu grupo (receita ou despesa), espelhando as barras da
+  página (reusa o `csvShare` já existente). As linhas "Total projetado" e a do resultado saem com participação **em branco**
+  (são 100% / o próprio total por construção — mesma convenção dos "Total" de `incomeMixToCsv`/`clientConcentrationToCsv`).
+- **Custo fixo estimado condicional:** a linha "Custo fixo estimado" só é emitida quando `estimatedRemainingFixedCost > 0` —
+  exatamente como o card da página, que a oculta fora do "pior caso". A forma do CSV varia por conteúdo (8 linhas no
+  otimista/conservador, 9 no pior caso), como outros exports cuja contagem de linhas depende dos dados (`dueAgendaToCsv`).
+- **Cenário e ano no nome do arquivo:** o cenário (otimista/conservador/pior-caso) e o ano vão no nome
+  (`projecao-ano-{ano}-{cenario}.csv`), com cabeçalhos genéricos — mesma convenção do ano em `metas-mensal-{ano}.csv` (D167) e do
+  horizonte em `fluxo-de-caixa-projetado-{n}m.csv` (D164). Como o cenário altera profundamente os números, ele entra no nome
+  (não só na query) para a planilha baixada ser auto-explicativa.
+- **Rota e botão:** `/financas/projecao-ano/export?ano=YYYY&cenario=...` reusa a consulta da página (todas as transações +
+  shows do ano) e o **mesmo parsing de `?ano=`/`?cenario=`** + `projectYearEnd`/`recurringExpenses`/`yearEndScenarioView` da
+  página, + BOM UTF-8. A consulta de shows do export é mais enxuta (só `[ano, ano+1)`, sem o ano anterior que a página carrega
+  para a comparação YoY). Botão "⬇ CSV" no cabeçalho propaga `?ano=`/`?cenario=` ativos, gated por `hasAnything` (mesmo gate do
+  corpo da página: há algo lançado ou agendado).
+- **Alternativas consideradas:** (a) repetir o nome do cenário numa coluna "Cenário" por linha — **descartado**: ruído; o nome do
+  arquivo já carrega o cenário, como os irmãos carregam ano/horizonte; (b) emitir sempre a linha de custo fixo (0,00 fora do pior
+  caso) para forma fixa — **descartado**: a página a oculta, e 0,00 é menos claro do que a ausência; outros exports já variam de
+  forma por conteúdo; (c) incluir o card "vs. meta"/"vs. ano anterior" como linhas extras — **descartado**: foge da composição;
+  esses comparativos têm exports/telas próprios (`metas`, `crescimento`, `ritmo-do-ano`).
+- **Testes:** **+4** em `csv.test.ts` (`describe("yearEndProjectionToCsv")`: composição otimista (9 linhas, participações
+  40/12/48% receita e 91/9% despesa); conservador descarta os cachês a confirmar (agendado 1200→700); pior caso ganha a linha de
+  custo fixo estimado (10 linhas); participação 0% sem receita/despesa). **1019 testes** no total (eram 1015).
+- **DoD:** build de produção (`✓ Compiled successfully`, rota `/financas/projecao-ano/export` registrada) e lint (`next lint`, 0
+  avisos) verdes; typecheck (`tsc --noEmit`) limpo; **1019 testes** (`vitest run`); smoke test (`next start`) → `/` e `/login` 200,
+  `/financas/projecao-ano/export?ano=2026&cenario=conservador` 307 (auth-gated). `npm audit` **inalterado** vs. baseline
+  (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência
+  nova**.

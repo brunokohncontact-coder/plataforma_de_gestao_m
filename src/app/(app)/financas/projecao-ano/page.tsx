@@ -175,9 +175,23 @@ export default async function YearEndForecastPage({
             pendente e os cachês de shows futuros ainda não lançados.
           </p>
         </div>
-        <Link href="/financas" className="text-sm text-gray-500 hover:underline">
-          ← Finanças
-        </Link>
+        <div className="flex items-center gap-3">
+          {hasAnything && (
+            <a
+              href={
+                "/financas/projecao-ano/export?ano=" +
+                year +
+                (CENARIO_SLUG[mode] ? `&cenario=${CENARIO_SLUG[mode]}` : "")
+              }
+              className="btn-secondary"
+            >
+              ⬇ CSV
+            </a>
+          )}
+          <Link href="/financas" className="text-sm text-gray-500 hover:underline">
+            ← Finanças
+          </Link>
+        </div>
       </div>
 
       {/* Navegação por ano */}
