@@ -53,6 +53,7 @@ import {
   type MonthGoalStatus,
   type QuarterlyGoalProgress,
   type YearEndScenarioView,
+  type RecurringExpensesReport,
 } from "./finance";
 import type {
   ClientRetention,
@@ -2205,6 +2206,71 @@ export function yearEndProjectionToCsv(
     "Resultado projetado",
     centsToCsvAmount(view.projectedResult),
     "",
+  ]);
+
+  return toCsv(out, delimiter);
+}
+
+// ── Custos fixos recorrentes (o piso a faturar todo mês) ─────────────────────
+
+export const RECURRING_EXPENSES_CSV_HEADERS = [
+  "Categoria",
+  "Conta típica/mês (R$)",
+  "Meses ativos",
+  "Janela (meses)",
+  "Última",
+  "Total (R$)",
+  "Situação",
+] as const;
+
+/**
+ * Serializa os custos fixos recorrentes (`recurringExpenses`) em CSV, pronto
+ * para download. Uma linha por categoria recorrente, espelhando a tabela
+ * "Despesas recorrentes" de `/financas/custos-fixos`: conta típica/mês
+ * (`avgPerActiveMonth`), nº de meses ativos, janela entre 1ª e última ocorrência,
+ * mês da última ocorrência (chave ISO "YYYY-MM", ordenável — não o "jun/26" da
+ * UI), total histórico e a situação (Ativa/Encerrada, espelhando o selo da tela).
+ * A ordem das linhas é preservada (a página ordena por conta típica desc). Mesma
+ * convenção pt-BR de `transactionsToCsv`.
+ *
+ * Encerrada numa linha "Total" cuja coluna "Conta típica/mês" traz o
+ * **custo fixo mensal estimado** (`estimatedMonthlyFixedCost` — a soma da conta
+ * típica só das categorias AINDA ATIVAS, o número de destaque da página, não a
+ * soma cega da coluna que incluiria as encerradas), "Total" somando o histórico
+ * de todas as categorias e "Situação" = "N/M ativas" (espelha o "recorrentes/total"
+ * de `clientRetentionToCsv`); as colunas de meses/janela/última ficam em branco
+ * no Total (somá-las não teria sentido). Pura.
+ */
+export function recurringExpensesToCsv(
+  report: RecurringExpensesReport,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(RECURRING_EXPENSES_CSV_HEADERS)];
+
+  let activeCount = 0;
+  let totalSum = 0;
+  for (const c of report.categories) {
+    if (c.active) activeCount += 1;
+    totalSum += c.total;
+    out.push([
+      c.category,
+      centsToCsvAmount(c.avgPerActiveMonth),
+      String(c.monthsActive),
+      String(c.monthsSpan),
+      c.lastMonth,
+      centsToCsvAmount(c.total),
+      c.active ? "Ativa" : "Encerrada",
+    ]);
+  }
+
+  out.push([
+    "Total",
+    centsToCsvAmount(report.estimatedMonthlyFixedCost),
+    "",
+    "",
+    "",
+    centsToCsvAmount(totalSum),
+    `${activeCount}/${report.categories.length} ativas`,
   ]);
 
   return toCsv(out, delimiter);

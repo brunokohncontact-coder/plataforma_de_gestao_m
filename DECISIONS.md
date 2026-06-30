@@ -5403,3 +5403,38 @@ contexto, decisão, justificativa e alternativas consideradas.
   verdes; typecheck (`tsc --noEmit`) limpo; **1022 testes** (`vitest run`); smoke test (`next start`) → `/login` 200,
   `/shows/conflitos` + `/shows/conflitos/export` 307 (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4
   moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## D173 — Exportação CSV dos custos fixos recorrentes (`/financas/custos-fixos/export` + `recurringExpensesToCsv`) (Sessão 180)
+- **Contexto:** o item 10 dos próximos passos (e a D172) afirmava que as únicas telas tabulares sem "⬇ CSV" restantes eram número
+  único (ponto-de-equilíbrio, reserva-impostos). Ao varrer `src/app/(app)/**` por páginas sem subpasta `export/`, ressurgiram **duas
+  telas tabulares** que a varredura anterior deixou passar: `/financas/custos-fixos` (tabela "Despesas recorrentes") e
+  `/financas/relatorio` (relatório mensal + média móvel). A primeira — custos fixos recorrentes (`recurringExpenses`/D39: o piso a
+  faturar todo mês) — tem material de planilha de sobra (categoria, conta típica, meses, total) e é o coração da resiliência de
+  caixa, então foi a escolhida nesta sessão.
+- **Decisão:** novo serializador puro `recurringExpensesToCsv(report)` + `RECURRING_EXPENSES_CSV_HEADERS` em `src/lib/csv.ts`
+  (recebe o `RecurringExpensesReport` já computado, de `@/lib/finance`). Rota `/financas/custos-fixos/export` + botão "⬇ CSV" no
+  cabeçalho da página, gated por `categories.length > 0` (mesmo gate do corpo da tela).
+- **Colunas:** Categoria / Conta típica/mês (R$) / Meses ativos / Janela (meses) / Última / Total (R$) / Situação. Uma linha por
+  categoria recorrente, na ordem da página (conta típica desc). "Última" usa a chave ISO "YYYY-MM" (ordenável/legível por máquina),
+  não o "jun/26" da UI — mesma convenção de `cashFlowToCsv`/séries de eixo de tempo. "Situação" reproduz o selo da tela
+  (Ativa/Encerrada via o flag `active`).
+- **Linha Total:** a coluna "Conta típica/mês" traz o **custo fixo mensal estimado** (`estimatedMonthlyFixedCost`) — o número de
+  destaque da página (soma da conta típica **só das categorias ativas**), e **não** a soma cega da coluna (que incluiria as
+  encerradas). "Total (R$)" soma o histórico de todas as categorias recorrentes. "Situação" = "N/M ativas" (espelha o
+  "recorrentes/total" de `clientRetentionToCsv`/D153). As colunas de meses/janela/última ficam em branco no Total (somá-las não
+  teria sentido).
+- **Sem parâmetros:** a detecção de recorrência é um retrato de todo o histórico de despesas (igual à página, que não tem `?ano=`);
+  o export usa a mesma consulta enxuta (`type: "EXPENSE"`) + nome fixo `custos-fixos.csv` + BOM UTF-8.
+- **Alternativas consideradas:** (a) somar a coluna "Conta típica/mês" no Total em vez do custo fixo estimado — **descartado**:
+  divergiria do número de destaque da página e infla com custos já cortados; (b) incluir `regularity`/`monthsObserved` como colunas
+  — **descartado**: ruído para a planilha; a regularidade está implícita em "Meses ativos × Janela"; (c) export de
+  `/financas/relatorio` na mesma sessão — **adiado**: escopo fechado por sessão; fica como próximo passo natural (tem tabela mensal
+  + média móvel).
+- **Testes:** **+2** em `csv.test.ts` (`describe("recurringExpensesToCsv")`: sem recorrentes → só cabeçalho + Total zerado
+  ("0/0 ativas"); uma linha por categoria recorrente em ordem de conta típica desc, ativa/encerrada pela proximidade da última
+  ocorrência a `now`, não-recorrente de 1 mês de fora, Total com custo fixo estimado só-ativas + "1/2 ativas"). **1024 testes** no
+  total (eram 1022).
+- **DoD:** build de produção (`✓ Compiled successfully`, rota `/financas/custos-fixos/export` registrada) e lint (`next lint`, 0
+  avisos) verdes; typecheck (`tsc --noEmit`) limpo; **1024 testes** (`vitest run`); smoke test (`next start`) → `/login` 200,
+  `/financas/custos-fixos` + `/financas/custos-fixos/export` 307 (auth-gated). `npm audit` **inalterado** vs. baseline (10
+  advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.

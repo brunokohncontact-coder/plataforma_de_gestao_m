@@ -80,9 +80,19 @@ export default async function FixedCostsPage() {
             As despesas que se repetem mês a mês — quanto você precisa faturar só para se manter
           </p>
         </div>
-        <Link href="/financas" className="text-sm text-gray-500 hover:underline">
-          ← Finanças
-        </Link>
+        <div className="flex items-center gap-4">
+          {categories.length > 0 && (
+            <a
+              href="/financas/custos-fixos/export"
+              className="text-sm font-medium text-brand-700 hover:underline"
+            >
+              ⬇ CSV
+            </a>
+          )}
+          <Link href="/financas" className="text-sm text-gray-500 hover:underline">
+            ← Finanças
+          </Link>
+        </div>
       </div>
 
       {categories.length === 0 ? (

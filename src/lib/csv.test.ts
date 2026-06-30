@@ -56,6 +56,8 @@ import {
   CLIENT_RETENTION_CSV_HEADERS,
   yearlyHistoryToCsv,
   YEARLY_HISTORY_CSV_HEADERS,
+  recurringExpensesToCsv,
+  RECURRING_EXPENSES_CSV_HEADERS,
   cashFlowToCsv,
   CASH_FLOW_CSV_HEADERS,
   cashflowProjectionToCsv,
@@ -1664,6 +1666,54 @@ describe("yearlyHistoryToCsv", () => {
     expect(lines[1]).toBe("2024;500,00;500,00;0,00;");
     expect(lines[2]).toBe("2026;800,00;0,00;800,00;novo");
     expect(lines[3]).toBe("Total;1300,00;500,00;800,00;");
+  });
+});
+
+describe("recurringExpensesToCsv", () => {
+  // `now` fixo: "ativa" = última ocorrência nos últimos 2 meses (default).
+  const NOW = "2026-07-15T00:00:00.000Z";
+  const tx = (amount: number, category: string, date: string): TxLike => ({
+    type: "EXPENSE",
+    amount,
+    category,
+    date,
+    received: true,
+    showId: null,
+  });
+
+  it("só cabeçalho + Total zerado quando não há custos recorrentes", () => {
+    const csv = recurringExpensesToCsv(recurringExpenses([], { now: NOW }));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(RECURRING_EXPENSES_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe("Total;0,00;;;;0,00;0/0 ativas");
+  });
+
+  it("uma linha por categoria recorrente (conta típica desc) + Total com custo fixo estimado", () => {
+    const lines = recurringExpensesToCsv(
+      recurringExpenses(
+        [
+          // Sala de ensaio: abr/mai/jun → ativa (última jun, 1 mês de NOW), típico 80,00.
+          tx(80_00, "Sala de ensaio", "2026-04-10T00:00:00.000Z"),
+          tx(80_00, "Sala de ensaio", "2026-05-10T00:00:00.000Z"),
+          tx(80_00, "Sala de ensaio", "2026-06-10T00:00:00.000Z"),
+          // Plano antigo: jan/fev/mar → encerrada (última mar, 4 meses de NOW), típico 50,00.
+          tx(50_00, "Plano antigo", "2026-01-05T00:00:00.000Z"),
+          tx(50_00, "Plano antigo", "2026-02-05T00:00:00.000Z"),
+          tx(50_00, "Plano antigo", "2026-03-05T00:00:00.000Z"),
+          // Conserto pontual: só 1 mês → não recorrente, fica de fora.
+          tx(300_00, "Equipamento", "2026-05-20T00:00:00.000Z"),
+        ],
+        { now: NOW },
+      ),
+    ).split("\r\n");
+    // cabeçalho + 2 categorias recorrentes + Total.
+    expect(lines).toHaveLength(4);
+    expect(lines[1]).toBe("Sala de ensaio;80,00;3;3;2026-06;240,00;Ativa");
+    expect(lines[2]).toBe("Plano antigo;50,00;3;3;2026-03;150,00;Encerrada");
+    // Total: conta típica = custo fixo estimado (só ativas = 80,00, não 130,00);
+    // total = histórico somado (390,00); situação = 1/2 ativas.
+    expect(lines[3]).toBe("Total;80,00;;;;390,00;1/2 ativas");
   });
 });
 
