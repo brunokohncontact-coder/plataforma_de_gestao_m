@@ -94,6 +94,8 @@ import {
   YEAR_END_PROJECTION_CSV_HEADERS,
   scheduleConflictsToCsv,
   SCHEDULE_CONFLICTS_CSV_HEADERS,
+  taxReserveToCsv,
+  TAX_RESERVE_CSV_HEADERS,
 } from "./csv";
 import {
   findOpenWeekends,
@@ -128,6 +130,8 @@ import {
   quarterlyGoalProgress,
   projectYearEnd,
   recurringExpenses,
+  taxReserve,
+  DEFAULT_TAX_RATE,
   yearEndScenarioView,
   type YearEndShowLike,
   type TxLike,
@@ -1015,6 +1019,69 @@ describe("monthlySeasonalityToCsv", () => {
     ]);
     const janeiro = monthlySeasonalityToCsv(seasonality).split("\r\n")[1].split(";");
     expect(janeiro).toEqual(["Janeiro", "0,00", "0,00", "0,00", "0"]);
+  });
+});
+
+describe("taxReserveToCsv", () => {
+  const tx = (over: Partial<TxLike> = {}): TxLike => ({
+    type: "INCOME",
+    amount: 100000,
+    category: "",
+    date: "2024-03-10T00:00:00.000Z",
+    received: true,
+    showId: null,
+    ...over,
+  });
+
+  it("sempre emite as 12 linhas de mês + a linha Total mesmo sem receita", () => {
+    const csv = taxReserveToCsv(taxReserve([], { year: 2024 }));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(TAX_RESERVE_CSV_HEADERS.join(";"));
+    // cabeçalho + 12 meses + Total
+    expect(lines).toHaveLength(14);
+    expect(lines[1]).toBe("Janeiro;0,00;0,00;0%");
+    expect(lines[12]).toBe("Dezembro;0,00;0,00;0%");
+    // Total sem movimento: recebido e reserva zerados, participação em branco.
+    expect(lines[13]).toBe("Total;0,00;0,00;");
+  });
+
+  it("serializa recebido, reserva (round × alíquota) e participação por mês + Total", () => {
+    const report = taxReserve(
+      [
+        tx({ date: "2024-03-10T00:00:00.000Z", amount: 100000 }), // 1000 em março
+        tx({ date: "2024-07-10T00:00:00.000Z", amount: 300000 }), // 3000 em julho
+      ],
+      { year: 2024, rate: 0.1 }, // 10%
+    );
+    const lines = taxReserveToCsv(report).split("\r\n");
+    // Março: recebido 1000, reserva 100, participação 100/400 = 25%.
+    expect(lines[3].split(";")).toEqual(["Março", "1000,00", "100,00", "25%"]);
+    // Julho: recebido 3000, reserva 300, participação 300/400 = 75%.
+    expect(lines[7].split(";")).toEqual(["Julho", "3000,00", "300,00", "75%"]);
+    // Total: recebido 4000, reserva 400, participação em branco (100% por construção).
+    expect(lines[13].split(";")).toEqual(["Total", "4000,00", "400,00", ""]);
+  });
+
+  it("ignora receitas a receber, despesas e outros anos (só caixa recebido do ano)", () => {
+    const report = taxReserve(
+      [
+        tx({ date: "2024-03-10T00:00:00.000Z", amount: 100000, received: true }),
+        tx({ date: "2024-04-10T00:00:00.000Z", amount: 500000, received: false }), // a receber
+        tx({ date: "2024-05-10T00:00:00.000Z", amount: 200000, type: "EXPENSE" }), // despesa
+        tx({ date: "2023-03-10T00:00:00.000Z", amount: 900000, received: true }), // outro ano
+      ],
+      { year: 2024, rate: DEFAULT_TAX_RATE },
+    );
+    const lines = taxReserveToCsv(report).split("\r\n");
+    // Só o show de março de 2024 entra: 1000 × 6% = 60.
+    expect(lines[3].split(";")).toEqual(["Março", "1000,00", "60,00", "100%"]);
+    expect(lines[13].split(";")).toEqual(["Total", "1000,00", "60,00", ""]);
+  });
+
+  it("registra 0,00 nos meses sem receita (não usa o '—' da UI)", () => {
+    const report = taxReserve([tx({ date: "2024-03-10T00:00:00.000Z" })], { year: 2024 });
+    const janeiro = taxReserveToCsv(report).split("\r\n")[1].split(";");
+    expect(janeiro).toEqual(["Janeiro", "0,00", "0,00", "0%"]);
   });
 });
 
