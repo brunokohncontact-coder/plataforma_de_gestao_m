@@ -85,6 +85,8 @@ import {
   type PaymentLagCsvRow,
   openWeekendsToCsv,
   OPEN_WEEKENDS_CSV_HEADERS,
+  yearEndProjectionToCsv,
+  YEAR_END_PROJECTION_CSV_HEADERS,
 } from "./csv";
 import { findOpenWeekends, type ConflictShowLike } from "./shows";
 import {
@@ -110,6 +112,10 @@ import {
   monthYoYPace,
   monthlyGoalProgress,
   quarterlyGoalProgress,
+  projectYearEnd,
+  recurringExpenses,
+  yearEndScenarioView,
+  type YearEndShowLike,
   type TxLike,
   type ShowProfitRow,
   type VenueProfitRow,
@@ -2250,5 +2256,115 @@ describe("openWeekendsToCsv", () => {
     expect(lines).toHaveLength(3);
     expect(lines[1]).toBe("13/03/2026;15/03/2026;Ocupado;1;0,00");
     expect(lines[2]).toBe("Total;;0/1 livres;1;0,00");
+  });
+});
+
+describe("yearEndProjectionToCsv", () => {
+  // 15/jun/2026: meio do ano corrente, para que shows futuros do ano contem.
+  const NOW = "2026-06-15T00:00:00.000Z";
+  const tx = (
+    date: string,
+    amount: number,
+    type: TxLike["type"] = "INCOME",
+    received = false,
+    showId: string | null = null,
+  ): TxLike => ({
+    type,
+    amount,
+    category: "",
+    date: `${date}T00:00:00.000Z`,
+    received,
+    showId,
+  });
+  const show = (
+    id: string,
+    fee: number,
+    date: string,
+    status?: string,
+  ): YearEndShowLike => ({ id, fee, date: `${date}T00:00:00.000Z`, status });
+
+  // Receita: 1000 já recebido + 300 pendente lançado + 2 shows futuros (700
+  // confirmado, 500 a confirmar). Despesa: 1000 pago + 100 pendente, com uma
+  // recorrência mar/abr/mai (≤ 2 meses antes de jun) que mantém o custo fixo
+  // "ativo" p/ alimentar o piso do "pior caso".
+  const txs: TxLike[] = [
+    tx("2026-01-10", 1000_00, "INCOME", true),
+    tx("2026-02-10", 300_00, "INCOME", false),
+    tx("2026-01-15", 400_00, "EXPENSE", true),
+    tx("2026-02-15", 100_00, "EXPENSE", false),
+    tx("2026-03-05", 200_00, "EXPENSE", true),
+    tx("2026-04-05", 200_00, "EXPENSE", true),
+    tx("2026-05-05", 200_00, "EXPENSE", true),
+  ];
+  const shows: YearEndShowLike[] = [
+    show("s1", 700_00, "2026-09-01", "CONFIRMED"),
+    show("s2", 500_00, "2026-10-01", "PROPOSED"),
+  ];
+
+  const viewFor = (mode: Parameters<typeof yearEndScenarioView>[3]) =>
+    yearEndScenarioView(
+      projectYearEnd(txs, shows, 2026, { now: NOW }),
+      txs,
+      recurringExpenses(txs).estimatedMonthlyFixedCost,
+      mode,
+      { now: NOW },
+    );
+
+  it("emite cabeçalho e a composição agrupada (otimista, sem custo fixo)", () => {
+    const csv = yearEndProjectionToCsv(viewFor("optimistic"));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(YEAR_END_PROJECTION_CSV_HEADERS.join(";"));
+    // No otimista não há linha de custo fixo → 4 linhas de receita (incl. total)
+    // + 3 de despesa (incl. total) + 1 de resultado = 8, mais o cabeçalho = 9.
+    // Receitas: 1000 recebido / 300 pendente / 1200 agendado (700+500) / 2500 total.
+    expect(lines[1]).toBe("Receitas;Já recebido;1000,00;40%");
+    expect(lines[2]).toBe("Receitas;A receber (lançado);300,00;12%");
+    expect(lines[3]).toBe("Receitas;Cachês agendados;1200,00;48%");
+    expect(lines[4]).toBe("Receitas;Total projetado;2500,00;");
+    // Despesas: pago = 400 + 3×200 = 1000; pendente = 100; total = 1100.
+    expect(lines[5]).toBe("Despesas;Já pago;1000,00;91%");
+    expect(lines[6]).toBe("Despesas;A pagar (lançado);100,00;9%");
+    expect(lines[7]).toBe("Despesas;Total projetado;1100,00;");
+    // Resultado projetado = 2500 − 1100 = 1400.
+    expect(lines[8]).toBe("Resultado;Resultado projetado;1400,00;");
+    expect(lines).toHaveLength(9);
+  });
+
+  it("descarta os cachês a confirmar no conservador (sem custo fixo)", () => {
+    const csv = yearEndProjectionToCsv(viewFor("conservative"));
+    const lines = csv.split("\r\n");
+    // Agendado cai para só o confirmado (700) → receita total 2000.
+    expect(lines[3]).toBe("Receitas;Cachês agendados;700,00;35%");
+    expect(lines[4]).toBe("Receitas;Total projetado;2000,00;");
+    // Despesas inalteradas; sem linha de custo fixo.
+    expect(lines[7]).toBe("Despesas;Total projetado;1100,00;");
+    expect(lines[8]).toBe("Resultado;Resultado projetado;900,00;");
+    expect(lines).toHaveLength(9);
+  });
+
+  it("adiciona a linha de custo fixo estimado no pior caso", () => {
+    const csv = yearEndProjectionToCsv(viewFor("pessimistic"));
+    const lines = csv.split("\r\n");
+    // Receita conservadora (só confirmado): total 2000.
+    expect(lines[4]).toBe("Receitas;Total projetado;2000,00;");
+    // Despesa ganha a linha de custo fixo estimado (recorrente futuro) ANTES do total.
+    expect(lines[5]).toMatch(/^Despesas;Já pago;1000,00;/);
+    expect(lines[6]).toMatch(/^Despesas;A pagar \(lançado\);100,00;/);
+    expect(lines[7]).toMatch(/^Despesas;Custo fixo estimado;/);
+    expect(lines[8]).toMatch(/^Despesas;Total projetado;/);
+    expect(lines[9]).toMatch(/^Resultado;Resultado projetado;/);
+    expect(lines).toHaveLength(10); // +1 linha vs. otimista por causa do custo fixo
+  });
+
+  it("usa participação 0% quando não há receita nem despesa projetada", () => {
+    const csv = yearEndProjectionToCsv(
+      yearEndScenarioView(projectYearEnd([], [], 2026, { now: NOW }), [], 0, "optimistic", {
+        now: NOW,
+      }),
+    );
+    const lines = csv.split("\r\n");
+    expect(lines[1]).toBe("Receitas;Já recebido;0,00;0%");
+    expect(lines[4]).toBe("Receitas;Total projetado;0,00;");
+    expect(lines[8]).toBe("Resultado;Resultado projetado;0,00;");
   });
 });

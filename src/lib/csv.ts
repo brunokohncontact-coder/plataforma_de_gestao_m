@@ -52,6 +52,7 @@ import {
   type MonthlyGoalProgress,
   type MonthGoalStatus,
   type QuarterlyGoalProgress,
+  type YearEndScenarioView,
 } from "./finance";
 import type {
   ClientRetention,
@@ -2032,5 +2033,109 @@ export function openWeekendsToCsv(
     String(totalShows),
     centsToCsvAmount(totalFee),
   ]);
+  return toCsv(out, delimiter);
+}
+
+// ── Projeção de fechamento do ano (composição receita/despesa do cenário) ─────
+
+export const YEAR_END_PROJECTION_CSV_HEADERS = [
+  "Grupo",
+  "Componente",
+  "Valor (R$)",
+  "Participação (%)",
+] as const;
+
+/**
+ * Serializa a projeção de fechamento do ano (`yearEndScenarioView`) em CSV,
+ * pronto para download — espelha os dois cards de composição de
+ * `/financas/projecao-ano` (Receitas projetadas e Despesas projetadas) mais o
+ * resultado projetado, o número de destaque da página.
+ *
+ * Uma linha por componente, agrupada por "Receitas" / "Despesas" / "Resultado".
+ * A coluna "Participação" reproduz o % que cada componente ocupa no total do seu
+ * grupo (receita ou despesa), como as barras da página; as linhas "Total
+ * projetado" e a do resultado saem com participação **em branco** (são 100% / o
+ * próprio total por construção, mesma convenção dos outros "Total"). A linha de
+ * custo fixo estimado só aparece quando há custo a somar (`> 0`), espelhando o
+ * card — fora do "pior caso" ela é 0 e fica de fora.
+ *
+ * O cenário (otimista/conservador/pior caso) e o ano vão no **nome do arquivo**
+ * (`projecao-ano-{ano}-{cenario}.csv`), como o ano em `metas-mensal-{ano}.csv` e
+ * o horizonte em `fluxo-de-caixa-projetado-{n}m.csv` — os cabeçalhos ficam
+ * genéricos. Mesma convenção pt-BR dos irmãos (";" e decimal com vírgula). Pura.
+ */
+export function yearEndProjectionToCsv(
+  view: YearEndScenarioView,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(YEAR_END_PROJECTION_CSV_HEADERS)];
+
+  /** Participação do componente no total do grupo (0 quando o total é 0). */
+  const share = (value: number, total: number) =>
+    total > 0 ? csvShare(value / total) : csvShare(0);
+
+  // Receitas projetadas (participação sobre a receita projetada do cenário).
+  out.push([
+    "Receitas",
+    "Já recebido",
+    centsToCsvAmount(view.realizedIncome),
+    share(view.realizedIncome, view.projectedIncome),
+  ]);
+  out.push([
+    "Receitas",
+    "A receber (lançado)",
+    centsToCsvAmount(view.pendingIncome),
+    share(view.pendingIncome, view.projectedIncome),
+  ]);
+  out.push([
+    "Receitas",
+    "Cachês agendados",
+    centsToCsvAmount(view.scheduledIncome),
+    share(view.scheduledIncome, view.projectedIncome),
+  ]);
+  out.push([
+    "Receitas",
+    "Total projetado",
+    centsToCsvAmount(view.projectedIncome),
+    "",
+  ]);
+
+  // Despesas projetadas (participação sobre a despesa projetada do cenário).
+  out.push([
+    "Despesas",
+    "Já pago",
+    centsToCsvAmount(view.realizedExpense),
+    share(view.realizedExpense, view.projectedExpense),
+  ]);
+  out.push([
+    "Despesas",
+    "A pagar (lançado)",
+    centsToCsvAmount(view.pendingExpense),
+    share(view.pendingExpense, view.projectedExpense),
+  ]);
+  // Custo fixo estimado só entra quando há valor a somar (pior caso) — espelha o card.
+  if (view.estimatedRemainingFixedCost > 0) {
+    out.push([
+      "Despesas",
+      "Custo fixo estimado",
+      centsToCsvAmount(view.estimatedRemainingFixedCost),
+      share(view.estimatedRemainingFixedCost, view.projectedExpense),
+    ]);
+  }
+  out.push([
+    "Despesas",
+    "Total projetado",
+    centsToCsvAmount(view.projectedExpense),
+    "",
+  ]);
+
+  // Resultado projetado do cenário (receita projetada − despesa projetada).
+  out.push([
+    "Resultado",
+    "Resultado projetado",
+    centsToCsvAmount(view.projectedResult),
+    "",
+  ]);
+
   return toCsv(out, delimiter);
 }
