@@ -5244,3 +5244,41 @@ contexto, decisão, justificativa e alternativas consideradas.
   `/login` 200 e `/financas/metas/trimestral/export?ano=2026` 307 (auth-gated). `npm audit` **inalterado** vs. baseline
   (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios);
   **nenhuma dependência nova**.
+
+## D169 — Exportação CSV dos fins de semana livres (`/shows/fins-de-semana-livres/export` + `openWeekendsToCsv`) (Sessão 176)
+- **Contexto:** a tela "Fins de semana livres" (`/shows/fins-de-semana-livres`, `findOpenWeekends`, D96/D98) lista os próximos
+  `?semanas=` fins de semana (sexta→domingo) marcando os livres como oportunidade de booking. Era uma das poucas listas
+  genuinamente tabulares do lado Shows ainda **sem** exportação CSV (ao lado de cadência, sazonalidade, faixas de cachê etc.,
+  todas já exportáveis). Uma planilha dos fins de semana abertos serve para planejar a prospecção (montar uma lista de datas a
+  oferecer a casas/contratantes).
+- **Decisão:** novo serializador puro `openWeekendsToCsv(report)` + `OPEN_WEEKENDS_CSV_HEADERS` em `src/lib/csv.ts` (recebe a
+  `OpenWeekendsReport` já computada por `findOpenWeekends`, de `@/lib/shows` — primeiro consumidor de `csv.ts` que importa um tipo
+  de `shows.ts`). Emite **uma linha por fim de semana da janela** (`report.weekends`, do mais próximo ao mais distante, igual à
+  tela), com a sexta e o domingo que o delimitam como duas colunas de data "DD/MM/AAAA" UTC (via `csvDate`, em vez do rótulo
+  "13–15 de mar" da UI — abrem ordenáveis e auto-suficientes na planilha), a situação (Livre/Ocupado), o nº de shows não
+  cancelados e o cachê somado deles. Colunas: De / Até / Situação / Shows / Cachê marcado (R$).
+- **Janela inteira, inclusive os livres:** diferente das séries de eixo aberto (`gigCadenceToCsv`/`feeTrendToCsv`, que só emitem
+  baldes ativos), aqui **todos** os fins de semana da janela viram linha — inclusive os livres (Shows 0, cachê 0,00). É
+  justamente o vazio que a tela quer destacar (a oportunidade de booking), então preservá-lo no CSV é o ponto.
+- **Linha Total:** encerra com "Total" cuja coluna Situação resume os livres ("N/M livres", espelhando o "N de M" da tela), com
+  os shows e os cachês marcados da janela somados; as colunas De/Até ficam em branco.
+- **Rota e botão:** `/shows/fins-de-semana-livres/export?semanas=N` reusa a mesma consulta da página (todos os shows do usuário)
+  e o mesmo `parseWeekendWindow` (D98) para sanear a janela + BOM UTF-8; nome `fins-de-semana-livres-{n}sem.csv` (a janela ativa
+  entra no nome, como em `cashFlowToCsv`/`fluxo-de-caixa-mensal-{n}m.csv`); botão "⬇ CSV" no cabeçalho propaga a janela ativa.
+  Botão **sempre visível** (a janela tem ao menos 1 fim de semana por construção — `WEEKEND_WINDOW_MIN=1` — e mesmo uma janela
+  toda livre é útil para prospecção), distinto dos exports gated por "tem dados" (`pipeline.total > 0` etc.).
+- **Cachê por fim de semana:** soma `s.fee ?? 0` dos shows não cancelados do fim de semana (`fee` é opcional em
+  `ConflictShowLike`); show sem cachê conta como Ocupado com cachê 0. Herda de `findOpenWeekends`: cancelados não ocupam a data.
+- **Alternativas consideradas:** (a) usar o rótulo amigável "13–15 de mar" como coluna única — **descartado**: não é ordenável
+  por máquina nem auto-suficiente (ano implícito); duas colunas de data ISO-formatada abrem melhor na planilha, como os demais
+  exports; (b) gate por "tem fim de semana livre" (`openCount > 0`) — **descartado**: a planilha também é útil para confirmar a
+  agenda cheia e ver onde estão os ocupados; (c) listar um show por linha (em vez de agregar por fim de semana) — **descartado**:
+  fugiria do recorte da tela (o eixo é o fim de semana, não o show); a lista de shows já é exportável em `/shows/export`.
+- **Testes:** **+3** em `csv.test.ts` (`describe("openWeekendsToCsv")`: sem shows → todos livres + Total "M/M livres"; uma linha
+  por fim de semana livre/ocupado com cachê somado + Total; show sem cachê → Ocupado 0,00 e cancelado não ocupa). Janela ancorada
+  num `now` fixo numa sexta (2026-03-13) para datas determinísticas. **1012 testes** no total (eram 1009).
+- **DoD:** build de produção (`✓ Compiled successfully`, rota `/shows/fins-de-semana-livres/export` registrada) e lint
+  (`next lint`, 0 avisos) verdes; typecheck (`tsc --noEmit`) limpo; **1012 testes** (`vitest run`); smoke test (`next start`) →
+  `/login` 200 e `/shows/fins-de-semana-livres` + `/shows/fins-de-semana-livres/export?semanas=8` 307 (auth-gated). `npm audit`
+  **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver
+  D6/bloqueios); **nenhuma dependência nova**.

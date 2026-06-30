@@ -81,7 +81,10 @@ import {
   type ReceivableByContactCsvRow,
   type PaymentLagByContactCsvRow,
   type PaymentLagCsvRow,
+  openWeekendsToCsv,
+  OPEN_WEEKENDS_CSV_HEADERS,
 } from "./csv";
+import { findOpenWeekends, type ConflictShowLike } from "./shows";
 import {
   annualSummary,
   monthlySeasonality,
@@ -2128,5 +2131,63 @@ describe("quarterlyGoalProgressToCsv", () => {
     // Q1 já encerrado, alvo 0 (sem meta) → "Abaixo" (target 0 nunca conta como batido).
     expect(lines[1]).toBe("1º tri;0,00;0,00;0,00;0%;Abaixo");
     expect(lines[5]).toBe("Total;0,00;0,00;0,00;;0/4 batidos");
+  });
+});
+
+describe("openWeekendsToCsv", () => {
+  // 2026-03-13 é uma sexta → a janela ancora no próprio fim de semana 13–15 mar.
+  const NOW = "2026-03-13";
+  const mkShow = (
+    date: string,
+    over: Partial<ConflictShowLike> = {},
+  ): ConflictShowLike => ({
+    id: date,
+    title: "Show",
+    date,
+    status: "CONFIRMED",
+    ...over,
+  });
+
+  it("sem shows: todos os fins de semana ficam livres + Total", () => {
+    const report = findOpenWeekends([], { now: NOW, weeks: 2 });
+    const lines = openWeekendsToCsv(report).split("\r\n");
+    expect(lines[0]).toBe(OPEN_WEEKENDS_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(4);
+    expect(lines[1]).toBe("13/03/2026;15/03/2026;Livre;0;0,00");
+    expect(lines[2]).toBe("20/03/2026;22/03/2026;Livre;0;0,00");
+    expect(lines[3]).toBe("Total;;2/2 livres;0;0,00");
+  });
+
+  it("uma linha por fim de semana (livre/ocupado) com cachê somado + Total", () => {
+    const report = findOpenWeekends(
+      [
+        mkShow("2026-03-14T20:00:00Z", { status: "PLAYED", fee: 150000 }),
+        mkShow("2026-03-21T21:00:00Z", { fee: 200000 }),
+        // Cancelado no 3º fim de semana → não ocupa a data (segue livre).
+        mkShow("2026-03-28T22:00:00Z", { status: "CANCELLED", fee: 999999 }),
+      ],
+      { now: NOW, weeks: 3 },
+    );
+    const lines = openWeekendsToCsv(report).split("\r\n");
+    expect(lines).toHaveLength(5);
+    expect(lines[1]).toBe("13/03/2026;15/03/2026;Ocupado;1;1500,00");
+    expect(lines[2]).toBe("20/03/2026;22/03/2026;Ocupado;1;2000,00");
+    expect(lines[3]).toBe("27/03/2026;29/03/2026;Livre;0;0,00");
+    // Total: só 1 livre de 3; soma os shows e os cachês marcados da janela.
+    expect(lines[4]).toBe("Total;;1/3 livres;2;3500,00");
+  });
+
+  it("show sem cachê conta como ocupado com 0; cancelado não ocupa", () => {
+    const report = findOpenWeekends(
+      [
+        mkShow("2026-03-14T20:00:00Z"), // sem fee
+        mkShow("2026-03-15T19:00:00Z", { status: "CANCELLED", fee: 500000 }),
+      ],
+      { now: NOW, weeks: 1 },
+    );
+    const lines = openWeekendsToCsv(report).split("\r\n");
+    expect(lines).toHaveLength(3);
+    expect(lines[1]).toBe("13/03/2026;15/03/2026;Ocupado;1;0,00");
+    expect(lines[2]).toBe("Total;;0/1 livres;1;0,00");
   });
 });

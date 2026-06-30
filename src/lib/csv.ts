@@ -58,6 +58,7 @@ import type {
   ReengageList,
 } from "./contacts";
 import { MONTH_NAMES_LONG } from "./calendar";
+import type { OpenWeekendsReport } from "./shows";
 
 const DEFAULT_DELIMITER = ";";
 
@@ -1902,6 +1903,60 @@ export function quarterlyGoalProgressToCsv(
     centsToCsvAmount(Math.max(0, quarterly.goal - quarterly.realized)),
     "",
     `${quarterly.hitCount}/4 batidos`,
+  ]);
+  return toCsv(out, delimiter);
+}
+
+// ── Fins de semana livres (oportunidades de booking sexta→domingo) ────────────
+
+export const OPEN_WEEKENDS_CSV_HEADERS = [
+  "De",
+  "Até",
+  "Situação",
+  "Shows",
+  "Cachê marcado (R$)",
+] as const;
+
+/**
+ * Serializa o mapa de fins de semana livres (`findOpenWeekends`) em CSV, pronto
+ * para download — espelha a lista de `/shows/fins-de-semana-livres`. Emite uma
+ * linha por fim de semana da janela (`report.weekends`, do mais próximo ao mais
+ * distante, do jeito que a tela mostra), com a sexta e o domingo que o delimitam
+ * (datas "DD/MM/AAAA" em UTC, via `csvDate`, em vez do rótulo "13–15 de mar" da
+ * UI — abrem ordenáveis e auto-suficientes na planilha), a situação
+ * (Livre/Ocupado), o número de shows não cancelados naquele fim de semana e o
+ * cachê somado deles. Diferente das séries de eixo aberto (`gigCadenceToCsv`),
+ * a janela INTEIRA vira linha, inclusive os fins de semana livres (cujo "Shows"
+ * é 0 e o cachê fica zerado) — é justamente o vazio que a tela quer destacar.
+ * Encerra numa linha "Total": a coluna Situação resume os livres ("N/M livres"),
+ * "Shows" soma os shows da janela e o cachê soma os cachês marcados. Mesma
+ * convenção pt-BR dos irmãos (delimitador ";", decimal com vírgula). Pura.
+ */
+export function openWeekendsToCsv(
+  report: OpenWeekendsReport,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(OPEN_WEEKENDS_CSV_HEADERS)];
+  let totalShows = 0;
+  let totalFee = 0;
+  for (const w of report.weekends) {
+    const weekendFee = w.shows.reduce((sum, s) => sum + (s.fee ?? 0), 0);
+    totalShows += w.shows.length;
+    totalFee += weekendFee;
+    out.push([
+      csvDate(w.days[0]),
+      csvDate(w.days[2]),
+      w.open ? "Livre" : "Ocupado",
+      String(w.shows.length),
+      centsToCsvAmount(weekendFee),
+    ]);
+  }
+  out.push([
+    "Total",
+    "",
+    `${report.openCount}/${report.total} livres`,
+    String(totalShows),
+    centsToCsvAmount(totalFee),
   ]);
   return toCsv(out, delimiter);
 }
