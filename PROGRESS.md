@@ -3250,9 +3250,14 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `/financas/fluxo-de-caixa/export` (Mês/A receber/A pagar/Variação/Saldo ao fim + linha Total cujo saldo é o projetado
    final, não soma-de-saldos), horizonte `?meses=` compartilhado via `parseCashflowHorizon`/`CASHFLOW_HORIZON_PRESETS`
    (preset-only, distinto do clamp de `parseBurnWindow`), nome `fluxo-de-caixa-projetado-{n}m.csv`, emite a janela inteira
-   (meses parados inclusos), botão "⬇ CSV" só com `hasPending || startBalance !== 0`, ver D164. Próximo possível — as
-   telas de Finanças que ainda não exportam são agora **só** painéis de cenário/projeção de número único (metas,
-   projeção-ano, ponto-de-equilíbrio, reserva-impostos): menos óbvias como planilha; avaliar caso a caso se o tabular agrega.
+   (meses parados inclusos), botão "⬇ CSV" só com `hasPending || startBalance !== 0`, ver D164. **Exportação CSV da meta de
+   faturamento por mês** entregue na Sessão 174 — `monthlyGoalProgressToCsv` + `MONTHLY_GOAL_CSV_HEADERS` em `src/lib/csv.ts` +
+   `/financas/metas/export?ano=YYYY` (Mês/Alvo/Recebido/Falta/Atingido %/Situação + linha Total cujo alvo é a meta anual e cuja
+   situação resume "N/12 batidos"), reusa a consulta da página, herda o `?ano=` do seletor de ano da tela, nome
+   `metas-mensal-{ano}.csv`, botão "⬇ CSV" no card "Meta por mês" (só com `monthly.goal > 0`), ver D167. Próximo possível — as
+   telas de Finanças que ainda não exportam são agora **só** painéis de cenário/projeção de número único (projeção-ano,
+   ponto-de-equilíbrio, reserva-impostos) e a quebra **trimestral** da meta (`quarterlyGoalProgress`, a mesma da D167 mais
+   grossa — vale uma rota irmã se pedir): os painéis de número único são menos óbvios como planilha; avaliar caso a caso.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

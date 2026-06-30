@@ -47,6 +47,8 @@ import {
   type CategoryReportComparison,
   type ShowPipeline,
   type YearToDatePace,
+  type MonthlyGoalProgress,
+  type MonthGoalStatus,
 } from "./finance";
 import type {
   ClientRetention,
@@ -1788,5 +1790,66 @@ export function yearPaceToCsv(pace: YearToDatePace, delimiter = DEFAULT_DELIMITE
       csvSignedPct(delta.pct),
     ]);
   }
+  return toCsv(out, delimiter);
+}
+
+// ── Meta de faturamento por mês (a meta anual quebrada em 12 alvos) ────────────
+
+export const MONTHLY_GOAL_CSV_HEADERS = [
+  "Mês",
+  "Alvo (R$)",
+  "Recebido (R$)",
+  "Falta (R$)",
+  "Atingido (%)",
+  "Situação",
+] as const;
+
+/** Rótulo pt-BR do status mensal — espelha o `GOAL_STATUS` de `/financas/metas`. */
+const MONTH_GOAL_STATUS_LABELS: Record<MonthGoalStatus, string> = {
+  hit: "Batido",
+  missed: "Abaixo",
+  "in-progress": "Em andamento",
+  upcoming: "A seguir",
+};
+
+/**
+ * Serializa a quebra mensal da meta de faturamento (`monthlyGoalProgress`) em
+ * CSV, pronto para download — espelha o card "Meta por mês" de `/financas/metas`,
+ * a meta anual dividida em 12 alvos iguais cruzados com o recebido (caixa) de cada
+ * mês. Uma linha por mês (jan→dez), com o alvo do mês, o recebido, quanto falta
+ * (`remaining`), o percentual atingido (via `csvShare`, como na página) e a
+ * situação rotulada (Batido/Abaixo/Em andamento/A seguir).
+ *
+ * Encerra numa linha "Total" cujo alvo é a meta anual e cujo recebido é a soma
+ * dos 12 meses (a participação do Total fica em branco — 100% por construção,
+ * como nos irmãos `clientConcentrationToCsv`/`incomeMixToCsv`); a coluna Situação
+ * do Total resume os meses batidos ("N/12 batidos"). O ano concreto vai no nome do
+ * arquivo (`metas-mensal-{ano}.csv`), por isso não vira coluna — como em
+ * `yearPaceToCsv`. Mesma convenção pt-BR dos irmãos (";" e decimal com vírgula).
+ * Pura.
+ */
+export function monthlyGoalProgressToCsv(
+  monthly: MonthlyGoalProgress,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(MONTHLY_GOAL_CSV_HEADERS)];
+  for (const m of monthly.months) {
+    out.push([
+      m.label,
+      centsToCsvAmount(m.target),
+      centsToCsvAmount(m.realized),
+      centsToCsvAmount(m.remaining),
+      csvShare(m.ratio),
+      MONTH_GOAL_STATUS_LABELS[m.status],
+    ]);
+  }
+  out.push([
+    "Total",
+    centsToCsvAmount(monthly.goal),
+    centsToCsvAmount(monthly.realized),
+    centsToCsvAmount(Math.max(0, monthly.goal - monthly.realized)),
+    "",
+    `${monthly.hitCount}/12 batidos`,
+  ]);
   return toCsv(out, delimiter);
 }

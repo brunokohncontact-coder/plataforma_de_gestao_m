@@ -68,6 +68,8 @@ import {
   DUE_AGENDA_CSV_HEADERS,
   yearPaceToCsv,
   YEAR_PACE_CSV_HEADERS,
+  monthlyGoalProgressToCsv,
+  MONTHLY_GOAL_CSV_HEADERS,
   type DueAgendaCsvTx,
   type CsvTransaction,
   type CsvShow,
@@ -97,6 +99,7 @@ import {
   expenseMix,
   compareCategoryReports,
   yearToDatePace,
+  monthlyGoalProgress,
   type TxLike,
   type ShowProfitRow,
   type VenueProfitRow,
@@ -1986,5 +1989,74 @@ describe("yearPaceToCsv", () => {
     // Sem receita/despesa em 2025 até o corte → previous 0 → pct null → "".
     expect(lines[1]).toBe("Receitas;500,00;0,00;");
     expect(lines[3]).toBe("Resultado;500,00;0,00;");
+  });
+});
+
+describe("monthlyGoalProgressToCsv", () => {
+  // 15/jun/2026: ano corrente, mês 6 (jun) em andamento.
+  const NOW = "2026-06-15T00:00:00.000Z";
+  const inc = (date: string, amount: number, received = true): TxLike => ({
+    type: "INCOME",
+    amount,
+    category: "Show",
+    date: `${date}T00:00:00.000Z`,
+    received,
+  });
+
+  it("emite cabeçalho, 12 meses (jan→dez) e linha Total", () => {
+    const csv = monthlyGoalProgressToCsv(
+      monthlyGoalProgress([], 2026, 1200_00, { now: NOW }),
+    );
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(MONTHLY_GOAL_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(14); // cabeçalho + 12 meses + Total
+    expect(lines[1].startsWith("jan;")).toBe(true);
+    expect(lines[12].startsWith("dez;")).toBe(true);
+    expect(lines[13].startsWith("Total;")).toBe(true);
+  });
+
+  it("serializa alvo, recebido, falta, percentual e situação por mês", () => {
+    // Meta 1200,00 → alvo de 100,00/mês. jan já encerrado e batido (120,00);
+    // mar encerrado e abaixo (50,00); jun (corrente) em andamento sem receita.
+    const csv = monthlyGoalProgressToCsv(
+      monthlyGoalProgress(
+        [inc("2026-01-10", 120_00), inc("2026-03-10", 50_00)],
+        2026,
+        1200_00,
+        { now: NOW },
+      ),
+    );
+    const lines = csv.split("\r\n");
+    // jan: alvo 100,00, recebido 120,00, falta 0,00, 120%, Batido
+    expect(lines[1]).toBe("jan;100,00;120,00;0,00;120%;Batido");
+    // mar: alvo 100,00, recebido 50,00, falta 50,00, 50%, Abaixo (mês passado)
+    expect(lines[3]).toBe("mar;100,00;50,00;50,00;50%;Abaixo");
+    // jun (mês 6): corrente, sem receita → Em andamento
+    expect(lines[6]).toBe("jun;100,00;0,00;100,00;0%;Em andamento");
+    // jul (mês 7): futuro → A seguir
+    expect(lines[7]).toBe("jul;100,00;0,00;100,00;0%;A seguir");
+  });
+
+  it("a linha Total traz a meta anual, o recebido somado e o resumo de batidos", () => {
+    const csv = monthlyGoalProgressToCsv(
+      monthlyGoalProgress(
+        [inc("2026-01-10", 120_00), inc("2026-02-10", 110_00)],
+        2026,
+        1200_00,
+        { now: NOW },
+      ),
+    );
+    const lines = csv.split("\r\n");
+    // Total: meta 1200,00, recebido 230,00, falta 970,00, participação em branco,
+    // 2 meses batidos de 12.
+    expect(lines[13]).toBe("Total;1200,00;230,00;970,00;;2/12 batidos");
+  });
+
+  it("sem meta (0) emite alvos zerados e Total 0/12 batidos", () => {
+    const csv = monthlyGoalProgressToCsv(monthlyGoalProgress([], 2026, 0, { now: NOW }));
+    const lines = csv.split("\r\n");
+    // jan já encerrado, alvo 0 (sem meta) → "Abaixo" (target 0 nunca conta como batido).
+    expect(lines[1]).toBe("jan;0,00;0,00;0,00;0%;Abaixo");
+    expect(lines[13]).toBe("Total;0,00;0,00;0,00;;0/12 batidos");
   });
 });
