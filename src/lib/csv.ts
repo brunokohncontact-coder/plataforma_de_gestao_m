@@ -61,7 +61,7 @@ import type {
   ReengageList,
 } from "./contacts";
 import { MONTH_NAMES_LONG } from "./calendar";
-import type { OpenWeekendsReport } from "./shows";
+import type { OpenWeekendsReport, ScheduleConflicts } from "./shows";
 
 const DEFAULT_DELIMITER = ";";
 
@@ -2031,6 +2031,76 @@ export function openWeekendsToCsv(
     "",
     `${report.openCount}/${report.total} livres`,
     String(totalShows),
+    centsToCsvAmount(totalFee),
+  ]);
+  return toCsv(out, delimiter);
+}
+
+// ── Conflitos de agenda (dias com 2+ shows não cancelados) ────────────────────
+
+export const SCHEDULE_CONFLICTS_CSV_HEADERS = [
+  "Dia",
+  "Situação",
+  "Show",
+  "Horário",
+  "Local",
+  "Cidade",
+  "Status",
+  "Cachê (R$)",
+] as const;
+
+/**
+ * Serializa os conflitos de agenda (`findScheduleConflicts`) em CSV, pronto para
+ * download — espelha a página `/shows/conflitos`. Diferente dos irmãos que emitem
+ * uma linha por dia/categoria, aqui o detalhe que importa é cada show envolvido,
+ * então a tabela é achatada: **uma linha por show** dos dias em conflito, na
+ * ordem da tela (dias em ordem cronológica crescente; dentro de cada dia, os
+ * shows como `findScheduleConflicts` já os entrega — por horário, depois título).
+ *
+ * O "Dia" repete em cada show do mesmo dia (planilha auto-suficiente, ordenável e
+ * filtrável); a "Situação" reproduz o veredito da página ("A resolver" para os
+ * dias de hoje em diante, "Passado" para os já vividos). "Horário" sai em UTC
+ * (como a UI, via `csvTime`); "Status" usa os mesmos rótulos pt-BR da tela
+ * (`SHOW_STATUS_LABELS`); cancelados nunca aparecem (a lógica pura já os exclui).
+ *
+ * Encerra numa linha "Total": a coluna Situação resume os dias acionáveis
+ * ("N/M a resolver", como o "N/M livres" de `openWeekendsToCsv`) e a coluna Cachê
+ * soma os cachês de todos os shows envolvidos; o nº de shows é a própria contagem
+ * de linhas de detalhe (`report.showCount`). Mesma convenção pt-BR dos irmãos
+ * (delimitador ";", decimal com vírgula). Pura.
+ */
+export function scheduleConflictsToCsv(
+  report: ScheduleConflicts,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(SCHEDULE_CONFLICTS_CSV_HEADERS)];
+  let totalFee = 0;
+  for (const d of report.days) {
+    const situacao = d.upcoming ? "A resolver" : "Passado";
+    for (const s of d.shows) {
+      const fee = s.fee ?? 0;
+      totalFee += fee;
+      const status = s.status as ShowStatus;
+      out.push([
+        csvDate(d.day),
+        situacao,
+        s.title,
+        csvTime(s.date),
+        s.venue ?? "",
+        s.city ?? "",
+        SHOW_STATUS_LABELS[status] ?? s.status,
+        centsToCsvAmount(fee),
+      ]);
+    }
+  }
+  out.push([
+    "Total",
+    `${report.upcomingDayCount}/${report.dayCount} a resolver`,
+    "",
+    "",
+    "",
+    "",
+    "",
     centsToCsvAmount(totalFee),
   ]);
   return toCsv(out, delimiter);

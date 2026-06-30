@@ -9,7 +9,16 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1019 testes** verdes após a **exportação CSV da
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1022 testes** verdes após a **exportação CSV dos
+conflitos de agenda** em `/shows/conflitos/export` (Sessão 179, D172 — a tela "Conflitos de agenda" (`findScheduleConflicts`, dias
+com 2+ shows não cancelados) ganhou botão "⬇ CSV"; serializador puro `scheduleConflictsToCsv(report)` + `SCHEDULE_CONFLICTS_CSV_HEADERS`
+em `src/lib/csv.ts` (2º consumidor de `csv.ts` que importa tipo de `shows.ts`: `ScheduleConflicts`, depois de `openWeekendsToCsv`) achata
+os dias em conflito numa linha por **show envolvido** (Dia/Situação/Show/Horário/Local/Cidade/Status/Cachê (R$)), na ordem da tela
+(dias cronológicos; dentro do dia, por horário/título), com o "Dia" repetido em cada show e "Situação" = "A resolver"/"Passado"
+(veredito `upcoming` da página); horário UTC via `csvTime`, status via `SHOW_STATUS_LABELS`, cancelados de fora (a lógica pura já os
+exclui); + linha "Total" (Situação="N/M a resolver" como o "N/M livres" de `openWeekendsToCsv`, Cachê somando os envolvidos, nº de
+shows é a própria contagem de linhas); sem `?ano=`/`?semanas=` (retrato de toda a agenda), nome fixo `conflitos-de-agenda.csv` + BOM
+UTF-8, botão gated por `dayCount > 0`; **+3 testes**) sobre os **1019 testes** da **exportação CSV da
 projeção de fechamento do ano** em `/financas/projecao-ano/export` (Sessão 178, D171 — a tela "Projeção de fechamento"
 (`projectYearEnd`/`yearEndScenarioView`, com seletor de cenário otimista/conservador/pior caso, D73) ganhou botão "⬇ CSV";
 serializador puro `yearEndProjectionToCsv(view)` + `YEAR_END_PROJECTION_CSV_HEADERS` em `src/lib/csv.ts` emite a composição dos
@@ -3312,7 +3321,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    Despesas e Resultado projetado do cenário escolhido, espelhando os dois cards da página; linha "Custo fixo estimado" só no pior
    caso; cenário+ano no nome `projecao-ano-{ano}-{cenario}.csv`), reusa consulta/parsing da página, botão gated por `hasAnything`,
    ver D171 — a avaliação caso a caso da projeção-ano deu positiva (a tela tem composição tabular, não só número único).
-   Próximo possível — as telas de Finanças que ainda não exportam são agora **só** painéis de número único
+   **Exportação CSV dos conflitos de agenda** entregue na Sessão 179 — `scheduleConflictsToCsv` + `SCHEDULE_CONFLICTS_CSV_HEADERS`
+   em `src/lib/csv.ts` + `/shows/conflitos/export` (Dia/Situação/Show/Horário/Local/Cidade/Status/Cachê (R$) + linha Total
+   "N/M a resolver"), do lado Shows: uma linha por show dos dias em conflito (`findScheduleConflicts`), nome fixo
+   `conflitos-de-agenda.csv`, botão "⬇ CSV" só com `dayCount > 0`, ver D172 — fecha a última tela **tabular** sem export.
+   Próximo possível — as telas que ainda não exportam são agora **só** painéis de número único
    (ponto-de-equilíbrio, reserva-impostos): menos óbvios como planilha; provavelmente não vale uma planilha de uma linha.
 
 ## Bloqueios / dúvidas (para validação humana)

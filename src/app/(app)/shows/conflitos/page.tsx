@@ -69,6 +69,11 @@ export default async function ScheduleConflictsPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          {report.dayCount > 0 && (
+            <a href="/shows/conflitos/export" className="btn-secondary text-sm" download>
+              ⬇ CSV
+            </a>
+          )}
           <Link href="/shows/calendario" className="btn-secondary">
             Calendário
           </Link>
