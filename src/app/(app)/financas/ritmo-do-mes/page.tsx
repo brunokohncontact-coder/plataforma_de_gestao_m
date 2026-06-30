@@ -93,6 +93,9 @@ export default async function MonthPacePage({
   const verdict = VERDICT_META[pace.verdict];
   const elapsedPct = Math.round(pace.elapsed * 100);
   const hasCurrentMonth = pace.income > 0 || pace.expense > 0;
+  // O CSV só faz sentido quando há algum número real para comparar — movimento no
+  // mês corrente, um "mês típico" de referência ou o mesmo mês do ano anterior.
+  const hasData = hasCurrentMonth || pace.baselineMonths > 0 || yoy.lastYearHasMovement;
 
   return (
     <div className="space-y-6">
@@ -104,6 +107,11 @@ export default async function MonthPacePage({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          {hasData && (
+            <a href={`/financas/ritmo-do-mes/export?meses=${windowMonths}`} className="btn-secondary">
+              ⬇ CSV
+            </a>
+          )}
           <div className="flex flex-wrap items-center gap-1" aria-label="Janela do mês típico">
             {BURN_WINDOW_PRESETS.map((m) => {
               const active = m === windowMonths;

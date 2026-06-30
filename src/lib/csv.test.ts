@@ -68,6 +68,8 @@ import {
   DUE_AGENDA_CSV_HEADERS,
   yearPaceToCsv,
   YEAR_PACE_CSV_HEADERS,
+  monthPaceToCsv,
+  MONTH_PACE_CSV_HEADERS,
   monthlyGoalProgressToCsv,
   MONTHLY_GOAL_CSV_HEADERS,
   quarterlyGoalProgressToCsv,
@@ -104,6 +106,8 @@ import {
   expenseMix,
   compareCategoryReports,
   yearToDatePace,
+  currentMonthPace,
+  monthYoYPace,
   monthlyGoalProgress,
   quarterlyGoalProgress,
   type TxLike,
@@ -1995,6 +1999,63 @@ describe("yearPaceToCsv", () => {
     // Sem receita/despesa em 2025 até o corte → previous 0 → pct null → "".
     expect(lines[1]).toBe("Receitas;500,00;0,00;");
     expect(lines[3]).toBe("Resultado;500,00;0,00;");
+  });
+});
+
+describe("monthPaceToCsv", () => {
+  // 15/jun/2026: metade de junho (30 dias) → elapsed = 0.5; janela típica = 6 meses
+  // fechados (dez/2025 → mai/2026). Espelha a fixture de currentMonthPace.
+  const NOW = "2026-06-15T00:00:00.000Z";
+  const mtx = (date: string, amount: number, type: TxLike["type"] = "INCOME"): TxLike => ({
+    type,
+    amount,
+    category: type === "INCOME" ? "Show" : "Transporte",
+    date: `${date}T00:00:00.000Z`,
+    received: false,
+  });
+  // 6 meses fechados, cada um com 1000_00 de receita → mês típico = 1000_00.
+  const baseline1000 = (): TxLike[] =>
+    ["2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05"].map((mk) =>
+      mtx(`${mk}-10`, 1000_00),
+    );
+
+  it("emite o cabeçalho e os dois eixos (mês típico + ano anterior) sem Total", () => {
+    const pace = currentMonthPace([], { now: NOW });
+    const yoy = monthYoYPace([], { now: NOW });
+    const lines = monthPaceToCsv(pace, yoy).split("\r\n");
+    expect(lines[0]).toBe(MONTH_PACE_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(7); // cabeçalho + 3 métricas × 2 eixos, sem Total
+    // sem dados → tudo 0,00 e variação em branco (previous 0 → pct null)
+    expect(lines[1]).toBe("Mês típico;Receitas;0,00;0,00;");
+    expect(lines[4]).toBe("Mesmo mês do ano anterior;Receitas;0,00;0,00;");
+  });
+
+  it("serializa a projeção do mês contra o mês típico e o mesmo mês do ano anterior", () => {
+    const txs = [...baseline1000(), mtx("2026-06-10", 500_00), mtx("2025-06-10", 800_00)];
+    const pace = currentMonthPace(txs, { now: NOW });
+    const yoy = monthYoYPace(txs, { now: NOW });
+    const lines = monthPaceToCsv(pace, yoy).split("\r\n");
+    // Projeção de junho = 500_00 ÷ 0,5 = 1000_00.
+    // Mês típico: projeção 1000 vs baseline 1000 → 0%.
+    expect(lines[1]).toBe("Mês típico;Receitas;1000,00;1000,00;0%");
+    expect(lines[2]).toBe("Mês típico;Despesas;0,00;0,00;");
+    expect(lines[3]).toBe("Mês típico;Resultado;1000,00;1000,00;0%");
+    // Ano anterior: projeção 1000 vs jun/2025 cheio (800) → +25%.
+    expect(lines[4]).toBe("Mesmo mês do ano anterior;Receitas;1000,00;800,00;+25%");
+    expect(lines[5]).toBe("Mesmo mês do ano anterior;Despesas;0,00;0,00;");
+    expect(lines[6]).toBe("Mesmo mês do ano anterior;Resultado;1000,00;800,00;+25%");
+  });
+
+  it("emite o eixo do ano anterior mesmo sem movimento no mês de referência (variação em branco)", () => {
+    const txs = [...baseline1000(), mtx("2026-06-10", 500_00)]; // sem jun/2025
+    const pace = currentMonthPace(txs, { now: NOW });
+    const yoy = monthYoYPace(txs, { now: NOW });
+    expect(yoy.lastYearHasMovement).toBe(false);
+    const lines = monthPaceToCsv(pace, yoy).split("\r\n");
+    expect(lines).toHaveLength(7); // o eixo do ano anterior continua presente
+    // sem base no ano anterior → comparação 0,00 e variação em branco
+    expect(lines[4]).toBe("Mesmo mês do ano anterior;Receitas;1000,00;0,00;");
+    expect(lines[6]).toBe("Mesmo mês do ano anterior;Resultado;1000,00;0,00;");
   });
 });
 
