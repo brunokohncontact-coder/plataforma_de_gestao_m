@@ -87,6 +87,7 @@ export default async function YearPacePage() {
   const elapsedPct = Math.round(pace.elapsed * 100);
   const cutoffLabel = `${pace.cutoffDay} de ${MONTH_NAMES[pace.cutoffMonth]}`;
   const hasCurrentYear = pace.income > 0 || pace.expense > 0;
+  const hasData = hasCurrentYear || pace.lastYearHasMovement;
 
   return (
     <div className="space-y-6">
@@ -97,9 +98,16 @@ export default async function YearPacePage() {
             Como vai {pace.year} até {cutoffLabel}, comparado ao mesmo ponto de {pace.lastYear}
           </p>
         </div>
-        <Link href="/financas" className="text-sm text-gray-500 hover:underline">
-          ← Finanças
-        </Link>
+        <div className="flex items-center gap-3">
+          {hasData && (
+            <a href="/financas/ritmo-do-ano/export" className="btn-secondary">
+              ⬇ CSV
+            </a>
+          )}
+          <Link href="/financas" className="text-sm text-gray-500 hover:underline">
+            ← Finanças
+          </Link>
+        </div>
       </div>
 
       {/* Progresso do ano */}

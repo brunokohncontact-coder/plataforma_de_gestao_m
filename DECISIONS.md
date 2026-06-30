@@ -5132,3 +5132,42 @@ contexto, decisão, justificativa e alternativas consideradas.
   (`vitest run`); smoke test (`next start`) → `/login` 200 e `/contatos/concentracao` + `/contatos/concentracao/export`
   307 (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do
   Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## D166 — Exportação CSV do ritmo do ano (`/financas/ritmo-do-ano/export` + `yearPaceToCsv`) (Sessão 173)
+- **Contexto:** a tela "Ritmo do ano" (`/financas/ritmo-do-ano`, `yearToDatePace`, D162 — o acumulado do ano corrente de
+  1º/jan até hoje vs. o mesmo ponto do ano passado, comparação igual-com-igual) exibe a tabela "{ano} × {ano-1} (mesmo
+  período)" com três linhas (Receitas / Despesas / Resultado), cada uma com o acumulado dos dois anos e a variação
+  relativa — mas era uma das poucas telas tabulares das Finanças ainda sem exportação CSV (suas irmãs
+  fluxo-de-caixa/trimestral/anual/sazonalidade/composição já exportavam). Sua gêmea mensal `/financas/ritmo-do-mes`
+  (`monthYoYPace`/`currentMonthPace`) também segue sem export, mas é mais densa (vários cards/projeção pro-rata) — fica
+  para outra sessão.
+- **Decisão:** novo serializador puro `yearPaceToCsv(pace)` + `YEAR_PACE_CSV_HEADERS` em `src/lib/csv.ts` (recebe a
+  `YearToDatePace` já computada por `yearToDatePace`, de `@/lib/finance`). Emite **uma linha por métrica** na ordem da
+  página (Receitas → Despesas → Resultado), com o acumulado do ano corrente (`delta.current`), o do mesmo período do ano
+  anterior (`delta.previous`) e a variação relativa (`delta.pct`). Colunas Métrica / Ano corrente (R$) / Mesmo período do
+  ano anterior (R$) / Variação (%). Rota `/financas/ritmo-do-ano/export` reusa a mesma consulta/`yearToDatePace` da página
+  + BOM UTF-8; nome `ritmo-do-ano-{ano}.csv` (o ano concreto vai no nome, como o horizonte em
+  `fluxo-de-caixa-projetado-{n}m.csv`); botão "⬇ CSV" no cabeçalho só com `hasData` (= movimento no ano corrente **ou** no
+  mesmo período do ano anterior — não exporta um quadro todo-zero).
+- **Variação com sinal; sem linha Total:** novo helper local `csvSignedPct(pct)` serializa o `pct` do MetricDelta como
+  "+25%" / "-50%" / "0%", e **em branco quando `pct` é `null`** (base anterior 0 → porcentagem indefinida), espelhando o
+  "—" que a UI mostra no veredito "insufficient". Distinto de `csvShare` (participação 0..1 sem sinal): aqui o sinal
+  carrega a leitura "subiu/caiu". **Não** há linha "Total": as três métricas não somam entre si (Resultado já é
+  Receitas − Despesas), diferente dos exports "uma linha por fatia + Total" (`incomeMixToCsv` etc.).
+- **Colunas de ano genéricas:** os cabeçalhos ficam "Ano corrente"/"Mesmo período do ano anterior" (não "2026"/"2025")
+  porque os anos concretos vão no nome do arquivo e o `*_CSV_HEADERS` é um const estático (os testes comparam a 1ª linha a
+  ele). É a mesma escolha do `cashflowProjectionToCsv` (horizonte no nome, não no cabeçalho). O corte ("até 15 de junho") é
+  contexto da tela, não da planilha de 3 linhas; o filename já ancora o ano.
+- **Alternativas consideradas:** (a) formato "tidy" com uma linha por período (ano corrente / ano anterior) e colunas
+  Receitas/Despesas/Resultado — **descartado**: a tela mostra métrica × período, e a variação não caberia limpa nesse
+  recorte; (b) embutir o corte (mês/dia) numa coluna ou linha de contexto — **descartado**: polui o quadro de 3 linhas,
+  e o ano (a informação que muda) já está no nome do arquivo; (c) `?ano=` para exportar anos anteriores — **descartado**:
+  a tela é fotografia do estado "agora" (sem seletor de ano, como em D162), o export herda essa semântica.
+- **Testes:** **+3** em `csv.test.ts` (`describe("yearPaceToCsv")`: só cabeçalho + 3 métricas zeradas (sem Total) e
+  variação em branco sem base; acumulado dos dois anos com variação assinada +25%/−50%/+100%; variação em branco quando o
+  ano anterior não teve movimento). **1001 testes** no total (eram 998).
+- **DoD:** build de produção (`✓ Compiled successfully`, rota `/financas/ritmo-do-ano/export` registrada) e lint
+  (`next lint`, 0 avisos) verdes; typecheck (`tsc --noEmit`) limpo; **1001 testes** (`vitest run`); smoke test
+  (`next start`) → `/login` 200 e `/financas/ritmo-do-ano` + `/financas/ritmo-do-ano/export` 307 (auth-gated). `npm audit`
+  **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver
+  D6/bloqueios); **nenhuma dependência nova**.

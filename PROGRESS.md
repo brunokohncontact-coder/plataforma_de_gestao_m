@@ -9,7 +9,17 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **998 testes** verdes após a **exportação CSV da
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1001 testes** verdes após a **exportação CSV do
+ritmo do ano** em `/financas/ritmo-do-ano/export` (Sessão 173, D166 — a tela "Ritmo do ano" (`yearToDatePace`, o acumulado
+do ano corrente até hoje vs. o mesmo ponto do ano passado, comparação igual-com-igual) ganhou botão "⬇ CSV"; serializador
+puro `yearPaceToCsv(pace)` + `YEAR_PACE_CSV_HEADERS` em `src/lib/csv.ts` emite uma linha por métrica na ordem da página
+(Receitas → Despesas → Resultado: Métrica/Ano corrente (R$)/Mesmo período do ano anterior (R$)/Variação (%)), com o
+acumulado dos dois anos e a variação relativa assinada via novo helper `csvSignedPct` ("+25%"/"-50%"/"0%", **em branco**
+quando `pct` é null = sem base no ano anterior, espelhando o "—" do veredito "insufficient"); **sem linha Total** (as três
+métricas não somam entre si — Resultado já é Receitas − Despesas); rota reusa a consulta/`yearToDatePace` da página + BOM
+UTF-8, nome `ritmo-do-ano-{ano}.csv` (ano concreto no nome, cabeçalhos de ano genéricos — const estático), botão só com
+`hasData` (movimento no ano corrente OU no mesmo período do ano anterior); **+3 testes**) sobre os **998 testes** da
+**exportação CSV da
 concentração de contratantes** em `/contatos/concentracao/export` (Sessão 172, D165 — a tela "Concentração de contratantes"
 (`clientConcentration`, o risco de depender de poucos pagadores) ganhou botão "⬇ CSV"; serializador puro
 `clientConcentrationToCsv(concentration)` + `CLIENT_CONCENTRATION_CSV_HEADERS` em `src/lib/csv.ts` emite uma linha por
@@ -3073,9 +3083,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    entregue na Sessão 170 — `yearToDatePaceHeadline(pace)` em `src/lib/finance.ts` (espelho de
    `cashBurnHeadline`/`geoConcentrationHeadline`: decide só a exibição, mostra só quando `behind`; `YTD_PACE_CRITICAL_RATIO=0.75`
    escala para 🔴 no atraso ≥25%) + manchete 🐢/🔴 no `dashboard/page.tsx` (reusa as transações já carregadas, linka para
-   `/financas/ritmo-do-ano`), ver D163. Próximo possível — ponderar a projeção do mês por dia-da-semana/sazonalidade (hoje é
-   pro-rata uniforme, hipótese frágil cedo no mês); ou um seletor que alterne o card de `/financas/ritmo-do-mes` entre o eixo
-   "mês típico" (média móvel) e o eixo sazonal (ano anterior).
+   `/financas/ritmo-do-ano`), ver D163. **Exportação CSV do ritmo do ano** entregue na Sessão 173 — `yearPaceToCsv(pace)` +
+   `YEAR_PACE_CSV_HEADERS` em `src/lib/csv.ts` + `/financas/ritmo-do-ano/export` (Métrica/Ano corrente/Mesmo período do ano
+   anterior/Variação (%)), uma linha por métrica (Receitas/Despesas/Resultado), variação assinada via `csvSignedPct` (branco
+   sem base), sem linha Total, nome `ritmo-do-ano-{ano}.csv`, botão "⬇ CSV" só com `hasData`, ver D166. Próximo possível —
+   exportação CSV de `/financas/ritmo-do-mes` (ainda sem export, mas mais densa: vários cards + projeção pro-rata);
+   ponderar a projeção do mês por dia-da-semana/sazonalidade (hoje é pro-rata uniforme, hipótese frágil cedo no mês); ou um
+   seletor que alterne o card de `/financas/ritmo-do-mes` entre o eixo "mês típico" (média móvel) e o eixo sazonal (ano anterior).
 7. **Resiliência / fôlego de caixa** (entregue na Sessão 107, `/financas/folego-de-caixa` + `cashRunway`,
    ver D99): cruza o caixa realizado com o custo fixo mensal (D39) → por quantos meses o caixa cobre os
    custos fixos se as receitas pararem, com veredito (limiares 3/6 meses, hipótese) e data de esgotamento.
