@@ -56,6 +56,8 @@ import {
   YEARLY_HISTORY_CSV_HEADERS,
   cashFlowToCsv,
   CASH_FLOW_CSV_HEADERS,
+  cashflowProjectionToCsv,
+  CASHFLOW_PROJECTION_CSV_HEADERS,
   bookedRevenueToCsv,
   BOOKED_REVENUE_CSV_HEADERS,
   pipelineToCsv,
@@ -80,6 +82,7 @@ import {
   gigCadence,
   feeTrend,
   cashFlowByMonth,
+  projectCashflow,
   forecastBookedRevenue,
   buildDueAgenda,
   yearlyHistory,
@@ -1650,6 +1653,67 @@ describe("cashFlowToCsv", () => {
     expect(lines[2]).toBe("2026-05;2000,00;0,00;2000,00");
     expect(lines[3]).toBe("2026-06;0,00;0,00;0,00");
     expect(lines[4]).toBe("Total;2000,00;0,00;2000,00");
+  });
+});
+
+describe("cashflowProjectionToCsv", () => {
+  // mês atual = 2026-03; horizonte sempre do mês corrente em diante.
+  const now = "2026-03-15T12:00:00.000Z";
+  const tx = (
+    type: TxLike["type"],
+    amount: number,
+    received: boolean,
+    date = now,
+  ): TxLike => ({
+    type,
+    amount,
+    category: "",
+    date,
+    received,
+    showId: null,
+  });
+
+  it("sem movimento: uma linha por mês do horizonte (saldo constante) + Total", () => {
+    const csv = cashflowProjectionToCsv(projectCashflow([], { now, months: 3 }));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(CASHFLOW_PROJECTION_CSV_HEADERS.join(";"));
+    // cabeçalho + 3 meses + Total
+    expect(lines).toHaveLength(5);
+    expect(lines[1]).toBe("2026-03;0,00;0,00;0,00;0,00");
+    expect(lines[2]).toBe("2026-04;0,00;0,00;0,00;0,00");
+    expect(lines[3]).toBe("2026-05;0,00;0,00;0,00;0,00");
+    expect(lines[4]).toBe("Total;0,00;0,00;0,00;0,00");
+  });
+
+  it("acumula o saldo projetado a partir do caixa atual; Total soma fluxos e traz o saldo final", () => {
+    const txs = [
+      tx("INCOME", 100_00, true), // caixa atual = 100
+      tx("INCOME", 50_00, false, "2026-04-10T00:00:00.000Z"),
+      tx("EXPENSE", 20_00, false, "2026-04-20T00:00:00.000Z"),
+      tx("EXPENSE", 70_00, false, "2026-05-05T00:00:00.000Z"),
+    ];
+    const lines = cashflowProjectionToCsv(projectCashflow(txs, { now, months: 3 })).split("\r\n");
+    expect(lines).toHaveLength(5);
+    // mar: sem pendência, saldo = caixa atual 100.
+    expect(lines[1]).toBe("2026-03;0,00;0,00;0,00;100,00");
+    // abr: +50 a receber, −20 a pagar, variação +30, saldo 130.
+    expect(lines[2]).toBe("2026-04;50,00;20,00;30,00;130,00");
+    // mai: −70, saldo 60.
+    expect(lines[3]).toBe("2026-05;0,00;70,00;-70,00;60,00");
+    // Total: a receber 50, a pagar 90, variação −40, saldo final 60 (= 100 − 40).
+    expect(lines[4]).toBe("Total;50,00;90,00;-40,00;60,00");
+  });
+
+  it("emite o saldo final negativo (furo de caixa projetado)", () => {
+    const txs = [
+      tx("INCOME", 50_00, true), // caixa atual = 50
+      tx("EXPENSE", 120_00, false, "2026-04-10T00:00:00.000Z"),
+    ];
+    const lines = cashflowProjectionToCsv(projectCashflow(txs, { now, months: 2 })).split("\r\n");
+    expect(lines).toHaveLength(4);
+    expect(lines[1]).toBe("2026-03;0,00;0,00;0,00;50,00");
+    expect(lines[2]).toBe("2026-04;0,00;120,00;-120,00;-70,00");
+    expect(lines[3]).toBe("Total;0,00;120,00;-120,00;-70,00");
   });
 });
 

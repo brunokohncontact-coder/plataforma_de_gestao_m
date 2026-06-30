@@ -36,6 +36,9 @@ import {
   isOverdue,
   summarizeOverdue,
   projectCashflow,
+  parseCashflowHorizon,
+  CASHFLOW_HORIZON_PRESETS,
+  CASHFLOW_HORIZON_DEFAULT,
   buildDueAgenda,
   annualSummary,
   quarterlySummary,
@@ -2519,6 +2522,29 @@ describe("projectCashflow", () => {
     expect(p.months.map((m) => m.month)).toEqual(["2026-11", "2026-12", "2027-01"]);
     const single = projectCashflow([], { now, months: 0 });
     expect(single.months).toHaveLength(1);
+  });
+});
+
+describe("parseCashflowHorizon", () => {
+  it("aceita cada preset oferecido", () => {
+    for (const preset of CASHFLOW_HORIZON_PRESETS) {
+      expect(parseCashflowHorizon(String(preset))).toBe(preset);
+    }
+  });
+
+  it("cai no default quando ausente, vazio ou não-numérico", () => {
+    expect(parseCashflowHorizon(undefined)).toBe(CASHFLOW_HORIZON_DEFAULT);
+    expect(parseCashflowHorizon("")).toBe(CASHFLOW_HORIZON_DEFAULT);
+    expect(parseCashflowHorizon("abc")).toBe(CASHFLOW_HORIZON_DEFAULT);
+  });
+
+  it("cai no default para inteiros fora dos presets (diferente do clamp de parseBurnWindow)", () => {
+    expect(parseCashflowHorizon("5")).toBe(CASHFLOW_HORIZON_DEFAULT);
+    expect(parseCashflowHorizon("100")).toBe(CASHFLOW_HORIZON_DEFAULT);
+  });
+
+  it("usa o primeiro valor quando o param vem repetido", () => {
+    expect(parseCashflowHorizon(["12", "3"])).toBe(12);
   });
 });
 
