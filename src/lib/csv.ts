@@ -43,6 +43,8 @@ import {
   type IncomeMix,
   type ExpenseMix,
   type MetricDelta,
+  type FinanceSummary,
+  type FinanceComparison,
   type CategoryDelta,
   type CategoryReportComparison,
   type ShowPipeline,
@@ -2272,6 +2274,107 @@ export function recurringExpensesToCsv(
     centsToCsvAmount(totalSum),
     `${activeCount}/${report.categories.length} ativas`,
   ]);
+
+  return toCsv(out, delimiter);
+}
+
+// ── Relatório mensal (resumo do mês vs. mês anterior e vs. média recente) ──────
+
+export const MONTHLY_REPORT_CSV_HEADERS = [
+  "Base de comparação",
+  "Métrica",
+  "Valor do mês (R$)",
+  "Comparação (R$)",
+  "Variação (%)",
+] as const;
+
+/**
+ * Entrada do `monthlyReportToCsv`: o que a página `/financas/relatorio` já computa
+ * para o mês de referência — o resumo do mês e os dois eixos de comparação que ela
+ * exibe (vs. o mês imediatamente anterior e vs. a média móvel dos meses recentes
+ * com movimento). Mantém o serializador puro e desacoplado de banco/UI: a rota
+ * injeta os agregados já prontos (mesma divisão de `monthPaceToCsv`).
+ */
+export interface MonthlyReportCsvView {
+  /** Resumo financeiro do mês de referência. */
+  summary: FinanceSummary;
+  /** Comparativo das métricas vs. o mês imediatamente anterior. */
+  vsPreviousMonth: FinanceComparison;
+  /** Comparativo das métricas vs. a média dos meses recentes com movimento. */
+  vsAverage: FinanceComparison;
+  /** Há movimento no mês anterior? (a página só mostra esse eixo então). */
+  hasPreviousMonth: boolean;
+  /** Há ≥2 meses na janela da média? (com 1, a média = o próprio mês anterior). */
+  hasAverage: boolean;
+  /** Nº de meses com movimento usados na média (rótulo do eixo). */
+  averageMonths: number;
+}
+
+/**
+ * Serializa o relatório mensal (`/financas/relatorio`) em CSV, pronto para
+ * download — espelha os quatro indicadores do topo da página (Receitas, Despesas,
+ * Saldo do mês, Caixa realizado) e seus dois eixos de comparação.
+ *
+ * Achata tudo numa única tabela com a coluna "Base de comparação": a seção
+ * "Mês atual" traz os valores do mês (sem comparação) e, quando há movimento, as
+ * pendências do mês (a caixa âmbar "A receber/A pagar no mês"); em seguida vêm os
+ * eixos "Mês anterior" e "Média dos últimos N meses", cada um com uma linha por
+ * métrica (Comparação = a baseline do eixo, Variação = a variação relativa). Cada
+ * eixo só é emitido **quando a página o exibiria** (`hasPreviousMonth` /
+ * `hasAverage`) — diferente de `monthPaceToCsv`, que sempre emite o eixo sazonal;
+ * aqui um eixo ausente seria comparação contra um mês vazio (sem base), então o
+ * omitimos. A seção "Mês atual" sai sempre, mantendo o arquivo auto-suficiente
+ * mesmo no primeiro mês de um usuário novo.
+ *
+ * A variação reusa `csvDeltaPct` ("+25%"/"-30%"/"0%"/"novo" quando a base é 0 —
+ * espelhando o "novo" da UI). Distinto da variação **por categoria** entre dois
+ * meses (`categoryVariationToCsv`/`/financas/variacao`): aqui o eixo são as quatro
+ * métricas do resumo, não as categorias. Mesma convenção pt-BR dos irmãos (";" e
+ * decimal com vírgula). Pura.
+ */
+export function monthlyReportToCsv(
+  view: MonthlyReportCsvView,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(MONTHLY_REPORT_CSV_HEADERS)];
+
+  const metrics: Array<[string, keyof FinanceComparison]> = [
+    ["Receitas", "totalIncome"],
+    ["Despesas", "totalExpense"],
+    ["Saldo do mês", "balance"],
+    ["Caixa realizado", "cashBalance"],
+  ];
+
+  // 1) Mês atual: os valores do mês, sem base de comparação.
+  for (const [label, key] of metrics) {
+    out.push(["Mês atual", label, centsToCsvAmount(view.summary[key]), "", ""]);
+  }
+  // Pendências do mês (a caixa âmbar da página), só quando há algo a mostrar.
+  if (view.summary.pendingIncome > 0) {
+    out.push(["Mês atual", "A receber no mês", centsToCsvAmount(view.summary.pendingIncome), "", ""]);
+  }
+  if (view.summary.pendingExpense > 0) {
+    out.push(["Mês atual", "A pagar no mês", centsToCsvAmount(view.summary.pendingExpense), "", ""]);
+  }
+
+  // 2) Eixos de comparação — cada um só quando a página o exibiria.
+  const axes: Array<[string, FinanceComparison]> = [];
+  if (view.hasPreviousMonth) axes.push(["Mês anterior", view.vsPreviousMonth]);
+  if (view.hasAverage) {
+    axes.push([`Média dos últimos ${view.averageMonths} meses`, view.vsAverage]);
+  }
+  for (const [base, cmp] of axes) {
+    for (const [label, key] of metrics) {
+      const d = cmp[key];
+      out.push([
+        base,
+        label,
+        centsToCsvAmount(d.current),
+        centsToCsvAmount(d.previous),
+        csvDeltaPct(d),
+      ]);
+    }
+  }
 
   return toCsv(out, delimiter);
 }

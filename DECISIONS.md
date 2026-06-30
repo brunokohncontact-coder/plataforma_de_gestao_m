@@ -5438,3 +5438,44 @@ contexto, decisão, justificativa e alternativas consideradas.
   avisos) verdes; typecheck (`tsc --noEmit`) limpo; **1024 testes** (`vitest run`); smoke test (`next start`) → `/login` 200,
   `/financas/custos-fixos` + `/financas/custos-fixos/export` 307 (auth-gated). `npm audit` **inalterado** vs. baseline (10
   advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## D174 — Exportação CSV do relatório mensal (`/financas/relatorio/export` + `monthlyReportToCsv`) (Sessão 181)
+- **Contexto:** a D173 fechou a exportação dos custos fixos e **adiou explicitamente** (alt. (c)) o export de `/financas/relatorio`
+  como "próximo passo natural" — a outra tela tabular que a varredura da D172 deixou passar. O "Relatório mensal" mostra quatro
+  indicadores do mês (Receitas, Despesas, Saldo do mês, Caixa realizado), cada um com **dois eixos de comparação** (vs. o mês
+  anterior e vs. a média móvel dos últimos meses com movimento), além das pendências do mês e a quebra por categoria. O botão
+  "Exportar CSV" que já existia na tela aponta para `/financas/export?mes=` — o dump **bruto de transações** do mês, **não** o
+  relatório em si (resumo + comparativos). Faltava o export da estrutura do relatório.
+- **Decisão:** novo serializador puro `monthlyReportToCsv(view)` + `MONTHLY_REPORT_CSV_HEADERS` em `src/lib/csv.ts`, recebendo uma
+  `MonthlyReportCsvView` (resumo + os dois `FinanceComparison` já computados + flags `hasPreviousMonth`/`hasAverage` +
+  `averageMonths`) — mantém o serializador puro e desacoplado, a rota injeta os agregados (mesma divisão de `monthPaceToCsv`). Rota
+  `/financas/relatorio/export?mes=YYYY-MM` repete a **mesma composição da página** (`summarizeFinances`/`compareSummaries`/
+  `averageSummaries`, janela `AVERAGE_WINDOW=3`, regra "≥2 meses com movimento" da média).
+- **Formato:** tabela única achatada pela coluna "Base de comparação" (espelho estrutural de `monthPaceToCsv`). Colunas: Base de
+  comparação / Métrica / Valor do mês (R$) / Comparação (R$) / Variação (%). A seção "Mês atual" (sempre presente) traz os quatro
+  indicadores e, quando > 0, as pendências do mês ("A receber no mês" / "A pagar no mês" — a caixa âmbar da página), com Comparação
+  e Variação em branco. Em seguida vêm os eixos "Mês anterior" e "Média dos últimos N meses", cada um com uma linha por métrica
+  (Comparação = baseline do eixo, Variação relativa via `csvDeltaPct`: "+25%"/"-30%"/"0%"/"novo").
+- **Eixos condicionais:** diferente de `monthPaceToCsv` (que sempre emite o eixo sazonal), aqui cada eixo de comparação só sai
+  **quando a página o exibiria** (`hasPreviousMonth` / `hasAverage` ≥ 2 meses) — sem essa base a comparação seria contra um mês
+  vazio (sem sentido). A seção "Mês atual" garante que o arquivo nunca fica só com o cabeçalho (auto-suficiente no 1º mês de um
+  usuário novo).
+- **`csvDeltaPct` (não `csvSignedPct`):** a página renderiza "novo" quando a base é 0 (mês anterior sem movimento na métrica);
+  `csvDeltaPct` ("0%"/"novo"/assinado) reproduz isso fielmente, enquanto `csvSignedPct` (usado por `yearPaceToCsv`/`monthPaceToCsv`)
+  deixaria em branco. Escolhi a fidelidade à UI desta tela.
+- **UX:** os dois artefatos são distintos e ambos úteis, então mantive os dois botões e os renomeei para clareza:
+  "⬇ Relatório (CSV)" (novo, estrutura do relatório) e "⬇ Transações (CSV)" (o `/financas/export` bruto que já existia), ambos
+  gated por `visible.length > 0`. Nome do arquivo `relatorio-{YYYY-MM}.csv` (mês no nome, cabeçalhos genéricos — como
+  `ritmo-do-mes-{...}.csv`).
+- **Alternativas consideradas:** (a) incluir a quebra **por categoria** no mesmo CSV — **descartado**: já existe
+  `/financas/variacao` + `categoryVariationToCsv` (variação por categoria entre dois meses), e misturar métricas-do-resumo com
+  linhas-de-categoria deixaria a tabela heterogênea; o eixo deste export são as quatro métricas. (b) substituir o botão de
+  transações pelo de relatório — **descartado**: o dump bruto continua útil; relabel resolve a ambiguidade. (c) `csvSignedPct` em
+  vez de `csvDeltaPct` — **descartado**: perderia o "novo" que a UI mostra.
+- **Testes:** **+4** em `csv.test.ts` (`describe("monthlyReportToCsv")`: só "Mês atual" sem mês ant. nem média; pendências
+  a-receber/a-pagar quando há aberto (caixa 0 × saldo de competência 700); eixos "Mês anterior" +25% e "Média dos últimos 2 meses"
+  0%; "novo" quando a base do mês anterior é 0 + média ausente com < 2 meses). **1028 testes** no total (eram 1024).
+- **DoD:** build de produção (`✓ Compiled successfully`, rota `/financas/relatorio/export` registrada) e lint (`next lint`, 0
+  avisos) verdes; typecheck (`tsc --noEmit`) limpo; **1028 testes** (`vitest run`); smoke test (`next start`) → `/login` 200,
+  `/financas/relatorio` + `/financas/relatorio/export?mes=2026-06` 307 (auth-gated). `npm audit` **inalterado** vs. baseline (10
+  advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.

@@ -9,7 +9,19 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1024 testes** verdes após a **exportação CSV dos
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1028 testes** verdes após a **exportação CSV do
+relatório mensal** em `/financas/relatorio/export` (Sessão 181, D174 — a tela "Relatório mensal" (`/financas/relatorio`: os quatro
+indicadores do mês — Receitas/Despesas/Saldo do mês/Caixa realizado — cada um com dois eixos de comparação, vs. o mês anterior e
+vs. a média móvel dos últimos meses com movimento) ganhou botão "⬇ Relatório (CSV)"; serializador puro `monthlyReportToCsv(view)`
++ `MONTHLY_REPORT_CSV_HEADERS` em `src/lib/csv.ts` recebe uma `MonthlyReportCsvView` (resumo + os dois `FinanceComparison` já
+computados + flags) e achata tudo numa tabela única pela coluna "Base de comparação" (Base/Métrica/Valor do mês (R$)/Comparação
+(R$)/Variação (%)) — espelho estrutural de `monthPaceToCsv`: seção "Mês atual" sempre presente (4 métricas + pendências do mês "A
+receber/A pagar" quando > 0, comparação em branco), depois os eixos "Mês anterior" e "Média dos últimos N meses" **só quando a
+página os exibiria** (`hasPreviousMonth`/`hasAverage` ≥ 2 meses) com a variação via `csvDeltaPct` ("+25%"/"0%"/"novo" — fiel ao
+"novo" da UI, diferente do `csvSignedPct` dos paces); rota repete a composição da página (`AVERAGE_WINDOW=3`, regra ≥2), nome
+`relatorio-{YYYY-MM}.csv` + BOM UTF-8; o antigo botão de dump bruto foi renomeado "⬇ Transações (CSV)" para distingui-lo; distinto
+de `categoryVariationToCsv`/`/financas/variacao` (lá o eixo são categorias, aqui as 4 métricas do resumo); **+4 testes**) sobre os
+**1024 testes** verdes após a **exportação CSV dos
 custos fixos recorrentes** em `/financas/custos-fixos/export` (Sessão 180, D173 — a tela "Custos fixos" (`recurringExpenses`/D39, o
 piso a faturar todo mês) ganhou botão "⬇ CSV"; serializador puro `recurringExpensesToCsv(report)` + `RECURRING_EXPENSES_CSV_HEADERS`
 em `src/lib/csv.ts` emite uma linha por categoria recorrente na ordem da página (conta típica desc): Categoria/Conta típica/mês (R$)/
@@ -3339,10 +3351,17 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `/financas/custos-fixos/export` (Categoria/Conta típica/mês/Meses ativos/Janela/Última/Total/Situação + linha Total cuja conta
    típica é o custo fixo mensal estimado só-ativas e cuja situação resume "N/M ativas"), uma linha por categoria recorrente na ordem
    da página, sem `?ano=`, nome fixo `custos-fixos.csv`, botão "⬇ CSV" só com `categories.length > 0`, ver D173.
-   Próximo possível — a varredura por páginas sem subpasta `export/` revelou que `/financas/relatorio` (relatório mensal
-   comparativo + média móvel) **ainda é tabular e não exporta** — candidato natural da próxima sessão. Depois disso, as telas
-   restantes sem export são **só** painéis de número único (ponto-de-equilíbrio, reserva-impostos): menos óbvios como planilha;
-   provavelmente não vale uma planilha de uma linha.
+   **Exportação CSV do relatório mensal** entregue na Sessão 181 — `monthlyReportToCsv(view)` + `MONTHLY_REPORT_CSV_HEADERS` em
+   `src/lib/csv.ts` + `/financas/relatorio/export?mes=YYYY-MM` (Base de comparação/Métrica/Valor do mês (R$)/Comparação (R$)/
+   Variação (%): seção "Mês atual" com as 4 métricas + pendências do mês, depois os eixos "Mês anterior" e "Média dos últimos N
+   meses" só quando a página os exibiria; variação via `csvDeltaPct` "novo"/assinada), repete a composição da página
+   (`AVERAGE_WINDOW=3`, regra ≥2 meses), nome `relatorio-{YYYY-MM}.csv`, botão "⬇ Relatório (CSV)" (o dump bruto que já havia virou
+   "⬇ Transações (CSV)"), distinto de `categoryVariationToCsv` (lá o eixo são categorias), ver D174 — fecha o candidato natural
+   apontado na D173.
+   Próximo possível — as telas restantes sem export são **só** painéis de número único (ponto-de-equilíbrio, reserva-impostos):
+   menos óbvios como planilha; provavelmente não vale uma planilha de uma linha. O eixo de exportação tabular está, na prática,
+   **esgotado** — próximas sessões podem voltar a evoluir feature (calendário drag&drop, log de transições do funil, recuperação
+   de senha) em vez de mais CSV.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

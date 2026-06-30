@@ -72,6 +72,9 @@ import {
   YEAR_PACE_CSV_HEADERS,
   monthPaceToCsv,
   MONTH_PACE_CSV_HEADERS,
+  monthlyReportToCsv,
+  MONTHLY_REPORT_CSV_HEADERS,
+  type MonthlyReportCsvView,
   monthlyGoalProgressToCsv,
   MONTHLY_GOAL_CSV_HEADERS,
   quarterlyGoalProgressToCsv,
@@ -118,6 +121,9 @@ import {
   yearToDatePace,
   currentMonthPace,
   monthYoYPace,
+  summarizeFinances,
+  compareSummaries,
+  averageSummaries,
   monthlyGoalProgress,
   quarterlyGoalProgress,
   projectYearEnd,
@@ -2118,6 +2124,79 @@ describe("monthPaceToCsv", () => {
     // sem base no ano anterior → comparação 0,00 e variação em branco
     expect(lines[4]).toBe("Mesmo mês do ano anterior;Receitas;1000,00;0,00;");
     expect(lines[6]).toBe("Mesmo mês do ano anterior;Resultado;1000,00;0,00;");
+  });
+});
+
+describe("monthlyReportToCsv", () => {
+  const tx = (amount: number, type: TxLike["type"] = "INCOME", received = false): TxLike => ({
+    type,
+    amount,
+    category: type === "INCOME" ? "Show" : "Transporte",
+    date: "2026-06-10T00:00:00.000Z",
+    received,
+  });
+
+  // Monta a view como a rota faz: resumo do mês + comparativos vs. mês anterior e
+  // vs. a média dos meses recentes com movimento (a regra ≥2 da página).
+  const view = (
+    current: TxLike[],
+    previous: TxLike[],
+    trailing: TxLike[][],
+  ): MonthlyReportCsvView => {
+    const summary = summarizeFinances(current);
+    const trailingSummaries = trailing.filter((m) => m.length > 0).map(summarizeFinances);
+    return {
+      summary,
+      vsPreviousMonth: compareSummaries(summary, summarizeFinances(previous)),
+      vsAverage: compareSummaries(summary, averageSummaries(trailingSummaries)),
+      hasPreviousMonth: previous.length > 0,
+      hasAverage: trailingSummaries.length >= 2,
+      averageMonths: trailingSummaries.length,
+    };
+  };
+
+  it("emite só a seção 'Mês atual' quando não há mês anterior nem média", () => {
+    const csv = monthlyReportToCsv(view([tx(1000_00, "INCOME", true)], [], []));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(MONTHLY_REPORT_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(5); // cabeçalho + 4 métricas; sem eixos de comparação
+    expect(lines[1]).toBe("Mês atual;Receitas;1000,00;;");
+    expect(lines[2]).toBe("Mês atual;Despesas;0,00;;");
+    expect(lines[3]).toBe("Mês atual;Saldo do mês;1000,00;;");
+    expect(lines[4]).toBe("Mês atual;Caixa realizado;1000,00;;");
+  });
+
+  it("inclui as pendências do mês (a receber / a pagar) quando há valores em aberto", () => {
+    // receita não recebida (a receber) + despesa não paga (a pagar)
+    const csv = monthlyReportToCsv(view([tx(1000_00), tx(300_00, "EXPENSE")], [], []));
+    const lines = csv.split("\r\n");
+    expect(lines).toContain("Mês atual;A receber no mês;1000,00;;");
+    expect(lines).toContain("Mês atual;A pagar no mês;300,00;;");
+    // Caixa realizado é 0 (nada recebido/pago); o saldo de competência é 700.
+    expect(lines).toContain("Mês atual;Saldo do mês;700,00;;");
+    expect(lines).toContain("Mês atual;Caixa realizado;0,00;;");
+  });
+
+  it("emite os eixos 'Mês anterior' e 'Média' com a variação relativa", () => {
+    const current = [tx(1000_00, "INCOME", true)];
+    const previous = [tx(800_00, "INCOME", true)];
+    // dois meses na janela da média: 800 e 1200 → média 1000
+    const trailing = [[tx(800_00, "INCOME", true)], [tx(1200_00, "INCOME", true)]];
+    const lines = monthlyReportToCsv(view(current, previous, trailing)).split("\r\n");
+    expect(lines).toHaveLength(13); // 1 + 4 (mês atual) + 4 (mês ant.) + 4 (média)
+    // Mês anterior: receita 1000 vs 800 → +25%
+    expect(lines).toContain("Mês anterior;Receitas;1000,00;800,00;+25%");
+    // Média (2 meses): receita 1000 vs média 1000 → 0%
+    expect(lines).toContain("Média dos últimos 2 meses;Receitas;1000,00;1000,00;0%");
+  });
+
+  it("marca a variação como 'novo' quando a base do mês anterior é zero", () => {
+    const current = [tx(500_00, "INCOME", true)];
+    const previous = [tx(200_00, "EXPENSE", true)]; // sem receita no mês anterior
+    const lines = monthlyReportToCsv(view(current, previous, [])).split("\r\n");
+    // base 0 → pct null → "novo" (espelha o "novo" da UI); média ausente (< 2 meses)
+    expect(lines).toContain("Mês anterior;Receitas;500,00;0,00;novo");
+    expect(lines.some((l) => l.startsWith("Média"))).toBe(false);
   });
 });
 

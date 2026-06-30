@@ -84,7 +84,8 @@ export default async function FinanceReportPage({
   const averageComparison = compareSummaries(summary, averageSummaries(trailingSummaries));
   const hasAverageData = trailingSummaries.length >= 2;
 
-  const exportHref = `/financas/export?mes=${key}`;
+  const transactionsExportHref = `/financas/export?mes=${key}`;
+  const reportExportHref = `/financas/relatorio/export?mes=${key}`;
 
   return (
     <div className="space-y-6">
@@ -98,9 +99,14 @@ export default async function FinanceReportPage({
             ← Finanças
           </Link>
           {visible.length > 0 && (
-            <a href={exportHref} className="btn-secondary" download>
-              Exportar CSV
-            </a>
+            <>
+              <a href={reportExportHref} className="btn-secondary" download>
+                ⬇ Relatório (CSV)
+              </a>
+              <a href={transactionsExportHref} className="btn-secondary" download>
+                ⬇ Transações (CSV)
+              </a>
+            </>
           )}
         </div>
       </div>
