@@ -51,6 +51,8 @@ import {
   clientRetentionToCsv,
   clientConcentrationToCsv,
   CLIENT_CONCENTRATION_CSV_HEADERS,
+  cancellationByContactToCsv,
+  CANCELLATION_BY_CONTACT_CSV_HEADERS,
   reengageToCsv,
   REENGAGE_CSV_HEADERS,
   CLIENT_RETENTION_CSV_HEADERS,
@@ -146,6 +148,7 @@ import {
 import {
   clientRetention,
   clientConcentration,
+  cancellationByContact,
   findContactsToReengage,
   type ContactRankLike,
 } from "./contacts";
@@ -1607,6 +1610,72 @@ describe("clientConcentrationToCsv", () => {
     expect(lines).toHaveLength(3);
     expect(lines[1]).toBe("Casa Nova;Outro;1;1000,00;100%");
     expect(lines[2]).toBe("Total;;1;1000,00;");
+  });
+});
+
+describe("cancellationByContactToCsv", () => {
+  interface C extends ContactRankLike {
+    role: string;
+  }
+  const item = (
+    contact: C,
+    shows: { status: string; date: string; fee: number }[],
+  ) => ({ contact, shows });
+
+  it("só cabeçalho + Total zerado quando não há cancelamentos", () => {
+    const csv = cancellationByContactToCsv(cancellationByContact<C>([]));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(CANCELLATION_BY_CONTACT_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe("Total;;0;0;0%;0,00;0 cancelaram");
+  });
+
+  it("confiáveis primeiro (apesar de taxa menor), amostra pequena e Total", () => {
+    const report = cancellationByContact<C>([
+      // 5 shows, 2 cancelados → taxa 40%, amostra confiável (>=3).
+      item({ id: "z", name: "Bar do Zé", role: "VENUE" }, [
+        { status: "PLAYED", date: "2026-01-10T00:00:00.000Z", fee: 100000 },
+        { status: "PLAYED", date: "2026-02-10T00:00:00.000Z", fee: 100000 },
+        { status: "PLAYED", date: "2026-03-10T00:00:00.000Z", fee: 100000 },
+        { status: "CANCELLED", date: "2026-04-10T00:00:00.000Z", fee: 100000 },
+        { status: "CANCELLED", date: "2026-05-10T00:00:00.000Z", fee: 100000 },
+      ]),
+      // 2 shows, 1 cancelado → taxa 50% (maior!), mas amostra pequena (<3).
+      item({ id: "l", name: "Produtora Lua", role: "PROMOTER" }, [
+        { status: "PLAYED", date: "2026-02-01T00:00:00.000Z", fee: 200000 },
+        { status: "CANCELLED", date: "2026-06-01T00:00:00.000Z", fee: 300000 },
+      ]),
+    ]);
+    const lines = cancellationByContactToCsv(report).split("\r\n");
+    // cabeçalho + 2 contratantes (confiável antes do de taxa maior) + Total.
+    expect(lines).toHaveLength(4);
+    expect(lines[1]).toBe("Bar do Zé;Casa de show;2;5;40%;2000,00;Confiável");
+    expect(lines[2]).toBe(
+      "Produtora Lua;Produtor/Promoter;1;2;50%;3000,00;Amostra pequena",
+    );
+    // Total da carteira: 3 cancelados de 7 shows = 43%; 5000,00 perdidos.
+    expect(lines[3]).toBe("Total;;3;7;43%;5000,00;2 cancelaram");
+  });
+
+  it("contratante sem cancelamento não vira linha, mas entra no Total (Shows)", () => {
+    const report = cancellationByContact<C>([
+      item({ id: "c", name: "Cancelador", role: "OTHER" }, [
+        { status: "PLAYED", date: "2026-01-10T00:00:00.000Z", fee: 100000 },
+        { status: "CANCELLED", date: "2026-02-10T00:00:00.000Z", fee: 400000 },
+      ]),
+      // 3 shows, nenhum cancelado → some nos totais, sem virar linha.
+      item({ id: "f", name: "Fiel", role: "VENUE" }, [
+        { status: "PLAYED", date: "2026-01-01T00:00:00.000Z", fee: 100000 },
+        { status: "PLAYED", date: "2026-02-01T00:00:00.000Z", fee: 100000 },
+        { status: "CONFIRMED", date: "2099-01-01T00:00:00.000Z", fee: 100000 },
+      ]),
+    ]);
+    const lines = cancellationByContactToCsv(report).split("\r\n");
+    // só "Cancelador" vira linha; o Total soma os 5 shows (2 + 3 do "Fiel").
+    expect(lines).toHaveLength(3);
+    expect(lines[1]).toBe("Cancelador;Outro;1;2;50%;4000,00;Amostra pequena");
+    // Total: 1 cancelado em 5 shows = 20%; só 1 contratante cancelou.
+    expect(lines[2]).toBe("Total;;1;5;20%;4000,00;1 cancelaram");
   });
 });
 

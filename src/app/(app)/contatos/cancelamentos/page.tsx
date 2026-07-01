@@ -56,6 +56,11 @@ export default async function ContatosCancelamentosPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {hasData && (
+            <a href="/contatos/cancelamentos/export" className="btn-secondary">
+              ⬇ CSV
+            </a>
+          )}
           <Link href="/contatos/retencao" className="btn-secondary">
             Fidelização
           </Link>

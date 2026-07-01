@@ -61,6 +61,7 @@ import {
 import type {
   ClientRetention,
   ClientConcentration,
+  ContactCancellations,
   ContactRankLike,
   ReengageList,
 } from "./contacts";
@@ -1413,6 +1414,64 @@ export function clientConcentrationToCsv<C extends ContactRankLike & { role: str
     String(totalShows),
     centsToCsvAmount(concentration.totalFee),
     "",
+  ]);
+  return toCsv(out, delimiter);
+}
+
+// ── Cancelamentos por contratante (confiabilidade de quem contrata) ───────────
+
+export const CANCELLATION_BY_CONTACT_CSV_HEADERS = [
+  "Contratante",
+  "Papel",
+  "Cancelados",
+  "Shows",
+  "Taxa (%)",
+  "Cachê perdido (R$)",
+  "Amostra",
+] as const;
+
+/**
+ * Serializa a taxa de cancelamento por contratante (`cancellationByContact`) em
+ * CSV, pronto para download. Espelha a tabela de `/contatos/cancelamentos`: uma
+ * linha por contratante com ≥1 cancelamento (`report.rows`, já ordenado —
+ * confiáveis primeiro, depois taxa desc, cancelados desc, cachê perdido desc,
+ * nome pt-BR), com nº de cancelados, total de shows vinculados, a taxa (via
+ * `csvShare`, "40%") e o cachê perdido somado. A coluna "Papel" entra para a
+ * planilha abrir auto-suficiente (a tela a mostra como selo); a coluna "Amostra"
+ * traduz o selo "amostra pequena" da UI ("Confiável"/"Amostra pequena", pelo
+ * campo `reliable`).
+ *
+ * Encerra numa linha "Total" com os agregados da carteira (iguais aos cards do
+ * topo da página): cancelados e cachê perdido somados batem com as linhas, mas
+ * "Shows" é o total de **todos** os shows vinculados (inclusive os de
+ * contratantes sem nenhum cancelamento, que não viram linha) — por isso a Taxa
+ * do Total é a `overallRate` da carteira e a coluna "Amostra" traz "N cancelaram"
+ * (nº de contratantes listados). Mesma convenção pt-BR dos irmãos. Pura.
+ */
+export function cancellationByContactToCsv<C extends ContactRankLike & { role: string }>(
+  report: ContactCancellations<C>,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(CANCELLATION_BY_CONTACT_CSV_HEADERS)];
+  for (const row of report.rows) {
+    out.push([
+      row.contact.name,
+      contactRoleLabel(row.contact.role),
+      String(row.cancelledShows),
+      String(row.totalShows),
+      csvShare(row.cancellationRate),
+      centsToCsvAmount(row.lostFee),
+      row.reliable ? "Confiável" : "Amostra pequena",
+    ]);
+  }
+  out.push([
+    "Total",
+    "",
+    String(report.totalCancelled),
+    String(report.totalShows),
+    csvShare(report.overallRate),
+    centsToCsvAmount(report.totalLostFee),
+    `${report.contactCount} cancelaram`,
   ]);
   return toCsv(out, delimiter);
 }
