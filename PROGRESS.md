@@ -6,10 +6,17 @@
 ## Estado atual
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
-(incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
+(incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1064 testes** verdes após o **comparativo ano a ano da
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1070 testes** verdes após a **troca de e-mail de
+acesso na página de Conta** (Sessão 189, D182 — a página `/conta` editava perfil e senha mas não havia como alterar o e-mail de
+login, a única credencial imutável do usuário; com o eixo de exportação CSV esgotado (D174), a gestão de conta era o próximo passo
+natural. Nova server action `changeEmailAction` + `changeEmailSchema` (Zod: e-mail válido, `trim().toLowerCase()` + `currentPassword`)
++ `EmailForm.tsx` numa seção "Trocar e-mail de acesso": exige a **senha atual** (o e-mail é o login, espelho de `changePasswordAction`),
+rejeita e-mail já em uso por outro usuário (`findUnique` antes da constraint `@unique`, para mensagem clara) e rejeita o e-mail igual
+ao atual; **não** reemite cookie/invalida sessões — o JWT guarda `userId`, não o e-mail (diferente da senha/D10); **+6 testes**) sobre
+os **1064 testes** verdes após o **comparativo ano a ano da
 taxa de cancelamento da carteira** (Sessão 188, D181 — a tela `/contatos/cancelamentos` já tinha página, CSV (D178), nudge (D179) e
 recorte por ano (D180), mas comparava só um período por vez; todas as telas de concentração (`compareGeoConcentration`/D120,
 `compareClientConcentration`/D122) ganharam um card "vs. {ano-1}" e a de cancelamentos era a única leitura de taxa/risco sem esse
@@ -3157,9 +3164,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    prazo mediano por contratante também ao card do Painel (adiado na D130: o Painel já mostra o DSO mediano global via
    `paymentLagHeadline`); ou exportar o agregado por baldes de velocidade (5 linhas-resumo) se houver demanda (descartado
    na D132(a) por baixo valor de planilha).
-4. **Sessões/segurança**: invalidação ao trocar a senha entregue na Sessão 26
-   (`passwordChangedAt` + `isSessionFresh`, ver D17). Evoluções possíveis: "encerrar sessão
-   específica" (lista de sessões revogáveis) e recuperação de senha por e-mail — adiáveis.
+4. **Sessões/segurança / gestão de conta**: invalidação ao trocar a senha entregue na Sessão 26
+   (`passwordChangedAt` + `isSessionFresh`, ver D17); **troca do e-mail de acesso** entregue na Sessão 189
+   — `changeEmailAction` + `changeEmailSchema` + `EmailForm.tsx` na página `/conta` (exige a senha atual,
+   rejeita e-mail em uso ou igual ao atual), ver D182. Evoluções possíveis: "encerrar sessão específica"
+   (lista de sessões revogáveis) e recuperação de senha por e-mail — adiáveis (sem SMTP no MVP, ver D4).
 6. **Planejamento / projeção — evoluções** (projeção de fechamento do ano entregue na Sessão 68,
    `/financas/projecao-ano` + `projectYearEnd`, ver D60; **resultado projetado no Painel** entregue na
    Sessão 69 — card "Projeção de {ano}" em `dashboard/page.tsx`, ver D61; **cenário "com custos fixos"**

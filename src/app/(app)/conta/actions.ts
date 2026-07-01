@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser, setSessionCookie } from "@/lib/session";
 import { hashPassword, verifyPassword } from "@/lib/auth";
-import { updateProfileSchema, changePasswordSchema } from "@/lib/validation";
+import { updateProfileSchema, changePasswordSchema, changeEmailSchema } from "@/lib/validation";
 
 export interface FormState {
   error?: string;
@@ -32,6 +32,38 @@ export async function updateProfileAction(
   // O cabeçalho exibe o nome/nome artístico — revalida o layout do app.
   revalidatePath("/", "layout");
   return { success: "Perfil atualizado." };
+}
+
+export async function changeEmailAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const user = await requireUser();
+  const parsed = changeEmailSchema.safeParse({
+    email: formData.get("email"),
+    currentPassword: formData.get("currentPassword"),
+  });
+  if (!parsed.success) return { error: parsed.error.errors[0]?.message ?? "Dados inválidos" };
+
+  const { email, currentPassword } = parsed.data;
+
+  // O e-mail é a credencial de login — confirma a senha atual antes de trocar.
+  const ok = await verifyPassword(currentPassword, user.passwordHash);
+  if (!ok) return { error: "Senha atual incorreta." };
+
+  if (email === user.email) {
+    return { error: "O novo e-mail é igual ao atual." };
+  }
+
+  // Unicidade: o schema garante `@unique`, mas conferimos antes para devolver
+  // uma mensagem clara em vez de estourar a constraint do banco.
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing) return { error: "Este e-mail já está em uso." };
+
+  await prisma.user.update({ where: { id: user.id }, data: { email } });
+
+  revalidatePath("/conta");
+  return { success: "E-mail de acesso atualizado." };
 }
 
 export async function changePasswordAction(

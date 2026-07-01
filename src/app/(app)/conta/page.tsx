@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/session";
 import { ProfileForm } from "./ProfileForm";
+import { EmailForm } from "./EmailForm";
 import { PasswordForm } from "./PasswordForm";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,11 @@ export default async function ContaPage() {
       <section className="card space-y-4">
         <h2 className="text-lg font-semibold">Perfil</h2>
         <ProfileForm values={{ name: user.name, artistName: user.artistName }} />
+      </section>
+
+      <section className="card space-y-4">
+        <h2 className="text-lg font-semibold">Trocar e-mail de acesso</h2>
+        <EmailForm currentEmail={user.email} />
       </section>
 
       <section className="card space-y-4">

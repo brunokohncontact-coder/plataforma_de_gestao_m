@@ -19,7 +19,7 @@ vi.mock("@/lib/session", () => ({
 import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyPassword } from "@/lib/auth";
 import { resetDb } from "@/test/db";
-import { changePasswordAction, updateProfileAction } from "./actions";
+import { changeEmailAction, changePasswordAction, updateProfileAction } from "./actions";
 
 /** Cria um usuário com um hash de senha real (o helper padrão usa "x"). */
 async function createUserWithPassword(email: string, password: string) {
@@ -27,6 +27,14 @@ async function createUserWithPassword(email: string, password: string) {
     data: { email, name: email.split("@")[0], passwordHash: await hashPassword(password) },
   });
   return user;
+}
+
+function emailForm(overrides: Record<string, string> = {}): FormData {
+  const fd = new FormData();
+  fd.set("email", "novo@example.com");
+  fd.set("currentPassword", "senha-original");
+  for (const [k, v] of Object.entries(overrides)) fd.set(k, v);
+  return fd;
 }
 
 function profileForm(overrides: Record<string, string> = {}): FormData {
@@ -84,6 +92,72 @@ describe("updateProfileAction", () => {
     expect(result.error).toBeTruthy();
     const fresh = await prisma.user.findUnique({ where: { id: user.id } });
     expect(fresh?.name).toBe("a"); // inalterado (email.split antes do @)
+  });
+});
+
+describe("changeEmailAction", () => {
+  it("troca o e-mail quando a senha atual está correta", async () => {
+    const user = await createUserWithPassword("a@example.com", "senha-original");
+    h.currentUser = user;
+
+    const result = await changeEmailAction({}, emailForm());
+
+    expect(result.success).toBeTruthy();
+    const fresh = await prisma.user.findUnique({ where: { id: user.id } });
+    expect(fresh?.email).toBe("novo@example.com");
+  });
+
+  it("normaliza o e-mail (trim + minúsculas)", async () => {
+    const user = await createUserWithPassword("a@example.com", "senha-original");
+    h.currentUser = user;
+
+    await changeEmailAction({}, emailForm({ email: "  NOVO@Example.COM  " }));
+
+    const fresh = await prisma.user.findUnique({ where: { id: user.id } });
+    expect(fresh?.email).toBe("novo@example.com");
+  });
+
+  it("NÃO troca o e-mail quando a senha atual está incorreta", async () => {
+    const user = await createUserWithPassword("a@example.com", "senha-original");
+    h.currentUser = user;
+
+    const result = await changeEmailAction({}, emailForm({ currentPassword: "chute-errado" }));
+
+    expect(result.error).toBe("Senha atual incorreta.");
+    const fresh = await prisma.user.findUnique({ where: { id: user.id } });
+    expect(fresh?.email).toBe("a@example.com");
+  });
+
+  it("rejeita quando o e-mail já está em uso por outro usuário", async () => {
+    await createUserWithPassword("ocupado@example.com", "outra-senha");
+    const user = await createUserWithPassword("a@example.com", "senha-original");
+    h.currentUser = user;
+
+    const result = await changeEmailAction({}, emailForm({ email: "ocupado@example.com" }));
+
+    expect(result.error).toBe("Este e-mail já está em uso.");
+    const fresh = await prisma.user.findUnique({ where: { id: user.id } });
+    expect(fresh?.email).toBe("a@example.com");
+  });
+
+  it("rejeita quando o novo e-mail é igual ao atual", async () => {
+    const user = await createUserWithPassword("a@example.com", "senha-original");
+    h.currentUser = user;
+
+    const result = await changeEmailAction({}, emailForm({ email: "a@example.com" }));
+
+    expect(result.error).toBe("O novo e-mail é igual ao atual.");
+  });
+
+  it("rejeita e-mail inválido sem gravar", async () => {
+    const user = await createUserWithPassword("a@example.com", "senha-original");
+    h.currentUser = user;
+
+    const result = await changeEmailAction({}, emailForm({ email: "sem-arroba" }));
+
+    expect(result.error).toBeTruthy();
+    const fresh = await prisma.user.findUnique({ where: { id: user.id } });
+    expect(fresh?.email).toBe("a@example.com");
   });
 });
 

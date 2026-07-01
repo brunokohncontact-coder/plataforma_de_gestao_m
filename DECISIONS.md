@@ -5734,3 +5734,33 @@ contexto, decisão, justificativa e alternativas consideradas.
   **1064 testes** (`vitest run`); build gerou a rota `/contatos/cancelamentos`. `npm audit` **inalterado**
   vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado;
   ver D6/bloqueios); **nenhuma dependência nova**.
+
+## 2026-07-01 — D182: Trocar o e-mail de acesso na página de Conta
+- **Contexto:** a página `/conta` (D9) já editava perfil (nome/nome artístico, `updateProfileAction`)
+  e trocava senha (`changePasswordAction`, com invalidação de sessões antigas D10), mas **não** havia
+  como alterar o e-mail de login — a única credencial imutável do usuário. O eixo de exportação CSV
+  estava esgotado (D174/PROGRESS) e a lacuna de gestão de conta era o próximo passo natural de feature.
+- **Decisão:** nova server action `changeEmailAction` + `changeEmailSchema` (Zod: e-mail válido,
+  `trim().toLowerCase()`, + `currentPassword`) + componente `EmailForm.tsx` numa seção "Trocar e-mail
+  de acesso" na página. A troca **exige a senha atual** (o e-mail é a credencial de login), rejeita
+  e-mail já em uso por outro usuário (checagem explícita antes da constraint `@unique` do banco, para
+  mensagem clara) e rejeita o e-mail igual ao atual.
+- **Justificativa:**
+  - **Segurança:** confirmar a senha atual antes de trocar a credencial de login espelha a regra do
+    `changePasswordAction` — evita que uma sessão sequestrada aberta troque o e-mail sem reautenticar.
+  - **Unicidade antecipada:** `findUnique` antes do `update` devolve "Este e-mail já está em uso." em
+    vez de estourar a violação de `@unique` como erro 500 — mesma postura defensiva do registro.
+  - **Sessão intocada:** o JWT guarda `userId`, não o e-mail, então trocar o e-mail **não** invalida
+    sessões (diferente da senha/D10); nenhuma reemissão de cookie é necessária.
+- **Alternativas consideradas:** (a) dupla confirmação por e-mail de verificação — descartada: não há
+  envio de e-mail no MVP (execuções remotas efêmeras, sem SMTP), e o e-mail é o login, não um contato
+  secundário; fica para quando entrar recuperação de senha/verificação (ver D4); (b) embutir o e-mail no
+  `ProfileForm` — descartada: trocar a credencial de login exige senha e merece uma seção própria, como
+  a troca de senha; (c) não pedir senha — descartada por segurança.
+- **Testes:** `changeEmailAction` (troca com senha correta; normaliza trim+minúsculas; NÃO troca com
+  senha errada; rejeita e-mail já em uso; rejeita e-mail igual ao atual; rejeita e-mail inválido);
+  **+6 testes** (1064 → 1070).
+- **DoD:** build de produção verde; lint (`next lint`, 0 avisos); typecheck (`tsc --noEmit`) limpo;
+  **1070 testes** (`vitest run`); smoke test — `/conta` e `/login` respondem 200 com o app de pé.
+  `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do
+  Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
