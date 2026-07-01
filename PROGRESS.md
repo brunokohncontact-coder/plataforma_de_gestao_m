@@ -9,7 +9,17 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1044 testes** verdes após a **taxa de cancelamento por
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1047 testes** verdes após a **exportação CSV dos
+cancelamentos por contratante** em `/contatos/cancelamentos/export` (Sessão 185, D178 — entrega o CSV adiado na D177(d): a tela
+"Cancelamentos por contratante" (`cancellationByContact`/D177) era a única tabular do eixo Contatos sem export. Serializador puro
+`cancellationByContactToCsv(report)` + `CANCELLATION_BY_CONTACT_CSV_HEADERS` em `src/lib/csv.ts` (irmão de `clientConcentrationToCsv`,
+genérico sobre `ContactCancellations<C>`, reusa `contactRoleLabel`/`csvShare`/`centsToCsvAmount`) emite uma linha por contratante com
+≥1 cancelamento na ordem da página (confiáveis primeiro, taxa desc, cancelados desc, cachê perdido desc, nome pt-BR):
+Contratante/Papel/Cancelados/Shows/Taxa (%)/Cachê perdido (R$)/Amostra ("Confiável"/"Amostra pequena" pelo `reliable`, traduzindo o
+selo da UI); encerra numa linha "Total" com os agregados da carteira (`totalCancelled`/`totalShows`/`overallRate`/`totalLostFee` +
+"N cancelaram") — cancelados/cachê batem com as linhas, mas "Shows" é o total de **todos** os vinculados (inclui contratantes sem
+cancelamento, que não viram linha), mesma distinção top-stats×lista da D177; rota reusa a query/`cancellationByContact` da página +
+BOM UTF-8, nome fixo `cancelamentos-por-contratante.csv`, botão "⬇ CSV" gated por `hasData`; **+3 testes**) sobre a **taxa de cancelamento por
 contratante** em `/contatos/cancelamentos` (Sessão 184, D177 — pivô do eixo de exportação CSV, dado como esgotado na D174, de volta
 a **feature nova**: todo o resto da plataforma trata shows `CANCELLED` como ruído a excluir; o funil (`showPipeline`) é o único que
 os olha, mas só na taxa de concretização **global**, sem recorte por quem cancela. Novo helper puro
@@ -3294,8 +3304,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `lostFee` + `reliable` (amostra >= minSample); rows só com ≥1 cancelamento, agregados somam todos os contatos com shows; contagem
    por relação (D18); ordenação reliable-first (selo "amostra pequena" resolve na apresentação, D123/D130); é a 1ª leitura da
    plataforma que **usa** os cancelados como sinal (o resto os exclui como ruído); distinta da taxa global do funil
-   (`showPipeline.conversionRate`, sem recorte por contratante); **+8 testes**, ver D177. Próximo possível — exportação CSV
-   (adiada na D177(d)), ou um nudge no Painel "N contratantes com taxa alta de cancelamento" (adiada na D177(e): já há 7 nudges lá),
+   (`showPipeline.conversionRate`, sem recorte por contratante); **+8 testes**, ver D177.
+   **Exportação CSV dos cancelamentos** entregue na Sessão 185 — `cancellationByContactToCsv` + `CANCELLATION_BY_CONTACT_CSV_HEADERS`
+   em `src/lib/csv.ts` + `/contatos/cancelamentos/export` (Contratante/Papel/Cancelados/Shows/Taxa (%)/Cachê perdido (R$)/Amostra +
+   Total da carteira), uma linha por contratante com ≥1 cancelamento na ordem da página, botão "⬇ CSV" gated por `hasData`, ver D178.
+   Próximo possível — um nudge no Painel "N contratantes com taxa alta de cancelamento" (adiada na D177(e): já há 7 nudges lá),
    ou recorte por período (`?ano=`) se surgir demanda.
 
 9. **Rentabilidade geográfica — evoluções** (rentabilidade por local entregue na Sessão 28, `/shows/locais` +

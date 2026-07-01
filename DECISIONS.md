@@ -5594,3 +5594,37 @@ contexto, decisão, justificativa e alternativas consideradas.
   (`tsc --noEmit`) limpo; **1044 testes** (`vitest run`); smoke test (`next start`) → `/login` 200, `/contatos/cancelamentos` e
   `/relatorios` 307 (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do
   Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+
+## D178 — Exportação CSV dos cancelamentos por contratante (`/contatos/cancelamentos/export` + `cancellationByContactToCsv`) (Sessão 185)
+- **Contexto:** a tela "Cancelamentos por contratante" (`cancellationByContact`/D177 — quem mais fura o combinado: a fração dos shows
+  vinculados que acabou cancelada e o cachê perdido junto) era a única tela tabular do eixo Contatos sem exportação, e a própria D177(d)
+  já deixara o CSV como evolução natural adiada. Entrega o item deferido.
+- **Decisão:** serializador puro `cancellationByContactToCsv(report)` + `CANCELLATION_BY_CONTACT_CSV_HEADERS` em `src/lib/csv.ts`
+  (irmão de `clientConcentrationToCsv`/D165: genérico sobre `ContactCancellations<C>`, reusa `contactRoleLabel`/`csvShare`/
+  `centsToCsvAmount`). Uma linha por contratante com ≥1 cancelamento em `report.rows` (mesma ordem da página — confiáveis primeiro,
+  depois taxa desc, cancelados desc, cachê perdido desc, nome pt-BR): Contratante/Papel/Cancelados/Shows/Taxa (%)/Cachê perdido (R$)/
+  Amostra. Encerra numa linha "Total" com os agregados da carteira (`totalCancelled`/`totalShows`/`overallRate`/`totalLostFee`).
+  Rota `/contatos/cancelamentos/export` reusa a mesma query/`cancellationByContact` da página + BOM UTF-8; nome fixo
+  `cancelamentos-por-contratante.csv`; botão "⬇ CSV" no cabeçalho só com `hasData` (`report.contactCount > 0`), espelhando o gate de
+  `/contatos/concentracao`.
+- **Coluna "Papel" e "Amostra":** "Papel" entra para a planilha abrir auto-suficiente (a tela mostra como selo), como nos irmãos
+  concentração/retenção/reativar. "Amostra" traduz o selo "amostra pequena" da UI para texto legível por máquina ("Confiável"/
+  "Amostra pequena", pelo campo `reliable`) — a planilha carrega a ressalva de confiabilidade sem depender de cor/tooltip.
+- **Total = agregados da carteira, não a soma das linhas:** cancelados e cachê perdido do Total batem com a soma das linhas (só quem
+  tem cancelamento contribui), mas "Shows" do Total é o total de **todos** os shows vinculados — inclusive os de contratantes sem
+  nenhum cancelamento, que não viram linha (D177). Por isso a Taxa do Total é a `overallRate` da carteira (menor que as taxas das
+  linhas) e "Amostra" traz "N cancelaram" (nº de contratantes listados). Fiel aos cards do topo da página (a mesma distinção
+  top-stats × lista da D177); o comentário do serializador e um teste dedicado tornam isso explícito.
+- **Alternativas consideradas:** (a) incluir na lista os contratantes sem cancelamento (linhas com taxa 0%) — **descartado**: a tela
+  é a fila acionável dos que cancelam; um dump de todos seria a concentração, não os cancelamentos. Quem quiser a carteira inteira usa
+  `/contatos/concentracao/export`. (b) coluna de participação no cachê perdido (`csvShare`) — **descartada**: o eixo aqui é a taxa de
+  confiabilidade, não a fatia; o cachê perdido absoluto já responde "quanto caiu". (c) `?ano=` — **descartado**: a tela é retrato de
+  todo o histórico de cancelamentos (sem recorte temporal), como a página.
+- **Testes:** **+3** em `csv.test.ts` (`describe("cancellationByContactToCsv")`: só cabeçalho + Total zerado sem cancelamentos;
+  confiável antes do de taxa maior + selo "Amostra pequena" + Total da carteira; contratante sem cancelamento não vira linha mas soma
+  no "Shows" do Total). **1047 testes** no total (eram 1044).
+- **DoD:** build de produção (rota `/contatos/cancelamentos/export` compila, registrada) e lint (`next lint`, 0 avisos) verdes;
+  typecheck (`tsc --noEmit`) limpo; **1047 testes** (`vitest run`); smoke test (`next start`) → `/login` 200, `/contatos/cancelamentos`
+  e `/contatos/cancelamentos/export` 307 (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high /
+  1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
