@@ -11,7 +11,10 @@ import {
   WEEKEND_WINDOW_MAX,
   hasActiveShowFilter,
   isValidShowStatus,
+  bookingLeadTime,
+  MIN_LEAD_TIME_SAMPLE,
   type ConflictShowLike,
+  type LeadTimeShowLike,
   type ShowLike,
 } from "./shows";
 
@@ -464,5 +467,122 @@ describe("parseWeekendWindow", () => {
     const weeks = parseWeekendWindow("26");
     const r = findOpenWeekends([], { now: "2026-03-15T12:00:00.000Z", weeks });
     expect(r.total).toBe(26);
+  });
+});
+
+function leadShow(partial: Partial<LeadTimeShowLike>): LeadTimeShowLike {
+  return {
+    status: "CONFIRMED",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    date: "2026-02-01T00:00:00.000Z",
+    fee: 100_00,
+    ...partial,
+  };
+}
+
+describe("bookingLeadTime", () => {
+  it("amostra vazia zera tudo e não é confiável", () => {
+    const r = bookingLeadTime([]);
+    expect(r.sample).toBe(0);
+    expect(r.medianDays).toBe(0);
+    expect(r.avgDays).toBe(0);
+    expect(r.shortestDays).toBeNull();
+    expect(r.longestDays).toBeNull();
+    expect(r.retroactiveCount).toBe(0);
+    expect(r.reliable).toBe(false);
+    expect(r.buckets).toHaveLength(4);
+    expect(r.buckets.every((b) => b.count === 0 && b.share === 0)).toBe(true);
+  });
+
+  it("calcula a antecedência em dias UTC inteiros (createdAt → date)", () => {
+    const r = bookingLeadTime([
+      leadShow({ createdAt: "2026-01-01T00:00:00.000Z", date: "2026-01-08T00:00:00.000Z" }),
+    ]);
+    expect(r.sample).toBe(1);
+    expect(r.medianDays).toBe(7);
+    expect(r.avgDays).toBe(7);
+    expect(r.shortestDays).toBe(7);
+    expect(r.longestDays).toBe(7);
+  });
+
+  it("ignora a hora do dia — conta por dia UTC, não por 24h corridas", () => {
+    // createdAt à noite, date de manhã do dia seguinte: ainda é 1 dia de lead.
+    const r = bookingLeadTime([
+      leadShow({ createdAt: "2026-01-01T23:00:00.000Z", date: "2026-01-02T01:00:00.000Z" }),
+    ]);
+    expect(r.medianDays).toBe(1);
+  });
+
+  it("exclui shows cancelados da amostra", () => {
+    const r = bookingLeadTime([
+      leadShow({ status: "CANCELLED", createdAt: "2026-01-01T00:00:00.000Z", date: "2026-03-01T00:00:00.000Z" }),
+      leadShow({ status: "CONFIRMED", createdAt: "2026-01-01T00:00:00.000Z", date: "2026-01-11T00:00:00.000Z" }),
+    ]);
+    expect(r.sample).toBe(1);
+    expect(r.medianDays).toBe(10);
+  });
+
+  it("conta lançamentos retroativos à parte (createdAt depois da data)", () => {
+    const r = bookingLeadTime([
+      leadShow({ createdAt: "2026-02-10T00:00:00.000Z", date: "2026-02-01T00:00:00.000Z" }),
+      leadShow({ createdAt: "2026-01-01T00:00:00.000Z", date: "2026-01-15T00:00:00.000Z" }),
+    ]);
+    expect(r.sample).toBe(1);
+    expect(r.retroactiveCount).toBe(1);
+    expect(r.medianDays).toBe(14);
+  });
+
+  it("trata lead 0 (mesmo dia) como amostra, não como retroativo", () => {
+    const r = bookingLeadTime([
+      leadShow({ createdAt: "2026-01-05T09:00:00.000Z", date: "2026-01-05T21:00:00.000Z" }),
+    ]);
+    expect(r.sample).toBe(1);
+    expect(r.retroactiveCount).toBe(0);
+    expect(r.medianDays).toBe(0);
+    expect(r.buckets[0].count).toBe(1); // "Até 1 semana"
+  });
+
+  it("mediana é robusta a outlier (não desloca como a média)", () => {
+    const r = bookingLeadTime([
+      leadShow({ createdAt: "2026-01-01T00:00:00.000Z", date: "2026-01-06T00:00:00.000Z" }), // 5
+      leadShow({ createdAt: "2026-01-01T00:00:00.000Z", date: "2026-01-08T00:00:00.000Z" }), // 7
+      leadShow({ createdAt: "2026-01-01T00:00:00.000Z", date: "2026-07-01T00:00:00.000Z" }), // 181
+    ]);
+    expect(r.medianDays).toBe(7);
+    expect(r.avgDays).toBe(64); // (5+7+181)/3 ≈ 64.3 → 64
+    expect(r.shortestDays).toBe(5);
+    expect(r.longestDays).toBe(181);
+  });
+
+  it("distribui nas faixas canônicas com cachê e participação", () => {
+    const r = bookingLeadTime([
+      leadShow({ createdAt: "2026-01-01T00:00:00.000Z", date: "2026-01-04T00:00:00.000Z", fee: 100 }), // 3 → Até 1 semana
+      leadShow({ createdAt: "2026-01-01T00:00:00.000Z", date: "2026-01-21T00:00:00.000Z", fee: 200 }), // 20 → 1 a 4 semanas
+      leadShow({ createdAt: "2026-01-01T00:00:00.000Z", date: "2026-03-01T00:00:00.000Z", fee: 300 }), // 59 → 1 a 3 meses
+      leadShow({ createdAt: "2026-01-01T00:00:00.000Z", date: "2026-06-01T00:00:00.000Z", fee: 400 }), // 151 → Mais de 3 meses
+    ]);
+    expect(r.buckets.map((b) => b.count)).toEqual([1, 1, 1, 1]);
+    expect(r.buckets.map((b) => b.totalFee)).toEqual([100, 200, 300, 400]);
+    expect(r.buckets.every((b) => Math.abs(b.share - 0.25) < 1e-9)).toBe(true);
+  });
+
+  it("cobre os limites exatos das faixas (7/8, 30/31, 90/91)", () => {
+    const at = (leadDays: number) =>
+      leadShow({
+        createdAt: "2026-01-01T00:00:00.000Z",
+        date: new Date(Date.UTC(2026, 0, 1 + leadDays)).toISOString(),
+      });
+    const r = bookingLeadTime([at(7), at(8), at(30), at(31), at(90), at(91)]);
+    expect(r.buckets[0].count).toBe(1); // 7
+    expect(r.buckets[1].count).toBe(2); // 8, 30
+    expect(r.buckets[2].count).toBe(2); // 31, 90
+    expect(r.buckets[3].count).toBe(1); // 91
+  });
+
+  it("marca a amostra como confiável só a partir do mínimo", () => {
+    const two = Array.from({ length: MIN_LEAD_TIME_SAMPLE - 1 }, () => leadShow({}));
+    const enough = Array.from({ length: MIN_LEAD_TIME_SAMPLE }, () => leadShow({}));
+    expect(bookingLeadTime(two).reliable).toBe(false);
+    expect(bookingLeadTime(enough).reliable).toBe(true);
   });
 });

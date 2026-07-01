@@ -98,6 +98,14 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "🔮",
       },
       {
+        title: "Antecedência de agendamento",
+        href: "/shows/antecedencia",
+        description:
+          "Com quantos dias de antecedência os shows entram na agenda — mais lead dá previsibilidade de caixa.",
+        subtopic: "Agenda & pipeline",
+        icon: "⏳",
+      },
+      {
         title: "Rentabilidade por show",
         href: "/shows/rentabilidade",
         description: "O resultado líquido (cachê − despesas) de cada show realizado, do mais ao menos rentável.",

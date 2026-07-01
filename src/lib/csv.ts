@@ -67,7 +67,7 @@ import type {
   ReengageList,
 } from "./contacts";
 import { MONTH_NAMES_LONG } from "./calendar";
-import type { OpenWeekendsReport, ScheduleConflicts } from "./shows";
+import type { BookingLeadTime, OpenWeekendsReport, ScheduleConflicts } from "./shows";
 
 const DEFAULT_DELIMITER = ";";
 
@@ -2560,5 +2560,53 @@ export function monthlyReportToCsv(
     }
   }
 
+  return toCsv(out, delimiter);
+}
+
+// ── Antecedência de agendamento (booking lead time) ─────────────────────────
+
+export const BOOKING_LEAD_TIME_CSV_HEADERS = [
+  "Faixa",
+  "Antecedência (dias, de)",
+  "Antecedência (dias, até)",
+  "Shows",
+  "Participação (%)",
+  "Cachê da faixa (R$)",
+] as const;
+
+/**
+ * Serializa a antecedência de agendamento (`bookingLeadTime`) em CSV. Espelha a
+ * tabela de `/shows/antecedencia`: uma linha por faixa canônica (sempre as 4, da
+ * mais curta à mais longa, inclusive faixas zeradas, para o formato da tabela não
+ * pular degraus) com os limites da faixa em dias, nº de shows, participação na
+ * amostra e cachê somado, seguida de uma linha "Total". As colunas de limite
+ * expõem `minDays`/`maxDays` (a faixa "sem teto" deixa a coluna "até" em branco).
+ * A participação do Total fica em branco (é 100% por construção). Faixas vazias
+ * registram 0/0%/0,00 (o "—" é da UI). Irmão de `feeDistributionToCsv`/
+ * `weekdayPerformanceToCsv` (mesmo eixo faixa → linhas + Total). Pura.
+ */
+export function bookingLeadTimeToCsv(
+  lead: BookingLeadTime,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(BOOKING_LEAD_TIME_CSV_HEADERS)];
+  for (const b of lead.buckets) {
+    out.push([
+      b.label,
+      String(b.minDays),
+      b.maxDays == null ? "" : String(b.maxDays),
+      String(b.count),
+      csvShare(b.share),
+      centsToCsvAmount(b.totalFee),
+    ]);
+  }
+  out.push([
+    "Total",
+    "",
+    "",
+    String(lead.sample),
+    "",
+    centsToCsvAmount(lead.buckets.reduce((a, b) => a + b.totalFee, 0)),
+  ]);
   return toCsv(out, delimiter);
 }

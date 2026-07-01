@@ -5861,3 +5861,55 @@ contexto, decisão, justificativa e alternativas consideradas.
   `/login` 200 e `/contatos/funil/export` 307 sem sessão (guardado por `requireUser`). `npm audit`
   **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
   postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## 2026-07-01 — D185: Antecedência de agendamento (`bookingLeadTime` + `/shows/antecedencia`)
+- **Contexto:** com o eixo de exportação CSV tabular praticamente esgotado (D174/D184), o próximo passo
+  natural era **feature nova**. Todo o acervo analítico do lado Shows olha `date`/`status`/`fee`
+  (cadência, sazonalidade, funil, prazo de recebimento) — o campo `createdAt` do show, ou seja **quando o
+  compromisso entrou na agenda**, nunca tinha sido usado como eixo de leitura. É o insumo de um KPI clássico
+  de booking: com quanta antecedência os shows são fechados (booking lead time / runway de agenda).
+- **Decisão:** novo helper puro `bookingLeadTime<T>(shows)` em `src/lib/shows.ts` + página
+  `/shows/antecedencia` + export CSV (`bookingLeadTimeToCsv` + `/shows/antecedencia/export`). Para cada show
+  **não cancelado** calcula `leadDays = dia(date) − dia(createdAt)` em dias UTC inteiros (via meia-noite UTC,
+  como o resto do domínio); `leadDays >= 0` entra na amostra, `leadDays < 0` é um **lançamento retroativo**
+  (registro criado depois da data — back-fill de histórico) e é contado à parte, **fora** da mediana/média/
+  distribuição. Expõe `sample`, `medianDays`, `avgDays`, `shortestDays`/`longestDays`, `retroactiveCount`,
+  `reliable` (amostra ≥ `MIN_LEAD_TIME_SAMPLE = 3`) e a distribuição em 4 faixas canônicas (Até 1 semana
+  0–7 / 1 a 4 semanas 8–30 / 1 a 3 meses 31–90 / Mais de 3 meses 91+) com `count`, `totalFee` (cachê somado
+  da faixa) e `share`. Página com 4 cards de destaque (mediana/média/menor/maior) + tabela de faixas com
+  barra e Total; CSV irmão de `feeDistributionToCsv`/`weekdayPerformanceToCsv` (linhas por faixa + Total,
+  colunas de limite em dias). Registrada em `REPORT_GROUPS` (Shows / "Agenda & pipeline").
+- **Justificativa:**
+  - **`createdAt` como proxy de "quando fechou":** num app usado organicamente, o registro do show entra
+    quando o músico toma conhecimento/fecha a data — a antecedência mediana é uma leitura real de runway de
+    agenda (agenda proativa x reativa), complementar aos fins de semana livres (o mesmo runway, olhado como
+    oportunidade em aberto).
+  - **Retroativos fora da amostra, não do total:** um histórico back-fillado teria `createdAt >= date` e
+    puxaria a mediana para baixo com ruído de importação. Excluí-los da mediana (mas contá-los num rótulo
+    "N shows lançados retroativamente não entram") mantém a leitura honesta sem esconder o dado — mesma
+    filosofia de amostra pequena/selo dos cachês medianos (D123/D130).
+  - **Mediana antes da média:** robusta a um outlier (um show marcado com 1 ano de antecedência não
+    desloca a mediana como faria com a média); a UI mostra as duas lado a lado, como no prazo de
+    recebimento (D-DSO).
+  - **`fee` por faixa:** peso em receita — "os shows que entram em cima da hora carregam quanto do cachê?".
+  - **Cancelados fora:** um show cancelado nunca aconteceu; não mede "com que antecedência você toca".
+- **Alternativas consideradas:** (a) medir só shows CONFIRMED+PLAYED (compromissos firmes) — descartado
+  por ora: reduziria a amostra e o eixo é "quando a data entra na agenda", proposta inclusa; anotado como
+  possível recorte futuro. (b) recorte por `?ano=`/`PeriodPicker` — adiado por coerência com o funil por
+  contratante (retrato do acervo, D183(a)); candidato natural de próxima sessão. (c) usar `createdAt` como
+  data exata em vez de dia UTC — descartado: dia inteiro é a convenção de todo o domínio (`dayKey`) e evita
+  ruído de fuso/hora. (d) nudge no Painel — não incluído nesta sessão (a leitura é um retrato, não um
+  alarme); avaliável depois.
+- **Ressalva de dados (hipótese a validar):** a fidelidade de `createdAt` depende de o show ser cadastrado
+  perto de quando é fechado. Seed/import em massa distorcem a leitura (todos com o mesmo `createdAt`);
+  em produção com uso orgânico a leitura é fiel. Sinalizado para validação com usuários reais.
+- **Testes:** `bookingLeadTime` (amostra vazia; dias UTC inteiros; ignora hora do dia; exclui cancelados;
+  retroativos à parte; lead 0 = mesmo dia conta e não é retroativo; mediana robusta a outlier; distribuição
+  nas faixas com cachê/participação; limites exatos 7/8/30/31/90/91; `reliable` a partir do mínimo) — **+10
+  testes**; `bookingLeadTimeToCsv` (só cabeçalho + Total zerado; linhas por faixa com limites/contagem/
+  participação/cachê + Total) — **+2 testes**. Total **1081 → 1093**.
+- **DoD:** build de produção verde (rotas `/shows/antecedencia` e `/shows/antecedencia/export` geradas);
+  lint (`next lint`, 0 avisos); typecheck (`tsc --noEmit`) limpo; **1093 testes** (`vitest run`); smoke test
+  — app sobe (~1 s), `/login` 200 e `/shows/antecedencia` + `/shows/antecedencia/export` 307 sem sessão
+  (guardados por `requireUser`). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5
+  high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
