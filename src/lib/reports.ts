@@ -339,6 +339,13 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "🤝",
       },
       {
+        title: "Cancelamentos por contratante",
+        href: "/contatos/cancelamentos",
+        description: "Quem mais fura o combinado — taxa de cancelamento e cachê perdido por contratante.",
+        subtopic: "Relacionamento",
+        icon: "🚫",
+      },
+      {
         title: "Contatos para reativar",
         href: "/contatos/reativar",
         description: "Contratantes dormentes que já tocaram mas sumiram — follow-up de prospecção.",

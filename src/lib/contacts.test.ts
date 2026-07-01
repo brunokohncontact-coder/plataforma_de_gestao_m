@@ -103,6 +103,7 @@ describe("summarizeContactShows", () => {
 });
 
 import {
+  cancellationByContact,
   clientConcentration,
   clientRetention,
   filterContacts,
@@ -110,6 +111,7 @@ import {
   hasActiveContactFilter,
   isValidContactRole,
   rankContactsByActivity,
+  MIN_CANCELLATION_SAMPLE,
   type ContactLike,
   type ContactWithShows,
   type ContactRankLike,
@@ -677,5 +679,121 @@ describe("summarizeContactProfit", () => {
     const r = summarizeContactProfit(shows, txs);
     expect(r.margin).toBe(0);
     expect(r.totalNet).toBe(-40_00); // prejuízo possível
+  });
+});
+
+describe("cancellationByContact", () => {
+  function s(over: Partial<ContactRankShowLike> = {}): ContactRankShowLike {
+    return { status: "CONFIRMED", date: "2026-05-01T20:00:00Z", fee: 100_00, ...over };
+  }
+  function item(
+    id: string,
+    name: string,
+    shows: ContactRankShowLike[],
+  ): ContactWithShows<ContactRankLike> {
+    return { contact: { id, name }, shows };
+  }
+
+  it("trata lista vazia", () => {
+    const r = cancellationByContact([]);
+    expect(r.rows).toEqual([]);
+    expect(r.contactCount).toBe(0);
+    expect(r.totalShows).toBe(0);
+    expect(r.totalCancelled).toBe(0);
+    expect(r.totalLostFee).toBe(0);
+    expect(r.overallRate).toBe(0);
+    expect(r.minSample).toBe(MIN_CANCELLATION_SAMPLE);
+  });
+
+  it("só lista contatos com ao menos um cancelamento", () => {
+    const r = cancellationByContact([
+      item("limpo", "Limpo", [s({ status: "PLAYED" }), s({ status: "CONFIRMED" })]),
+      item("furao", "Furão", [s({ status: "CANCELLED", fee: 300_00 }), s({ status: "PLAYED" })]),
+    ]);
+    expect(r.rows.map((x) => x.contact.id)).toEqual(["furao"]);
+    expect(r.contactCount).toBe(1);
+    // agregados somam TODOS os contatos com shows, não só os listados
+    expect(r.totalShows).toBe(4);
+    expect(r.totalCancelled).toBe(1);
+    expect(r.totalLostFee).toBe(300_00);
+    expect(r.overallRate).toBeCloseTo(0.25);
+  });
+
+  it("mede taxa e cachê perdido por contato", () => {
+    const r = cancellationByContact([
+      item("a", "A", [
+        s({ status: "CANCELLED", fee: 200_00 }),
+        s({ status: "CANCELLED", fee: 100_00 }),
+        s({ status: "PLAYED" }),
+        s({ status: "CONFIRMED" }),
+      ]),
+    ]);
+    const row = r.rows[0];
+    expect(row.totalShows).toBe(4);
+    expect(row.cancelledShows).toBe(2);
+    expect(row.cancellationRate).toBeCloseTo(0.5);
+    expect(row.lostFee).toBe(300_00);
+    expect(row.reliable).toBe(true); // 4 >= 3
+  });
+
+  it("ordena confiáveis (amostra >= minSample) antes das ruidosas, depois por taxa", () => {
+    const r = cancellationByContact([
+      // ruidoso: 1/1 = 100% mas amostra 1
+      item("ruido", "Ruidoso", [s({ status: "CANCELLED", fee: 900_00 })]),
+      // confiável: 2/4 = 50% com amostra 4
+      item("solido", "Sólido", [
+        s({ status: "CANCELLED", fee: 100_00 }),
+        s({ status: "CANCELLED", fee: 100_00 }),
+        s({ status: "PLAYED" }),
+        s({ status: "PLAYED" }),
+      ]),
+    ]);
+    expect(r.rows.map((x) => x.contact.id)).toEqual(["solido", "ruido"]);
+    expect(r.rows[0].reliable).toBe(true);
+    expect(r.rows[1].reliable).toBe(false);
+  });
+
+  it("entre confiáveis, maior taxa primeiro; desempata por cancelados e cachê", () => {
+    const r = cancellationByContact([
+      item("baixo", "Baixo", [
+        s({ status: "CANCELLED" }),
+        s({ status: "PLAYED" }),
+        s({ status: "PLAYED" }),
+      ]), // 1/3
+      item("alto", "Alto", [
+        s({ status: "CANCELLED" }),
+        s({ status: "CANCELLED" }),
+        s({ status: "PLAYED" }),
+      ]), // 2/3
+    ]);
+    expect(r.rows.map((x) => x.contact.id)).toEqual(["alto", "baixo"]);
+  });
+
+  it("respeita minSample customizado", () => {
+    const r = cancellationByContact(
+      [item("a", "A", [s({ status: "CANCELLED" }), s({ status: "PLAYED" })])],
+      2,
+    );
+    expect(r.minSample).toBe(2);
+    expect(r.rows[0].reliable).toBe(true); // 2 >= 2
+  });
+
+  it("conta por relação: um show cancelado vinculado a 2 contatos conta para cada", () => {
+    const r = cancellationByContact([
+      item("a", "A", [s({ status: "CANCELLED", fee: 500_00 })]),
+      item("b", "B", [s({ status: "CANCELLED", fee: 500_00 })]),
+    ]);
+    expect(r.totalCancelled).toBe(2);
+    expect(r.totalLostFee).toBe(1000_00);
+    expect(r.contactCount).toBe(2);
+  });
+
+  it("ignora contatos sem shows vinculados", () => {
+    const r = cancellationByContact([
+      item("vazio", "Vazio", []),
+      item("furao", "Furão", [s({ status: "CANCELLED" })]),
+    ]);
+    expect(r.rows.map((x) => x.contact.id)).toEqual(["furao"]);
+    expect(r.totalShows).toBe(1);
   });
 });
