@@ -5694,3 +5694,43 @@ contexto, decisão, justificativa e alternativas consideradas.
   `export` 307 (auth-gated), app sobe em ~0,3 s. `npm audit` **inalterado** vs. baseline (10 advisories —
   4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma
   dependência nova**.
+
+## 2026-07-01 — D181: Comparativo ano a ano da taxa de cancelamento da carteira
+- **Contexto:** a tela `/contatos/cancelamentos` (`cancellationByContact`/D177) já tinha página, CSV
+  (D178), nudge no Painel (D179) e recorte por ano (D180), mas comparava só um período por vez. Todas as
+  telas de concentração ganharam, na sua maturação, um card "vs. {ano-1}"
+  (`compareGeoConcentration`/D120, `compareClientConcentration`/D122) — a de cancelamentos era a única
+  leitura de taxa/risco do eixo Contatos sem esse espelho ano a ano.
+- **Decisão:** helper puro `compareCancellationRate<C>(current, previous)` + tipo
+  `CancellationComparison<C>` + constante `CANCELLATION_TREND_EPSILON` (=0.05) em `src/lib/contacts.ts`,
+  que recebe duas `cancellationByContact` já computadas (uma por período) e devolve `overallRateDelta`
+  (variação da taxa da carteira), `lostFeeDelta` (variação do cachê perdido) e um veredito `trend`. Card
+  "Taxa de cancelamento {ano} vs. {ano-1}" (`CancellationComparisonCard`, 🟢/🔴/⚪) em
+  `contatos/cancelamentos/page.tsx`, logo após os destaques, exibido **só** com um ano específico
+  selecionado e o ano anterior tendo shows vinculados nos dois períodos.
+- **Justificativa:**
+  - **Simetria de eixo:** fecha a última leitura de taxa/risco sem comparativo ano a ano, reusando o
+    mesmo idioma (delta + veredito de tendência) das três telas de concentração.
+  - **Semântica invertida de propósito:** ao contrário da concentração (onde `topShare` subir = pior),
+    aqui a leitura-manchete é a taxa de cancelamento e **subir** é a piora — por isso o veredito
+    (`worsened` quando a taxa sobe ≥ ε, `improved` quando cai ≥ ε, `stable` no meio) e o texto do card
+    ("Cancelando mais/menos") são próprios, não copiados. O ε de 5 p.p. espelha `GEO_TREND_EPSILON`:
+    grande o bastante para não oscilar a cada show, pequeno o bastante para captar mudança real.
+  - **Gate de exibição:** exige shows vinculados **nos dois** períodos (`totalShows > 0` em cada) — sem
+    base no ano anterior, "melhorou/piorou" seria enganoso. Como `cancelledShowYears`/D180 só oferece
+    anos com ≥1 cancelamento, o ano atual sempre tem base; a checagem protege o ano anterior.
+  - **Sem I/O extra:** reaproveita o recorte por ano UTC (`filterShowsByYear`/D108) sobre os `items` já
+    carregados pela página, computando a `cancellationByContact` do ano anterior em memória.
+- **Alternativas consideradas:** (a) generalizar um único `compareRate` sobre concentração e
+  cancelamento — descartada: `ContactCancellations` e `GeoConcentration` são tipos distintos e a
+  semântica de direção é oposta, o helper paralelo é mais honesto (mesma razão da D122); (b) reusar
+  `concentrationTrend` de `finance.ts` — não exportado e a direção é invertida aqui, inline é mais claro;
+  (c) levar o comparativo ao Painel como nudge — adiado: o Painel já tem o nudge de pior contratante
+  (`cancellationHeadline`/D179) e um segundo sinal de cancelamento o deixaria denso.
+- **Testes:** `compareCancellationRate` (piora quando a taxa sobe além do limiar, com `lostFeeDelta`;
+  melhora quando cai; estável dentro do limiar; melhora até taxa zero quando o período atual não teve
+  cancelamento); **+4 testes** (1060 → 1064).
+- **DoD:** build de produção verde; lint (`next lint`, 0 avisos); typecheck (`tsc --noEmit`) limpo;
+  **1064 testes** (`vitest run`); build gerou a rota `/contatos/cancelamentos`. `npm audit` **inalterado**
+  vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado;
+  ver D6/bloqueios); **nenhuma dependência nova**.
