@@ -62,6 +62,7 @@ import type {
   ClientRetention,
   ClientConcentration,
   ContactCancellations,
+  ContactPipeline,
   ContactRankLike,
   ReengageList,
 } from "./contacts";
@@ -1780,6 +1781,81 @@ export function pipelineToCsv(
     ]);
   }
   out.push(["Total", String(pipeline.total), "", centsToCsvAmount(feeTotal)]);
+  return toCsv(out, delimiter);
+}
+
+// ── Funil por contratante (pipeline aberto por quem paga) ────────────────────
+
+export const PIPELINE_BY_CONTACT_CSV_HEADERS = [
+  "Contratante",
+  "Papel",
+  "Em aberto (R$)",
+  "Shows em aberto",
+  "Em negociação (R$)",
+  "Propostos",
+  "Confirmado (R$)",
+  "Confirmados",
+  "Concretização (%)",
+  "Realizados",
+  "Decididos",
+] as const;
+
+/**
+ * Serializa o funil por contratante (`pipelineByContact`) em CSV, pronto para
+ * download — espelha a tabela de `/contatos/funil`. Uma linha por contratante
+ * com pipeline aberto (`report.rows`, já ordenado: maior cachê em aberto
+ * primeiro), com o cachê em aberto (PROPOSED + CONFIRMED) e sua contagem, os
+ * cortes em negociação (PROPOSED) e confirmado (CONFIRMED) com contagens, e a
+ * taxa de concretização histórica com os shows realizados/decididos que a
+ * originam. A coluna "Papel" entra para a planilha abrir auto-suficiente (a tela
+ * a mostra como selo). A "Concretização (%)" fica em branco quando o contratante
+ * ainda não teve nenhum show decidido (o "—" da UI).
+ *
+ * Encerra numa linha "Total" com os agregados da carteira: cachê em aberto,
+ * shows em aberto, em negociação e confirmado somados, e a concretização geral
+ * (`overallConversionRate`, sobre TODOS os contatos com shows — não só os
+ * listados). As contagens por etapa (Propostos/Confirmados/Realizados/Decididos)
+ * ficam em branco no Total porque o helper só expõe esses totais em valor, não
+ * em contagem, na carteira — e somar as linhas subestimaria (contatos sem
+ * pipeline aberto não viram linha mas entram na `overallConversionRate`), a
+ * mesma distinção linhas×carteira de `cancellationByContactToCsv`. Mesma
+ * convenção pt-BR dos irmãos (delimitador ";", decimal com vírgula). Pura.
+ */
+export function pipelineByContactToCsv<C extends ContactRankLike & { role: string }>(
+  report: ContactPipeline<C>,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(PIPELINE_BY_CONTACT_CSV_HEADERS)];
+  for (const row of report.rows) {
+    out.push([
+      row.contact.name,
+      contactRoleLabel(row.contact.role),
+      centsToCsvAmount(row.openValue),
+      String(row.openCount),
+      centsToCsvAmount(row.proposedValue),
+      String(row.proposedCount),
+      centsToCsvAmount(row.confirmedValue),
+      String(row.confirmedCount),
+      row.conversionRate == null ? "" : csvShare(row.conversionRate),
+      String(row.playedCount),
+      String(row.decidedCount),
+    ]);
+  }
+  out.push([
+    "Total",
+    "",
+    centsToCsvAmount(report.totalOpenValue),
+    String(report.totalOpenCount),
+    centsToCsvAmount(report.totalProposedValue),
+    "",
+    centsToCsvAmount(report.totalConfirmedValue),
+    "",
+    report.overallConversionRate == null
+      ? ""
+      : csvShare(report.overallConversionRate),
+    "",
+    "",
+  ]);
   return toCsv(out, delimiter);
 }
 

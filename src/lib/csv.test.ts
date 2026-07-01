@@ -68,6 +68,8 @@ import {
   BOOKED_REVENUE_CSV_HEADERS,
   pipelineToCsv,
   PIPELINE_CSV_HEADERS,
+  pipelineByContactToCsv,
+  PIPELINE_BY_CONTACT_CSV_HEADERS,
   dueAgendaToCsv,
   DUE_AGENDA_CSV_HEADERS,
   yearPaceToCsv,
@@ -149,6 +151,7 @@ import {
   clientRetention,
   clientConcentration,
   cancellationByContact,
+  pipelineByContact,
   findContactsToReengage,
   type ContactRankLike,
 } from "./contacts";
@@ -2091,6 +2094,71 @@ describe("pipelineToCsv", () => {
     expect(lines[5]).toBe("Total;2;;1800,00");
     // Sem coluna de taxa de concretização (escalar de destaque, não tabular).
     expect(lines[0].split(";")).toHaveLength(4);
+  });
+});
+
+describe("pipelineByContactToCsv", () => {
+  interface C extends ContactRankLike {
+    role: string;
+  }
+  const item = (
+    contact: C,
+    shows: { status: string; date: string; fee: number }[],
+  ) => ({ contact, shows });
+  const s = (status: string, fee: number) => ({
+    status,
+    date: "2026-05-01T20:00:00.000Z",
+    fee,
+  });
+
+  it("só cabeçalho + Total zerado quando não há pipeline aberto", () => {
+    const csv = pipelineByContactToCsv(pipelineByContact<C>([]));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(PIPELINE_BY_CONTACT_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(2);
+    // valores zerados; contagens por etapa e concretização em branco no Total.
+    expect(lines[1]).toBe("Total;;0,00;0;0,00;;0,00;;;;");
+  });
+
+  it("uma linha por contratante (maior cachê aberto primeiro) + Total", () => {
+    const report = pipelineByContact<C>([
+      // 300 confirmado, nada decidido → concretização em branco
+      item({ id: "m", name: "Médio", role: "PROMOTER" }, [
+        s("CONFIRMED", 300_00),
+      ]),
+      // 900 proposto + histórico 1 realizado / 1 cancelado → 50%
+      item({ id: "g", name: "Grande", role: "VENUE" }, [
+        s("PROPOSED", 900_00),
+        s("PLAYED", 100_00),
+        s("CANCELLED", 100_00),
+      ]),
+    ]);
+    const lines = pipelineByContactToCsv(report).split("\r\n");
+    // cabeçalho + 2 contratantes (Grande antes de Médio por cachê aberto) + Total
+    expect(lines).toHaveLength(4);
+    expect(lines[1]).toBe("Grande;Casa de show;900,00;1;900,00;1;0,00;0;50%;1;2");
+    expect(lines[2]).toBe("Médio;Produtor/Promoter;300,00;1;0,00;0;300,00;1;;0;0");
+    // Total: 1200 aberto em 2 shows; 900 proposto + 300 confirmado; concretização
+    // da carteira 50% (1 realizado / 2 decididos); contagens por etapa em branco.
+    expect(lines[3]).toBe("Total;;1200,00;2;900,00;;300,00;;50%;;");
+  });
+
+  it("contratante só com shows decididos não vira linha, mas conta na concretização do Total", () => {
+    const report = pipelineByContact<C>([
+      // sem pipeline aberto (só decididos) → some da lista, mas entra no Total
+      item({ id: "f", name: "Fechado", role: "VENUE" }, [
+        s("PLAYED", 100_00),
+        s("CANCELLED", 100_00),
+      ]),
+      // proposta em aberto, nada decidido ainda → concretização própria em branco
+      item({ id: "a", name: "Ativo", role: "BOOKER" }, [s("PROPOSED", 300_00)]),
+    ]);
+    const lines = pipelineByContactToCsv(report).split("\r\n");
+    expect(lines).toHaveLength(3);
+    // a linha do "Ativo" traz realizados/decididos 0, concretização em branco…
+    expect(lines[1]).toBe("Ativo;Contratante;300,00;1;300,00;1;0,00;0;;0;0");
+    // …mas o Total mostra 50% (1 realizado / 2 decididos do "Fechado", sem linha).
+    expect(lines[2]).toBe("Total;;300,00;1;300,00;;0,00;;50%;;");
   });
 });
 

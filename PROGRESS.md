@@ -9,7 +9,21 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1070 testes** verdes após a **troca de e-mail de
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1081 testes** verdes após a **exportação CSV do
+funil por contratante** em `/contatos/funil/export` (Sessão 191, D184 — a tela "Funil por contratante" (`pipelineByContact` +
+`/contatos/funil`, D183) era a única tabular do acervo ainda sem botão "⬇ CSV"; a própria D183(b) adiara o export. Serializador puro
+`pipelineByContactToCsv(report)` + `PIPELINE_BY_CONTACT_CSV_HEADERS` em `src/lib/csv.ts` (irmão de `cancellationByContactToCsv`/D178,
+genérico sobre `ContactPipeline<C>`, reusa `contactRoleLabel`/`csvShare`/`centsToCsvAmount`) emite uma linha por contratante com
+pipeline aberto na ordem da página (maior cachê aberto primeiro): Contratante/Papel/Em aberto (R$)/Shows em aberto/Em negociação (R$)/
+Propostos/Confirmado (R$)/Confirmados/Concretização (%)/Realizados/Decididos; encerra num "Total" com os agregados da carteira
+(cachê aberto/em negociação/confirmado + concretização geral), mas as **contagens por etapa** (Propostos/Confirmados/Realizados/
+Decididos) ficam **em branco** no Total — o helper só expõe esses totais em valor na carteira e a `overallConversionRate` inclui
+contatos sem linha, então somar as linhas enganaria (mesma distinção linhas×carteira de `cancellationByContactToCsv`); concretização
+`null` vira célula vazia (o "—" é da UI); rota reusa a query/`pipelineByContact` da página (sem `?ano=` — retrato do estado atual,
+D183(a)) + BOM UTF-8, nome fixo `funil-por-contratante.csv`, botão "⬇ CSV" gated por `hasData`; **+3 testes**) sobre os **1078 testes**
+verdes após o **funil por contratante** (Sessão 190, D183 — `pipelineByContact<C>` + `/contatos/funil`: o pipeline **aberto**
+(PROPOSED + CONFIRMED) por quem paga + a taxa de concretização histórica de cada contratante, "de quem cobrar o fechamento primeiro";
++8 testes) sobre os **1070 testes** verdes após a **troca de e-mail de
 acesso na página de Conta** (Sessão 189, D182 — a página `/conta` editava perfil e senha mas não havia como alterar o e-mail de
 login, a única credencial imutável do usuário; com o eixo de exportação CSV esgotado (D174), a gestão de conta era o próximo passo
 natural. Nova server action `changeEmailAction` + `changeEmailSchema` (Zod: e-mail válido, `trim().toLowerCase()` + `currentPassword`)
@@ -3103,7 +3117,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    + linha Total), uma linha por etapa na ordem de `PIPELINE_STAGE_ORDER`, botão "⬇ CSV" só com
    `pipeline.total > 0`, ver D160): hoje é um retrato do estado atual. **Funil por contratante**
    entregue na Sessão 190 — `pipelineByContact` + `/contatos/funil` recorta o pipeline aberto por quem
-   paga (ver item 8 e D183). Próximo possível — registrar **transições de status** (log) para uma taxa de
+   paga (ver item 8 e D183); **exportação CSV do funil por contratante** entregue na Sessão 191 —
+   `pipelineByContactToCsv` + `PIPELINE_BY_CONTACT_CSV_HEADERS` em `src/lib/csv.ts` + `/contatos/funil/export`
+   (Contratante/Papel/Em aberto/Shows em aberto/Em negociação/Propostos/Confirmado/Confirmados/Concretização/
+   Realizados/Decididos + linha Total com contagens por etapa em branco), uma linha por contratante com pipeline
+   aberto na ordem da página, sem `?ano=`, nome `funil-por-contratante.csv`, botão "⬇ CSV" gated por `hasData`,
+   ver D184. Próximo possível — registrar **transições de status** (log) para uma taxa de
    conversão proposta→realizado de verdade e tempo médio em cada etapa (segue sendo o maior passo em aberto
    do funil, precisa de um modelo de eventos no schema).
 3. **Filtros — evoluções**: persistência do último filtro entregue para Finanças (Sessão 32),
@@ -3372,10 +3391,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    com pipeline aberto; agregados da carteira somam todos com shows; ordena por cachê aberto desc. Distinto do
    funil geral (D42, agregado sem pagador), dos cancelamentos (D177, passado) e dos recebíveis por contratante
    (D92, já tocados e não pagos): é o **futuro em aberto por relação**. Registrado no hub (Contatos / "Quem move a
-   carreira", 🔭) + cross-link ↔ funil geral; **+8 testes**, ver D183. Próximo possível — recorte por ano
-   (`?ano=`, adiado: o pipeline aberto é retrato do "agora/à frente" e cruza anos), exportação CSV (adiada: eixo
-   esgotado, D174), ou um nudge do maior pipeline aberto no Painel (adiado: Painel já denso e sobrepõe o card de
-   funil geral).
+   carreira", 🔭) + cross-link ↔ funil geral; **+8 testes**, ver D183. **Exportação CSV** entregue na Sessão 191
+   — `pipelineByContactToCsv` + `PIPELINE_BY_CONTACT_CSV_HEADERS` em `src/lib/csv.ts` + `/contatos/funil/export`
+   (uma linha por contratante com pipeline aberto na ordem da página + Total com contagens por etapa em branco,
+   mesma distinção linhas×carteira de `cancellationByContactToCsv`), sem `?ano=`, nome `funil-por-contratante.csv`,
+   botão "⬇ CSV" gated por `hasData`, **+3 testes**, ver D184. Próximo possível — recorte por ano
+   (`?ano=`, adiado: o pipeline aberto é retrato do "agora/à frente" e cruza anos), ou um nudge do maior pipeline
+   aberto no Painel (adiado: Painel já denso e sobrepõe o card de funil geral).
 
 9. **Rentabilidade geográfica — evoluções** (rentabilidade por local entregue na Sessão 28, `/shows/locais` +
    `rankVenuesByProfit`; atuação por cidade na Sessão 57, `/shows/cidades` + `rankCitiesByProfit`; recorte por

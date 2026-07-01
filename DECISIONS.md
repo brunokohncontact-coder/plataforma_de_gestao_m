@@ -5810,3 +5810,54 @@ contexto, decisão, justificativa e alternativas consideradas.
   (contratante, cachê em aberto R$ 450,00, "em negociação", "concretização"). `npm audit` **inalterado**
   vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado;
   ver D6/bloqueios); **nenhuma dependência nova**.
+
+## 2026-07-01 — D184: Exportação CSV do funil por contratante (`pipelineByContactToCsv` + `/contatos/funil/export`)
+- **Contexto:** o Funil por contratante (`pipelineByContact` + `/contatos/funil`, D183 da sessão anterior)
+  entregou uma **tabela** de contratantes com pipeline aberto (cachê em negociação/confirmado + taxa de
+  concretização histórica), mas era a única tela tabular do acervo sem botão "⬇ CSV". A própria D183, na
+  alternativa (b), **adiou** o export ("eixo de export esgotado (D174), a tela é um retrato acionável, não
+  um dump a fatiar").
+- **Decisão:** entregar o export adiado. Serializador puro `pipelineByContactToCsv<C>(report)` +
+  `PIPELINE_BY_CONTACT_CSV_HEADERS` em `src/lib/csv.ts` (família de `cancellationByContactToCsv`/D178,
+  genérico sobre `ContactPipeline<C>`, reusa `contactRoleLabel`/`csvShare`/`centsToCsvAmount`) emite uma
+  linha por contratante com pipeline aberto na ordem da página (maior cachê aberto primeiro): Contratante/
+  Papel/Em aberto (R$)/Shows em aberto/Em negociação (R$)/Propostos/Confirmado (R$)/Confirmados/
+  Concretização (%)/Realizados/Decididos; encerra numa linha "Total" com os agregados da carteira
+  (`totalOpenValue`/`totalOpenCount`/`totalProposedValue`/`totalConfirmedValue`/`overallConversionRate`).
+  Rota `/contatos/funil/export` repete a query/`pipelineByContact` da página (sem `?ano=` — a tela é um
+  retrato do estado atual, D183(a)) + BOM UTF-8, nome fixo `funil-por-contratante.csv`, botão "⬇ CSV"
+  gated por `hasData`.
+- **Justificativa:**
+  - **Reabrir o "esgotado" (D174) é o padrão observado:** cada tela tabular nova reabre a lacuna de export
+    (a própria D174 reconheceu o ressurgimento de `/financas/relatorio`; D169/D172/etc. seguiram). O funil
+    por contratante é uma **lista de contratantes** — formato tabular, candidato natural a planilha para
+    preparar uma rodada de follow-up de fechamento offline (o "de quem cobrar o fechamento primeiro" da
+    D183, agora fatiável fora do app).
+  - **Contra o "não é dump a fatiar" da D183(b):** o mesmo argumento foi dito e superado para
+    cancelamentos (D178) e recebíveis por contratante (D129) — um retrato acionável **também** ganha valor
+    numa planilha (ordenar, anotar, mesclar com CRM). A ordem da página (cachê aberto desc) já entrega a
+    fila pronta.
+  - **Contagens por etapa em branco no Total:** o helper `pipelineByContact` expõe os agregados da
+    carteira só em **valor** (proposto/confirmado) e a `overallConversionRate` sobre **todos** os contatos
+    com shows — não as contagens de propostos/confirmados/realizados/decididos da carteira. Somar as
+    linhas subestimaria (contatos sem pipeline aberto não viram linha, mas entram na concretização geral),
+    então o Total deixa essas 4 células em branco, a mesma distinção linhas×carteira de
+    `cancellationByContactToCsv` (D178, coluna "Shows"). A concretização do Total sai preenchida
+    (é agregado de carteira legítimo).
+  - **Concretização em branco (não "—"):** fiel à convenção CSV dos irmãos, `conversionRate == null` vira
+    célula vazia (o "—" é da UI).
+- **Alternativas consideradas:** (a) manter adiado como na D183(b) — descartado: deixaria a única tela
+  tabular sem export, contra o padrão do acervo; (b) preencher as contagens por etapa no Total somando as
+  linhas — descartado: contradiria a `overallConversionRate` (que inclui contatos sem linha), enganando
+  quem cruzasse as colunas; (c) recorte por `?ano=` no export — descartado por coerência com a página, que
+  é um retrato sem período (D183(a)); (d) omitir as sub-colunas de contagem (Propostos/Confirmados/
+  Realizados/Decididos) e deixar só os valores — descartado: a planilha ganha em ser auto-suficiente
+  (contagem + valor por etapa), e o custo é só colunas extras.
+- **Testes:** `pipelineByContactToCsv` (só cabeçalho + Total zerado sem pipeline aberto; uma linha por
+  contratante na ordem de cachê aberto + Total com contagens por etapa em branco; contratante só com shows
+  decididos não vira linha mas entra na concretização do Total); **+3 testes** (1078 → 1081).
+- **DoD:** build de produção verde (rota `/contatos/funil/export` gerada); lint (`next lint`, 0 avisos);
+  typecheck (`tsc --noEmit`) limpo; **1081 testes** (`vitest run`); smoke test — app sobe (~1 s),
+  `/login` 200 e `/contatos/funil/export` 307 sem sessão (guardado por `requireUser`). `npm audit`
+  **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
+  postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
