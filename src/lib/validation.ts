@@ -68,6 +68,14 @@ export const changePasswordSchema = z
     path: ["newPassword"],
   });
 
+// Troca do e-mail de acesso: exige a senha atual (o e-mail é a credencial de
+// login), valida/normaliza o novo endereço. A unicidade é conferida no banco
+// pela server action.
+export const changeEmailSchema = z.object({
+  email: z.string().trim().toLowerCase().email("E-mail inválido"),
+  currentPassword: z.string().min(1, "Informe a senha atual"),
+});
+
 // ── Meta de faturamento anual ────────────────────────────────────────────────
 export const revenueGoalSchema = z.object({
   year: z.coerce
