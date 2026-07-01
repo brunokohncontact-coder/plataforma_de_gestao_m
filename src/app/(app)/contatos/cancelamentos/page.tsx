@@ -3,12 +3,17 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   cancellationByContact,
+  cancelledShowYears,
   type ContactRankLike,
 } from "@/lib/contacts";
+import { parseProfitYear, filterShowsByYear } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
+import { PeriodPicker } from "@/components/PeriodPicker";
 import { CONTACT_ROLE_LABELS, type ContactRole } from "@/lib/domain";
 
 export const dynamic = "force-dynamic";
+
+type SearchParams = { [key: string]: string | string[] | undefined };
 
 interface CancellationContact extends ContactRankLike {
   role: string;
@@ -18,7 +23,11 @@ function pct(rate: number): string {
   return `${Math.round(rate * 100)}%`;
 }
 
-export default async function ContatosCancelamentosPage() {
+export default async function ContatosCancelamentosPage({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
   const user = await requireUser();
 
   const contacts = await prisma.contact.findMany({
@@ -41,8 +50,20 @@ export default async function ContatosCancelamentosPage() {
     shows: c.shows.map((cs) => cs.show),
   }));
 
-  const report = cancellationByContact(items);
+  // Recorte por período (ano): só oferece os anos com ao menos um cancelamento
+  // (`cancelledShowYears`), para o seletor nunca cair numa lista vazia. Filtra os
+  // shows de cada contato antes de agregar — a taxa e o cachê perdido do ano
+  // saem intactos porque `cancellationByContact` opera sobre o recorte.
+  const availableYears = cancelledShowYears(items);
+  const yearFilter = parseProfitYear(searchParams?.ano, availableYears);
+  const periodItems = items.map((it) => ({
+    contact: it.contact,
+    shows: filterShowsByYear(it.shows, yearFilter),
+  }));
+
+  const report = cancellationByContact(periodItems);
   const hasData = report.contactCount > 0;
+  const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
 
   return (
     <div className="space-y-6">
@@ -57,7 +78,11 @@ export default async function ContatosCancelamentosPage() {
         </div>
         <div className="flex items-center gap-2">
           {hasData && (
-            <a href="/contatos/cancelamentos/export" className="btn-secondary">
+            <a
+              href={`/contatos/cancelamentos/export${yearFilter === "all" ? "" : `?ano=${yearFilter}`}`}
+              className="btn-secondary"
+              download
+            >
               ⬇ CSV
             </a>
           )}
@@ -70,16 +95,42 @@ export default async function ContatosCancelamentosPage() {
         </div>
       </div>
 
+      {availableYears.length > 0 && (
+        <PeriodPicker
+          years={availableYears}
+          active={yearFilter}
+          basePath="/contatos/cancelamentos"
+        />
+      )}
+
       {!hasData ? (
         <div className="card text-center text-gray-500">
-          <p>Nenhum show cancelado vinculado a um contratante até agora.</p>
-          <p className="mt-1 text-sm">
-            Sinal bom: os combinados que você marcou vêm se mantendo. Os
-            cancelamentos aparecem aqui conforme surgirem.
-          </p>
-          <Link href="/shows" className="mt-3 inline-block text-brand-700 hover:underline">
-            Ver shows
-          </Link>
+          {yearFilter === "all" ? (
+            <>
+              <p>Nenhum show cancelado vinculado a um contratante até agora.</p>
+              <p className="mt-1 text-sm">
+                Sinal bom: os combinados que você marcou vêm se mantendo. Os
+                cancelamentos aparecem aqui conforme surgirem.
+              </p>
+              <Link href="/shows" className="mt-3 inline-block text-brand-700 hover:underline">
+                Ver shows
+              </Link>
+            </>
+          ) : (
+            <>
+              <p>Nenhum cancelamento em {periodLabel}.</p>
+              <p className="mt-1 text-sm">
+                Escolha outro período acima para ver os cancelamentos por
+                contratante.
+              </p>
+              <Link
+                href="/contatos/cancelamentos"
+                className="mt-3 inline-block text-brand-700 hover:underline"
+              >
+                Ver todos os anos
+              </Link>
+            </>
+          )}
         </div>
       ) : (
         <>

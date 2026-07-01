@@ -5662,3 +5662,35 @@ contexto, decisão, justificativa e alternativas consideradas.
   testes** (`vitest run`); smoke test (`next start`) → `/login` 200, `/dashboard` e `/contatos/cancelamentos` 307 (auth-gated).
   `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver
   D6/bloqueios); **nenhuma dependência nova**.
+
+## 2026-07-01 — D180: Recorte por período (`?ano=`) em `/contatos/cancelamentos`
+- **Contexto:** a tela "Cancelamentos por contratante" (`cancellationByContact`/D177) era a única
+  leitura analítica do eixo Contatos ainda sem o seletor de período `?ano=` que todas as telas irmãs
+  de rentabilidade/concentração já têm (D108/D111/D115/D118); a D179 já listava esse recorte como o
+  próximo possível.
+- **Decisão:** adicionar o `PeriodPicker` compartilhado (D119) à página e ao seu export, reaproveitando
+  `parseProfitYear`/`filterShowsByYear` (D108). Os anos oferecidos vêm de um novo helper puro
+  `cancelledShowYears(items)` em `src/lib/contacts.ts` — os anos (UTC, desc) **dos shows cancelados**,
+  não dos ativos (`showProfitYears`). O recorte filtra os shows de cada contato **antes** de
+  `cancellationByContact`, então a taxa, o cachê perdido e os agregados saem recortados ao ano sem tocar
+  a lógica pura. O nome do CSV herda o ano: `cancelamentos-por-contratante-<ano|todos>.csv`.
+- **Justificativa:** consistência com as telas irmãs (todo eixo analítico recorta por ano) e fecha o
+  item da D179. Por que **anos dos cancelados** e não dos ativos: o cancelamento é o próprio sinal da
+  tela — oferecer um ano sem nenhum cancelado levaria o seletor a uma lista vazia (dead-end). Com
+  `cancelledShowYears`, todo ano no seletor garante ≥1 cancelamento; o estado vazio período-ciente é
+  defensivo. A taxa recortada ao ano usa `totalShows` = todos os shows **daquele ano** (todos os status),
+  mantendo a semântica "cancelados sobre o total vinculado" dentro do período — mesma distinção
+  top-stats×lista da D177.
+- **Alternativas consideradas:** (a) oferecer os anos de **todos** os shows (como `showProfitYears`) —
+  descartada por criar seletores dead-end (ano com shows mas sem cancelamento → lista vazia); (b) manter
+  a tela sem recorte — descartada por quebrar a simetria do eixo Contatos; (c) extrair um
+  `filterCancellationsByYear` dedicado — desnecessário: `filterShowsByYear` mapeado por contato já basta,
+  e a composição está coberta por teste.
+- **Testes:** `cancelledShowYears` (vazio / só cancelados / dedup+ordem desc / ano UTC com Date e string) +
+  composição `filterShowsByYear`→`cancellationByContact` (recorte 2026 vs. "all"); **+6 testes**
+  (1054 → 1060).
+- **DoD:** build de produção verde; lint (`next lint`, 0 avisos); typecheck (`tsc --noEmit`) limpo;
+  **1060 testes** (`vitest run`); smoke test (`next start`) → `/contatos/cancelamentos?ano=2026` e seu
+  `export` 307 (auth-gated), app sobe em ~0,3 s. `npm audit` **inalterado** vs. baseline (10 advisories —
+  4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma
+  dependência nova**.
