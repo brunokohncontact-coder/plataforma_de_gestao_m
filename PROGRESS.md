@@ -9,7 +9,16 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1032 testes** verdes após a **exportação CSV da
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1036 testes** verdes após o **nudge de ponto de
+equilíbrio no Painel** (Sessão 183, D176 — a leitura do break-even (`computeBreakEven`: quantos shows/mês para cobrir o custo fixo
+vs. o ritmo atual) só existia na página `/financas/ponto-de-equilibrio`; ganhou eco no Painel via novo helper puro
+`breakEvenHeadline(analysis)` em `src/lib/finance.ts` — espelho de `cashBurnHeadline`/`yearToDatePaceHeadline`: recebe o
+`computeBreakEven` já computado e decide só a exibição; `show` só quando há meta a bater e o ritmo **não a cobre**
+(`showsNeeded != null && covered === false`), `critical` quando o ritmo cai a ≤ metade da meta (`avgShowsPerMonth/showsNeeded ≤
+BREAK_EVEN_CRITICAL_RATIO=0.5`); banner-link ⚖️/🔴 no `dashboard/page.tsx` reaproveita os `shows`/`txs` já carregados
+(`computeBreakEven(shows as BreakEvenShowLike[], txs)`, sem I/O extra), logo após o nudge de burn rate, linkando para
+`/financas/ponto-de-equilibrio`; fecha a falta de presença do break-even no Painel apontada na D175(a) — CSV lá foi descartado
+por ser escalares, o nudge é o formato certo; **+4 testes**) sobre os **1032 testes** verdes após a **exportação CSV da
 reserva para impostos** em `/financas/reserva-impostos/export` (Sessão 182, D175 — a tela "Reserva para impostos"
 (`/financas/reserva-impostos`: tabela "Mês a mês" do `taxReserve`, quanto guardar do que **entrou no caixa** por mês com alíquota
 parametrizável por `?aliquota=`, presets 6/11/15/27,5%) ganhou botão "⬇ CSV"; serializador puro `taxReserveToCsv(report)` +

@@ -4722,6 +4722,55 @@ export function computeBreakEven(
   };
 }
 
+/**
+ * Abaixo desta fração da meta o déficit de shows é crítico: o ritmo atual cobre
+ * metade ou menos dos shows/mês necessários para bancar o custo fixo. HIPÓTESE de
+ * planejamento (ver D68/D99 — os limiares de nudge são calibráveis).
+ */
+export const BREAK_EVEN_CRITICAL_RATIO = 0.5;
+
+export interface BreakEvenHeadline {
+  /**
+   * Deve aparecer no Painel? Só quando há uma meta de shows a bater
+   * (`showsNeeded != null`) e o ritmo atual **não a cobre** (`covered === false`).
+   * Sem custo fixo, com o show médio no vermelho (`showsNeeded == null`) ou já
+   * cobrindo a conta (`covered === true`) o aviso seria ruído — mesma disciplina de
+   * `cashBurnHeadline`/`yearToDatePaceHeadline`.
+   */
+  show: boolean;
+  /** Déficit acentuado (ritmo atual ≤ metade da meta de shows/mês)? */
+  critical: boolean;
+  /** Shows/mês necessários para cobrir o custo fixo (não-`null` quando `show`). */
+  showsNeeded: number | null;
+  /** Ritmo atual de shows realizados por mês (o que falta para a meta). */
+  avgShowsPerMonth: number;
+  /** Custo fixo mensal estimado (centavos) que sustenta a meta. */
+  monthlyFixedCost: number;
+}
+
+/**
+ * Resumo de Painel do **ponto de equilíbrio** em shows: deriva, de um
+ * `computeBreakEven` já computado, se o nudge deve aparecer e com que urgência.
+ * Pura, sem I/O — espelha `cashBurnHeadline`/`yearToDatePaceHeadline`: a regra de
+ * exibição vive aqui, o dashboard só consome. Complementa o nudge de fôlego de
+ * caixa (`cashBurnHeadline`, que olha o caixa): este responde "meu ritmo de shows
+ * cobre o custo fixo do mês?" — dispara só quando o músico está abaixo da meta.
+ */
+export function breakEvenHeadline(analysis: BreakEvenAnalysis): BreakEvenHeadline {
+  const show = analysis.showsNeeded != null && analysis.covered === false;
+  const critical =
+    show &&
+    analysis.showsNeeded! > 0 &&
+    analysis.avgShowsPerMonth / analysis.showsNeeded! <= BREAK_EVEN_CRITICAL_RATIO;
+  return {
+    show,
+    critical,
+    showsNeeded: analysis.showsNeeded,
+    avgShowsPerMonth: analysis.avgShowsPerMonth,
+    monthlyFixedCost: analysis.monthlyFixedCost,
+  };
+}
+
 // ── Fôlego de caixa (por quantos meses o caixa cobre os custos fixos) ────────
 
 /** Dias médios por mês (365,25 / 12) — para projetar a data de esgotamento. */
