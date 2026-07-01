@@ -104,6 +104,7 @@ describe("summarizeContactShows", () => {
 
 import {
   cancellationByContact,
+  cancellationHeadline,
   clientConcentration,
   clientRetention,
   filterContacts,
@@ -795,5 +796,128 @@ describe("cancellationByContact", () => {
     ]);
     expect(r.rows.map((x) => x.contact.id)).toEqual(["furao"]);
     expect(r.totalShows).toBe(1);
+  });
+});
+
+describe("cancellationHeadline", () => {
+  function s(over: Partial<ContactRankShowLike> = {}): ContactRankShowLike {
+    return { status: "CONFIRMED", date: "2026-05-01T20:00:00Z", fee: 100_00, ...over };
+  }
+  function item(
+    id: string,
+    name: string,
+    shows: ContactRankShowLike[],
+  ): ContactWithShows<ContactRankLike> {
+    return { contact: { id, name }, shows };
+  }
+
+  it("não dispara sem cancelamentos", () => {
+    const h = cancellationHeadline(cancellationByContact([]));
+    expect(h.show).toBe(false);
+    expect(h.critical).toBe(false);
+    expect(h.contact).toBeNull();
+    expect(h.flaggedCount).toBe(0);
+  });
+
+  it("ignora contratante ruidoso (amostra pequena) mesmo com taxa 100%", () => {
+    // 1/1 = 100% mas amostra 1 → não é padrão confiável, não vira nudge
+    const h = cancellationHeadline(
+      cancellationByContact([
+        item("ruido", "Ruidoso", [s({ status: "CANCELLED", fee: 900_00 })]),
+      ]),
+    );
+    expect(h.show).toBe(false);
+    expect(h.contact).toBeNull();
+    expect(h.flaggedCount).toBe(0);
+  });
+
+  it("dispara para confiável acima do limiar; expõe o pior contratante", () => {
+    const h = cancellationHeadline(
+      cancellationByContact([
+        item("furao", "Furão", [
+          s({ status: "CANCELLED", fee: 200_00 }),
+          s({ status: "CANCELLED", fee: 100_00 }),
+          s({ status: "PLAYED" }),
+          s({ status: "PLAYED" }),
+        ]), // 2/4 = 50%, amostra 4
+      ]),
+    );
+    expect(h.show).toBe(true);
+    expect(h.contact?.id).toBe("furao");
+    expect(h.cancelledShows).toBe(2);
+    expect(h.totalShows).toBe(4);
+    expect(h.cancellationRate).toBeCloseTo(0.5);
+    expect(h.lostFee).toBe(300_00);
+    expect(h.critical).toBe(true); // 50% >= CRITICAL_CANCELLATION_RATE
+    expect(h.flaggedCount).toBe(1);
+  });
+
+  it("não fica crítico entre highRate e criticalRate", () => {
+    const h = cancellationHeadline(
+      cancellationByContact([
+        item("morno", "Morno", [
+          s({ status: "CANCELLED" }),
+          s({ status: "PLAYED" }),
+          s({ status: "PLAYED" }),
+        ]), // 1/3 ≈ 33%, amostra 3
+      ]),
+    );
+    expect(h.show).toBe(true); // 0.33 >= 0.3
+    expect(h.critical).toBe(false); // 0.33 < 0.5
+    expect(h.contact?.id).toBe("morno");
+  });
+
+  it("não dispara abaixo do limiar de taxa alta", () => {
+    const h = cancellationHeadline(
+      cancellationByContact([
+        item("ok", "Ok", [
+          s({ status: "CANCELLED" }),
+          s({ status: "PLAYED" }),
+          s({ status: "PLAYED" }),
+          s({ status: "PLAYED" }),
+          s({ status: "PLAYED" }),
+        ]), // 1/5 = 20% < 30%
+      ]),
+    );
+    expect(h.show).toBe(false);
+  });
+
+  it("escolhe o pior confiável e conta os demais sinalizados", () => {
+    const h = cancellationHeadline(
+      cancellationByContact([
+        item("meio", "Meio", [
+          s({ status: "CANCELLED" }),
+          s({ status: "CANCELLED" }),
+          s({ status: "PLAYED" }),
+          s({ status: "PLAYED" }),
+        ]), // 2/4 = 50%
+        item("pior", "Pior", [
+          s({ status: "CANCELLED" }),
+          s({ status: "CANCELLED" }),
+          s({ status: "CANCELLED" }),
+          s({ status: "PLAYED" }),
+        ]), // 3/4 = 75%
+      ]),
+    );
+    expect(h.contact?.id).toBe("pior");
+    expect(h.cancellationRate).toBeCloseTo(0.75);
+    expect(h.flaggedCount).toBe(2); // ambos acima de 30% e confiáveis
+  });
+
+  it("respeita limiares customizados", () => {
+    const report = cancellationByContact([
+      item("morno", "Morno", [
+        s({ status: "CANCELLED" }),
+        s({ status: "PLAYED" }),
+        s({ status: "PLAYED" }),
+        s({ status: "PLAYED" }),
+      ]), // 1/4 = 25%
+    ]);
+    // limiar padrão (0.3) não pega 25%
+    expect(cancellationHeadline(report).show).toBe(false);
+    // baixando o limiar para 0.2, pega — e vira crítico com criticalRate 0.25
+    const h = cancellationHeadline(report, 0.2, 0.25);
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(true);
   });
 });

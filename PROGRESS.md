@@ -9,7 +9,16 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1047 testes** verdes após a **exportação CSV dos
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1054 testes** verdes após o **nudge de cancelamentos no
+Painel** (Sessão 186, D179 — a taxa de cancelamento por contratante (`cancellationByContact`/D177) e seu CSV (D178) tinham página
+e planilha mas nenhuma presença no Painel; ganhou eco via novo helper puro `cancellationHeadline(report, highRate=0.3,
+criticalRate=0.5)` em `src/lib/contacts.ts` — espelho de `clientConcentrationHeadline`: filtra as linhas **confiáveis** (amostra
+≥ `minSample`) com taxa ≥ `highRate`, o pior vira a manchete (`show`), `critical` quando fura ≥ metade; expõe contato/taxa/
+cancelados/total/cachê perdido + `flaggedCount` para o "e mais N". Banner-link 🟠/🔴 em `dashboard/page.tsx` após os nudges de
+concentração de clientes/geo, linkando `/contatos/cancelamentos`; pivota **em memória** os shows-com-contatos já carregados
+(sem I/O extra). Contatos de amostra pequena são ignorados no nudge — 1/1 = 100% é ruído, não padrão: a página anota o ruidoso
+(D177), o alarme só toca com sinal confiável; o limiar 0.3 mantém o banner raro, respondendo à ressalva de densidade da D177(e);
+**+7 testes**) sobre os **1047 testes** verdes após a **exportação CSV dos
 cancelamentos por contratante** em `/contatos/cancelamentos/export` (Sessão 185, D178 — entrega o CSV adiado na D177(d): a tela
 "Cancelamentos por contratante" (`cancellationByContact`/D177) era a única tabular do eixo Contatos sem export. Serializador puro
 `cancellationByContactToCsv(report)` + `CANCELLATION_BY_CONTACT_CSV_HEADERS` em `src/lib/csv.ts` (irmão de `clientConcentrationToCsv`,
@@ -3308,8 +3317,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    **Exportação CSV dos cancelamentos** entregue na Sessão 185 — `cancellationByContactToCsv` + `CANCELLATION_BY_CONTACT_CSV_HEADERS`
    em `src/lib/csv.ts` + `/contatos/cancelamentos/export` (Contratante/Papel/Cancelados/Shows/Taxa (%)/Cachê perdido (R$)/Amostra +
    Total da carteira), uma linha por contratante com ≥1 cancelamento na ordem da página, botão "⬇ CSV" gated por `hasData`, ver D178.
-   Próximo possível — um nudge no Painel "N contratantes com taxa alta de cancelamento" (adiada na D177(e): já há 7 nudges lá),
-   ou recorte por período (`?ano=`) se surgir demanda.
+   **Nudge no Painel** entregue na Sessão 186 — `cancellationHeadline(report, highRate=0.3, criticalRate=0.5)` em
+   `src/lib/contacts.ts` (espelho de `clientConcentrationHeadline`: filtra as linhas **confiáveis** com taxa ≥ `highRate`, o pior
+   vira a manchete) + banner-link 🟠/🔴 em `dashboard/page.tsx` após os nudges de concentração de clientes/geo, pivotando em memória
+   os shows-com-contatos já carregados (sem I/O extra); contatos de amostra pequena são ignorados no alarme (a página os anota, o
+   Painel só toca com sinal confiável) e o limiar 0.3 mantém o banner raro (ressalva de densidade da D177(e)), ver D179.
+   Próximo possível — recorte por período (`?ano=`) se surgir demanda; ou parametrizar o limiar do nudge se ele se mostrar barulhento.
 
 9. **Rentabilidade geográfica — evoluções** (rentabilidade por local entregue na Sessão 28, `/shows/locais` +
    `rankVenuesByProfit`; atuação por cidade na Sessão 57, `/shows/cidades` + `rankCitiesByProfit`; recorte por
