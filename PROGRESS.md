@@ -9,7 +9,18 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1028 testes** verdes após a **exportação CSV do
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1032 testes** verdes após a **exportação CSV da
+reserva para impostos** em `/financas/reserva-impostos/export` (Sessão 182, D175 — a tela "Reserva para impostos"
+(`/financas/reserva-impostos`: tabela "Mês a mês" do `taxReserve`, quanto guardar do que **entrou no caixa** por mês com alíquota
+parametrizável por `?aliquota=`, presets 6/11/15/27,5%) ganhou botão "⬇ CSV"; serializador puro `taxReserveToCsv(report)` +
+`TAX_RESERVE_CSV_HEADERS` em `src/lib/csv.ts` emite uma linha por mês — **sempre as 12** inclusive os sem receita (`0,00`/`0%`, não
+o "—" da UI) — Mês/Recebido (R$)/Reserva (R$)/Participação (%), participação = peso na **reserva do ano** via `csvShare`, + linha
+"Total" (recebido e reserva somados, participação em branco = 100% por construção como `clientConcentrationToCsv`); alíquota fora
+das colunas (uniforme) → vai no nome `reserva-impostos-{ano}-{pct}pct.csv` (ponto→hífen), cabeçalhos genéricos; rota repete o parsing
+`parseYear`/`parseRate` da página + BOM UTF-8, botão gated por `hasActivity` propagando `ano`+`aliquota`; `csvShare` movido para a
+zona de helpers (antes do novo serializador, evita `no-use-before-define`); resta `/financas/ponto-de-equilibrio` como única tela
+sem export tabular, adiada (escalares de planejamento, ~3 linhas); **+4 testes**) sobre os **1028 testes** verdes após a
+**exportação CSV do
 relatório mensal** em `/financas/relatorio/export` (Sessão 181, D174 — a tela "Relatório mensal" (`/financas/relatorio`: os quatro
 indicadores do mês — Receitas/Despesas/Saldo do mês/Caixa realizado — cada um com dois eixos de comparação, vs. o mês anterior e
 vs. a média móvel dos últimos meses com movimento) ganhou botão "⬇ Relatório (CSV)"; serializador puro `monthlyReportToCsv(view)`

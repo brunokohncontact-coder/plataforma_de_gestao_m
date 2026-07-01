@@ -56,6 +56,7 @@ import {
   type QuarterlyGoalProgress,
   type YearEndScenarioView,
   type RecurringExpensesReport,
+  type TaxReserveReport,
 } from "./finance";
 import type {
   ClientRetention,
@@ -99,6 +100,11 @@ export function centsToCsvAmount(cents: number): string {
   const reais = Math.floor(abs / 100);
   const centPart = String(abs % 100).padStart(2, "0");
   return `${sign}${reais},${centPart}`;
+}
+
+/** Participação relativa (0..1) -> porcentagem inteira com símbolo ("37%"). */
+function csvShare(share: number): string {
+  return `${Math.round(share * 100)}%`;
 }
 
 /** Data -> "DD/MM/AAAA" (em UTC, mesma convenção de `dayKey`, estável em testes). */
@@ -300,6 +306,53 @@ export function monthlySeasonalityToCsv(
     centsToCsvAmount(typicalExpense),
     centsToCsvAmount(typicalIncome - typicalExpense),
     String(seasonality.yearsObserved),
+  ]);
+  return toCsv(rows, delimiter);
+}
+
+export const TAX_RESERVE_CSV_HEADERS = [
+  "Mês",
+  "Recebido (R$)",
+  "Reserva (R$)",
+  "Participação (%)",
+] as const;
+
+/**
+ * Serializa a reserva para impostos por mês (`taxReserve`) em CSV, pronto para
+ * download. Espelha a tabela "Mês a mês" de `/financas/reserva-impostos`: uma
+ * linha por mês (sempre as 12, de janeiro a dezembro, inclusive os meses sem
+ * receita recebida — o vazio importa para ver a sazonalidade do que entra), com
+ * a receita recebida no caixa e a reserva sugerida (`round(recebido × alíquota)`),
+ * mais a participação de cada mês na reserva do ano. Diferente da UI (que mostra
+ * "—" nos meses sem movimento), o CSV registra 0,00 para ficar legível por
+ * máquina.
+ *
+ * A linha "Total" soma o recebido e a reserva do ano (participação em branco =
+ * 100% por construção, como `clientConcentrationToCsv`). A alíquota aplicada
+ * **não** vira coluna (é uniforme em todas as linhas) — fica no nome do arquivo,
+ * que carrega ano e alíquota; os cabeçalhos são genéricos. Irmão de
+ * `monthlySeasonalityToCsv` no eixo mensal das Finanças. Mesma convenção pt-BR de
+ * `transactionsToCsv` (delimitador ";", decimal com vírgula). Pura.
+ */
+export function taxReserveToCsv(
+  report: TaxReserveReport,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const rows: string[][] = [Array.from(TAX_RESERVE_CSV_HEADERS)];
+  const total = report.totalReserve;
+  for (const m of report.months) {
+    rows.push([
+      MONTH_NAMES_LONG[m.monthIndex - 1],
+      centsToCsvAmount(m.receivedIncome),
+      centsToCsvAmount(m.reserve),
+      csvShare(total > 0 ? m.reserve / total : 0),
+    ]);
+  }
+  rows.push([
+    "Total",
+    centsToCsvAmount(report.totalReceivedIncome),
+    centsToCsvAmount(report.totalReserve),
+    "",
   ]);
   return toCsv(rows, delimiter);
 }
@@ -738,10 +791,6 @@ export interface ReceivableByContactCsvRow {
 }
 
 /** Participação (0..1) -> porcentagem inteira ("37%"). Espelha o `pct` da página. */
-function csvShare(share: number): string {
-  return `${Math.round(share * 100)}%`;
-}
-
 /**
  * Serializa os cachês a receber agrupados por contratante (de quem cobrar
  * primeiro) em CSV, pronto para download. Uma linha por devedor, espelhando a

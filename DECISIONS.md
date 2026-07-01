@@ -5479,3 +5479,41 @@ contexto, decisão, justificativa e alternativas consideradas.
   avisos) verdes; typecheck (`tsc --noEmit`) limpo; **1028 testes** (`vitest run`); smoke test (`next start`) → `/login` 200,
   `/financas/relatorio` + `/financas/relatorio/export?mes=2026-06` 307 (auth-gated). `npm audit` **inalterado** vs. baseline (10
   advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## D175 — Exportação CSV da reserva para impostos (`/financas/reserva-impostos/export` + `taxReserveToCsv`) (Sessão 182)
+- **Contexto:** ao varrer as páginas de relatório sem subpasta `export/` (a D173 já tinha usado essa varredura para achar
+  `/financas/relatorio`), restavam **duas** telas tabulares ainda sem export: `/financas/reserva-impostos` (reserva para impostos,
+  mês a mês) e `/financas/ponto-de-equilibrio` (break-even). A "Reserva para impostos" tem uma tabela "Mês a mês" (`taxReserve`):
+  uma linha por mês com a receita **recebida** (caixa de entrada) e a reserva sugerida (`round(recebido × alíquota)`), encerrada num
+  Total, parametrizada por `?ano=` e `?aliquota=` (presets 6/11/15/27,5%). É o candidato mais tabular dos dois (o break-even é um
+  punhado de escalares de planejamento, não uma série).
+- **Decisão:** novo serializador puro `taxReserveToCsv(report)` + `TAX_RESERVE_CSV_HEADERS` em `src/lib/csv.ts`, recebendo o
+  `TaxReserveReport` já computado (mesma divisão pura/HTTP dos demais exports). Rota `/financas/reserva-impostos/export?ano=&aliquota=`
+  repete o **mesmo parsing** da página (`parseYear` 1970–2999 → ano atual; `parseRate` 0–100% → `DEFAULT_TAX_RATE`) e a mesma
+  consulta (`type: "INCOME"`), embrulhando no HTTP com BOM UTF-8.
+- **Formato:** uma linha por mês, **sempre as 12** (janeiro→dezembro, inclusive os meses sem receita — o vazio importa para ver a
+  sazonalidade do que entra), espelhando a tabela da página. Colunas: Mês / Recebido (R$) / Reserva (R$) / Participação (%) — a
+  participação é o peso de cada mês na **reserva do ano** (`reserve/totalReserve` via `csvShare`, "25%"). Linha "Total" soma recebido
+  e reserva, participação **em branco** (= 100% por construção, como `clientConcentrationToCsv`). Diferente da UI (que mostra "—"
+  nos meses vazios), o CSV registra `0,00`/`0%` para ficar legível por máquina (mesma escolha de `monthlySeasonalityToCsv`).
+- **Alíquota fora das colunas:** a alíquota aplicada é uniforme em todas as linhas, então **não** vira coluna — fica no **nome do
+  arquivo** (`reserva-impostos-{ano}-{pct}pct.csv`, ex. `…-2026-6pct.csv` / `…-2026-27-5pct.csv`, ponto→hífen) e os cabeçalhos
+  ficam genéricos, como `ritmo-do-ano-{ano}.csv`. A página passa a alíquota efetiva (saneada, `ratePct`) ao botão.
+- **`csvShare` reposicionado:** o helper `csvShare` estava definido perto dos consumidores antigos (linha ~741), mas o novo
+  serializador fica antes deles no arquivo; movi a definição para a zona de helpers compartilhados (junto de `centsToCsvAmount`/
+  `csvDate`) para não depender de hoisting de função e evitar qualquer `no-use-before-define`. Sem mudança de comportamento.
+- **UX:** botão "⬇ CSV" no cabeçalho da página (padrão de `/financas/sazonalidade`), gated por `hasActivity`
+  (`totalReceivedIncome > 0`) e propagando `ano`+`aliquota` no href para o CSV refletir exatamente o recorte exibido.
+- **Alternativas consideradas:** (a) exportar o **ponto de equilíbrio** primeiro — **adiado**: é uma página de escalares de
+  planejamento (custo fixo, resultado médio/show, ritmo, meta de shows/mês), não uma série tabular; um CSV de ~3 linhas tem baixo
+  valor de planilha (mesma régua da D132(a)). Fica como próximo candidato se houver demanda. (b) coluna de alíquota por linha —
+  **descartado**: redundante (constante); o nome do arquivo já a carrega. (c) participação sobre o **recebido** em vez da reserva —
+  **descartado**: como a reserva é `recebido × alíquota` (alíquota uniforme), as duas participações são idênticas; escolhi a reserva
+  por ser o número-fim da tela.
+- **Testes:** **+4** em `csv.test.ts` (`describe("taxReserveToCsv")`: 12 meses + Total mesmo sem receita (participação em branco no
+  Total); recebido/reserva/participação por mês com alíquota 10% (março 25% / julho 75% / Total 400,00 em branco); ignora a-receber
+  + despesa + outro ano (só caixa recebido do ano, 6% padrão); `0,00`/`0%` nos meses vazios). **1032 testes** no total (eram 1028).
+- **DoD:** build de produção (rota `/financas/reserva-impostos/export` registrada) e lint (`next lint`, 0 avisos) verdes; typecheck
+  (`tsc --noEmit`) limpo; **1032 testes** (`vitest run`); smoke test (`next start`) → `/` 200 (Ready in 380ms). `npm audit`
+  **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver
+  D6/bloqueios); **nenhuma dependência nova**.
