@@ -5913,3 +5913,46 @@ contexto, decisão, justificativa e alternativas consideradas.
   — app sobe (~1 s), `/login` 200 e `/shows/antecedencia` + `/shows/antecedencia/export` 307 sem sessão
   (guardados por `requireUser`). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5
   high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## 2026-07-01 — D186: Recorte por período (`?ano=`) na antecedência de agendamento (`bookingLeadTimeYears` + `PeriodPicker`)
+- **Contexto:** a tela `/shows/antecedencia` (`bookingLeadTime`/D185) era um retrato do acervo inteiro. A própria
+  D185(b) apontava o recorte por `?ano=`/`PeriodPicker` (D119) como "candidato natural de próxima sessão" —
+  todas as telas irmãs de rentabilidade/distribuição/concentração já têm o seletor. É a única mecânica
+  reutilizável (D108) que faltava a esta leitura nova.
+- **Decisão:** página e export de `/shows/antecedencia` passam a recortar por ano reaproveitando
+  `parseProfitYear`/`filterShowsByYear` (D108). Os anos do seletor vêm do novo helper puro
+  `bookingLeadTimeYears<T extends LeadTimeShowLike>(shows)` em `src/lib/shows.ts`: os anos (UTC, decrescente)
+  da **`date`** dos shows com antecedência **mensurável** — não cancelados e `leadDays >= 0`, exatamente a
+  amostra que `bookingLeadTime` usa para a mediana/média/faixas. Filtra-se os registros do Prisma **antes** de
+  mapear para `LeadTimeShowLike` e chamar `bookingLeadTime`, então mediana/média/faixas/retroativos saem
+  recortados ao ano sem tocar a lógica pura. Empty state período-ciente ("Nenhum show com antecedência
+  mensurável em {ano}"), CSV herda o ano no nome `antecedencia-de-agendamento-<ano|todos>.csv`, botão "⬇ CSV"
+  propaga o `?ano=`, e o `PeriodPicker` só aparece quando há algum ano com amostra.
+- **Justificativa:**
+  - **Anos ancorados no sinal da tela, não em todos os shows:** um ano que só tenha shows cancelados ou
+    lançamentos retroativos não mede antecedência — `bookingLeadTime` renderizaria o empty state. Basear o
+    seletor em `bookingLeadTimeYears` (mesma amostra da mediana) evita oferecer um ano que abre vazio (dead-end),
+    o mesmo cuidado de `cancelledShowYears` (D180), que se ancora no sinal (cancelados) e não nos shows ativos.
+  - **Eixo do filtro é a `date` (quando o show acontece):** consistente com `filterShowsByYear` e com todas as
+    telas irmãs — "a antecedência dos shows de 2025" agrupa pela data do show, não pela data de cadastro
+    (`createdAt`, que é o outro extremo do intervalo do lead). Coberto por teste (fechado em dez/2025 para um
+    show em jan/2026 → ano 2026 no seletor).
+  - **Filtrar os registros do Prisma, não os `LeadTimeShowLike` mapeados:** `filterShowsByYear` exige
+    `date: Date`, mas `LeadTimeShowLike.date` é `Date | string`; os registros do Prisma já têm `date: Date`.
+    Filtrar antes do map (como faz `/shows/faixas-de-cache`) mantém o tipo e evita um cast.
+- **Alternativas consideradas:** (a) manter sem recorte (retrato do acervo, como o funil por contratante/D183(a))
+  — descartado: a antecedência ganha sentido comparada ano a ano (a agenda ficou mais proativa?), diferente do
+  funil, que é o estado atual do pipeline aberto. (b) basear os anos em **todos** os shows não cancelados
+  (incluindo retroativos) — descartado: abriria anos que renderizam vazio. (c) `PeriodPicker` só na página, sem
+  o export — descartado: o botão de CSV propaga o filtro, então o export tem de honrá-lo (mesma paridade
+  página↔export de `/shows/faixas-de-cache`).
+- **Ressalva de dados:** herdada da D185 — a fidelidade de `createdAt` (e portanto da antecedência) depende de o
+  show ser cadastrado perto do fechamento; seed/import distorcem. O recorte por ano não altera essa ressalva.
+- **Testes:** `bookingLeadTimeYears` (amostra vazia → `[]`; anos UTC decrescentes e deduplicados; usa o ano da
+  `date` e não do `createdAt`; ignora cancelados e retroativos, só anos com antecedência mensurável) — **+4
+  testes**. Total **1093 → 1097**.
+- **DoD:** build de produção verde (rotas `/shows/antecedencia` e `/shows/antecedencia/export` geradas); lint
+  (`next lint`, 0 avisos); typecheck (`tsc --noEmit`) limpo; **1097 testes** (`vitest run`); smoke test — app
+  sobe (~6 s), `/login` 200 e `/shows/antecedencia`, `/shows/antecedencia?ano=2026`, `/shows/antecedencia/export?ano=2026`
+  todos 307 sem sessão (guardados por `requireUser`). `npm audit` **inalterado** vs. baseline (10 advisories —
+  4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.

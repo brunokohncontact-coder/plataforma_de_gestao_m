@@ -480,3 +480,27 @@ export function bookingLeadTime<T extends LeadTimeShowLike>(shows: T[]): Booking
     reliable: sample >= MIN_LEAD_TIME_SAMPLE,
   };
 }
+
+/**
+ * Anos (UTC, decrescente) dos shows que entram na leitura de antecedência —
+ * para montar o seletor de período de `/shows/antecedencia`. Considera só os
+ * shows com antecedência **mensurável** (não cancelados e com `leadDays >= 0`,
+ * a mesma amostra de `bookingLeadTime`): um ano que tenha apenas cancelados ou
+ * lançamentos retroativos não mede antecedência e não deve virar uma opção
+ * vazia no seletor (mesmo cuidado de `cancelledShowYears`, que se ancora no
+ * sinal da tela e não nos shows ativos). O ano é o da `date` do show — o mesmo
+ * eixo de `filterShowsByYear`, que recorta a lista antes de `bookingLeadTime`.
+ */
+export function bookingLeadTimeYears<T extends LeadTimeShowLike>(shows: T[]): number[] {
+  const years = new Set<number>();
+  for (const s of shows) {
+    if (s.status === "CANCELLED") continue;
+    const leadDays = Math.round(
+      (leadUtcMidnight(s.date) - leadUtcMidnight(s.createdAt)) / DAY_MS,
+    );
+    if (leadDays < 0) continue;
+    const d = typeof s.date === "string" ? new Date(s.date) : s.date;
+    years.add(d.getUTCFullYear());
+  }
+  return [...years].sort((a, b) => b - a);
+}
