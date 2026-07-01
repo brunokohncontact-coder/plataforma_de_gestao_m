@@ -1,10 +1,14 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { bookingLeadTime, type LeadTimeShowLike } from "@/lib/shows";
+import { bookingLeadTime, bookingLeadTimeYears, type LeadTimeShowLike } from "@/lib/shows";
+import { parseProfitYear, filterShowsByYear } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
+import { PeriodPicker } from "@/components/PeriodPicker";
 
 export const dynamic = "force-dynamic";
+
+type SearchParams = { [key: string]: string | string[] | undefined };
 
 function pct(share: number): string {
   return `${Math.round(share * 100)}%`;
@@ -26,7 +30,11 @@ const BUCKET_TONES = [
   "bg-emerald-400",
 ] as const;
 
-export default async function BookingLeadTimePage() {
+export default async function BookingLeadTimePage({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
   const user = await requireUser();
 
   const rows = await prisma.show.findMany({
@@ -35,7 +43,15 @@ export default async function BookingLeadTimePage() {
     select: { status: true, date: true, createdAt: true, fee: true },
   });
 
-  const shows: LeadTimeShowLike[] = rows.map((s) => ({
+  // Recorte por período (ano), reaproveitando os helpers da D108. Os anos do
+  // seletor vêm só dos shows com antecedência mensurável (`bookingLeadTimeYears`),
+  // para não oferecer um ano que renderiza vazio. Filtra-se os registros ANTES
+  // de mapear/`bookingLeadTime`, que segue agnóstico ao recorte.
+  const availableYears = bookingLeadTimeYears(rows);
+  const yearFilter = parseProfitYear(searchParams?.ano, availableYears);
+  const periodRows = filterShowsByYear(rows, yearFilter);
+
+  const shows: LeadTimeShowLike[] = periodRows.map((s) => ({
     status: s.status,
     date: s.date,
     createdAt: s.createdAt,
@@ -43,6 +59,7 @@ export default async function BookingLeadTimePage() {
   }));
 
   const lead = bookingLeadTime(shows);
+  const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
   const peakShare = Math.max(0.0001, ...lead.buckets.map((b) => b.share));
 
   return (
@@ -62,7 +79,13 @@ export default async function BookingLeadTimePage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {lead.sample > 0 && (
-            <a href="/shows/antecedencia/export" className="btn-secondary text-sm" download>
+            <a
+              href={`/shows/antecedencia/export${
+                yearFilter === "all" ? "" : `?ano=${yearFilter}`
+              }`}
+              className="btn-secondary text-sm"
+              download
+            >
               ⬇ CSV
             </a>
           )}
@@ -72,17 +95,34 @@ export default async function BookingLeadTimePage() {
         </div>
       </div>
 
+      {availableYears.length > 0 && (
+        <PeriodPicker
+          years={availableYears}
+          active={yearFilter}
+          basePath="/shows/antecedencia"
+        />
+      )}
+
       {lead.sample === 0 ? (
         <div className="card text-center text-gray-500">
-          <p>
-            Ainda não há shows com antecedência mensurável.
-            {lead.retroactiveCount > 0
-              ? ` Os ${lead.retroactiveCount} shows lançados são todos retroativos (registrados depois da data), então não medem antecedência.`
-              : " Cadastre shows com data futura para acompanhar o seu lead de agendamento."}
-          </p>
-          <Link href="/shows/novo" className="mt-3 inline-block text-brand-700 hover:underline">
-            Cadastrar um show
-          </Link>
+          {yearFilter === "all" ? (
+            <>
+              <p>
+                Ainda não há shows com antecedência mensurável.
+                {lead.retroactiveCount > 0
+                  ? ` Os ${lead.retroactiveCount} shows lançados são todos retroativos (registrados depois da data), então não medem antecedência.`
+                  : " Cadastre shows com data futura para acompanhar o seu lead de agendamento."}
+              </p>
+              <Link href="/shows/novo" className="mt-3 inline-block text-brand-700 hover:underline">
+                Cadastrar um show
+              </Link>
+            </>
+          ) : (
+            <>
+              <p>Nenhum show com antecedência mensurável em {periodLabel}.</p>
+              <p className="mt-1 text-sm">Escolha outro período acima para ver a antecedência.</p>
+            </>
+          )}
         </div>
       ) : (
         <>

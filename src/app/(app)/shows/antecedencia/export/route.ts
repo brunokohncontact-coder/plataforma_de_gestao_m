@@ -1,17 +1,18 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { bookingLeadTime, type LeadTimeShowLike } from "@/lib/shows";
+import { bookingLeadTime, bookingLeadTimeYears, type LeadTimeShowLike } from "@/lib/shows";
+import { parseProfitYear, filterShowsByYear } from "@/lib/finance";
 import { bookingLeadTimeToCsv } from "@/lib/csv";
 
 export const dynamic = "force-dynamic";
 
 // Exporta a antecedência de agendamento (booking lead time) em CSV — espelha a
-// página `/shows/antecedencia`. A camada pura está em `@/lib/shows`
-// (`bookingLeadTime`) e `@/lib/csv` (`bookingLeadTimeToCsv`), ambas testadas;
-// aqui só fazemos a consulta e embrulhamos no HTTP. Sem `?ano=`: a tela é um
-// retrato do acervo (mesma decisão do funil por contratante).
-export async function GET() {
+// página `/shows/antecedencia`, incluindo o recorte por ano (`?ano=`). A camada
+// pura está em `@/lib/shows` (`bookingLeadTime`) e `@/lib/csv`
+// (`bookingLeadTimeToCsv`), ambas testadas; aqui só fazemos a consulta,
+// aplicamos o mesmo recorte da página e embrulhamos no HTTP.
+export async function GET(req: NextRequest) {
   const user = await requireUser();
 
   const rows = await prisma.show.findMany({
@@ -20,7 +21,15 @@ export async function GET() {
     select: { status: true, date: true, createdAt: true, fee: true },
   });
 
-  const shows: LeadTimeShowLike[] = rows.map((s) => ({
+  // Mesmo recorte por ano da página (helpers da D108).
+  const availableYears = bookingLeadTimeYears(rows);
+  const yearFilter = parseProfitYear(
+    req.nextUrl.searchParams.get("ano") ?? undefined,
+    availableYears,
+  );
+  const periodRows = filterShowsByYear(rows, yearFilter);
+
+  const shows: LeadTimeShowLike[] = periodRows.map((s) => ({
     status: s.status,
     date: s.date,
     createdAt: s.createdAt,
@@ -31,13 +40,15 @@ export async function GET() {
   const csv = bookingLeadTimeToCsv(lead);
 
   // BOM UTF-8 para preservar acentuação ao abrir no Excel.
-  const body = "\uFEFF" + csv;
+  const body = "﻿" + csv;
+  const suffix = yearFilter === "all" ? "todos" : String(yearFilter);
+  const filename = `antecedencia-de-agendamento-${suffix}.csv`;
 
   return new NextResponse(body, {
     status: 200,
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="antecedencia-de-agendamento.csv"`,
+      "Content-Disposition": `attachment; filename="${filename}"`,
       "Cache-Control": "no-store",
     },
   });

@@ -12,6 +12,7 @@ import {
   hasActiveShowFilter,
   isValidShowStatus,
   bookingLeadTime,
+  bookingLeadTimeYears,
   MIN_LEAD_TIME_SAMPLE,
   type ConflictShowLike,
   type LeadTimeShowLike,
@@ -584,5 +585,40 @@ describe("bookingLeadTime", () => {
     const enough = Array.from({ length: MIN_LEAD_TIME_SAMPLE }, () => leadShow({}));
     expect(bookingLeadTime(two).reliable).toBe(false);
     expect(bookingLeadTime(enough).reliable).toBe(true);
+  });
+});
+
+describe("bookingLeadTimeYears", () => {
+  it("amostra vazia devolve lista vazia", () => {
+    expect(bookingLeadTimeYears([])).toEqual([]);
+  });
+
+  it("devolve os anos (UTC) da data, decrescente e deduplicados", () => {
+    const years = bookingLeadTimeYears([
+      leadShow({ createdAt: "2024-01-01T00:00:00.000Z", date: "2024-06-01T00:00:00.000Z" }),
+      leadShow({ createdAt: "2026-01-01T00:00:00.000Z", date: "2026-03-01T00:00:00.000Z" }),
+      leadShow({ createdAt: "2026-02-01T00:00:00.000Z", date: "2026-08-01T00:00:00.000Z" }),
+    ]);
+    expect(years).toEqual([2026, 2024]);
+  });
+
+  it("usa o ano da data do show, não o do createdAt (recorte por virada de ano)", () => {
+    // Fechado em dez/2025 para um show em jan/2026: o ano do seletor é 2026.
+    const years = bookingLeadTimeYears([
+      leadShow({ createdAt: "2025-12-20T00:00:00.000Z", date: "2026-01-10T00:00:00.000Z" }),
+    ]);
+    expect(years).toEqual([2026]);
+  });
+
+  it("ignora cancelados e retroativos — só anos com antecedência mensurável", () => {
+    const years = bookingLeadTimeYears([
+      // cancelado em 2023 → fora
+      leadShow({ status: "CANCELLED", createdAt: "2023-01-01T00:00:00.000Z", date: "2023-06-01T00:00:00.000Z" }),
+      // retroativo em 2024 (createdAt depois da data) → fora
+      leadShow({ createdAt: "2024-07-01T00:00:00.000Z", date: "2024-06-01T00:00:00.000Z" }),
+      // mensurável em 2025 → entra
+      leadShow({ createdAt: "2025-01-01T00:00:00.000Z", date: "2025-05-01T00:00:00.000Z" }),
+    ]);
+    expect(years).toEqual([2025]);
   });
 });

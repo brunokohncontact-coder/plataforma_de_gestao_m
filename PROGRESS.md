@@ -9,7 +9,18 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1093 testes** verdes após a **antecedência de
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1097 testes** verdes após o **recorte por período
+(`?ano=`) na antecedência de agendamento** (Sessão 193, D186 — a tela `/shows/antecedencia` (`bookingLeadTime`/D185) era um retrato
+do acervo inteiro; a própria D185(b) apontava o `PeriodPicker` (D119) como candidato natural da próxima sessão. Página e export
+agora recortam por ano reaproveitando `parseProfitYear`/`filterShowsByYear` (D108): os anos do seletor vêm do novo helper puro
+`bookingLeadTimeYears<T>(shows)` em `src/lib/shows.ts` — os anos (UTC, desc) da **`date`** dos shows com antecedência **mensurável**
+(não cancelados e `leadDays >= 0`, a mesma amostra de `bookingLeadTime`), não de todos os shows: um ano só com cancelados/retroativos
+não mede antecedência e viraria uma opção vazia no seletor (mesmo cuidado de `cancelledShowYears`/D180, que se ancora no sinal da
+tela). Filtra os registros do Prisma **antes** de mapear/`bookingLeadTime`, então mediana/média/faixas/retroativos saem recortados
+ao ano sem tocar a lógica pura; o eixo do filtro é a `date` (quando o show acontece), o mesmo de `filterShowsByYear`. Empty state
+período-ciente ("Nenhum show com antecedência mensurável em {ano}"), CSV herda o ano no nome
+`antecedencia-de-agendamento-<ano|todos>.csv`; **+4 testes** (`bookingLeadTimeYears`: vazio; anos UTC desc dedup; ano da `date` e não
+do `createdAt`; ignora cancelados/retroativos)) sobre os **1093 testes** verdes após a **antecedência de
 agendamento** (Sessão 192, D185 — feature nova do lado Shows: `bookingLeadTime<T>(shows)` em `src/lib/shows.ts` +
 `/shows/antecedencia` + export CSV (`bookingLeadTimeToCsv` + `/shows/antecedencia/export`). Primeiro uso do campo `createdAt` do show
 como eixo analítico: com quanta antecedência os shows entram na agenda (booking lead time / runway). Para cada show **não cancelado**,
@@ -3106,6 +3117,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    botão "⬇ CSV" propagando a janela, ver D169.)
    Próximo possível — um mini-calendário de salto rápido na agenda, ou estimar a receita parada por fim de
    semana livre (adiada na D96 por ser hipótese frágil).
+2d. **Antecedência de agendamento** (entregue na Sessão 192, `/shows/antecedencia` + `bookingLeadTime` em
+   `src/lib/shows.ts`, ver D185): com quantos dias de antecedência os shows entram na agenda (booking lead time /
+   runway), mediana/média + 4 faixas canônicas, retroativos à parte; export CSV `bookingLeadTimeToCsv`. **Recorte
+   por período (`?ano=`)** entregue na Sessão 193 — `bookingLeadTimeYears` + `PeriodPicker` em `/shows/antecedencia`
+   (página e export), ver D186. Próximo possível — nudge no Painel (adiado na D185(d): a leitura é um retrato, não um
+   alarme; avaliar se "fechando shows em cima da hora" merece banner), ou recortar a amostra a CONFIRMED+PLAYED
+   (compromissos firmes, adiado na D185(a)).
 2c. **Sazonalidade de shows** (entregue na Sessão 141, `/shows/sazonalidade` + `gigSeasonality` em
    `src/lib/finance.ts`, ver D133): agrega os shows realizados por mês do calendário (jan→dez, somando todos os anos),
    com cards de destaque (mês mais cheio / mais faturamento / melhor cachê médio) e tabela com barra por nº de shows —
