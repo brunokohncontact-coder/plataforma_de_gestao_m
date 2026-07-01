@@ -4,6 +4,7 @@ import {
   summarizeContactProfit,
   type ContactShowLike,
 } from "./contacts";
+import { filterShowsByYear } from "./finance";
 import type { TxLike } from "./finance";
 
 const NOW = new Date("2026-06-17T12:00:00Z");
@@ -104,6 +105,7 @@ describe("summarizeContactShows", () => {
 
 import {
   cancellationByContact,
+  cancelledShowYears,
   cancellationHeadline,
   clientConcentration,
   clientRetention,
@@ -796,6 +798,106 @@ describe("cancellationByContact", () => {
     ]);
     expect(r.rows.map((x) => x.contact.id)).toEqual(["furao"]);
     expect(r.totalShows).toBe(1);
+  });
+});
+
+describe("cancelledShowYears", () => {
+  function s(over: Partial<ContactRankShowLike> = {}): ContactRankShowLike {
+    return { status: "CONFIRMED", date: "2026-05-01T20:00:00Z", fee: 100_00, ...over };
+  }
+  function item(
+    id: string,
+    shows: ContactRankShowLike[],
+  ): ContactWithShows<ContactRankLike> {
+    return { contact: { id, name: id }, shows };
+  }
+
+  it("lista vazia devolve sem anos", () => {
+    expect(cancelledShowYears([])).toEqual([]);
+  });
+
+  it("só considera shows cancelados, ignorando os demais status", () => {
+    const years = cancelledShowYears([
+      item("a", [
+        s({ status: "CANCELLED", date: "2024-03-10T00:00:00Z" }),
+        s({ status: "PLAYED", date: "2023-01-01T00:00:00Z" }), // ativo → não conta
+      ]),
+    ]);
+    expect(years).toEqual([2024]);
+  });
+
+  it("deduplica e ordena os anos do mais recente ao mais antigo", () => {
+    const years = cancelledShowYears([
+      item("a", [
+        s({ status: "CANCELLED", date: "2024-06-01T00:00:00Z" }),
+        s({ status: "CANCELLED", date: "2026-02-01T00:00:00Z" }),
+      ]),
+      item("b", [
+        s({ status: "CANCELLED", date: "2024-11-01T00:00:00Z" }), // 2024 repetido
+        s({ status: "CANCELLED", date: "2025-08-01T00:00:00Z" }),
+      ]),
+    ]);
+    expect(years).toEqual([2026, 2025, 2024]);
+  });
+
+  it("usa o ano UTC (aceita Date e string ISO)", () => {
+    const years = cancelledShowYears([
+      item("a", [
+        s({ status: "CANCELLED", date: new Date("2025-12-31T23:00:00Z") }),
+        s({ status: "CANCELLED", date: "2023-01-01T00:00:00Z" }),
+      ]),
+    ]);
+    expect(years).toEqual([2025, 2023]);
+  });
+});
+
+describe("cancellationByContact — recorte por período (ano)", () => {
+  // Compõe filterShowsByYear (finance) + cancellationByContact (contacts), como a
+  // página /contatos/cancelamentos: filtrar os shows por ano antes de agregar
+  // recorta a taxa e o cachê perdido àquele ano, sem tocar a lógica pura. Os
+  // shows usam `date: Date` concreto (como o Prisma entrega na página) para
+  // satisfazer o `{ date: Date }` de filterShowsByYear.
+  interface DatedShow {
+    status: string;
+    date: Date;
+    fee: number;
+  }
+  function s(over: Partial<DatedShow> = {}): DatedShow {
+    return { status: "CONFIRMED", date: new Date("2026-05-01T20:00:00Z"), fee: 100_00, ...over };
+  }
+
+  const items = [
+    {
+      contact: { id: "furao", name: "Furão" },
+      shows: [
+        s({ status: "CANCELLED", fee: 300_00, date: new Date("2025-04-01T00:00:00Z") }),
+        s({ status: "CANCELLED", fee: 200_00, date: new Date("2026-04-01T00:00:00Z") }),
+        s({ status: "PLAYED", date: new Date("2026-05-01T00:00:00Z") }),
+      ],
+    },
+  ];
+
+  it("recorta a taxa e o cachê perdido ao ano selecionado", () => {
+    const filtered = items.map((it) => ({
+      contact: it.contact,
+      shows: filterShowsByYear(it.shows, 2026),
+    }));
+    const r = cancellationByContact(filtered);
+    expect(r.totalShows).toBe(2); // só os 2 shows de 2026
+    expect(r.totalCancelled).toBe(1);
+    expect(r.totalLostFee).toBe(200_00);
+    expect(r.rows[0].cancellationRate).toBeCloseTo(0.5);
+  });
+
+  it("sem recorte (\"all\") agrega todos os anos", () => {
+    const filtered = items.map((it) => ({
+      contact: it.contact,
+      shows: filterShowsByYear(it.shows, "all"),
+    }));
+    const r = cancellationByContact(filtered);
+    expect(r.totalShows).toBe(3);
+    expect(r.totalCancelled).toBe(2);
+    expect(r.totalLostFee).toBe(500_00);
   });
 });
 

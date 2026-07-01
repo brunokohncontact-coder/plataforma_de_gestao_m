@@ -768,6 +768,29 @@ export function cancellationByContact<C extends ContactRankLike>(
 }
 
 /**
+ * Anos (UTC, decrescente) dos shows **cancelados** vinculados aos contatos —
+ * para montar o seletor de período de `/contatos/cancelamentos`. Diferente de
+ * `showProfitYears` (que olha os shows ativos): aqui só entram anos com ao menos
+ * um cancelamento, para o seletor nunca oferecer um ano que renderizaria a lista
+ * vazia (o cancelamento é o próprio sinal da tela). Aceita `date` como `Date` ou
+ * string ISO (normaliza via `new Date`), consistente com `ContactRankShowLike`.
+ * Pura e determinística.
+ */
+export function cancelledShowYears<C extends ContactRankLike>(
+  items: ContactWithShows<C>[],
+): number[] {
+  const years = new Set<number>();
+  for (const { shows } of items) {
+    for (const s of shows) {
+      if (s.status === "CANCELLED") {
+        years.add(new Date(s.date).getUTCFullYear());
+      }
+    }
+  }
+  return [...years].sort((a, b) => b - a);
+}
+
+/**
  * Taxa de cancelamento a partir da qual um contratante **confiável** (amostra
  * suficiente) vira nudge no Painel. Abaixo disso o cancelamento é ocasional, não
  * um padrão que mereça alerta.

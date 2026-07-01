@@ -9,7 +9,17 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1054 testes** verdes após o **nudge de cancelamentos no
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1060 testes** verdes após o **recorte por período
+(`?ano=`) em Cancelamentos por contratante** (Sessão 187, D180 — a tela `/contatos/cancelamentos` (`cancellationByContact`/D177)
+era a única leitura analítica do eixo Contatos ainda sem o `PeriodPicker` (D119) que todas as telas irmãs de rentabilidade/
+concentração já têm; a D179 listava o recorte como próximo possível. Página e export agora recortam por ano reaproveitando
+`parseProfitYear`/`filterShowsByYear` (D108): os anos do seletor vêm do novo helper puro `cancelledShowYears(items)` em
+`src/lib/contacts.ts` — os anos (UTC, desc) **dos shows cancelados**, não dos ativos (`showProfitYears`), porque o cancelamento é o
+sinal da tela e um ano sem cancelado levaria o seletor a uma lista vazia (dead-end). Filtra os shows de cada contato **antes** de
+`cancellationByContact`, então a taxa, o cachê perdido e os agregados saem recortados ao ano sem tocar a lógica pura; `totalShows` do
+ano conta todos os status daquele ano (mesma distinção top-stats×lista da D177). Empty state período-ciente ("Nenhum cancelamento em
+{ano}"), CSV herda o ano no nome `cancelamentos-por-contratante-<ano|todos>.csv`; **+6 testes** (`cancelledShowYears` + composição
+`filterShowsByYear`→`cancellationByContact`)) sobre os **1054 testes** verdes após o **nudge de cancelamentos no
 Painel** (Sessão 186, D179 — a taxa de cancelamento por contratante (`cancellationByContact`/D177) e seu CSV (D178) tinham página
 e planilha mas nenhuma presença no Painel; ganhou eco via novo helper puro `cancellationHeadline(report, highRate=0.3,
 criticalRate=0.5)` em `src/lib/contacts.ts` — espelho de `clientConcentrationHeadline`: filtra as linhas **confiáveis** (amostra
@@ -3322,7 +3332,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    vira a manchete) + banner-link 🟠/🔴 em `dashboard/page.tsx` após os nudges de concentração de clientes/geo, pivotando em memória
    os shows-com-contatos já carregados (sem I/O extra); contatos de amostra pequena são ignorados no alarme (a página os anota, o
    Painel só toca com sinal confiável) e o limiar 0.3 mantém o banner raro (ressalva de densidade da D177(e)), ver D179.
-   Próximo possível — recorte por período (`?ano=`) se surgir demanda; ou parametrizar o limiar do nudge se ele se mostrar barulhento.
+   **Recorte por período (`?ano=`)** entregue na Sessão 187 — `PeriodPicker` (D119) na página e no export de
+   `/contatos/cancelamentos`, reaproveitando `parseProfitYear`/`filterShowsByYear` (D108); os anos vêm do novo helper puro
+   `cancelledShowYears(items)` (anos UTC dos shows **cancelados**, não dos ativos, para o seletor nunca cair numa lista vazia),
+   filtra os shows de cada contato antes de `cancellationByContact`, CSV com ano no nome, ver D180.
+   Próximo possível — parametrizar o limiar do nudge se ele se mostrar barulhento.
 
 9. **Rentabilidade geográfica — evoluções** (rentabilidade por local entregue na Sessão 28, `/shows/locais` +
    `rankVenuesByProfit`; atuação por cidade na Sessão 57, `/shows/cidades` + `rankCitiesByProfit`; recorte por
