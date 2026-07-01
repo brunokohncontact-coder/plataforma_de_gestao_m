@@ -332,6 +332,13 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "🎭",
       },
       {
+        title: "Funil por contratante",
+        href: "/contatos/funil",
+        description: "Com quem você tem mais cachê em negociação ou confirmado — o pipeline aberto por quem paga.",
+        subtopic: "Quem move a carreira",
+        icon: "🔭",
+      },
+      {
         title: "Fidelização de contratantes",
         href: "/contatos/retencao",
         description: "Quem repete contratação e quem chamou uma vez só.",

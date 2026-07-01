@@ -3101,9 +3101,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    concretização, ver D43; **exportação CSV do funil** entregue na Sessão 167 — `pipelineToCsv` +
    `PIPELINE_CSV_HEADERS` em `src/lib/csv.ts` + `/shows/funil/export` (Etapa/Shows/Participação/Cachê
    + linha Total), uma linha por etapa na ordem de `PIPELINE_STAGE_ORDER`, botão "⬇ CSV" só com
-   `pipeline.total > 0`, ver D160): hoje é um retrato do estado atual. Próximo possível — registrar
-   **transições de status** (log) para uma taxa de conversão proposta→realizado de verdade e
-   tempo médio em cada etapa.
+   `pipeline.total > 0`, ver D160): hoje é um retrato do estado atual. **Funil por contratante**
+   entregue na Sessão 190 — `pipelineByContact` + `/contatos/funil` recorta o pipeline aberto por quem
+   paga (ver item 8 e D183). Próximo possível — registrar **transições de status** (log) para uma taxa de
+   conversão proposta→realizado de verdade e tempo médio em cada etapa (segue sendo o maior passo em aberto
+   do funil, precisa de um modelo de eventos no schema).
 3. **Filtros — evoluções**: persistência do último filtro entregue para Finanças (Sessão 32),
    Shows e Contatos (Sessão 33) — módulo genérico `src/lib/listFilter.ts` + middleware (ver D23/D24);
    **indicador visual de "filtro lembrado"** entregue na Sessão 79 — marcador `?lembrado=1` na
@@ -3362,6 +3364,18 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    com shows vinculados, ver D181.
    Próximo possível — parametrizar o limiar do nudge se ele se mostrar barulhento; ou um nudge de tendência da taxa no
    Painel (adiado: o Painel já tem o nudge de pior contratante via `cancellationHeadline`).
+   **Funil por contratante** entregue na Sessão 190 — `pipelineByContact(items)` em `src/lib/contacts.ts`
+   (família de `cancellationByContact`/`clientConcentration`) + `/contatos/funil` (cards da carteira: cachê em
+   aberto / em negociação / confirmado / concretização; tabela por contratante). Agrega o pipeline **aberto**
+   (PROPOSED + CONFIRMED) por quem paga — `openValue`/`openCount`, proposto e confirmado separados, e a taxa de
+   concretização histórica (`conversionRate` = PLAYED / decididos, `—` sem shows decididos). Só entram contatos
+   com pipeline aberto; agregados da carteira somam todos com shows; ordena por cachê aberto desc. Distinto do
+   funil geral (D42, agregado sem pagador), dos cancelamentos (D177, passado) e dos recebíveis por contratante
+   (D92, já tocados e não pagos): é o **futuro em aberto por relação**. Registrado no hub (Contatos / "Quem move a
+   carreira", 🔭) + cross-link ↔ funil geral; **+8 testes**, ver D183. Próximo possível — recorte por ano
+   (`?ano=`, adiado: o pipeline aberto é retrato do "agora/à frente" e cruza anos), exportação CSV (adiada: eixo
+   esgotado, D174), ou um nudge do maior pipeline aberto no Painel (adiado: Painel já denso e sobrepõe o card de
+   funil geral).
 
 9. **Rentabilidade geográfica — evoluções** (rentabilidade por local entregue na Sessão 28, `/shows/locais` +
    `rankVenuesByProfit`; atuação por cidade na Sessão 57, `/shows/cidades` + `rankCitiesByProfit`; recorte por

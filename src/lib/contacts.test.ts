@@ -108,6 +108,7 @@ import {
   cancelledShowYears,
   cancellationHeadline,
   compareCancellationRate,
+  pipelineByContact,
   CANCELLATION_TREND_EPSILON,
   clientConcentration,
   clientRetention,
@@ -900,6 +901,124 @@ describe("cancellationByContact — recorte por período (ano)", () => {
     expect(r.totalShows).toBe(3);
     expect(r.totalCancelled).toBe(2);
     expect(r.totalLostFee).toBe(500_00);
+  });
+});
+
+describe("pipelineByContact", () => {
+  function s(over: Partial<ContactRankShowLike> = {}): ContactRankShowLike {
+    return { status: "CONFIRMED", date: "2026-05-01T20:00:00Z", fee: 100_00, ...over };
+  }
+  function item(
+    id: string,
+    name: string,
+    shows: ContactRankShowLike[],
+  ): ContactWithShows<ContactRankLike> {
+    return { contact: { id, name }, shows };
+  }
+
+  it("trata lista vazia", () => {
+    const r = pipelineByContact([]);
+    expect(r.rows).toEqual([]);
+    expect(r.contactCount).toBe(0);
+    expect(r.totalOpenValue).toBe(0);
+    expect(r.totalOpenCount).toBe(0);
+    expect(r.totalProposedValue).toBe(0);
+    expect(r.totalConfirmedValue).toBe(0);
+    expect(r.overallConversionRate).toBeNull();
+  });
+
+  it("só lista contratantes com pipeline aberto (PROPOSED ou CONFIRMED)", () => {
+    const r = pipelineByContact([
+      // só shows já decididos → sem pipeline aberto, fora da lista
+      item("fechado", "Fechado", [s({ status: "PLAYED" }), s({ status: "CANCELLED" })]),
+      // tem proposta em aberto → entra
+      item("ativo", "Ativo", [s({ status: "PROPOSED", fee: 300_00 })]),
+    ]);
+    expect(r.rows.map((x) => x.contact.id)).toEqual(["ativo"]);
+    expect(r.contactCount).toBe(1);
+    // agregados da carteira somam TODOS os contatos com shows
+    expect(r.totalOpenValue).toBe(300_00);
+    expect(r.totalOpenCount).toBe(1);
+    // conversão da carteira: 1 PLAYED de 2 decididos (do "Fechado")
+    expect(r.overallConversionRate).toBeCloseTo(0.5);
+  });
+
+  it("separa proposto e confirmado e soma o aberto por contratante", () => {
+    const r = pipelineByContact([
+      item("a", "A", [
+        s({ status: "PROPOSED", fee: 200_00 }),
+        s({ status: "CONFIRMED", fee: 500_00 }),
+        s({ status: "PLAYED", fee: 100_00 }),
+        s({ status: "CANCELLED", fee: 100_00 }),
+      ]),
+    ]);
+    const row = r.rows[0];
+    expect(row.totalShows).toBe(4);
+    expect(row.proposedCount).toBe(1);
+    expect(row.proposedValue).toBe(200_00);
+    expect(row.confirmedCount).toBe(1);
+    expect(row.confirmedValue).toBe(500_00);
+    expect(row.openCount).toBe(2);
+    expect(row.openValue).toBe(700_00);
+    expect(row.playedCount).toBe(1);
+    expect(row.cancelledCount).toBe(1);
+    expect(row.decidedCount).toBe(2);
+    expect(row.conversionRate).toBeCloseTo(0.5);
+  });
+
+  it("conversionRate é null quando o contratante nada decidiu ainda", () => {
+    const r = pipelineByContact([
+      item("novo", "Novo", [s({ status: "PROPOSED", fee: 100_00 })]),
+    ]);
+    expect(r.rows[0].conversionRate).toBeNull();
+  });
+
+  it("ordena por maior cachê em aberto, depois nº de shows abertos", () => {
+    const r = pipelineByContact([
+      item("medio", "Médio", [s({ status: "CONFIRMED", fee: 300_00 })]),
+      item("grande", "Grande", [s({ status: "PROPOSED", fee: 900_00 })]),
+      // mesmo cachê aberto do "Médio" (300), mas 2 shows → vem antes por openCount
+      item("varios", "Vários", [
+        s({ status: "PROPOSED", fee: 150_00 }),
+        s({ status: "CONFIRMED", fee: 150_00 }),
+      ]),
+    ]);
+    expect(r.rows.map((x) => x.contact.id)).toEqual(["grande", "varios", "medio"]);
+  });
+
+  it("desempata cachê e contagem iguais pelo nome (pt-BR) e id", () => {
+    const r = pipelineByContact([
+      item("z", "Zé", [s({ status: "PROPOSED", fee: 100_00 })]),
+      item("a", "Ana", [s({ status: "PROPOSED", fee: 100_00 })]),
+    ]);
+    expect(r.rows.map((x) => x.contact.id)).toEqual(["a", "z"]);
+  });
+
+  it("ignora contatos sem shows e status desconhecido", () => {
+    const r = pipelineByContact([
+      item("vazio", "Vazio", []),
+      item("estranho", "Estranho", [
+        s({ status: "RASCUNHO", fee: 999_00 }),
+        s({ status: "CONFIRMED", fee: 100_00 }),
+      ]),
+    ]);
+    // "Vazio" some; "Estranho" entra só com o CONFIRMED (o status desconhecido é ignorado)
+    expect(r.rows.map((x) => x.contact.id)).toEqual(["estranho"]);
+    const row = r.rows[0];
+    expect(row.totalShows).toBe(2); // totalShows conta a relação, inclusive o desconhecido
+    expect(row.openValue).toBe(100_00);
+    expect(row.openCount).toBe(1);
+  });
+
+  it("agrega o proposto e o confirmado da carteira", () => {
+    const r = pipelineByContact([
+      item("a", "A", [s({ status: "PROPOSED", fee: 200_00 })]),
+      item("b", "B", [s({ status: "CONFIRMED", fee: 500_00 })]),
+    ]);
+    expect(r.totalProposedValue).toBe(200_00);
+    expect(r.totalConfirmedValue).toBe(500_00);
+    expect(r.totalOpenValue).toBe(700_00);
+    expect(r.totalOpenCount).toBe(2);
   });
 });
 
