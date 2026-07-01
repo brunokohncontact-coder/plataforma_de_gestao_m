@@ -4,7 +4,9 @@ import { prisma } from "@/lib/prisma";
 import {
   cancellationByContact,
   cancelledShowYears,
+  compareCancellationRate,
   type ContactRankLike,
+  type CancellationComparison,
 } from "@/lib/contacts";
 import { parseProfitYear, filterShowsByYear } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
@@ -64,6 +66,27 @@ export default async function ContatosCancelamentosPage({
   const report = cancellationByContact(periodItems);
   const hasData = report.contactCount > 0;
   const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
+
+  // Comparativo ano a ano da taxa de cancelamento da carteira (espelha o card de
+  // concentração ano a ano, D120/D122): só faz sentido com um ano específico e o
+  // ano anterior tendo shows vinculados — caso contrário "melhorou/piorou" é
+  // enganoso. Reaproveita o mesmo recorte por ano UTC (D108) sobre os itens já
+  // carregados, sem nova consulta.
+  let comparison: CancellationComparison<CancellationContact> | null = null;
+  let previousYear = 0;
+  if (yearFilter !== "all") {
+    previousYear = yearFilter - 1;
+    const previousReport = cancellationByContact(
+      items.map((it) => ({
+        contact: it.contact,
+        shows: filterShowsByYear(it.shows, previousYear),
+      })),
+    );
+    // Exige shows vinculados nos DOIS períodos para comparar taxas de verdade.
+    if (report.totalShows > 0 && previousReport.totalShows > 0) {
+      comparison = compareCancellationRate(report, previousReport);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -159,6 +182,15 @@ export default async function ContatosCancelamentosPage({
             />
           </div>
 
+          {/* Comparativo ano a ano da taxa de cancelamento */}
+          {comparison && (
+            <CancellationComparisonCard
+              comparison={comparison}
+              currentYear={yearFilter as number}
+              previousYear={previousYear}
+            />
+          )}
+
           {/* Lista por contratante */}
           <section className="card overflow-x-auto p-0">
             <table className="w-full text-sm">
@@ -233,6 +265,91 @@ export default async function ContatosCancelamentosPage({
           </p>
         </>
       )}
+    </div>
+  );
+}
+
+/** Rótulo + tom do veredito de tendência da taxa de cancelamento entre dois anos. */
+const CANCELLATION_TREND: Record<
+  CancellationComparison<CancellationContact>["trend"],
+  { label: string; emoji: string; classes: string; note: string }
+> = {
+  improved: {
+    label: "Cancelando menos",
+    emoji: "🟢",
+    classes: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    note: "A carteira furou menos combinados que no ano anterior — os contratantes vêm honrando mais o que marcam.",
+  },
+  worsened: {
+    label: "Cancelando mais",
+    emoji: "🔴",
+    classes: "border-red-200 bg-red-50 text-red-800",
+    note: "A taxa de cancelamento subiu em relação ao ano anterior — vale olhar quem está furando e reforçar a confirmação dos combinados.",
+  },
+  stable: {
+    label: "Estável",
+    emoji: "⚪",
+    classes: "border-gray-200 bg-gray-50 text-gray-700",
+    note: "A taxa de cancelamento ficou praticamente igual à do ano anterior.",
+  },
+};
+
+/** Formata uma variação em pontos percentuais com sinal (ex.: 0,12 → "+12 p.p."). */
+function deltaPp(delta: number): string {
+  const points = Math.round(delta * 100);
+  if (points === 0) return "0 p.p.";
+  return `${points > 0 ? "+" : "−"}${Math.abs(points)} p.p.`;
+}
+
+/**
+ * Card "Taxa de cancelamento {ano} vs. {ano-1}": compara a taxa de cancelamento
+ * da carteira do ano selecionado com a do ano anterior (espelha o comparativo de
+ * concentração ano a ano, D120/D122, no eixo de confiabilidade dos combinados).
+ * Mostra a variação da taxa e do cachê perdido, com um veredito de tendência
+ * (cancelando menos × cancelando mais).
+ */
+function CancellationComparisonCard({
+  comparison,
+  currentYear,
+  previousYear,
+}: {
+  comparison: CancellationComparison<CancellationContact>;
+  currentYear: number;
+  previousYear: number;
+}) {
+  const trend = CANCELLATION_TREND[comparison.trend];
+  const { current, previous } = comparison;
+  return (
+    <div className={"card border " + trend.classes}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide opacity-80">
+          Taxa de cancelamento {currentYear} vs. {previousYear}
+        </p>
+        <span className="badge bg-white/70 font-semibold">
+          {trend.emoji} {trend.label}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+        <div>
+          <p className="text-2xl font-bold">{deltaPp(comparison.overallRateDelta)}</p>
+          <p className="text-xs opacity-80">
+            taxa da carteira: {pct(previous.overallRate)} ({previousYear}) →{" "}
+            {pct(current.overallRate)} ({currentYear})
+          </p>
+        </div>
+        <div>
+          <p className="text-2xl font-bold">
+            {comparison.lostFeeDelta === 0
+              ? "R$ 0"
+              : `${comparison.lostFeeDelta > 0 ? "+" : "−"}${formatMoney(Math.abs(comparison.lostFeeDelta))}`}
+          </p>
+          <p className="text-xs opacity-80">
+            cachê perdido: {formatMoney(previous.totalLostFee)} →{" "}
+            {formatMoney(current.totalLostFee)}
+          </p>
+        </div>
+      </div>
+      <p className="mt-3 text-xs opacity-90">{trend.note}</p>
     </div>
   );
 }

@@ -107,6 +107,8 @@ import {
   cancellationByContact,
   cancelledShowYears,
   cancellationHeadline,
+  compareCancellationRate,
+  CANCELLATION_TREND_EPSILON,
   clientConcentration,
   clientRetention,
   filterContacts,
@@ -1021,5 +1023,102 @@ describe("cancellationHeadline", () => {
     const h = cancellationHeadline(report, 0.2, 0.25);
     expect(h.show).toBe(true);
     expect(h.critical).toBe(true);
+  });
+});
+
+describe("compareCancellationRate", () => {
+  function s(over: Partial<ContactRankShowLike> = {}): ContactRankShowLike {
+    return { status: "CONFIRMED", date: "2026-05-01T20:00:00Z", fee: 100_00, ...over };
+  }
+  function item(
+    id: string,
+    shows: ContactRankShowLike[],
+  ): ContactWithShows<ContactRankLike> {
+    return { contact: { id, name: id }, shows };
+  }
+
+  it("aponta piora quando a taxa da carteira sobe além do limiar", () => {
+    // ano anterior: 1/5 = 20%; ano atual: 3/5 = 60%
+    const previous = cancellationByContact([
+      item("a", [
+        s({ status: "CANCELLED", fee: 200_00 }),
+        s({ status: "PLAYED" }),
+        s({ status: "PLAYED" }),
+        s({ status: "PLAYED" }),
+        s({ status: "PLAYED" }),
+      ]),
+    ]);
+    const current = cancellationByContact([
+      item("a", [
+        s({ status: "CANCELLED", fee: 300_00 }),
+        s({ status: "CANCELLED", fee: 300_00 }),
+        s({ status: "CANCELLED", fee: 300_00 }),
+        s({ status: "PLAYED" }),
+        s({ status: "PLAYED" }),
+      ]),
+    ]);
+    const cmp = compareCancellationRate(current, previous);
+    expect(cmp.overallRateDelta).toBeCloseTo(0.4);
+    expect(cmp.lostFeeDelta).toBe(700_00); // 900_00 − 200_00
+    expect(cmp.trend).toBe("worsened");
+  });
+
+  it("aponta melhora quando a taxa cai além do limiar", () => {
+    const previous = cancellationByContact([
+      item("a", [
+        s({ status: "CANCELLED" }),
+        s({ status: "CANCELLED" }),
+        s({ status: "PLAYED" }),
+        s({ status: "PLAYED" }),
+      ]),
+    ]); // 2/4 = 50%
+    const current = cancellationByContact([
+      item("a", [
+        s({ status: "CANCELLED" }),
+        s({ status: "PLAYED" }),
+        s({ status: "PLAYED" }),
+        s({ status: "PLAYED" }),
+      ]),
+    ]); // 1/4 = 25%
+    const cmp = compareCancellationRate(current, previous);
+    expect(cmp.overallRateDelta).toBeCloseTo(-0.25);
+    expect(cmp.trend).toBe("improved");
+  });
+
+  it("trata variação dentro do limiar como estável", () => {
+    // 2/10 = 20% → 3/10 = 30%: 10 pontos — mas testamos o piso do limiar com
+    // uma variação de exatamente EPSILON e uma logo abaixo.
+    const previous = cancellationByContact([
+      item("a", [s({ status: "CANCELLED" }), ...Array(9).fill(s({ status: "PLAYED" }))]),
+    ]); // 1/10 = 10%
+    // atual 13% ≈ dentro de 5 p.p. → estável
+    const current = cancellationByContact([
+      item("a", [
+        s({ status: "CANCELLED" }),
+        s({ status: "CANCELLED" }),
+        ...Array(13).fill(s({ status: "PLAYED" })),
+      ]),
+    ]); // 2/15 ≈ 13.3%
+    const cmp = compareCancellationRate(current, previous);
+    expect(Math.abs(cmp.overallRateDelta)).toBeLessThan(CANCELLATION_TREND_EPSILON);
+    expect(cmp.trend).toBe("stable");
+  });
+
+  it("melhora até taxa zero quando o período atual não teve cancelamentos", () => {
+    const previous = cancellationByContact([
+      item("a", [
+        s({ status: "CANCELLED" }),
+        s({ status: "CANCELLED" }),
+        s({ status: "PLAYED" }),
+        s({ status: "PLAYED" }),
+      ]),
+    ]); // 50%
+    const current = cancellationByContact([
+      item("a", [s({ status: "PLAYED" }), s({ status: "PLAYED" })]),
+    ]); // 0%
+    const cmp = compareCancellationRate(current, previous);
+    expect(cmp.current.overallRate).toBe(0);
+    expect(cmp.overallRateDelta).toBeCloseTo(-0.5);
+    expect(cmp.trend).toBe("improved");
   });
 });

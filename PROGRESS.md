@@ -9,8 +9,18 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1060 testes** verdes após o **recorte por período
-(`?ano=`) em Cancelamentos por contratante** (Sessão 187, D180 — a tela `/contatos/cancelamentos` (`cancellationByContact`/D177)
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1064 testes** verdes após o **comparativo ano a ano da
+taxa de cancelamento da carteira** (Sessão 188, D181 — a tela `/contatos/cancelamentos` já tinha página, CSV (D178), nudge (D179) e
+recorte por ano (D180), mas comparava só um período por vez; todas as telas de concentração (`compareGeoConcentration`/D120,
+`compareClientConcentration`/D122) ganharam um card "vs. {ano-1}" e a de cancelamentos era a única leitura de taxa/risco sem esse
+espelho. Novo helper puro `compareCancellationRate<C>(current, previous)` + `CancellationComparison<C>` + `CANCELLATION_TREND_EPSILON`
+(=0.05, espelho de `GEO_TREND_EPSILON`) em `src/lib/contacts.ts`: recebe duas `cancellationByContact` já computadas (uma por período),
+devolve `overallRateDelta`/`lostFeeDelta` + `trend` — mas, ao contrário da concentração, aqui **subir** a taxa é a piora
+(`worsened` quando a taxa sobe ≥ ε, `improved` quando cai ≥ ε, `stable` no meio). Card "Taxa de cancelamento {ano} vs. {ano-1}"
+(`CancellationComparisonCard` 🟢/🔴/⚪) em `contatos/cancelamentos/page.tsx`, logo após os destaques, exibido só com um ano
+específico selecionado e o ano anterior tendo shows vinculados nos dois períodos (senão "melhorou/piorou" enganaria); reaproveita o
+recorte por ano UTC (D108) sobre os `items` já carregados, sem nova consulta; **+4 testes**) sobre os **1060 testes** verdes após o
+**recorte por período (`?ano=`) em Cancelamentos por contratante** (Sessão 187, D180 — a tela `/contatos/cancelamentos` (`cancellationByContact`/D177)
 era a única leitura analítica do eixo Contatos ainda sem o `PeriodPicker` (D119) que todas as telas irmãs de rentabilidade/
 concentração já têm; a D179 listava o recorte como próximo possível. Página e export agora recortam por ano reaproveitando
 `parseProfitYear`/`filterShowsByYear` (D108): os anos do seletor vêm do novo helper puro `cancelledShowYears(items)` em
@@ -3336,7 +3346,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `/contatos/cancelamentos`, reaproveitando `parseProfitYear`/`filterShowsByYear` (D108); os anos vêm do novo helper puro
    `cancelledShowYears(items)` (anos UTC dos shows **cancelados**, não dos ativos, para o seletor nunca cair numa lista vazia),
    filtra os shows de cada contato antes de `cancellationByContact`, CSV com ano no nome, ver D180.
-   Próximo possível — parametrizar o limiar do nudge se ele se mostrar barulhento.
+   **Comparativo ano a ano da taxa de cancelamento** entregue na Sessão 188 — `compareCancellationRate` +
+   `CancellationComparison` + `CANCELLATION_TREND_EPSILON` em `src/lib/contacts.ts` (espelho de
+   `compareGeoConcentration`/`compareClientConcentration` no eixo de cancelamento, mas **subir** a taxa é a piora) + card
+   "Taxa de cancelamento {ano} vs. {ano-1}" em `/contatos/cancelamentos`, exibido só com um ano específico e o ano anterior
+   com shows vinculados, ver D181.
+   Próximo possível — parametrizar o limiar do nudge se ele se mostrar barulhento; ou um nudge de tendência da taxa no
+   Painel (adiado: o Painel já tem o nudge de pior contratante via `cancellationHeadline`).
 
 9. **Rentabilidade geográfica — evoluções** (rentabilidade por local entregue na Sessão 28, `/shows/locais` +
    `rankVenuesByProfit`; atuação por cidade na Sessão 57, `/shows/cidades` + `rankCitiesByProfit`; recorte por

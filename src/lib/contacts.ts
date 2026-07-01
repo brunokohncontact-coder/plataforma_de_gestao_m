@@ -860,3 +860,67 @@ export function cancellationHeadline<C extends ContactRankLike>(
     flaggedCount: flagged.length,
   };
 }
+
+/**
+ * Limiar (em pontos de taxa, 0..1) abaixo do qual a variação da taxa de
+ * cancelamento da carteira entre dois períodos é ruído ("stable"). 5 pontos —
+ * espelha `GEO_TREND_EPSILON` no eixo de cancelamento: grande o bastante para
+ * não oscilar a cada show isolado, pequeno o bastante para captar uma mudança
+ * real de confiabilidade dos combinados.
+ */
+export const CANCELLATION_TREND_EPSILON = 0.05;
+
+export interface CancellationComparison<C extends ContactRankLike> {
+  /** Cancelamentos do período atual (tipicamente o ano selecionado). */
+  current: ContactCancellations<C>;
+  /** Cancelamentos do período de comparação (tipicamente o ano anterior). */
+  previous: ContactCancellations<C>;
+  /**
+   * Variação da taxa de cancelamento da carteira (atual − anterior, em pontos
+   * -1..1). Positivo = a carteira cancela **mais** agora (piora).
+   */
+  overallRateDelta: number;
+  /**
+   * Variação do cachê total perdido em cancelamentos (atual − anterior, em
+   * centavos). Positivo = caiu **mais** combinado que no período anterior.
+   */
+  lostFeeDelta: number;
+  /**
+   * Direção da confiabilidade dos combinados entre os dois períodos, decidida
+   * pela variação da taxa da carteira contra `CANCELLATION_TREND_EPSILON`:
+   * - "improved": cancela menos agora (a taxa caiu além do limiar);
+   * - "worsened": cancela mais agora (a taxa subiu além do limiar);
+   * - "stable": variação dentro do limiar (ruído, sem leitura de tendência).
+   */
+  trend: "improved" | "worsened" | "stable";
+}
+
+/**
+ * Compara a **taxa de cancelamento da carteira** entre dois períodos (atual ×
+ * anterior), espelhando o comparativo ano a ano de `compareGeoConcentration`/
+ * `compareClientConcentration` (D120/D122) no eixo de confiabilidade dos
+ * combinados. Pura, sem I/O: recebe duas `cancellationByContact` já computadas
+ * (cada uma sobre os shows do seu período) e devolve a variação da taxa da
+ * carteira e do cachê perdido, além de um veredito de tendência. Ao contrário da
+ * concentração, aqui **subir** a taxa é a piora — o veredito reflete isso. O
+ * chamador decide quando exibir (tipicamente só com um ano específico e o ano
+ * anterior tendo shows vinculados — caso contrário a leitura seria enganosa).
+ */
+export function compareCancellationRate<C extends ContactRankLike>(
+  current: ContactCancellations<C>,
+  previous: ContactCancellations<C>,
+): CancellationComparison<C> {
+  const overallRateDelta = current.overallRate - previous.overallRate;
+  return {
+    current,
+    previous,
+    overallRateDelta,
+    lostFeeDelta: current.totalLostFee - previous.totalLostFee,
+    trend:
+      overallRateDelta <= -CANCELLATION_TREND_EPSILON
+        ? "improved"
+        : overallRateDelta >= CANCELLATION_TREND_EPSILON
+          ? "worsened"
+          : "stable",
+  };
+}
