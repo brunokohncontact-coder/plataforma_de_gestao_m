@@ -5764,3 +5764,49 @@ contexto, decisão, justificativa e alternativas consideradas.
   **1070 testes** (`vitest run`); smoke test — `/conta` e `/login` respondem 200 com o app de pé.
   `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do
   Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## 2026-07-01 — D183: Funil por contratante (`pipelineByContact` + `/contatos/funil`)
+- **Contexto:** o funil geral (`showPipeline`/`/shows/funil`, D42) é um retrato agregado do estado dos
+  shows (cachê em aberto + taxa de concretização da carteira inteira), sem recorte por quem paga. Faltava
+  o eixo relacional: **com quem** você tem mais cachê em negociação/confirmado e quão confiável cada
+  contratante costuma ser ao fechar — a informação operacional de "de quem cobrar o fechamento primeiro".
+  O eixo de exportação CSV está esgotado (D174) e a série de leituras por contratante (rentabilidade D105,
+  cancelamentos D177, recebíveis por contratante D92) tinha essa lacuna no pipeline aberto.
+- **Decisão:** novo helper puro `pipelineByContact<C>(items: ContactWithShows<C>[])` em `src/lib/contacts.ts`
+  (família de `cancellationByContact`/`clientConcentration`, mesma assinatura `ContactWithShows`) +
+  `/contatos/funil`. Por contratante agrega PROPOSED/CONFIRMED (contagem e cachê), o **aberto** =
+  proposto + confirmado (`openValue`/`openCount`), e a **taxa de concretização histórica** =
+  PLAYED / (PLAYED + CANCELLED) (`conversionRate`, `null` sem shows decididos). Só viram linha os
+  contatos com pipeline aberto (`openCount >= 1` — há o que fechar); os agregados da carteira
+  (`totalOpen*`, `overallConversionRate`) somam **todos** os contatos com shows. Ordena por cachê aberto
+  desc, depois nº de shows abertos desc, cachê confirmado desc, nome pt-BR e id. Registrado em
+  `REPORT_GROUPS` (Contatos / "Quem move a carreira", 🔭) e cross-link ↔ "Funil geral".
+- **Justificativa:**
+  - **Distinto do que já existe:** o funil geral (D42) não recorta por pagador; os cancelamentos (D177)
+    olham o passado que furou; os recebíveis por contratante (D92) são shows **já tocados** e não pagos.
+    Este é o **futuro em aberto** (proposto + confirmado) por quem paga — nenhuma tela cobria isso.
+  - **Contagem por relação:** um show com vários contatos conta para cada um, consistente com
+    ranking/concentração/cancelamentos (D177) — o padrão da família `ContactWithShows`.
+  - **Concretização como fator de confiança:** o histórico de PLAYED/decididos ao lado do cachê aberto
+    diz não só *quanto* está em jogo, mas *quão provável* aquele contratante costuma fechar — sem inventar
+    probabilidade (é só o histórico observado), com `—` quando não há shows decididos para julgar.
+  - **Retrato do estado atual, não log:** mesma limitação assumida do funil geral — sem histórico de
+    transições de status (isso segue como próximo passo maior, ver PROGRESS item 2b).
+- **Alternativas consideradas:** (a) recorte por ano (`?ano=`, como D108) — descartado neste corte: o
+  pipeline aberto é um retrato do "agora/à frente" e os shows abertos podem cruzar anos; um filtro por ano
+  confundiria mais que ajudaria (adiável se surgir demanda); (b) exportação CSV — adiada: eixo de export
+  esgotado (D174) e a tela é um retrato acionável, não um dump a fatiar; (c) nudge no Painel do maior
+  pipeline aberto — adiado: o Painel já é denso (funil, concentração, cancelamentos, DSO), e "cachê a
+  fechar" se sobrepõe ao card de funil geral existente; (d) marcar amostra pequena na concretização como
+  nas taxas medianas (D123) — dispensado: `conversionRate` já vira `—` sem decididos, e a coluna é
+  informativa (não ordena), então o ruído não distorce a leitura principal (cachê aberto).
+- **Testes:** `pipelineByContact` (lista vazia; só lista contatos com pipeline aberto e agregados somam
+  todos; separa proposto/confirmado e soma aberto; `conversionRate` null sem decididos; ordena por cachê
+  aberto e nº de shows; desempate por nome/id; ignora contatos sem shows e status desconhecido; agrega
+  proposto/confirmado da carteira); **+8 testes** (1070 → 1078).
+- **DoD:** build de produção verde (rota `/contatos/funil` gerada); lint (`next lint`, 0 avisos);
+  typecheck (`tsc --noEmit`) limpo; **1078 testes** (`vitest run`); smoke test — app sobe (~0,3 s),
+  `/contatos/funil` 307 sem sessão e **200 autenticado**, renderizando o estado vazio e a tabela populada
+  (contratante, cachê em aberto R$ 450,00, "em negociação", "concretização"). `npm audit` **inalterado**
+  vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado;
+  ver D6/bloqueios); **nenhuma dependência nova**.

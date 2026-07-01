@@ -924,3 +924,163 @@ export function compareCancellationRate<C extends ContactRankLike>(
           : "stable",
   };
 }
+
+// ── Funil por contratante (quem tem mais cachê em negociação) ────────────────
+//
+// Retrato do pipeline **aberto** por quem paga: de cada contratante, quanto
+// cachê está em aberto (PROPOSED + CONFIRMED — dinheiro ainda não realizado) e
+// qual foi historicamente a taxa de concretização dos seus shows já decididos
+// (PLAYED / (PLAYED + CANCELLED)). Responde "com quem tenho mais para fechar na
+// agenda futura e quão confiável esse contratante costuma ser". Distinto dos
+// cancelamentos (`cancellationByContact`: o passado que furou) e dos recebíveis
+// (`outstandingByContact`: shows já tocados e ainda não pagos). Como o funil
+// global (`showPipeline`), é um retrato do estado atual — sem log de transições.
+// A contagem é por relação (um show com vários contatos conta para cada um,
+// igual ao ranking/concentração/cancelamentos). Pura e determinística.
+
+export interface ContactPipelineRow<C extends ContactRankLike> {
+  contact: C;
+  /** Total de shows vinculados (todos os status). */
+  totalShows: number;
+  /** Shows PROPOSED (em negociação). */
+  proposedCount: number;
+  /** Cachê dos PROPOSED (centavos). */
+  proposedValue: number;
+  /** Shows CONFIRMED (fechados, ainda não tocados). */
+  confirmedCount: number;
+  /** Cachê dos CONFIRMED (centavos). */
+  confirmedValue: number;
+  /** Shows em aberto: PROPOSED + CONFIRMED. */
+  openCount: number;
+  /** Cachê em aberto: PROPOSED + CONFIRMED (centavos) — o que há para fechar. */
+  openValue: number;
+  /** Shows realizados (PLAYED). */
+  playedCount: number;
+  /** Shows cancelados (CANCELLED). */
+  cancelledCount: number;
+  /** Shows já decididos: PLAYED + CANCELLED. */
+  decidedCount: number;
+  /**
+   * Taxa de concretização histórica deste contratante: PLAYED / decididos.
+   * `null` quando nada foi decidido ainda (sem histórico para julgar).
+   */
+  conversionRate: number | null;
+}
+
+export interface ContactPipeline<C extends ContactRankLike> {
+  /** Contratantes com pipeline aberto (openCount >= 1), maior cachê aberto primeiro. */
+  rows: ContactPipelineRow<C>[];
+  /** Nº de contratantes com pipeline aberto. */
+  contactCount: number;
+  /** Cachê total em aberto na carteira (centavos). */
+  totalOpenValue: number;
+  /** Shows em aberto na carteira (PROPOSED + CONFIRMED). */
+  totalOpenCount: number;
+  /** Cachê total em negociação (PROPOSED) na carteira (centavos). */
+  totalProposedValue: number;
+  /** Cachê total confirmado (CONFIRMED, ainda não tocado) na carteira (centavos). */
+  totalConfirmedValue: number;
+  /**
+   * Taxa de concretização da carteira inteira (PLAYED / decididos, sobre TODOS
+   * os contatos com shows, não só os listados). `null` se nada foi decidido.
+   */
+  overallConversionRate: number | null;
+}
+
+/**
+ * Agrega o funil de shows por contratante, destacando o cachê **em aberto**
+ * (PROPOSED + CONFIRMED) de cada um e sua taxa de concretização histórica. Só
+ * viram linha os contatos com ao menos um show em aberto (há o que fechar); os
+ * agregados da carteira (`totalOpen*`, `overallConversionRate`) somam todos os
+ * contatos com shows. Ordena por cachê em aberto desc, depois nº de shows em
+ * aberto desc, cachê confirmado desc, nome pt-BR e id. Pura e determinística.
+ */
+export function pipelineByContact<C extends ContactRankLike>(
+  items: ContactWithShows<C>[],
+): ContactPipeline<C> {
+  const rows: ContactPipelineRow<C>[] = [];
+  let totalOpenValue = 0;
+  let totalOpenCount = 0;
+  let totalProposedValue = 0;
+  let totalConfirmedValue = 0;
+  let totalPlayed = 0;
+  let totalDecided = 0;
+
+  for (const { contact, shows } of items) {
+    if (shows.length === 0) continue;
+
+    let proposedCount = 0;
+    let proposedValue = 0;
+    let confirmedCount = 0;
+    let confirmedValue = 0;
+    let playedCount = 0;
+    let cancelledCount = 0;
+    for (const s of shows) {
+      switch (s.status) {
+        case "PROPOSED":
+          proposedCount += 1;
+          proposedValue += s.fee;
+          break;
+        case "CONFIRMED":
+          confirmedCount += 1;
+          confirmedValue += s.fee;
+          break;
+        case "PLAYED":
+          playedCount += 1;
+          break;
+        case "CANCELLED":
+          cancelledCount += 1;
+          break;
+        // status desconhecido é ignorado (não entra em nenhum balde)
+      }
+    }
+
+    const openCount = proposedCount + confirmedCount;
+    const openValue = proposedValue + confirmedValue;
+    const decidedCount = playedCount + cancelledCount;
+
+    totalProposedValue += proposedValue;
+    totalConfirmedValue += confirmedValue;
+    totalOpenValue += openValue;
+    totalOpenCount += openCount;
+    totalPlayed += playedCount;
+    totalDecided += decidedCount;
+
+    if (openCount === 0) continue; // sem pipeline aberto → fora da lista
+
+    rows.push({
+      contact,
+      totalShows: shows.length,
+      proposedCount,
+      proposedValue,
+      confirmedCount,
+      confirmedValue,
+      openCount,
+      openValue,
+      playedCount,
+      cancelledCount,
+      decidedCount,
+      conversionRate: decidedCount === 0 ? null : playedCount / decidedCount,
+    });
+  }
+
+  rows.sort((a, b) => {
+    if (b.openValue !== a.openValue) return b.openValue - a.openValue;
+    if (b.openCount !== a.openCount) return b.openCount - a.openCount;
+    if (b.confirmedValue !== a.confirmedValue)
+      return b.confirmedValue - a.confirmedValue;
+    const byName = a.contact.name.localeCompare(b.contact.name, "pt-BR");
+    if (byName !== 0) return byName;
+    return a.contact.id.localeCompare(b.contact.id);
+  });
+
+  return {
+    rows,
+    contactCount: rows.length,
+    totalOpenValue,
+    totalOpenCount,
+    totalProposedValue,
+    totalConfirmedValue,
+    overallConversionRate: totalDecided === 0 ? null : totalPlayed / totalDecided,
+  };
+}
