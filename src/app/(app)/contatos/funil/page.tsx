@@ -53,6 +53,11 @@ export default async function ContatosFunilPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {hasData && (
+            <a href="/contatos/funil/export" className="btn-secondary" download>
+              ⬇ CSV
+            </a>
+          )}
           <Link href="/shows/funil" className="btn-secondary">
             Funil geral
           </Link>
