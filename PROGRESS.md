@@ -9,7 +9,18 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1036 testes** verdes após o **nudge de ponto de
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1044 testes** verdes após a **taxa de cancelamento por
+contratante** em `/contatos/cancelamentos` (Sessão 184, D177 — pivô do eixo de exportação CSV, dado como esgotado na D174, de volta
+a **feature nova**: todo o resto da plataforma trata shows `CANCELLED` como ruído a excluir; o funil (`showPipeline`) é o único que
+os olha, mas só na taxa de concretização **global**, sem recorte por quem cancela. Novo helper puro
+`cancellationByContact<C>(items, minSample=MIN_CANCELLATION_SAMPLE=3)` em `src/lib/contacts.ts` (família de `clientConcentration`,
+recebe `ContactWithShows<C>[]`) mede por contato `totalShows`/`cancelledShows`/`cancellationRate`/`lostFee` (cachê dos cancelados)
++ `reliable` (`totalShows >= minSample`); agregados do topo somam **todos** os contatos com shows, a lista `rows` traz **só** os com
+≥1 cancelamento (fila acionável); contagem por relação (show com N contatos conta p/ cada, como D18); ordenação reliable-first →
+taxa desc → cancelados desc → cachê perdido desc → nome/id (um 5/5 confiável acima de um 1/1 ruidoso, sem esconder dado — selo
+"amostra pequena" resolve na apresentação, como cachê/prazo mediano gated D123/D130); página espelha o layout de
+`/contatos/concentracao` (cards + barra por taxa), registrada em `REPORT_GROUPS` (Contatos/"Relacionamento"); CSV e nudge no Painel
+adiados (D177(d)/(e)); **+8 testes**) sobre os **1036 testes** verdes após o **nudge de ponto de
 equilíbrio no Painel** (Sessão 183, D176 — a leitura do break-even (`computeBreakEven`: quantos shows/mês para cobrir o custo fixo
 vs. o ritmo atual) só existia na página `/financas/ponto-de-equilibrio`; ganhou eco no Painel via novo helper puro
 `breakEvenHeadline(analysis)` em `src/lib/finance.ts` — espelho de `cashBurnHeadline`/`yearToDatePaceHeadline`: recebe o
@@ -3276,6 +3287,16 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    selecionado e papel identificado nos dois períodos — fecha a simetria dos três eixos de concentração, **+5 testes**, ver D141.
    Próximo possível — um nudge dessa concentração no Painel (`roleConcentrationHeadline`, adiado na D138/D141 por já haver
    dois nudges de concentração lá).
+   **Cancelamentos por contratante** entregue na Sessão 184 — `cancellationByContact<C>(items, minSample=MIN_CANCELLATION_SAMPLE=3)`
+   em `src/lib/contacts.ts` (família de `clientConcentration`, recebe `ContactWithShows<C>[]`) + `/contatos/cancelamentos`
+   (cards de destaque taxa/cachê-perdido + tabela com barra por taxa), registrada no hub (Contatos/"Relacionamento"): a taxa de
+   cancelamento por quem paga — quem mais fura o combinado. Mede por contato `totalShows`/`cancelledShows`/`cancellationRate`/
+   `lostFee` + `reliable` (amostra >= minSample); rows só com ≥1 cancelamento, agregados somam todos os contatos com shows; contagem
+   por relação (D18); ordenação reliable-first (selo "amostra pequena" resolve na apresentação, D123/D130); é a 1ª leitura da
+   plataforma que **usa** os cancelados como sinal (o resto os exclui como ruído); distinta da taxa global do funil
+   (`showPipeline.conversionRate`, sem recorte por contratante); **+8 testes**, ver D177. Próximo possível — exportação CSV
+   (adiada na D177(d)), ou um nudge no Painel "N contratantes com taxa alta de cancelamento" (adiada na D177(e): já há 7 nudges lá),
+   ou recorte por período (`?ano=`) se surgir demanda.
 
 9. **Rentabilidade geográfica — evoluções** (rentabilidade por local entregue na Sessão 28, `/shows/locais` +
    `rankVenuesByProfit`; atuação por cidade na Sessão 57, `/shows/cidades` + `rankCitiesByProfit`; recorte por

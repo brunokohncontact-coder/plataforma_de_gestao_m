@@ -648,3 +648,121 @@ export function clientConcentration<C extends ContactRankLike>(
     level: concentrationLevel(hhi, rows.length),
   };
 }
+
+// ── Cancelamentos por contratante (quem mais fura o combinado?) ─────────────
+// Responde "quais contratantes mais cancelam shows já marcados?": para cada
+// contato, cruza os shows CANCELLED com o total de shows vinculados e mede a
+// taxa de cancelamento e o cachê perdido. Em todo o resto da plataforma os
+// cancelados são ruído a excluir (concentração, ranking, fidelização); aqui
+// são o próprio sinal — a confiabilidade do comprador. Distinto da taxa global
+// do funil (`showPipeline.conversionRate`, agregada, sem recorte por quem paga).
+//
+// Contagem por relação (um show com vários contatos conta para cada um, igual
+// ao ranking/concentração). Só entram na lista contatos com >=1 cancelamento;
+// os agregados do topo somam todos os contatos com shows vinculados.
+
+/** Amostra mínima de shows para a taxa de cancelamento ser confiável. */
+export const MIN_CANCELLATION_SAMPLE = 3;
+
+export interface CancellationRow<C extends ContactRankLike> {
+  contact: C;
+  /** Total de shows vinculados (todos os status). */
+  totalShows: number;
+  /** Shows CANCELLED vinculados. */
+  cancelledShows: number;
+  /** Fração de cancelamento (cancelledShows / totalShows, 0..1). */
+  cancellationRate: number;
+  /** Soma do cachê dos shows cancelados (centavos) — o combinado que caiu. */
+  lostFee: number;
+  /** true quando totalShows >= minSample (taxa estatisticamente confiável). */
+  reliable: boolean;
+}
+
+export interface ContactCancellations<C extends ContactRankLike> {
+  /** Contatos com >=1 cancelamento, do mais problemático ao menos. */
+  rows: CancellationRow<C>[];
+  /** Nº de contatos com ao menos um cancelamento. */
+  contactCount: number;
+  /** Total de relações show×contato consideradas (todos os status). */
+  totalShows: number;
+  /** Total de shows cancelados (somando as relações). */
+  totalCancelled: number;
+  /** Cachê total perdido em cancelamentos (centavos). */
+  totalLostFee: number;
+  /** Taxa de cancelamento da carteira (totalCancelled / totalShows, 0..1). */
+  overallRate: number;
+  /** Amostra mínima aplicada ao campo `reliable` de cada linha. */
+  minSample: number;
+}
+
+/**
+ * Mede a taxa de cancelamento por contratante: quantos dos shows marcados com
+ * cada contato acabaram cancelados, e quanto de cachê combinado caiu junto.
+ *
+ * A contagem é por relação (um show com vários contatos conta para cada um,
+ * igual ao ranking/concentração). Só viram linha os contatos com ao menos um
+ * cancelamento; os totais do agregado somam todos os contatos com shows. A taxa
+ * de um contato com poucos shows é ruidosa — `reliable` marca as linhas com
+ * `totalShows >= minSample` (padrão `MIN_CANCELLATION_SAMPLE`), e a ordenação
+ * põe as confiáveis primeiro (depois taxa desc, cancelados desc, cachê perdido
+ * desc, nome pt-BR, id). Pura e determinística.
+ */
+export function cancellationByContact<C extends ContactRankLike>(
+  items: ContactWithShows<C>[],
+  minSample: number = MIN_CANCELLATION_SAMPLE,
+): ContactCancellations<C> {
+  const rows: CancellationRow<C>[] = [];
+  let totalShows = 0;
+  let totalCancelled = 0;
+  let totalLostFee = 0;
+
+  for (const { contact, shows } of items) {
+    if (shows.length === 0) continue;
+
+    let cancelled = 0;
+    let lostFee = 0;
+    for (const s of shows) {
+      if (s.status === "CANCELLED") {
+        cancelled += 1;
+        lostFee += s.fee;
+      }
+    }
+
+    totalShows += shows.length;
+    totalCancelled += cancelled;
+    totalLostFee += lostFee;
+
+    if (cancelled === 0) continue; // sem cancelamento → não entra na lista
+    rows.push({
+      contact,
+      totalShows: shows.length,
+      cancelledShows: cancelled,
+      cancellationRate: cancelled / shows.length,
+      lostFee,
+      reliable: shows.length >= minSample,
+    });
+  }
+
+  rows.sort((a, b) => {
+    // Taxas confiáveis (amostra suficiente) primeiro.
+    if (a.reliable !== b.reliable) return a.reliable ? -1 : 1;
+    if (b.cancellationRate !== a.cancellationRate)
+      return b.cancellationRate - a.cancellationRate;
+    if (b.cancelledShows !== a.cancelledShows)
+      return b.cancelledShows - a.cancelledShows;
+    if (b.lostFee !== a.lostFee) return b.lostFee - a.lostFee;
+    const byName = a.contact.name.localeCompare(b.contact.name, "pt-BR");
+    if (byName !== 0) return byName;
+    return a.contact.id.localeCompare(b.contact.id);
+  });
+
+  return {
+    rows,
+    contactCount: rows.length,
+    totalShows,
+    totalCancelled,
+    totalLostFee,
+    overallRate: totalShows === 0 ? 0 : totalCancelled / totalShows,
+    minSample,
+  };
+}

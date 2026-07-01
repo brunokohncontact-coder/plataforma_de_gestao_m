@@ -5554,3 +5554,43 @@ contexto, decisão, justificativa e alternativas consideradas.
   **1036 testes** (`vitest run`); smoke test (`next start`) → `/login` 200, `/dashboard` 307 (auth-gated). `npm audit`
   **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver
   D6/bloqueios); **nenhuma dependência nova**.
+
+## D177 — Cancelamentos por contratante (`cancellationByContact` + `/contatos/cancelamentos`) (Sessão 184)
+- **Contexto:** todo o resto da plataforma trata shows `CANCELLED` como **ruído a excluir** — concentração, ranking, fidelização,
+  rentabilidade e o próprio `summarizeContactShows` filtram cancelados fora, porque medem valor realizado. O funil
+  (`showPipeline`) é o único que os olha, mas só na taxa de concretização **global** (`conversionRate = PLAYED/(PLAYED+CANCELLED)`),
+  sem recorte por **quem** cancela. Faltava a pergunta de risco de relacionamento "quais contratantes mais furam o combinado?":
+  saber que um comprador marca e cancela com frequência é sinal para cobrar sinal/adiantamento, priorizar quem honra, ou parar de
+  segurar data para ele. O eixo Contatos tinha ranking/concentração/rentabilidade/fidelização/reativar, mas nada sobre a
+  **confiabilidade** de cada contratante.
+- **Decisão:** novo helper puro `cancellationByContact<C>(items, minSample = MIN_CANCELLATION_SAMPLE)` em `src/lib/contacts.ts`
+  (mesma família de `clientConcentration`/`rankContactsByActivity`: recebe `ContactWithShows<C>[]`, é puro e determinístico). Para
+  cada contato cruza os shows `CANCELLED` com o total de shows vinculados e devolve, por linha, `totalShows`, `cancelledShows`,
+  `cancellationRate` (cancelados/total, 0..1), `lostFee` (soma do cachê dos cancelados — o combinado que caiu) e `reliable`. Os
+  agregados do topo (`totalShows`/`totalCancelled`/`totalLostFee`/`overallRate`) somam **todos** os contatos com shows; a lista
+  `rows` traz **só** os com ≥1 cancelamento (é a fila acionável). Página dedicada `/contatos/cancelamentos` espelhando o layout de
+  `/contatos/concentracao` (cards de destaque + tabela com barra por taxa), registrada em `REPORT_GROUPS` (Contatos/"Relacionamento",
+  ao lado de fidelização e reativar) — entra no hub, na busca e no índice automaticamente (D54/D56/D59).
+- **Contagem por relação:** um show vinculado a vários contatos conta o cancelamento para **cada um** — mesma convenção de cachê-por-
+  contato do ranking (D18) e da concentração. Coerente com o resto do eixo Contatos; a nota de rodapé da página explicita isso.
+- **Amostra mínima:** `MIN_CANCELLATION_SAMPLE = 3` (mesma régua de `MIN_MEDIAN_FEE_SAMPLE`/`MIN_MEDIAN_LAG_SAMPLE`, D123/D130). A
+  taxa de um contato com 1–2 shows é ruidosa (1/1 = 100% pode ser azar pontual). `reliable = totalShows >= minSample` **não** filtra
+  a linha — resolve na **apresentação** (selo "amostra pequena", como o cachê/prazo mediano gated na exibição): a ordenação põe as
+  taxas confiáveis primeiro, depois taxa desc, cancelados desc, cachê perdido desc, nome pt-BR, id. Assim um 5/5 confiável sobe
+  acima de um 1/1 ruidoso, mas nenhum dado some. `minSample` é injetável para teste/calibração.
+- **Alternativas consideradas:** (a) somar a taxa de cancelamento ao card do funil já existente — **descartado**: o funil é retrato
+  agregado do pipeline atual, não tem eixo por contratante; misturar por-contato ali quebraria a leitura. (b) ordenar puramente por
+  taxa desc (sem `reliable` primeiro) — **descartado**: encheria o topo de contatos-de-um-show em 100%, enterrando o padrão real; a
+  ordenação reliable-first entrega o sinal acionável no topo. (c) excluir da lista contatos abaixo de `minSample` — **descartado**:
+  esconder dado é pior que anotá-lo; um flaker de 2/2 ainda merece aparecer, só com a ressalva. (d) exportação CSV — **adiada**: o
+  eixo de exportação tabular foi dado como esgotado na D174/próximos-passos; esta sessão priorizou uma **feature nova** (não mais
+  CSV), como sinalizado ali. Fica como evolução natural se houver demanda. (e) nudge no Painel ("N contratantes com taxa alta de
+  cancelamento") — **adiada**: o Painel já tem 7 nudges; avaliar depois se este risco merece um.
+- **Testes:** **+8** em `contacts.test.ts` (`describe("cancellationByContact")`: lista vazia; só lista quem tem ≥1 cancelamento mas
+  agrega todos; taxa + cachê perdido por contato; ordenação reliable-first sobre ruidoso; entre confiáveis a maior taxa primeiro;
+  `minSample` customizado; contagem por relação (show cancelado com 2 contatos conta para cada); ignora contatos sem shows). **1044
+  testes** no total (eram 1036).
+- **DoD:** build de produção (rota `/contatos/cancelamentos` compila, 297 B) e lint (`next lint`, 0 avisos) verdes; typecheck
+  (`tsc --noEmit`) limpo; **1044 testes** (`vitest run`); smoke test (`next start`) → `/login` 200, `/contatos/cancelamentos` e
+  `/relatorios` 307 (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do
+  Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
