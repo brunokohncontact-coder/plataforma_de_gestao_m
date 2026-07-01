@@ -331,3 +331,152 @@ export function formatWeekendLabel(friday: string, sunday: string): string {
   }
   return `${f.getUTCDate()} ${fMonth} – ${s.getUTCDate()} ${sMonth}`;
 }
+
+// ── Antecedência de agendamento (booking lead time) ─────────────────────────
+// Quantos dias de antecedência, na prática, você fecha os shows: a diferença
+// (em dias UTC) entre quando o show entrou na agenda (`createdAt`) e a data em
+// que acontece. Um lead maior = mais previsibilidade de caixa e menos correria
+// para preencher a semana; um lead curto sinaliza agenda reativa. Só shows não
+// cancelados contam (um cancelado nunca aconteceu). Lançamentos **retroativos**
+// (o registro entrou depois da data do show — típico de back-fill de histórico)
+// não são "antecedência": são contados à parte e não entram na mediana nem na
+// distribuição, para não puxar a leitura para baixo com ruído de importação.
+// Pura.
+
+/** Um show visto pela ótica da antecedência de agendamento. */
+export interface LeadTimeShowLike {
+  status: string;
+  date: Date | string;
+  createdAt: Date | string;
+  fee: number;
+}
+
+/** Uma faixa de antecedência (ex.: "1 a 4 semanas") e quantos shows caem nela. */
+export interface LeadTimeBucket {
+  /** Rótulo legível da faixa. */
+  label: string;
+  /** Limite inferior em dias (inclusivo). */
+  minDays: number;
+  /** Limite superior em dias (inclusivo), ou null para "sem teto". */
+  maxDays: number | null;
+  /** Shows com antecedência nesta faixa. */
+  count: number;
+  /** Cachê somado dos shows da faixa (centavos). */
+  totalFee: number;
+  /** Participação da faixa no total de shows com antecedência (0..1). */
+  share: number;
+}
+
+export interface BookingLeadTime {
+  /** Shows com antecedência mensurável (não cancelados, lead >= 0). */
+  sample: number;
+  /** Antecedência mediana em dias (robusta a outlier); 0 se amostra vazia. */
+  medianDays: number;
+  /** Antecedência média em dias (arredondada); 0 se amostra vazia. */
+  avgDays: number;
+  /** Menor antecedência observada (dias); null se amostra vazia. */
+  shortestDays: number | null;
+  /** Maior antecedência observada (dias); null se amostra vazia. */
+  longestDays: number | null;
+  /** Distribuição por faixa, na ordem canônica (curta → longa). */
+  buckets: LeadTimeBucket[];
+  /** Lançamentos retroativos ignorados (createdAt depois da data do show). */
+  retroactiveCount: number;
+  /** True quando a amostra alcança `MIN_LEAD_TIME_SAMPLE` (mediana confiável). */
+  reliable: boolean;
+}
+
+/**
+ * Mínimo de shows para a antecedência mediana ser uma leitura confiável. Com
+ * 1–2 shows a mediana vira o próprio dado bruto e não representa um "hábito" de
+ * agendamento — a UI mostra o número, mas marca a amostra como pequena.
+ */
+export const MIN_LEAD_TIME_SAMPLE = 3;
+
+/** Faixas de antecedência (dias), da mais curta à mais longa. */
+const LEAD_TIME_BUCKET_DEFS: { label: string; minDays: number; maxDays: number | null }[] = [
+  { label: "Até 1 semana", minDays: 0, maxDays: 7 },
+  { label: "1 a 4 semanas", minDays: 8, maxDays: 30 },
+  { label: "1 a 3 meses", minDays: 31, maxDays: 90 },
+  { label: "Mais de 3 meses", minDays: 91, maxDays: null },
+];
+
+/** Meia-noite UTC (ms) do dia da data — diferença por dia inteiro, sem fuso. */
+function leadUtcMidnight(date: Date | string): number {
+  const d = typeof date === "string" ? new Date(date) : date;
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+
+/** Mediana de uma lista de inteiros; vazia → 0. Não muta a entrada. */
+function leadMedian(nums: number[]): number {
+  if (nums.length === 0) return 0;
+  const sorted = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? Math.round((sorted[mid - 1] + sorted[mid]) / 2)
+    : sorted[mid];
+}
+
+/**
+ * Antecedência de agendamento sobre os shows do usuário. Para cada show não
+ * cancelado calcula `leadDays = dia(date) - dia(createdAt)` (dias UTC inteiros):
+ * >= 0 entra na amostra; < 0 é um lançamento retroativo (contado à parte). A
+ * mediana e as médias são sobre a amostra; a distribuição reparte a amostra nas
+ * faixas canônicas (com o cachê somado de cada faixa, para pesar em receita).
+ * Pura.
+ */
+export function bookingLeadTime<T extends LeadTimeShowLike>(shows: T[]): BookingLeadTime {
+  const leads: number[] = [];
+  let retroactiveCount = 0;
+
+  for (const s of shows) {
+    if (s.status === "CANCELLED") continue;
+    const leadDays = Math.round(
+      (leadUtcMidnight(s.date) - leadUtcMidnight(s.createdAt)) / DAY_MS,
+    );
+    if (leadDays < 0) {
+      retroactiveCount += 1;
+      continue;
+    }
+    leads.push(leadDays);
+  }
+
+  const buckets: LeadTimeBucket[] = LEAD_TIME_BUCKET_DEFS.map((def) => ({
+    ...def,
+    count: 0,
+    totalFee: 0,
+    share: 0,
+  }));
+
+  // Segunda passada para o cachê por faixa (precisa do fee junto do lead).
+  for (const s of shows) {
+    if (s.status === "CANCELLED") continue;
+    const leadDays = Math.round(
+      (leadUtcMidnight(s.date) - leadUtcMidnight(s.createdAt)) / DAY_MS,
+    );
+    if (leadDays < 0) continue;
+    const bucket = buckets.find(
+      (b) => leadDays >= b.minDays && (b.maxDays == null || leadDays <= b.maxDays),
+    );
+    if (bucket) {
+      bucket.count += 1;
+      bucket.totalFee += s.fee;
+    }
+  }
+
+  const sample = leads.length;
+  for (const b of buckets) {
+    b.share = sample > 0 ? b.count / sample : 0;
+  }
+
+  return {
+    sample,
+    medianDays: leadMedian(leads),
+    avgDays: sample > 0 ? Math.round(leads.reduce((a, b) => a + b, 0) / sample) : 0,
+    shortestDays: sample > 0 ? Math.min(...leads) : null,
+    longestDays: sample > 0 ? Math.max(...leads) : null,
+    buckets,
+    retroactiveCount,
+    reliable: sample >= MIN_LEAD_TIME_SAMPLE,
+  };
+}

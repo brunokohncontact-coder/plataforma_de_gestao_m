@@ -9,7 +9,18 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1081 testes** verdes após a **exportação CSV do
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1093 testes** verdes após a **antecedência de
+agendamento** (Sessão 192, D185 — feature nova do lado Shows: `bookingLeadTime<T>(shows)` em `src/lib/shows.ts` +
+`/shows/antecedencia` + export CSV (`bookingLeadTimeToCsv` + `/shows/antecedencia/export`). Primeiro uso do campo `createdAt` do show
+como eixo analítico: com quanta antecedência os shows entram na agenda (booking lead time / runway). Para cada show **não cancelado**,
+`leadDays = dia(date) − dia(createdAt)` em dias UTC inteiros; `>= 0` entra na amostra, `< 0` é **lançamento retroativo** (back-fill) e
+fica **fora** da mediana/média/distribuição, contado à parte (`retroactiveCount`) para não puxar a leitura para baixo com ruído de
+importação. Expõe `sample`/`medianDays`/`avgDays`/`shortestDays`/`longestDays`/`reliable` (amostra ≥ `MIN_LEAD_TIME_SAMPLE=3`) + 4
+faixas canônicas (Até 1 semana / 1 a 4 semanas / 1 a 3 meses / Mais de 3 meses) com `count`/`totalFee`/`share`. Mediana antes da média
+(robusta a outlier, como o DSO/prazo de recebimento); cachê por faixa pesa a receita ("os shows de cima da hora carregam quanto?").
+Página: 4 cards + tabela de faixas com barra e Total; CSV irmão de `feeDistributionToCsv`/`weekdayPerformanceToCsv`. Registrada em
+`REPORT_GROUPS` (Shows/"Agenda & pipeline"). **Ressalva de dados:** `createdAt` só é fiel com cadastro perto do fechamento — seed/import
+distorcem; sinalizado para validação. **+12 testes**) sobre os **1081 testes** verdes após a **exportação CSV do
 funil por contratante** em `/contatos/funil/export` (Sessão 191, D184 — a tela "Funil por contratante" (`pipelineByContact` +
 `/contatos/funil`, D183) era a única tabular do acervo ainda sem botão "⬇ CSV"; a própria D183(b) adiara o export. Serializador puro
 `pipelineByContactToCsv(report)` + `PIPELINE_BY_CONTACT_CSV_HEADERS` em `src/lib/csv.ts` (irmão de `cancellationByContactToCsv`/D178,
@@ -3500,10 +3511,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    (`AVERAGE_WINDOW=3`, regra ≥2 meses), nome `relatorio-{YYYY-MM}.csv`, botão "⬇ Relatório (CSV)" (o dump bruto que já havia virou
    "⬇ Transações (CSV)"), distinto de `categoryVariationToCsv` (lá o eixo são categorias), ver D174 — fecha o candidato natural
    apontado na D173.
-   Próximo possível — as telas restantes sem export são **só** painéis de número único (ponto-de-equilíbrio, reserva-impostos):
-   menos óbvios como planilha; provavelmente não vale uma planilha de uma linha. O eixo de exportação tabular está, na prática,
-   **esgotado** — próximas sessões podem voltar a evoluir feature (calendário drag&drop, log de transições do funil, recuperação
-   de senha) em vez de mais CSV.
+   **Antecedência de agendamento** entregue na Sessão 192 — `bookingLeadTime` + `/shows/antecedencia` + `bookingLeadTimeToCsv` +
+   `/shows/antecedencia/export`: primeiro uso de `createdAt` como eixo (com quanta antecedência os shows entram na agenda), ver D185.
+   Próximo possível para esta feature: (a) recorte por `?ano=`/`PeriodPicker` (adiado, retrato do acervo); (b) restringir a amostra a
+   CONFIRMED+PLAYED (compromissos firmes) como visão alternativa; (c) nudge no Painel se a antecedência mediana cair a um piso curto.
+   Fora dela, o eixo de exportação tabular segue **esgotado** e próximas sessões podem evoluir feature maior (calendário drag&drop,
+   log de transições do funil, recuperação de senha).
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

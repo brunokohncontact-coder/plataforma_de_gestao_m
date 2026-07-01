@@ -100,11 +100,15 @@ import {
   SCHEDULE_CONFLICTS_CSV_HEADERS,
   taxReserveToCsv,
   TAX_RESERVE_CSV_HEADERS,
+  bookingLeadTimeToCsv,
+  BOOKING_LEAD_TIME_CSV_HEADERS,
 } from "./csv";
 import {
   findOpenWeekends,
   findScheduleConflicts,
+  bookingLeadTime,
   type ConflictShowLike,
+  type LeadTimeShowLike,
 } from "./shows";
 import {
   annualSummary,
@@ -2790,5 +2794,44 @@ describe("yearEndProjectionToCsv", () => {
     expect(lines[1]).toBe("Receitas;Já recebido;0,00;0%");
     expect(lines[4]).toBe("Receitas;Total projetado;0,00;");
     expect(lines[8]).toBe("Resultado;Resultado projetado;0,00;");
+  });
+});
+
+function leadCsvShow(partial: Partial<LeadTimeShowLike>): LeadTimeShowLike {
+  return {
+    status: "CONFIRMED",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    date: "2026-02-01T00:00:00.000Z",
+    fee: 100_00,
+    ...partial,
+  };
+}
+
+describe("bookingLeadTimeToCsv", () => {
+  it("emite só o cabeçalho + Total zerado quando não há amostra", () => {
+    const csv = bookingLeadTimeToCsv(bookingLeadTime([]));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(BOOKING_LEAD_TIME_CSV_HEADERS.join(";"));
+    // 4 faixas sempre presentes, todas zeradas, + Total.
+    expect(lines).toHaveLength(6);
+    expect(lines[1]).toBe("Até 1 semana;0;7;0;0%;0,00");
+    expect(lines[4]).toBe("Mais de 3 meses;91;;0;0%;0,00");
+    expect(lines[5]).toBe("Total;;;0;;0,00");
+  });
+
+  it("uma linha por faixa com limites, contagem, participação e cachê + Total", () => {
+    const csv = bookingLeadTimeToCsv(
+      bookingLeadTime([
+        leadCsvShow({ createdAt: "2026-01-01T00:00:00.000Z", date: "2026-01-04T00:00:00.000Z", fee: 100_00 }), // 3 → Até 1 semana
+        leadCsvShow({ createdAt: "2026-01-01T00:00:00.000Z", date: "2026-01-21T00:00:00.000Z", fee: 200_00 }), // 20 → 1 a 4 semanas
+        leadCsvShow({ createdAt: "2026-01-01T00:00:00.000Z", date: "2026-06-01T00:00:00.000Z", fee: 300_00 }), // 151 → Mais de 3 meses
+      ]),
+    );
+    const lines = csv.split("\r\n");
+    expect(lines[1]).toBe("Até 1 semana;0;7;1;33%;100,00");
+    expect(lines[2]).toBe("1 a 4 semanas;8;30;1;33%;200,00");
+    expect(lines[3]).toBe("1 a 3 meses;31;90;0;0%;0,00");
+    expect(lines[4]).toBe("Mais de 3 meses;91;;1;33%;300,00");
+    expect(lines[5]).toBe("Total;;;3;;600,00");
   });
 });
