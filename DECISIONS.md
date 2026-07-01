@@ -5517,3 +5517,40 @@ contexto, decisão, justificativa e alternativas consideradas.
   (`tsc --noEmit`) limpo; **1032 testes** (`vitest run`); smoke test (`next start`) → `/` 200 (Ready in 380ms). `npm audit`
   **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver
   D6/bloqueios); **nenhuma dependência nova**.
+
+## D176 — Nudge de ponto de equilíbrio no Painel (`breakEvenHeadline` + card no dashboard) (Sessão 183)
+- **Contexto:** a página `/financas/ponto-de-equilibrio` (`computeBreakEven`, D68-adjacente) responde "quantos shows/mês preciso
+  fazer só para cobrir o custo fixo?" e já cruza a meta (`showsNeeded` = custo fixo ÷ resultado médio por show) com o ritmo atual
+  (`avgShowsPerMonth`), sinalizando `covered`. Mas essa leitura só existia na página dedicada — o Painel, que já concentra 6 nudges
+  de risco derivados de helpers `*Headline` (DSO, burn rate, ritmo do ano, concentração de clientes/geográfica, sazonalidade), não
+  tinha presença do break-even. Na varredura da D175 o break-even foi (com razão) descartado para CSV por ser escalares, não uma
+  série — mas isso o deixava como um dos poucos relatórios sem **nenhum** eco no Painel. Um nudge é o formato certo para ele: não é
+  uma tabela para exportar, é um alerta acionável ("seu ritmo não fecha a conta do mês").
+- **Decisão:** novo helper puro `breakEvenHeadline(analysis: BreakEvenAnalysis): BreakEvenHeadline` em `src/lib/finance.ts`, logo
+  após `computeBreakEven` — espelho estrutural de `cashBurnHeadline`/`yearToDatePaceHeadline`: recebe o `computeBreakEven` já
+  computado (sem I/O) e decide só a **exibição**. A regra de mostrar vive no helper, o dashboard só consome.
+- **Regra de exibição:** `show = showsNeeded != null && covered === false` — aparece **só** quando há uma meta de shows a bater e o
+  ritmo atual **não a cobre**. Com a conta já coberta (`covered === true`), sem custo fixo recorrente (`showsNeeded == null` por
+  `monthlyFixedCost <= 0`) ou com o show médio no vermelho (`showsNeeded == null` por `avgNetPerShow <= 0`) o aviso seria ruído —
+  mesma disciplina dos demais nudges (só mordem quando há de fato risco).
+- **Escala de urgência:** `critical = avgShowsPerMonth / showsNeeded <= BREAK_EVEN_CRITICAL_RATIO` (=**0,5**) — o ritmo atual cobre
+  metade ou menos da meta de shows/mês. Constante exportada e documentada como HIPÓTESE de planejamento (calibrável, como
+  `YTD_PACE_CRITICAL_RATIO`/`CRITICAL_RUNWAY_MONTHS`). O card escala de âmbar (⚖️) para vermelho (🔴) no crítico, exatamente como
+  `burnHeadline`/`ytdPaceHeadline`.
+- **Card:** banner-link em `dashboard/page.tsx` (reaproveita os `shows`/`txs` já carregados via `computeBreakEven(shows as
+  BreakEvenShowLike[], txs)` — sem consulta extra), linkando para `/financas/ponto-de-equilibrio`, com o texto "Seu ritmo de X
+  shows/mês está abaixo dos Y shows/mês para cobrir o custo fixo (R$ Z/mês)". Posicionado logo após o nudge de burn rate (mesma
+  família de custo fixo/fôlego).
+- **Alternativas consideradas:** (a) CSV do break-even — **descartado** (D175(a)): escalares, baixo valor de planilha; o nudge é o
+  formato certo. (b) mostrar também quando `covered === true` (reforço positivo "você já cobre o custo") — **descartado**: o Painel
+  é para riscos acionáveis, não parabéns; um card verde a mais só adiciona densidade (mesma régua de `cashBurnHeadline`, que não
+  mostra `surplus`). (c) disparar também com `showsNeeded == null` por show médio negativo (o caso mais grave) — **adiado**: esse
+  estado ("nenhum número de shows fecha a conta, reveja cachê/custos") tem semântica diferente de "faltam shows" e mereceria uma
+  mensagem própria; a página já o cobre e o Painel de burn rate/rentabilidade já sinaliza resultado negativo. Fica como evolução.
+- **Testes:** **+4** em `finance.test.ts` (`describe("breakEvenHeadline")`: não aparece sem meta (sem custo fixo/shows); não aparece
+  com a conta já coberta; aparece não-crítico com ritmo abaixo da meta mas acima da metade (1,5/2 = 0,75); crítico quando o ritmo
+  cai a ≤ metade da meta (1/5 = 0,2, custo fixo 900,00)). **1036 testes** no total (eram 1032).
+- **DoD:** build de produção (dashboard recompila) e lint (`next lint`, 0 avisos) verdes; typecheck (`tsc --noEmit`) limpo;
+  **1036 testes** (`vitest run`); smoke test (`next start`) → `/login` 200, `/dashboard` 307 (auth-gated). `npm audit`
+  **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver
+  D6/bloqueios); **nenhuma dependência nova**.

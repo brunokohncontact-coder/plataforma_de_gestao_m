@@ -69,6 +69,8 @@ import {
   recurringExpenses,
   pendingFixedCosts,
   computeBreakEven,
+  breakEvenHeadline,
+  BREAK_EVEN_CRITICAL_RATIO,
   cashRunway,
   cashBurnRunway,
   cashBurnHeadline,
@@ -4772,6 +4774,69 @@ describe("computeBreakEven", () => {
     expect(r.showsNeeded).toBe(1);
     expect(r.avgShowsPerMonth).toBe(2);
     expect(r.covered).toBe(true);
+  });
+});
+
+describe("breakEvenHeadline", () => {
+  const NOW = "2026-06-15T00:00:00.000Z"; // junho/2026
+
+  const fixedCostTxs: TxLike[] = [
+    tx({ type: "EXPENSE", amount: 300_00, category: "Sala", date: "2026-04-10T00:00:00.000Z" }),
+    tx({ type: "EXPENSE", amount: 300_00, category: "Sala", date: "2026-05-10T00:00:00.000Z" }),
+    tx({ type: "EXPENSE", amount: 300_00, category: "Sala", date: "2026-06-10T00:00:00.000Z" }),
+  ];
+
+  it("não aparece quando não há meta a bater (sem custo fixo / sem shows)", () => {
+    const h = breakEvenHeadline(computeBreakEven([], [], { now: NOW }));
+    expect(h.show).toBe(false);
+    expect(h.critical).toBe(false);
+    expect(h.showsNeeded).toBeNull();
+  });
+
+  it("não aparece quando o ritmo atual já cobre o custo fixo", () => {
+    // net médio 400 → meta ceil(300/400)=1; dois shows em jun → 2/mês ≥ 1 → cobre.
+    const shows: BreakEvenShowLike[] = [
+      { id: "s1", fee: 400_00, status: "PLAYED", date: "2026-06-05T00:00:00.000Z" },
+      { id: "s2", fee: 400_00, status: "PLAYED", date: "2026-06-20T00:00:00.000Z" },
+    ];
+    const h = breakEvenHeadline(computeBreakEven(shows, fixedCostTxs, { now: NOW }));
+    expect(h.show).toBe(false);
+    expect(h.critical).toBe(false);
+  });
+
+  it("aparece (não-crítico) quando o ritmo fica abaixo da meta mas acima da metade", () => {
+    // net médio 200 → meta ceil(300/200)=2. Três shows num span de 2 meses (mai,jun)
+    // → 1,5/mês; meta 2 → não cobre; 1,5/2 = 0,75 > 0,5 → aparece, mas não é crítico.
+    const shows: BreakEvenShowLike[] = [
+      { id: "s1", fee: 200_00, status: "PLAYED", date: "2026-05-05T00:00:00.000Z" },
+      { id: "s2", fee: 200_00, status: "PLAYED", date: "2026-05-20T00:00:00.000Z" },
+      { id: "s3", fee: 200_00, status: "PLAYED", date: "2026-06-05T00:00:00.000Z" },
+    ];
+    const h = breakEvenHeadline(computeBreakEven(shows, fixedCostTxs, { now: NOW }));
+    expect(h.show).toBe(true);
+    expect(h.showsNeeded).toBe(2);
+    expect(h.avgShowsPerMonth).toBe(1.5);
+    // 1,5/2 = 0,75 > BREAK_EVEN_CRITICAL_RATIO (0,5) → não-crítico.
+    expect(h.critical).toBe(false);
+    expect(1.5 / 2 <= BREAK_EVEN_CRITICAL_RATIO).toBe(false);
+  });
+
+  it("marca crítico quando o ritmo cai a ≤ metade da meta de shows/mês", () => {
+    // Custo fixo 900 (Sala 900 × 3 meses), net médio 200 → meta ceil(900/200)=5.
+    // Um único show em jun → 1/mês; 1/5 = 0,2 ≤ 0,5 → crítico.
+    const bigFixed: TxLike[] = [
+      tx({ type: "EXPENSE", amount: 900_00, category: "Sala", date: "2026-04-10T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 900_00, category: "Sala", date: "2026-05-10T00:00:00.000Z" }),
+      tx({ type: "EXPENSE", amount: 900_00, category: "Sala", date: "2026-06-10T00:00:00.000Z" }),
+    ];
+    const shows: BreakEvenShowLike[] = [
+      { id: "s1", fee: 200_00, status: "PLAYED", date: "2026-06-05T00:00:00.000Z" },
+    ];
+    const h = breakEvenHeadline(computeBreakEven(shows, bigFixed, { now: NOW }));
+    expect(h.show).toBe(true);
+    expect(h.showsNeeded).toBe(5);
+    expect(h.critical).toBe(true);
+    expect(h.monthlyFixedCost).toBe(900_00);
   });
 });
 

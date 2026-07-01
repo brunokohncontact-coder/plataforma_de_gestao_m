@@ -21,6 +21,8 @@ import {
   compareYearEndToPrevious,
   recurringExpenses,
   pendingFixedCosts,
+  computeBreakEven,
+  breakEvenHeadline,
   computeGoalProgress,
   compareGoalScenarios,
   goalRunRate,
@@ -46,6 +48,7 @@ import {
   type ReceivableShowLike,
   type PromisableShowLike,
   type ShowLike,
+  type BreakEvenShowLike,
   type YearEndShowLike,
   type MetricDelta,
   type PaymentSpeedBucketKey,
@@ -252,6 +255,15 @@ export default async function DashboardPage() {
   // entrou — só dispara quando o músico de fato queima caixa no ritmo recente. Mesma
   // disciplina: vira nudge só quando o fôlego morde (tight/critical), via cashBurnHeadline.
   const burnHeadline = cashBurnHeadline(cashBurnRunway(txs));
+
+  // Ponto de equilíbrio (D68/break-even): "meu ritmo de shows cobre o custo fixo
+  // do mês?". Reaproveita os shows e transações já carregados (sem I/O extra):
+  // computeBreakEven estima a meta de shows/mês (custo fixo ÷ resultado médio por
+  // show) e a compara com o ritmo atual. Vira nudge só quando há uma meta a bater
+  // e o ritmo NÃO a cobre (breakEvenHeadline → show); com a conta já coberta, sem
+  // custo fixo ou show médio no vermelho o aviso seria ruído. Detalhe completo em
+  // /financas/ponto-de-equilibrio.
+  const breakEven = breakEvenHeadline(computeBreakEven(shows as BreakEvenShowLike[], txs));
 
   // Ritmo do ano (D162): "estou atrás de onde eu estava nesta época do ano passado?".
   // Compara o acumulado de receita do ano corrente (1º jan → hoje, competência) com o
@@ -537,6 +549,38 @@ export default async function DashboardPage() {
             (queima de {formatMoney(burnHeadline.monthlyBurn)}/mês)
           </span>
           <span className={burnHeadline.critical ? "text-red-600" : "text-amber-600"}>Ver →</span>
+        </Link>
+      )}
+
+      {/* Ponto de equilíbrio (break-even): o ritmo de shows/mês não cobre o custo fixo
+          do mês — só aparece quando há meta a bater e ela não está coberta. Escala para
+          vermelho quando o ritmo cai a ≤ metade da meta. */}
+      {breakEven.show && (
+        <Link
+          href="/financas/ponto-de-equilibrio"
+          className={
+            "flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3 text-sm transition " +
+            (breakEven.critical
+              ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100")
+          }
+        >
+          <span className="font-semibold">
+            {breakEven.critical ? "🔴" : "⚖️"} Abaixo do ponto de equilíbrio
+          </span>
+          <span>
+            Seu ritmo de{" "}
+            <strong>
+              {breakEven.avgShowsPerMonth.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}{" "}
+              {breakEven.avgShowsPerMonth === 1 ? "show" : "shows"}/mês
+            </strong>{" "}
+            está abaixo dos{" "}
+            <strong>
+              {breakEven.showsNeeded} {breakEven.showsNeeded === 1 ? "show" : "shows"}/mês
+            </strong>{" "}
+            para cobrir o custo fixo ({formatMoney(breakEven.monthlyFixedCost)}/mês)
+          </span>
+          <span className={breakEven.critical ? "text-red-600" : "text-amber-600"}>Ver →</span>
         </Link>
       )}
 
