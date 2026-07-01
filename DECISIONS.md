@@ -5628,3 +5628,37 @@ contexto, decisão, justificativa e alternativas consideradas.
   typecheck (`tsc --noEmit`) limpo; **1047 testes** (`vitest run`); smoke test (`next start`) → `/login` 200, `/contatos/cancelamentos`
   e `/contatos/cancelamentos/export` 307 (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high /
   1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+
+## D179 — Nudge de cancelamentos no Painel (`cancellationHeadline` + banner em `/dashboard`) (Sessão 186)
+- **Contexto:** a taxa de cancelamento por contratante (`cancellationByContact`/D177 — quem fura o combinado — e sua exportação
+  CSV/D178) tinha página e CSV, mas **nenhuma presença no Painel**. A própria D177(e) deixara o nudge como evolução adiada ("o
+  Painel já tem 7 nudges; avaliar depois se este risco merece um"). Esta sessão fecha a lacuna: um contratante que cancela metade
+  dos shows marcados é exatamente o tipo de risco que o Painel deve levantar de relance.
+- **Decisão:** helper puro `cancellationHeadline<C>(report, highRate=HIGH_CANCELLATION_RATE=0.3, criticalRate=CRITICAL_CANCELLATION_RATE=0.5)`
+  em `src/lib/contacts.ts` (espelho de `clientConcentrationHeadline`/`paymentLagHeadline`: recebe uma `cancellationByContact` já
+  computada e decide só a exibição). Filtra as linhas **confiáveis** (`reliable`, amostra ≥ `minSample`) com taxa ≥ `highRate`; o
+  pior (rows já vem ordenado confiáveis-primeiro/taxa desc → o primeiro do filtro) vira a manchete. `show` = existe tal contratante;
+  `critical` = a taxa dele ≥ `criticalRate`. Expõe contato/taxa/cancelados/total/cachê perdido + `flaggedCount` (quantos confiáveis
+  passam do limiar, para o "e mais N"). Banner-link 🟠/🔴 em `dashboard/page.tsx` após os nudges de concentração de clientes/geo,
+  linkando para `/contatos/cancelamentos`. O Painel pivota **em memória** os shows-com-contatos já carregados (sem I/O extra) para
+  montar o input por contratante — mesma disciplina "reaproveita os shows já carregados" dos outros nudges.
+- **Gate por confiabilidade (o ponto-chave):** contatos de amostra pequena são **ignorados** no nudge (1/1 = 100% é ruído, não
+  padrão). Isso difere da **página**, que lista o ruidoso com o selo "amostra pequena" — na página esconder dado é pior que anotá-lo
+  (D177), mas um nudge é um alarme: só deve tocar com sinal confiável. O limiar `highRate=0.3` mantém o banner **raro** (só um flaker
+  de fato), respondendo à ressalva de densidade da D177(e): no caso comum (ninguém furando ≥30% com amostra) o Painel não ganha
+  linha nenhuma.
+- **Alternativas consideradas:** (a) mostrar o ruidoso também (espelhar a página) — **descartado**: encheria o Painel de alarmes de
+  1/1 = 100%, o oposto de um sinal acionável. (b) ceder a vez a outro nudge (como o vale de sazonalidade cede ao pico) — **descartado**:
+  o gate por confiabilidade + limiar já torna o banner raro; um contratante flaker confiável é sinal independente dos demais, não um
+  par mutuamente exclusivo. (c) consulta dedicada de contatos (como a página) — **descartado**: os shows-com-contatos já vêm na
+  consulta do Painel; pivotar em memória evita I/O. (d) nudge da carteira inteira ("taxa de cancelamento geral alta") em vez de por
+  contratante — **descartado**: o acionável é *quem* cancela, não a média; a média já tem eco no card da página.
+- **Testes:** **+7** em `contacts.test.ts` (`describe("cancellationHeadline")`: não dispara sem cancelamentos; ignora ruidoso de
+  amostra pequena com 100%; dispara para confiável acima do limiar expondo o pior + crítico a 50%; morno entre 0.3 e 0.5 mostra sem
+  ser crítico; abaixo de 0.3 não dispara; escolhe o pior confiável e conta os demais via `flaggedCount`; respeita limiares
+  customizados). **1054 testes** no total (eram 1047).
+- **DoD:** build de produção (`/dashboard` compila) e lint (`next lint`, 0 avisos) verdes; typecheck (`tsc --noEmit`) limpo; **1054
+  testes** (`vitest run`); smoke test (`next start`) → `/login` 200, `/dashboard` e `/contatos/cancelamentos` 307 (auth-gated).
+  `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver
+  D6/bloqueios); **nenhuma dependência nova**.

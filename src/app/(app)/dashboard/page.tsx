@@ -59,6 +59,11 @@ import {
   formatWeekendLabel,
   type ConflictShowLike,
 } from "@/lib/shows";
+import {
+  cancellationByContact,
+  cancellationHeadline,
+  type ContactRankLike,
+} from "@/lib/contacts";
 import { pickPayerContact } from "@/lib/billing";
 import { formatMoney } from "@/lib/money";
 import { formatDate, formatMonthKey } from "@/lib/format";
@@ -298,6 +303,35 @@ export default async function DashboardPage() {
   // o detalhe completo está em /shows/cidades.
   const geoHeadline = geoConcentrationHeadline(
     geoConcentration(rankCitiesByProfit(shows, txs).rows),
+  );
+
+  // Cancelamentos por contratante (D177/D178): "algum contratante fura o
+  // combinado com frequência?". Reaproveita os shows (com contatos) já
+  // carregados — sem I/O extra: pivota show×contato para agrupar os shows por
+  // contratante e mede a taxa de cancelamento de cada um. Vira nudge só quando
+  // há um contratante CONFIÁVEL (amostra suficiente) furando acima do limiar —
+  // uma taxa alta com 1–2 shows é ruído, não padrão (cancellationHeadline
+  // resolve isso no gate). O detalhe está em /contatos/cancelamentos.
+  interface DashCancelContact extends ContactRankLike {
+    role: string;
+  }
+  const cancelByContact = new Map<
+    string,
+    { contact: DashCancelContact; shows: { status: string; date: Date; fee: number }[] }
+  >();
+  for (const s of shows) {
+    for (const cs of s.contacts) {
+      const c = cs.contact;
+      let entry = cancelByContact.get(c.id);
+      if (!entry) {
+        entry = { contact: { id: c.id, name: c.name, role: c.role }, shows: [] };
+        cancelByContact.set(c.id, entry);
+      }
+      entry.shows.push({ status: s.status, date: s.date, fee: s.fee });
+    }
+  }
+  const cancellationHead = cancellationHeadline(
+    cancellationByContact([...cancelByContact.values()]),
   );
 
   // Sazonalidade dos shows (D133/D134): "qual o próximo mês forte chegando?".
@@ -674,6 +708,43 @@ export default async function DashboardPage() {
           </span>
           <span
             className={geoHeadline.critical ? "text-red-600" : "text-amber-600"}
+          >
+            Ver →
+          </span>
+        </Link>
+      )}
+
+      {cancellationHead.show && cancellationHead.contact && (
+        <Link
+          href="/contatos/cancelamentos"
+          className={
+            "flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3 text-sm transition " +
+            (cancellationHead.critical
+              ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100")
+          }
+        >
+          <span className="font-semibold">
+            {cancellationHead.critical ? "🔴" : "🟠"} Contratante que fura o combinado
+          </span>
+          <span>
+            <strong>{cancellationHead.contact.name}</strong> cancelou{" "}
+            <strong>
+              {cancellationHead.cancelledShows} de {cancellationHead.totalShows} shows
+            </strong>{" "}
+            ({Math.round(cancellationHead.cancellationRate * 100)}%
+            {cancellationHead.lostFee > 0
+              ? `, ${formatMoney(cancellationHead.lostFee)} de cachê perdido`
+              : ""}
+            )
+            {cancellationHead.flaggedCount > 1
+              ? ` — e mais ${cancellationHead.flaggedCount - 1} com taxa alta`
+              : ""}
+          </span>
+          <span
+            className={
+              cancellationHead.critical ? "text-red-600" : "text-amber-600"
+            }
           >
             Ver →
           </span>

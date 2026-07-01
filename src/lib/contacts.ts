@@ -766,3 +766,74 @@ export function cancellationByContact<C extends ContactRankLike>(
     minSample,
   };
 }
+
+/**
+ * Taxa de cancelamento a partir da qual um contratante **confiável** (amostra
+ * suficiente) vira nudge no Painel. Abaixo disso o cancelamento é ocasional, não
+ * um padrão que mereça alerta.
+ */
+export const HIGH_CANCELLATION_RATE = 0.3;
+/** Taxa a partir da qual o nudge sobe o tom (crítico): metade ou mais fura. */
+export const CRITICAL_CANCELLATION_RATE = 0.5;
+
+export interface CancellationHeadline<C extends ContactRankLike> {
+  /**
+   * Deve aparecer no Painel? Só quando há um contratante **confiável**
+   * (`totalShows >= minSample`) cuja taxa de cancelamento bate `highRate` — um
+   * padrão de furar o combinado, não azar pontual. Contatos de amostra pequena
+   * são ignorados de propósito (uma taxa alta com 1–2 shows é ruído), mesma
+   * disciplina do selo "amostra pequena" da página (D177).
+   */
+  show: boolean;
+  /** O pior confiável fura ≥ `criticalRate` (metade dos shows) — tom mais forte. */
+  critical: boolean;
+  /** Contratante mais problemático (maior taxa entre os confiáveis), ou null. */
+  contact: C | null;
+  /** Taxa de cancelamento desse contratante (0..1). */
+  cancellationRate: number;
+  /** Shows cancelados desse contratante. */
+  cancelledShows: number;
+  /** Total de shows vinculados a esse contratante (todos os status). */
+  totalShows: number;
+  /** Cachê perdido com os cancelamentos desse contratante (centavos). */
+  lostFee: number;
+  /**
+   * Nº de contratantes confiáveis com taxa ≥ `highRate` (o pior + os demais) —
+   * permite ao Painel dizer "e mais N" sem recontar.
+   */
+  flaggedCount: number;
+}
+
+/**
+ * Resumo de Painel dos **cancelamentos por contratante**: deriva, de uma
+ * `cancellationByContact` já computada, se o nudge de risco de confiabilidade
+ * deve aparecer e com que urgência. Puro, sem I/O — espelha
+ * `clientConcentrationHeadline`/`paymentLagHeadline`: a regra de exibição vive
+ * aqui, o Painel só consome. Só dispara quando existe um contratante **confiável**
+ * (amostra suficiente) que fura o combinado acima de `highRate`; contatos de
+ * amostra pequena não contam (a mesma ressalva da página, resolvida no gate).
+ */
+export function cancellationHeadline<C extends ContactRankLike>(
+  report: ContactCancellations<C>,
+  highRate: number = HIGH_CANCELLATION_RATE,
+  criticalRate: number = CRITICAL_CANCELLATION_RATE,
+): CancellationHeadline<C> {
+  // `rows` já vem ordenado confiáveis-primeiro e taxa desc, então o primeiro
+  // confiável acima do limiar é o pior — mas filtrar deixa a intenção explícita
+  // e dá a contagem dos demais sinalizados de brinde.
+  const flagged = report.rows.filter(
+    (r) => r.reliable && r.cancellationRate >= highRate,
+  );
+  const worst = flagged[0] ?? null;
+  const critical = worst !== null && worst.cancellationRate >= criticalRate;
+  return {
+    show: worst !== null,
+    critical,
+    contact: worst?.contact ?? null,
+    cancellationRate: worst?.cancellationRate ?? 0,
+    cancelledShows: worst?.cancelledShows ?? 0,
+    totalShows: worst?.totalShows ?? 0,
+    lostFee: worst?.lostFee ?? 0,
+    flaggedCount: flagged.length,
+  };
+}
