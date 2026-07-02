@@ -3,11 +3,15 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   paymentLagByContact,
+  comparePaymentLagByContact,
   paymentLagYears,
   parseProfitYear,
   filterShowsByYear,
   MIN_MEDIAN_LAG_SAMPLE,
+  PAYMENT_LAG_TREND_EPSILON,
   type PaymentSpeedBucketKey,
+  type PaymentLagByContactComparison,
+  type ContactPaymentLagChange,
   type ReceivableShowLike,
   type TxLike,
 } from "@/lib/finance";
@@ -113,6 +117,28 @@ export default async function PaymentLagByContactPage({
     txs,
     getPayer as (s: ReceivableShowLike & ShowRow) => PayerContact | null,
   );
+
+  // Comparativo por contratante {ano} × {ano-1}: quem começou a te pagar mais
+  // rápido / mais devagar (D194 adiara este "passo maior"). Só com um ano
+  // específico e ambos os períodos com recebimento — senão "acelerou/desacelerou"
+  // enganaria. Reusa os mesmos shows/txs já carregados (recorte por `date`, D108),
+  // sem nova consulta. O veredito por contratante ancora na média (avgDays), o
+  // eixo por que a página já ordena e destaca.
+  let comparison: PaymentLagByContactComparison<PayerContact> | null = null;
+  let previousYear = 0;
+  if (yearFilter !== "all") {
+    previousYear = yearFilter - 1;
+    const previousLag = paymentLagByContact(
+      filterShowsByYear(shows, previousYear) as (ReceivableShowLike & ShowRow)[],
+      txs,
+      getPayer as (s: ReceivableShowLike & ShowRow) => PayerContact | null,
+    );
+    if (lag.paymentCount > 0 && previousLag.paymentCount > 0) {
+      const c = comparePaymentLagByContact(lag, previousLag);
+      // Só vale exibir se há de fato algum contratante nos dois períodos.
+      if (c.changes.length > 0) comparison = c;
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -233,6 +259,14 @@ export default async function PaymentLagByContactPage({
               )}
             </div>
           </div>
+
+          {comparison && (
+            <PaymentLagMoversCard
+              comparison={comparison}
+              currentYear={yearFilter as number}
+              previousYear={previousYear}
+            />
+          )}
 
           {/* Por contratante, do mais lento ao mais rápido */}
           <section className="card overflow-x-auto p-0">
@@ -366,5 +400,117 @@ export default async function PaymentLagByContactPage({
         </>
       )}
     </div>
+  );
+}
+
+/** Formata uma variação em dias com sinal (ex.: 12 → "+12 dias", -1 → "−1 dia"). */
+function daysDelta(delta: number): string {
+  if (delta === 0) return "0 dias";
+  const abs = Math.abs(delta);
+  return `${delta > 0 ? "+" : "−"}${abs} ${abs === 1 ? "dia" : "dias"}`;
+}
+
+/** Um lado do card de "movers": quem acelerou ou quem desacelerou. */
+function MoverBlock({
+  title,
+  change,
+  tone,
+}: {
+  title: string;
+  change: ContactPaymentLagChange<PayerContact> | null;
+  tone: "improved" | "worsened";
+}) {
+  const valueClass = tone === "improved" ? "text-emerald-600" : "text-red-600";
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{title}</p>
+      {change ? (
+        <>
+          <p className="mt-1 truncate font-medium text-gray-900">{change.contact.name}</p>
+          <p className={"mt-1 text-lg font-bold " + valueClass}>
+            {daysDelta(change.avgDaysDelta)}
+          </p>
+          <p className="text-xs text-gray-400">
+            {daysLabel(change.previous.avgDays)} → {daysLabel(change.current.avgDays)}
+          </p>
+        </>
+      ) : (
+        <p className="mt-1 text-sm text-gray-400">
+          Nenhum contratante {tone === "improved" ? "acelerou" : "desacelerou"} além de{" "}
+          {PAYMENT_LAG_TREND_EPSILON} dias
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Card "Quem mudou de ritmo {ano} vs. {ano-1}": destaca o contratante que mais
+ * acelerou e o que mais desacelerou o pagamento em relação ao ano anterior
+ * (`comparePaymentLagByContact`, D194). Ao contrário do booking lead time, aqui
+ * **descer** o prazo é a melhora — o cachê entra mais cedo. Fecha o rodapé com os
+ * contratantes que entraram (começaram a pagar) e sumiram do caixa neste ano.
+ */
+function PaymentLagMoversCard({
+  comparison,
+  currentYear,
+  previousYear,
+}: {
+  comparison: PaymentLagByContactComparison<PayerContact>;
+  currentYear: number;
+  previousYear: number;
+}) {
+  const { biggestImprovement, biggestWorsening, changes, newContacts, droppedContacts } =
+    comparison;
+  const smallSample = [biggestImprovement, biggestWorsening].some(
+    (c) =>
+      c &&
+      (c.current.showCount < MIN_MEDIAN_LAG_SAMPLE ||
+        c.previous.showCount < MIN_MEDIAN_LAG_SAMPLE),
+  );
+  return (
+    <section className="card space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+          Quem mudou de ritmo · {currentYear} vs. {previousYear}
+        </p>
+        <span className="text-xs text-gray-400">
+          {changes.length}{" "}
+          {changes.length === 1 ? "contratante comparável" : "contratantes comparáveis"}
+        </span>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <MoverBlock title="Acelerou o pagamento" change={biggestImprovement} tone="improved" />
+        <MoverBlock title="Desacelerou o pagamento" change={biggestWorsening} tone="worsened" />
+      </div>
+      {(newContacts.length > 0 || droppedContacts.length > 0) && (
+        <p className="text-xs text-gray-400">
+          {newContacts.length > 0 && (
+            <>
+              {newContacts.length}{" "}
+              {newContacts.length === 1
+                ? "contratante começou a pagar"
+                : "contratantes começaram a pagar"}{" "}
+              em {currentYear}
+            </>
+          )}
+          {newContacts.length > 0 && droppedContacts.length > 0 && " · "}
+          {droppedContacts.length > 0 && (
+            <>
+              {droppedContacts.length}{" "}
+              {droppedContacts.length === 1 ? "pagou" : "pagaram"} em {previousYear} mas não em{" "}
+              {currentYear}
+            </>
+          )}
+          .
+        </p>
+      )}
+      {smallSample && (
+        <p className="text-xs text-gray-400">
+          Amostra pequena em ao menos um dos destaques — poucos shows tornam a comparação
+          sensível a casos isolados.
+        </p>
+      )}
+    </section>
   );
 }

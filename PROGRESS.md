@@ -9,7 +9,22 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1133 testes** verdes após o **recorte por período
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1137 testes** verdes após o **comparativo ano a ano do
+prazo de recebimento por contratante** (Sessão 202, D195 — a D194 (Sessão 201) recortou `/shows/prazo-recebimento/por-contratante`
+por ano mas deixou explícito o comparativo por contratante como o "passo maior" adiado (item 5). A tela-mãe já tem o card global do
+DSO (`comparePaymentLag`/D193), então o que faltava e é genuinamente novo é **por pagador**: quem começou a te pagar mais rápido /
+mais devagar de um ano para o outro. Novo helper puro `comparePaymentLagByContact<C,S>(current, previous)` +
+`PaymentLagByContactComparison<C,S>` + `ContactPaymentLagChange<C,S>` em `src/lib/finance.ts`: casa os contratantes por `contact.id`
+entre dois `paymentLagByContact` já computados — para cada um nos **dois** períodos devolve `avgDaysDelta`/`medianDaysDelta` + `trend`;
+os que aparecem só num período viram `newContacts`/`droppedContacts`; expõe `biggestImprovement`/`biggestWorsening` e ordena `changes`
+da maior piora à maior melhora. O veredito ancora na **média** (`avgDays`), não na mediana como o global (D193): por pagador a amostra
+costuma ser pequena (< `MIN_MEDIAN_LAG_SAMPLE`) e a mediana fica ruidosa, ao passo que `avgDays` está sempre definido e é o eixo por
+que a página já ordena/destaca. Direção **invertida** vs. booking lead time — descer o prazo é a melhora (`improved`), limiar reusado
+`PAYMENT_LAG_TREND_EPSILON` (=7 dias). Card `PaymentLagMoversCard` "Quem mudou de ritmo · {ano} vs. {ano-1}" na página, logo após os
+destaques, com dois blocos (Acelerou 🟢 / Desacelerou 🔴) + rodapé de novos/sumidos; gate: só com ano específico, ambos os períodos com
+recebimento e ≥1 contratante comparável; reusa os shows/txs já carregados (zero I/O extra). Adiado (D195): coluna "vs. {ano-1}" por
+linha na tabela e export CSV do comparativo (o card de extremos entrega o sinal acionável; export segue o precedente da D193, que
+também não exportou o card). **+4 testes**) sobre os **1133 testes** verdes após o **recorte por período
 (`?ano=`) no prazo de recebimento por contratante** (Sessão 201, D194 — a tela `/shows/prazo-recebimento/por-contratante`
 (`paymentLagByContact`/D52, quem te paga rápido × devagar) era um retrato do acervo inteiro: a tela-mãe já tinha `PeriodPicker`
 (D192) e comparativo ano a ano do DSO (D193), mas a irmã por contratante ficou sem recorte — era o próximo passo listado na
@@ -3668,8 +3683,15 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    apontado na D173.
    **Antecedência de agendamento** entregue na Sessão 192 — `bookingLeadTime` + `/shows/antecedencia` + `bookingLeadTimeToCsv` +
    `/shows/antecedencia/export`: primeiro uso de `createdAt` como eixo (com quanta antecedência os shows entram na agenda), ver D185.
-   Próximo possível para esta feature: (a) recorte por `?ano=`/`PeriodPicker` (adiado, retrato do acervo); (b) restringir a amostra a
-   CONFIRMED+PLAYED (compromissos firmes) como visão alternativa; (c) nudge no Painel se a antecedência mediana cair a um piso curto.
+   Próximo possível para esta feature: (a) recorte por `?ano=`/`PeriodPicker` (entregue, D186); (b) restringir a amostra a
+   CONFIRMED+PLAYED (compromissos firmes) como visão alternativa (entregue, D190); (c) nudge no Painel se a antecedência mediana cair
+   a um piso curto (entregue, D189).
+   **Comparativo ano a ano do prazo de recebimento por contratante** entregue na Sessão 202 — `comparePaymentLagByContact` +
+   `PaymentLagByContactComparison`/`ContactPaymentLagChange` em `src/lib/finance.ts` + card `PaymentLagMoversCard` "Quem mudou de
+   ritmo" em `/shows/prazo-recebimento/por-contratante`: quem começou a te pagar mais rápido/devagar de um ano para o outro
+   (biggest improvement/worsening + novos/sumidos), ancorado na média por conta da amostra pequena por pagador, ver D195 — fecha o
+   "passo maior" adiado na D194(item 5). Próximo possível para esta feature: (a) coluna "vs. {ano-1}" por linha na tabela (adiado,
+   ruído para amostras pequenas); (b) export CSV do comparativo (adiado, o card de extremos entrega o sinal acionável).
    Fora dela, o eixo de exportação tabular segue **esgotado** e próximas sessões podem evoluir feature maior (calendário drag&drop,
    log de transições do funil, recuperação de senha).
 
