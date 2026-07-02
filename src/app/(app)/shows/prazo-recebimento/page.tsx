@@ -4,8 +4,11 @@ import { prisma } from "@/lib/prisma";
 import {
   paymentLag,
   paymentLagYears,
+  comparePaymentLag,
   parseProfitYear,
   filterShowsByYear,
+  MIN_MEDIAN_LAG_SAMPLE,
+  type PaymentLagComparison,
   type PaymentSpeedBucketKey,
   type ReceivableShowLike,
   type TxLike,
@@ -86,6 +89,23 @@ export default async function PaymentLagPage({
   const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
 
   const lag = paymentLag(filterShowsByYear(shows, yearFilter) as Gig[], txs);
+
+  // Comparativo ano a ano do DSO: com um ano específico selecionado, computa o
+  // prazo de recebimento do ano anterior sobre os MESMOS registros já carregados
+  // (recorte por `date` UTC, D108 — sem nova consulta) e mede a variação da
+  // mediana/média. Ao contrário do booking lead time (subir a mediana é melhora),
+  // aqui **descer** o DSO é a melhora. Só faz sentido com ambos os períodos tendo
+  // recebimento (senão a comparação de medianas seria enganosa). Espelha o card
+  // ano a ano de `/shows/antecedencia` (D187), item adiado na D192.
+  let comparison: PaymentLagComparison<Gig> | null = null;
+  let previousYear = 0;
+  if (yearFilter !== "all") {
+    previousYear = yearFilter - 1;
+    const previousLag = paymentLag(filterShowsByYear(shows, previousYear) as Gig[], txs);
+    if (lag.showCount > 0 && previousLag.showCount > 0) {
+      comparison = comparePaymentLag(lag, previousLag);
+    }
+  }
 
   type Row = (typeof lag.rows)[number];
   const showInfo = (r: Row) =>
@@ -211,6 +231,14 @@ export default async function PaymentLagPage({
             </div>
           </div>
 
+          {comparison && (
+            <PaymentLagComparisonCard
+              comparison={comparison}
+              currentYear={yearFilter as number}
+              previousYear={previousYear}
+            />
+          )}
+
           {/* Distribuição por velocidade */}
           <section className="card">
             <h2 className="mb-3 text-sm font-semibold text-gray-700">
@@ -292,6 +320,94 @@ export default async function PaymentLagPage({
           </p>
         </>
       )}
+    </div>
+  );
+}
+
+/** Rótulo + tom do veredito do comparativo ano a ano do DSO. Ao contrário do
+ * booking lead time, aqui **descer** o prazo é a melhora (verde). */
+const PAYMENT_LAG_TREND: Record<
+  PaymentLagComparison["trend"],
+  { label: string; emoji: string; classes: string; note: string }
+> = {
+  improved: {
+    label: "Recebendo mais rápido",
+    emoji: "🟢",
+    classes: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    note: "O prazo mediano de recebimento caiu em relação ao ano anterior — o cachê está entrando mais cedo no caixa, com menos tempo de dinheiro parado.",
+  },
+  worsened: {
+    label: "Recebendo mais devagar",
+    emoji: "🔴",
+    classes: "border-red-200 bg-red-50 text-red-800",
+    note: "O prazo mediano de recebimento subiu em relação ao ano anterior — o dinheiro está demorando mais a cair. Vale reforçar a cobrança e combinar prazos mais curtos ao fechar os shows.",
+  },
+  stable: {
+    label: "Estável",
+    emoji: "⚪",
+    classes: "border-gray-200 bg-gray-50 text-gray-700",
+    note: "O prazo mediano de recebimento ficou praticamente igual ao do ano anterior.",
+  },
+};
+
+/** Formata uma variação em dias com sinal (ex.: 12 → "+12 dias", -1 → "−1 dia"). */
+function daysDelta(delta: number): string {
+  if (delta === 0) return "0 dias";
+  const abs = Math.abs(delta);
+  return `${delta > 0 ? "+" : "−"}${abs} ${abs === 1 ? "dia" : "dias"}`;
+}
+
+/**
+ * Card "Prazo de recebimento {ano} vs. {ano-1}": compara o DSO mediano do ano
+ * selecionado com o do ano anterior (espelha o comparativo ano a ano de
+ * `/shows/antecedencia`, D187, mas no eixo de dinheiro). Mostra a variação da
+ * mediana e da média, com um veredito de tendência. Ao contrário do booking lead
+ * time, aqui **descer** o prazo é a melhora — o cachê entra mais cedo.
+ */
+function PaymentLagComparisonCard({
+  comparison,
+  currentYear,
+  previousYear,
+}: {
+  comparison: PaymentLagComparison;
+  currentYear: number;
+  previousYear: number;
+}) {
+  const trend = PAYMENT_LAG_TREND[comparison.trend];
+  const { current, previous } = comparison;
+  const smallSample =
+    current.showCount < MIN_MEDIAN_LAG_SAMPLE || previous.showCount < MIN_MEDIAN_LAG_SAMPLE;
+  return (
+    <div className={"card border " + trend.classes}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide opacity-80">
+          Prazo de recebimento {currentYear} vs. {previousYear}
+        </p>
+        <span className="badge bg-white/70 font-semibold">
+          {trend.emoji} {trend.label}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+        <div>
+          <p className="text-2xl font-bold">{daysDelta(comparison.medianDaysDelta)}</p>
+          <p className="text-xs opacity-80">
+            mediana: {daysLabel(previous.medianDays)} ({previousYear}) →{" "}
+            {daysLabel(current.medianDays)} ({currentYear})
+          </p>
+        </div>
+        <div>
+          <p className="text-2xl font-bold">{daysDelta(comparison.avgDaysDelta)}</p>
+          <p className="text-xs opacity-80">
+            média: {daysLabel(previous.avgDays)} → {daysLabel(current.avgDays)}
+          </p>
+        </div>
+      </div>
+      {smallSample && (
+        <p className="mt-3 text-xs opacity-90">
+          Amostra pequena em ao menos um dos anos — a mediana ainda é sensível a casos isolados.
+        </p>
+      )}
+      <p className="mt-3 text-xs opacity-90">{trend.note}</p>
     </div>
   );
 }

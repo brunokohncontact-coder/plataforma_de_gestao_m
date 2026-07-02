@@ -4117,6 +4117,72 @@ export function paymentLagYears<S extends ReceivableShowLike>(
 }
 
 /**
+ * Limiar (em dias) para o comparativo ano a ano do prazo de recebimento tratar
+ * uma variação como tendência e não como ruído — o mesmo espírito de
+ * `LEAD_TIME_TREND_EPSILON` (7 dias) no eixo de antecedência: uma diferença de
+ * poucos dias no DSO mediano entre dois anos é oscilação normal, não uma
+ * mudança de hábito de recebimento.
+ */
+export const PAYMENT_LAG_TREND_EPSILON = 7;
+
+export interface PaymentLagComparison<
+  S extends ReceivableShowLike = ReceivableShowLike,
+> {
+  /** Prazo de recebimento do período atual (tipicamente o ano selecionado). */
+  current: PaymentLag<S>;
+  /** Prazo de recebimento do período de comparação (tipicamente o ano anterior). */
+  previous: PaymentLag<S>;
+  /**
+   * Variação do prazo MEDIANO (atual − anterior, em dias). Negativo = recebendo
+   * **mais rápido** agora (melhora); positivo = mais devagar (piora). Ao
+   * contrário do booking lead time, aqui **descer** a mediana é a melhora —
+   * mesma direção que cancelamento/concentração (um número menor é melhor).
+   */
+  medianDaysDelta: number;
+  /** Variação do prazo MÉDIO (DSO ponderado, atual − anterior, em dias). */
+  avgDaysDelta: number;
+  /**
+   * Direção do hábito de recebimento entre os dois períodos, decidida pela
+   * variação da **mediana** contra `PAYMENT_LAG_TREND_EPSILON`:
+   * - "improved": mediana caiu além do limiar (o caixa entra mais cedo);
+   * - "worsened": mediana subiu além do limiar (o caixa demora mais a entrar);
+   * - "stable": variação dentro do limiar (ruído, sem leitura de tendência).
+   */
+  trend: "improved" | "worsened" | "stable";
+}
+
+/**
+ * Compara o **prazo de recebimento** (DSO) entre dois períodos (atual ×
+ * anterior), espelhando `compareBookingLeadTime` (D187) mas no eixo de dinheiro
+ * e com a direção **invertida**: aqui um DSO menor é a melhora (o cachê entra
+ * mais cedo), como em `compareCancellationRate`. Pura, sem I/O: recebe dois
+ * `paymentLag` já computados (cada um sobre os shows do seu período) e devolve a
+ * variação da mediana e da média, além de um veredito de tendência ancorado na
+ * **mediana** (resiste a um recebimento muito atrasado, como o próprio
+ * `paymentLag`/D57). O chamador decide quando exibir (tipicamente só com um ano
+ * específico e ambos os períodos com recebimento — senão a comparação de
+ * medianas seria enganosa).
+ */
+export function comparePaymentLag<S extends ReceivableShowLike>(
+  current: PaymentLag<S>,
+  previous: PaymentLag<S>,
+): PaymentLagComparison<S> {
+  const medianDaysDelta = current.medianDays - previous.medianDays;
+  return {
+    current,
+    previous,
+    medianDaysDelta,
+    avgDaysDelta: current.avgDays - previous.avgDays,
+    trend:
+      medianDaysDelta <= -PAYMENT_LAG_TREND_EPSILON
+        ? "improved"
+        : medianDaysDelta >= PAYMENT_LAG_TREND_EPSILON
+          ? "worsened"
+          : "stable",
+  };
+}
+
+/**
  * Resumo do prazo de recebimento para o Painel: condensa um `PaymentLag` no que
  * cabe num card de dashboard. Decide se vale a pena mostrar (precisa de uma
  * amostra mínima de shows pagos), expõe o DSO médio e o mediano, o balde de

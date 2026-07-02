@@ -107,6 +107,8 @@ import {
   expenseMixYears,
   paymentLag,
   paymentLagYears,
+  comparePaymentLag,
+  PAYMENT_LAG_TREND_EPSILON,
   paymentLagHeadline,
   paymentLagByContact,
   paymentSpeedBucket,
@@ -4206,6 +4208,77 @@ describe("paymentLagYears", () => {
       tx({ type: "INCOME", amount: 100_00, received: true, showId: "ok", date: "2025-06-10T00:00:00.000Z" }),
     ];
     expect(paymentLagYears(shows, txs)).toEqual([2025]);
+  });
+});
+
+describe("comparePaymentLag", () => {
+  function gig(partial: Partial<ReceivableShowLike>): ReceivableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-03-01T00:00:00.000Z",
+      ...partial,
+    };
+  }
+
+  // Constrói um `paymentLag` de um único show pago com prazo `days` (à vista do
+  // valor cheio), para montar cenários de comparação por período com facilidade.
+  function lagOfDays(days: number): ReturnType<typeof paymentLag> {
+    const shows = [gig({ id: `g${days}`, date: "2026-03-01T00:00:00.000Z" })];
+    const pay = new Date(Date.UTC(2026, 2, 1 + days)).toISOString();
+    return paymentLag(shows, [
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: `g${days}`, date: pay }),
+    ]);
+  }
+
+  it("descer a mediana além do limiar é melhora (o cachê entra mais cedo)", () => {
+    // Anterior 40 d → atual 10 d: 30 dias mais rápido.
+    const c = comparePaymentLag(lagOfDays(10), lagOfDays(40));
+    expect(c.medianDaysDelta).toBe(-30);
+    expect(c.avgDaysDelta).toBe(-30);
+    expect(c.trend).toBe("improved");
+  });
+
+  it("subir a mediana além do limiar é piora (o caixa demora mais)", () => {
+    const c = comparePaymentLag(lagOfDays(45), lagOfDays(10));
+    expect(c.medianDaysDelta).toBe(35);
+    expect(c.trend).toBe("worsened");
+  });
+
+  it("variação dentro do limiar é estável (ruído, sem tendência)", () => {
+    // Diferença de 5 dias < 7 (o epsilon): nenhuma tendência.
+    const c = comparePaymentLag(lagOfDays(15), lagOfDays(20));
+    expect(c.medianDaysDelta).toBe(-5);
+    expect(c.trend).toBe("stable");
+  });
+
+  it("o limiar é inclusivo nas duas pontas (== epsilon já conta como tendência)", () => {
+    expect(comparePaymentLag(lagOfDays(3), lagOfDays(3 + PAYMENT_LAG_TREND_EPSILON)).trend).toBe(
+      "improved",
+    );
+    expect(comparePaymentLag(lagOfDays(3 + PAYMENT_LAG_TREND_EPSILON), lagOfDays(3)).trend).toBe(
+      "worsened",
+    );
+  });
+
+  it("preserva as referências aos dois períodos e usa a mediana (não a média) no veredito", () => {
+    // Atual: mediana 10 d (resiste ao show atrasado), média inflada; anterior: 10 d cravados.
+    const shows = ["a", "b", "c", "slow"].map((id) => gig({ id, date: "2026-03-01T00:00:00.000Z" }));
+    const current = paymentLag(shows, [
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "a", date: "2026-03-11T00:00:00.000Z" }), // 10 d
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "b", date: "2026-03-11T00:00:00.000Z" }), // 10 d
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "c", date: "2026-03-11T00:00:00.000Z" }), // 10 d
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "slow", date: "2026-06-09T00:00:00.000Z" }), // 100 d
+    ]);
+    const previous = lagOfDays(10);
+    const c = comparePaymentLag(current, previous);
+    expect(c.current).toBe(current);
+    expect(c.previous).toBe(previous);
+    // Mediana igual (10 vs 10) → estável, ainda que a MÉDIA tenha subido muito.
+    expect(c.medianDaysDelta).toBe(0);
+    expect(c.avgDaysDelta).toBeGreaterThan(PAYMENT_LAG_TREND_EPSILON);
+    expect(c.trend).toBe("stable");
   });
 });
 
