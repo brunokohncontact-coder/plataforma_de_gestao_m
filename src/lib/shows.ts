@@ -504,3 +504,66 @@ export function bookingLeadTimeYears<T extends LeadTimeShowLike>(shows: T[]): nu
   }
   return [...years].sort((a, b) => b - a);
 }
+
+/**
+ * Limiar (em dias) abaixo do qual a variação da antecedência **mediana** entre
+ * dois períodos é ruído ("stable"). Uma semana — grande o bastante para não
+ * oscilar a cada show isolado, pequeno o bastante para captar uma mudança real
+ * de hábito de agendamento (fechar a agenda com mais folga × mais em cima da
+ * hora). Espelha `CANCELLATION_TREND_EPSILON`/`GEO_TREND_EPSILON` no eixo de
+ * antecedência.
+ */
+export const LEAD_TIME_TREND_EPSILON = 7;
+
+export interface BookingLeadTimeComparison {
+  /** Antecedência do período atual (tipicamente o ano selecionado). */
+  current: BookingLeadTime;
+  /** Antecedência do período de comparação (tipicamente o ano anterior). */
+  previous: BookingLeadTime;
+  /**
+   * Variação da antecedência mediana (atual − anterior, em dias). Positivo =
+   * agendando com **mais** folga agora (melhora); negativo = mais em cima da
+   * hora (piora). Ao contrário do cancelamento, aqui **subir** é a melhora.
+   */
+  medianDaysDelta: number;
+  /** Variação da antecedência média (atual − anterior, em dias). */
+  avgDaysDelta: number;
+  /**
+   * Direção do hábito de agendamento entre os dois períodos, decidida pela
+   * variação da **mediana** contra `LEAD_TIME_TREND_EPSILON`:
+   * - "improved": mediana subiu além do limiar (agendando com mais antecedência);
+   * - "worsened": mediana caiu além do limiar (agendando mais em cima da hora);
+   * - "stable": variação dentro do limiar (ruído, sem leitura de tendência).
+   */
+  trend: "improved" | "worsened" | "stable";
+}
+
+/**
+ * Compara a **antecedência de agendamento** entre dois períodos (atual ×
+ * anterior), espelhando o comparativo ano a ano de `compareCancellationRate`/
+ * `compareGeoConcentration` (D181/D120) no eixo de runway. Pura, sem I/O: recebe
+ * duas `bookingLeadTime` já computadas (cada uma sobre os shows do seu período) e
+ * devolve a variação da mediana e da média, além de um veredito de tendência.
+ * Ao contrário da concentração/cancelamento, aqui **subir** a mediana é a
+ * melhora (mais folga para fechar caixa e preencher a agenda). O chamador decide
+ * quando exibir (tipicamente só com um ano específico e ambos os períodos tendo
+ * amostra mensurável — caso contrário a comparação de medianas seria enganosa).
+ */
+export function compareBookingLeadTime(
+  current: BookingLeadTime,
+  previous: BookingLeadTime,
+): BookingLeadTimeComparison {
+  const medianDaysDelta = current.medianDays - previous.medianDays;
+  return {
+    current,
+    previous,
+    medianDaysDelta,
+    avgDaysDelta: current.avgDays - previous.avgDays,
+    trend:
+      medianDaysDelta >= LEAD_TIME_TREND_EPSILON
+        ? "improved"
+        : medianDaysDelta <= -LEAD_TIME_TREND_EPSILON
+          ? "worsened"
+          : "stable",
+  };
+}

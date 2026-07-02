@@ -1,7 +1,13 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { bookingLeadTime, bookingLeadTimeYears, type LeadTimeShowLike } from "@/lib/shows";
+import {
+  bookingLeadTime,
+  bookingLeadTimeYears,
+  compareBookingLeadTime,
+  type BookingLeadTimeComparison,
+  type LeadTimeShowLike,
+} from "@/lib/shows";
 import { parseProfitYear, filterShowsByYear } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { PeriodPicker } from "@/components/PeriodPicker";
@@ -61,6 +67,29 @@ export default async function BookingLeadTimePage({
   const lead = bookingLeadTime(shows);
   const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
   const peakShare = Math.max(0.0001, ...lead.buckets.map((b) => b.share));
+
+  // Comparativo ano a ano da antecedência mediana (espelha o card de
+  // cancelamentos/concentração ano a ano, D181/D120): só faz sentido com um ano
+  // específico e ambos os períodos tendo amostra mensurável — caso contrário a
+  // comparação de medianas seria enganosa (mediana de amostra vazia é 0).
+  // Reaproveita o mesmo recorte por ano UTC (D108) sobre os registros já
+  // carregados, sem nova consulta.
+  let comparison: BookingLeadTimeComparison | null = null;
+  let previousYear = 0;
+  if (yearFilter !== "all") {
+    previousYear = yearFilter - 1;
+    const previousLead = bookingLeadTime(
+      filterShowsByYear(rows, previousYear).map((s) => ({
+        status: s.status,
+        date: s.date,
+        createdAt: s.createdAt,
+        fee: s.fee,
+      })),
+    );
+    if (lead.sample > 0 && previousLead.sample > 0) {
+      comparison = compareBookingLeadTime(lead, previousLead);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -167,6 +196,14 @@ export default async function BookingLeadTimePage({
             </div>
           </div>
 
+          {comparison && (
+            <BookingLeadTimeComparisonCard
+              comparison={comparison}
+              currentYear={yearFilter as number}
+              previousYear={previousYear}
+            />
+          )}
+
           {/* Distribuição por faixa de antecedência */}
           <section className="card overflow-x-auto p-0">
             <div className="border-b border-gray-100 px-4 py-3">
@@ -237,6 +274,91 @@ export default async function BookingLeadTimePage({
           </p>
         </>
       )}
+    </div>
+  );
+}
+
+/** Rótulo + tom do veredito de tendência da antecedência entre dois anos. */
+const LEAD_TIME_TREND: Record<
+  BookingLeadTimeComparison["trend"],
+  { label: string; emoji: string; classes: string; note: string }
+> = {
+  improved: {
+    label: "Agendando com mais folga",
+    emoji: "🟢",
+    classes: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    note: "Os shows entraram na agenda com mais antecedência que no ano anterior — mais previsibilidade de caixa e menos correria para preencher a semana.",
+  },
+  worsened: {
+    label: "Agendando em cima da hora",
+    emoji: "🔴",
+    classes: "border-red-200 bg-red-50 text-red-800",
+    note: "A antecedência mediana caiu em relação ao ano anterior — os shows vêm fechando mais em cima da hora. Vale antecipar a prospecção para recuperar o runway.",
+  },
+  stable: {
+    label: "Estável",
+    emoji: "⚪",
+    classes: "border-gray-200 bg-gray-50 text-gray-700",
+    note: "A antecedência mediana ficou praticamente igual à do ano anterior.",
+  },
+};
+
+/** Formata uma variação em dias com sinal (ex.: 12 → "+12 dias", -1 → "−1 dia"). */
+function daysDelta(delta: number): string {
+  if (delta === 0) return "0 dias";
+  const abs = Math.abs(delta);
+  return `${delta > 0 ? "+" : "−"}${abs} ${abs === 1 ? "dia" : "dias"}`;
+}
+
+/**
+ * Card "Antecedência {ano} vs. {ano-1}": compara a antecedência mediana de
+ * agendamento do ano selecionado com a do ano anterior (espelha o comparativo
+ * ano a ano de cancelamentos/concentração, D181/D120, no eixo de runway). Mostra
+ * a variação da mediana e da média, com um veredito de tendência (mais folga ×
+ * em cima da hora). Ao contrário daqueles, aqui **subir** é a melhora.
+ */
+function BookingLeadTimeComparisonCard({
+  comparison,
+  currentYear,
+  previousYear,
+}: {
+  comparison: BookingLeadTimeComparison;
+  currentYear: number;
+  previousYear: number;
+}) {
+  const trend = LEAD_TIME_TREND[comparison.trend];
+  const { current, previous } = comparison;
+  return (
+    <div className={"card border " + trend.classes}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide opacity-80">
+          Antecedência {currentYear} vs. {previousYear}
+        </p>
+        <span className="badge bg-white/70 font-semibold">
+          {trend.emoji} {trend.label}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+        <div>
+          <p className="text-2xl font-bold">{daysDelta(comparison.medianDaysDelta)}</p>
+          <p className="text-xs opacity-80">
+            mediana: {daysLabel(previous.medianDays)} ({previousYear}) →{" "}
+            {daysLabel(current.medianDays)} ({currentYear})
+          </p>
+        </div>
+        <div>
+          <p className="text-2xl font-bold">{daysDelta(comparison.avgDaysDelta)}</p>
+          <p className="text-xs opacity-80">
+            média: {daysLabel(previous.avgDays)} → {daysLabel(current.avgDays)}
+          </p>
+        </div>
+      </div>
+      {(!current.reliable || !previous.reliable) && (
+        <p className="mt-3 text-xs opacity-90">
+          Amostra pequena em ao menos um dos anos — a mediana ainda é sensível a casos isolados.
+        </p>
+      )}
+      <p className="mt-3 text-xs opacity-90">{trend.note}</p>
     </div>
   );
 }

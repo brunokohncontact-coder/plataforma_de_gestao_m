@@ -9,7 +9,19 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1097 testes** verdes após o **recorte por período
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1102 testes** verdes após o **comparativo ano a ano
+da antecedência de agendamento** (Sessão 194, D187 — a tela `/shows/antecedencia` tinha página, CSV (D185) e recorte por ano (D186),
+mas comparava só um período por vez, enquanto todas as leituras irmãs de tendência já têm um card "vs. {ano-1}"
+(concentração/D120/D122, papel/D141, cancelamento/D181). Novo helper puro `compareBookingLeadTime(current, previous)` +
+`BookingLeadTimeComparison` + `LEAD_TIME_TREND_EPSILON` (=7 dias) em `src/lib/shows.ts`: recebe duas `bookingLeadTime` já computadas
+(uma por período) e devolve `medianDaysDelta`/`avgDaysDelta` + `trend` — mas, ao contrário de concentração/cancelamento, aqui **subir**
+a mediana é a **melhora** (mais runway/previsibilidade, menos correria): `improved` quando sobe ≥ ε, `worsened` quando cai ≥ ε,
+`stable` no meio. Veredito ancorado na **mediana** (resiste a outlier, como o próprio `bookingLeadTime`/D185); a média entra no card
+como métrica informativa mas não decide a tendência. Card "Antecedência {ano} vs. {ano-1}" (`BookingLeadTimeComparisonCard` 🟢/🔴/⚪)
+em `shows/antecedencia/page.tsx`, logo após os destaques, exibido só com um ano específico e **ambos** os períodos tendo amostra
+mensurável (`sample > 0` — a mediana de amostra vazia é 0 e compararia contra um zero fantasma); anota "amostra pequena" quando um dos
+anos fica abaixo de `MIN_LEAD_TIME_SAMPLE`. Reaproveita o recorte por ano UTC (D108) sobre os registros já carregados, sem nova
+consulta; **+5 testes**) sobre os **1097 testes** verdes após o **recorte por período
 (`?ano=`) na antecedência de agendamento** (Sessão 193, D186 — a tela `/shows/antecedencia` (`bookingLeadTime`/D185) era um retrato
 do acervo inteiro; a própria D185(b) apontava o `PeriodPicker` (D119) como candidato natural da próxima sessão. Página e export
 agora recortam por ano reaproveitando `parseProfitYear`/`filterShowsByYear` (D108): os anos do seletor vêm do novo helper puro
@@ -3121,9 +3133,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `src/lib/shows.ts`, ver D185): com quantos dias de antecedência os shows entram na agenda (booking lead time /
    runway), mediana/média + 4 faixas canônicas, retroativos à parte; export CSV `bookingLeadTimeToCsv`. **Recorte
    por período (`?ano=`)** entregue na Sessão 193 — `bookingLeadTimeYears` + `PeriodPicker` em `/shows/antecedencia`
-   (página e export), ver D186. Próximo possível — nudge no Painel (adiado na D185(d): a leitura é um retrato, não um
-   alarme; avaliar se "fechando shows em cima da hora" merece banner), ou recortar a amostra a CONFIRMED+PLAYED
-   (compromissos firmes, adiado na D185(a)).
+   (página e export), ver D186. **Comparativo ano a ano** entregue na Sessão 194 — `compareBookingLeadTime` +
+   `BookingLeadTimeComparison` + `LEAD_TIME_TREND_EPSILON` (=7 dias) em `src/lib/shows.ts` + card "Antecedência {ano} vs.
+   {ano-1}" (`BookingLeadTimeComparisonCard` 🟢/🔴/⚪) em `/shows/antecedencia`, exibido só com um ano específico e ambos os
+   períodos tendo amostra mensurável; aqui **subir** a mediana é a melhora (mais runway), direção oposta ao card de
+   cancelamento/concentração, e o veredito olha a mediana (a média é informativa), ver D187. Próximo possível — nudge no
+   Painel (adiado na D185(d): a leitura é um retrato, não um alarme; avaliar se "fechando shows em cima da hora" merece
+   banner), ou recortar a amostra a CONFIRMED+PLAYED (compromissos firmes, adiado na D185(a)).
 2c. **Sazonalidade de shows** (entregue na Sessão 141, `/shows/sazonalidade` + `gigSeasonality` em
    `src/lib/finance.ts`, ver D133): agrega os shows realizados por mês do calendário (jan→dez, somando todos os anos),
    com cards de destaque (mês mais cheio / mais faturamento / melhor cachê médio) e tabela com barra por nº de shows —
