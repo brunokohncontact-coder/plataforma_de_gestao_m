@@ -6123,3 +6123,40 @@ contexto, decisão, justificativa e alternativas consideradas.
   typecheck (`tsc --noEmit`) limpo; **1120 testes** (`vitest run`); smoke test — app sobe (~6 s), `/` 200 e as rotas
   protegidas 307→login. `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical,
   todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## 2026-07-02 — D191: Comparativo entre escopos (todos × só firmes) na antecedência de agendamento
+- **Contexto:** a D190 (Sessão 197) adicionou o `ScopePicker` à `/shows/antecedencia` (todos os não cancelados × só
+  compromissos firmes CONFIRMED+PLAYED), e listou como próximo possível "um comparativo entre os dois escopos lado a
+  lado". Com o seletor, o músico via um escopo por vez e tinha de alternar (e memorizar) para perceber o quanto as
+  propostas em aberto distorcem a leitura — o mesmo problema que os cards de comparação ano a ano (D181/D120/D187)
+  resolveram para o eixo de tempo, mostrando o **delta** em vez de exigir a comparação mental de duas telas.
+- **Decisão:** helper puro `compareBookingLeadTimeScopes(all, firm)` em `src/lib/shows.ts` (irmão de
+  `compareBookingLeadTime`/D187, mas sobre **escopos** do mesmo período, não sobre dois anos) + `type
+  BookingLeadTimeScopeComparison`: recebe duas `bookingLeadTime` já computadas (o escopo amplo e o firme) e devolve
+  `medianDaysDelta`/`avgDaysDelta` (firme − todos), `openProposalCount` (`all.sample − firm.sample`, as propostas em
+  aberto que separam os escopos) e um veredito `gap` decidido pela variação da **mediana** contra `LEAD_TIME_TREND_EPSILON`
+  (=7 dias, reusado): `firm-more-lead` (mediana firme sobe além do limiar — as propostas puxavam a geral para baixo),
+  `firm-less-lead` (mediana firme cai além do limiar — os shows que fecham vêm em cima da hora e as propostas distantes
+  inflam a geral) e `similar` (dentro do limiar). Card `BookingLeadTimeScopeCard` 🟢/🟠/⚪ "Todos os shows vs. só firmes"
+  em `/shows/antecedencia`, logo após o card ano-a-ano, **independente do escopo ativo** (o gap é o mesmo dos dois
+  lados). Reaproveita a `lead` já computada para o escopo ativo e computa só o outro escopo (zero I/O extra).
+- **Gate de exibição:** o card só aparece quando há **proposta em aberto** separando os escopos e os firmes têm amostra
+  mensurável (`firm.sample > 0 && all.sample > firm.sample`) — senão os dois escopos coincidem (nada a comparar). Nota
+  de amostra pequena quando `!firm.reliable` (< `MIN_LEAD_TIME_SAMPLE`).
+- **Justificativa:** ao contrário do comparativo ano a ano (um eixo de tempo, onde subir a mediana é "melhora"), aqui
+  não há melhora — subir só revela que as propostas em aberto estavam puxando a leitura geral para baixo (positivo:
+  seus bookings firmes têm folga), e cair é um alerta de runway (os shows que fecham vêm em cima da hora). O card torna
+  explícito o insight que o `ScopePicker` deixava implícito, no mesmo padrão de "mostrar o delta" dos cards de comparação.
+- **Alternativas consideradas:** (a) não fazer, deixando o `ScopePicker` como único meio — descartado: obriga a
+  comparação mental de duas telas, o mesmo motivo que justificou os cards ano a ano. (b) um trend "improved/worsened"
+  como no ano a ano — descartado: seria enganoso, pois nenhuma direção do gap é intrinsecamente melhor (é diagnóstico,
+  não evolução); daí os rótulos neutros `firm-more-lead`/`firm-less-lead`/`similar`. (c) levar o gap ao Painel —
+  descartado por ora: é uma leitura de tela (diagnóstica), e o Painel já tem o nudge de antecedência (D189).
+- **Testes:** `compareBookingLeadTimeScopes` — firmes com mais folga (propostas puxam a geral para baixo → `firm-more-lead`),
+  firmes em cima da hora (propostas distantes inflam a geral → `firm-less-lead`), sem proposta os escopos coincidem
+  (delta 0, `openProposalCount` 0, `similar`), variação dentro do limiar é `similar` mesmo com propostas — **+4 testes**.
+  Total **1120 → 1124**.
+- **DoD:** build de produção verde (`/shows/antecedencia` regenerada); lint (`next lint`, 0 avisos); typecheck
+  (`tsc --noEmit`) limpo; **1124 testes** (`vitest run`); smoke test — app sobe (~6 s), `/` 200 e `/shows/antecedencia`
+  307→login. `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
+  postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.

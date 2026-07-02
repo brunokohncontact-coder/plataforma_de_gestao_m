@@ -615,6 +615,75 @@ export function compareBookingLeadTime(
   };
 }
 
+export interface BookingLeadTimeScopeComparison {
+  /** Antecedência do escopo amplo (todos os não cancelados). */
+  all: BookingLeadTime;
+  /** Antecedência do escopo firme (só CONFIRMED + PLAYED). */
+  firm: BookingLeadTime;
+  /**
+   * Variação da antecedência mediana (firme − todos, em dias). Positivo = os
+   * compromissos firmes entram com **mais** folga que o conjunto (as propostas
+   * em aberto puxam a mediana geral para baixo); negativo = os shows que de
+   * fato fecham entram **mais em cima da hora** que o conjunto (as propostas
+   * distantes ainda não confirmadas inflam a mediana geral).
+   */
+  medianDaysDelta: number;
+  /** Variação da antecedência média (firme − todos, em dias). */
+  avgDaysDelta: number;
+  /**
+   * Shows com antecedência mensurável que são propostas em aberto (a diferença
+   * de amostra entre os dois escopos: `all.sample − firm.sample`). Zero quando
+   * não há proposta em aberto e os dois escopos coincidem (nada a comparar).
+   */
+  openProposalCount: number;
+  /**
+   * Como o recorte firme muda a leitura, decidido pela variação da **mediana**
+   * contra `LEAD_TIME_TREND_EPSILON` (o mesmo limiar do comparativo ano a ano):
+   * - "firm-more-lead": os firmes entram com mais folga (mediana firme sobe além do limiar);
+   * - "firm-less-lead": os firmes entram mais em cima da hora (mediana firme cai além do limiar);
+   * - "similar": a mediana muda pouco ao restringir aos firmes (as propostas não distorcem a leitura).
+   */
+  gap: "firm-more-lead" | "firm-less-lead" | "similar";
+}
+
+/**
+ * Compara a antecedência de agendamento entre os dois **escopos** de amostra
+ * (todos os não cancelados × só compromissos firmes) sobre o **mesmo** conjunto
+ * de shows — o eco lado a lado do `ScopePicker` (D190), para o músico ver o
+ * quanto as propostas em aberto distorcem a leitura sem alternar a tela. Pura,
+ * sem I/O: recebe duas `bookingLeadTime` já computadas (o escopo amplo e o
+ * firme) e devolve a variação da mediana/média (firme − todos), quantas
+ * propostas em aberto separam os dois escopos e um veredito de gap.
+ *
+ * Ao contrário do comparativo ano a ano (`compareBookingLeadTime`, um eixo de
+ * tempo), aqui não há "melhora": subir a mediana ao restringir aos firmes só
+ * revela que as propostas em aberto é que estavam puxando a leitura geral para
+ * baixo (interpretação positiva), e cair revela que os shows que fecham vêm em
+ * cima da hora enquanto as propostas distantes inflam a média (um alerta de
+ * runway). O chamador decide quando exibir (tipicamente só quando há proposta
+ * em aberto separando os escopos e o escopo firme tem amostra mensurável — caso
+ * contrário os dois escopos coincidem e não há gap a mostrar).
+ */
+export function compareBookingLeadTimeScopes(
+  all: BookingLeadTime,
+  firm: BookingLeadTime,
+): BookingLeadTimeScopeComparison {
+  const medianDaysDelta = firm.medianDays - all.medianDays;
+  return {
+    all,
+    firm,
+    medianDaysDelta,
+    avgDaysDelta: firm.avgDays - all.avgDays,
+    openProposalCount: all.sample - firm.sample,
+    gap:
+      medianDaysDelta >= LEAD_TIME_TREND_EPSILON
+        ? "firm-more-lead"
+        : medianDaysDelta <= -LEAD_TIME_TREND_EPSILON
+          ? "firm-less-lead"
+          : "similar",
+  };
+}
+
 /**
  * Antecedência mediana (em dias) a partir da qual a agenda é considerada
  * apertada — "fecha shows em cima da hora". Duas semanas de folga é o piso

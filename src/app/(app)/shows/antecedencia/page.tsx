@@ -5,8 +5,10 @@ import {
   bookingLeadTime,
   bookingLeadTimeYears,
   compareBookingLeadTime,
+  compareBookingLeadTimeScopes,
   parseLeadTimeScope,
   type BookingLeadTimeComparison,
+  type BookingLeadTimeScopeComparison,
   type BookingLeadTimeScope,
   type LeadTimeShowLike,
 } from "@/lib/shows";
@@ -155,6 +157,20 @@ export default async function BookingLeadTimePage({
     }
   }
 
+  // Comparativo entre os dois escopos (todos × só firmes) sobre o MESMO período
+  // (D190): o eco lado a lado do ScopePicker, para ver o quanto as propostas em
+  // aberto distorcem a leitura sem alternar a tela. Reaproveita a `lead` já
+  // computada para o escopo ativo e computa só o outro escopo (zero I/O extra).
+  // Só faz sentido quando há proposta em aberto separando os escopos e os
+  // firmes têm amostra mensurável — senão os dois escopos coincidem (nada a
+  // comparar). Independe do escopo ativo: o gap é o mesmo dos dois lados.
+  const leadAll = scope === "all" ? lead : bookingLeadTime(shows, "all");
+  const leadFirm = scope === "firm" ? lead : bookingLeadTime(shows, "firm");
+  const scopeComparison: BookingLeadTimeScopeComparison | null =
+    leadFirm.sample > 0 && leadAll.sample > leadFirm.sample
+      ? compareBookingLeadTimeScopes(leadAll, leadFirm)
+      : null;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -279,6 +295,8 @@ export default async function BookingLeadTimePage({
               previousYear={previousYear}
             />
           )}
+
+          {scopeComparison && <BookingLeadTimeScopeCard comparison={scopeComparison} />}
 
           {/* Distribuição por faixa de antecedência */}
           <section className="card overflow-x-auto p-0">
@@ -438,6 +456,89 @@ function BookingLeadTimeComparisonCard({
         </p>
       )}
       <p className="mt-3 text-xs opacity-90">{trend.note}</p>
+    </div>
+  );
+}
+
+/** Rótulo + tom do veredito do gap entre os escopos (todos × só firmes). */
+const LEAD_TIME_SCOPE_GAP: Record<
+  BookingLeadTimeScopeComparison["gap"],
+  { label: string; emoji: string; classes: string; note: (n: number) => string }
+> = {
+  "firm-more-lead": {
+    label: "Firmes com mais folga",
+    emoji: "🟢",
+    classes: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    note: (n) =>
+      `Seus compromissos firmes (confirmados/realizados) entram na agenda com mais antecedência que o conjunto. ${
+        n === 1 ? "A proposta em aberto — agendada" : `As ${n} propostas em aberto — agendadas`
+      } mais em cima da hora — é que ${n === 1 ? "puxa" : "puxam"} a mediana geral para baixo.`,
+  },
+  "firm-less-lead": {
+    label: "Firmes em cima da hora",
+    emoji: "🟠",
+    classes: "border-orange-200 bg-orange-50 text-orange-800",
+    note: (n) =>
+      `Os shows que de fato fecham entram com menos antecedência que o conjunto: ${
+        n === 1 ? "a proposta distante ainda não confirmada infla" : `as ${n} propostas distantes ainda não confirmadas inflam`
+      } a mediana geral. Vale antecipar o fechamento delas para recuperar runway.`,
+  },
+  similar: {
+    label: "Leitura parecida",
+    emoji: "⚪",
+    classes: "border-gray-200 bg-gray-50 text-gray-700",
+    note: (n) =>
+      `Restringir aos compromissos firmes muda pouco a antecedência mediana — ${
+        n === 1 ? "a proposta em aberto não distorce" : `as ${n} propostas em aberto não distorcem`
+      } a leitura geral.`,
+  },
+};
+
+/**
+ * Card "Todos os shows vs. só firmes": compara a antecedência mediana dos dois
+ * escopos de amostra sobre o mesmo período (D190) — o eco lado a lado do
+ * `ScopePicker`, para o músico ver de relance o quanto as propostas em aberto
+ * distorcem a leitura. Ao contrário do card ano a ano, não há "melhora": os
+ * firmes com mais folga é uma leitura positiva (as propostas é que puxavam a
+ * geral para baixo), e os firmes em cima da hora é um alerta de runway.
+ */
+function BookingLeadTimeScopeCard({
+  comparison,
+}: {
+  comparison: BookingLeadTimeScopeComparison;
+}) {
+  const gap = LEAD_TIME_SCOPE_GAP[comparison.gap];
+  const { all, firm, openProposalCount } = comparison;
+  return (
+    <div className={"card border " + gap.classes}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide opacity-80">
+          Todos os shows vs. só firmes
+        </p>
+        <span className="badge bg-white/70 font-semibold">
+          {gap.emoji} {gap.label}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+        <div>
+          <p className="text-2xl font-bold">{daysDelta(comparison.medianDaysDelta)}</p>
+          <p className="text-xs opacity-80">
+            mediana: {daysLabel(all.medianDays)} (todos) → {daysLabel(firm.medianDays)} (firmes)
+          </p>
+        </div>
+        <div>
+          <p className="text-2xl font-bold">{daysDelta(comparison.avgDaysDelta)}</p>
+          <p className="text-xs opacity-80">
+            média: {daysLabel(all.avgDays)} → {daysLabel(firm.avgDays)}
+          </p>
+        </div>
+      </div>
+      {!firm.reliable && (
+        <p className="mt-3 text-xs opacity-90">
+          Poucos compromissos firmes ({firm.sample}) — a mediana firme ainda é sensível a casos isolados.
+        </p>
+      )}
+      <p className="mt-3 text-xs opacity-90">{gap.note(openProposalCount)}</p>
     </div>
   );
 }
