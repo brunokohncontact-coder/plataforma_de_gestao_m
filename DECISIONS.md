@@ -6083,3 +6083,43 @@ contexto, decisão, justificativa e alternativas consideradas.
   (`tsc --noEmit`) limpo; **1116 testes** (`vitest run`); smoke test — app sobe (~6 s), `/login` 200. `npm audit`
   **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss
   bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## 2026-07-02 — D190: Escopo da amostra na antecedência de agendamento (todos × compromissos firmes)
+- **Contexto:** a tela `/shows/antecedencia` (`bookingLeadTime`/D185) mede com quanta antecedência os shows entram
+  na agenda sobre **todos** os shows não cancelados — o que inclui propostas (PROPOSED) que ainda podem cair. A
+  própria D185(a) apontou como refinaria adiada "restringir a amostra a CONFIRMED+PLAYED (compromissos firmes) como
+  visão alternativa", reafirmada como próximo passo na D189(d). Dois eixos convivem sob a mesma pergunta: com quanta
+  antecedência *algo entra na agenda* (leads + bookings) vs. com quanta antecedência *um show que de fato fecha* é
+  agendado — misturá-los pode mascarar o hábito de fechamento firme com o ruído de propostas especulativas.
+- **Decisão:** adicionar um **seletor de escopo** (`?escopo=`) à tela, ao export e às leituras derivadas. Camada
+  pura em `src/lib/shows.ts`: `type BookingLeadTimeScope = "all" | "firm"`, `FIRM_LEAD_STATUSES = {CONFIRMED, PLAYED}`,
+  predicado `leadShowInScope(status, scope)` e `parseLeadTimeScope(raw)` (só `firm` liga; ausente/vazio/desconhecido
+  → `all`). `bookingLeadTime(shows, scope="all")` e `bookingLeadTimeYears(shows, scope="all")` ganharam o parâmetro
+  opcional — o **default preserva** o comportamento histórico (todos os não cancelados), então todos os chamadores
+  existentes (nudge/D189, comparativo/D187, export/D185) seguem inalterados sem migração. No escopo `firm` a mediana/
+  média/faixas/cachê e os anos do seletor recompõem só sobre CONFIRMED+PLAYED. Página: `ScopePicker` (pílulas "Todos
+  os shows" × "Só confirmados/realizados", espírito do `PeriodPicker`), empty state e nota de rodapé cientes do
+  escopo; export herda `?escopo=` e adiciona o sufixo `-firmes` ao nome do arquivo.
+- **Ano × escopo compostos:** o `PeriodPicker` ganhou uma prop opcional `params` (query extra preservada em todos os
+  links, vazia por padrão → comportamento idêntico ao histórico), para o seletor de período não perder o escopo. Os
+  anos do seletor recompõem no escopo ativo (`bookingLeadTimeYears(rows, scope)`), então um ano só com propostas some
+  do picker no escopo firme (mesmo cuidado de `cancelledShowYears`/D180: o seletor se ancora no sinal da tela); se o
+  ano ativo sair da lista ao trocar de escopo, `parseProfitYear` cai para "Todos". O comparativo ano-a-ano (D187)
+  também usa o escopo em ambos os períodos.
+- **Justificativa:** o escopo `firm` responde "com quanta antecedência os shows que **realmente acontecem** foram
+  fechados", separando o funil de prospecção (leads) do runway de execução (bookings firmes) — a distinção exata que
+  a D185(a) previu. Fazê-lo via parâmetro opcional com default histórico mantém a mudança aditiva e o resto do app
+  intocado. O `all` segue como padrão porque a leitura original ("com quanta antecedência algo entra na agenda") é a
+  mais abrangente e a que o nudge do Painel (D189) usa.
+- **Alternativas consideradas:** (a) trocar o default para `firm` — descartado: quebraria a semântica do nudge/
+  comparativo existentes e esconderia as propostas, que também são um sinal de planejamento. (b) um `bookingLeadTime`
+  separado por escopo (dois helpers) — descartado: duplicaria a lógica; um parâmetro é mais enxuto e testável. (c)
+  incluir o escopo também no nudge do Painel (D189) — adiável: o Painel usa a amostra ampla por design (o alarme de
+  "em cima da hora" vale para qualquer show que entra tarde, firme ou não); ortogonal a este recorte de tela.
+- **Testes:** `bookingLeadTime` escopo all (inclui proposta, cancelado fora) e firm (só CONFIRMED+PLAYED, faixas
+  respeitam o escopo); `parseLeadTimeScope` (só 'firm' liga; case/trim; array pega o 1º); `bookingLeadTimeYears` no
+  escopo firm (anos só de firmes) — **+4 testes**. Total **1116 → 1120**.
+- **DoD:** build de produção verde (rotas `/shows/antecedencia` e o export regeneradas); lint (`next lint`, 0 avisos);
+  typecheck (`tsc --noEmit`) limpo; **1120 testes** (`vitest run`); smoke test — app sobe (~6 s), `/` 200 e as rotas
+  protegidas 307→login. `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical,
+  todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.

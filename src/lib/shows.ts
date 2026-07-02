@@ -393,6 +393,43 @@ export interface BookingLeadTime {
  */
 export const MIN_LEAD_TIME_SAMPLE = 3;
 
+/**
+ * Escopo da amostra de antecedência (ver D190):
+ * - `all`: todos os shows não cancelados (leads + bookings) — a leitura padrão,
+ *   "com quanta antecedência algo entra na agenda", incluindo propostas que
+ *   ainda podem cair;
+ * - `firm`: só compromissos **firmes** (CONFIRMED + PLAYED) — "com quanta
+ *   antecedência um show que de fato aconteceu/vai acontecer foi fechado",
+ *   sem o ruído das propostas em aberto (adiado na D185(a)).
+ */
+export type BookingLeadTimeScope = "all" | "firm";
+
+/** Status que contam como compromisso firme no escopo `firm`. */
+const FIRM_LEAD_STATUSES = new Set(["CONFIRMED", "PLAYED"]);
+
+/**
+ * Decide se um show entra na amostra de antecedência conforme o escopo. Em ambos
+ * os escopos o cancelado fica de fora (um cancelado nunca aconteceu); no escopo
+ * `firm` também ficam de fora os propostos (ainda não são um booking de fato).
+ */
+function leadShowInScope(status: string, scope: BookingLeadTimeScope): boolean {
+  if (scope === "firm") return FIRM_LEAD_STATUSES.has(status);
+  return status !== "CANCELLED";
+}
+
+/**
+ * Normaliza o parâmetro `?escopo=` da tela de antecedência num
+ * `BookingLeadTimeScope`. Só `firm` liga o recorte de compromissos firmes;
+ * qualquer outro valor (ausente, vazio, desconhecido) cai no padrão `all`.
+ * Pura.
+ */
+export function parseLeadTimeScope(
+  raw: string | string[] | undefined,
+): BookingLeadTimeScope {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return value?.trim().toLowerCase() === "firm" ? "firm" : "all";
+}
+
 /** Faixas de antecedência (dias), da mais curta à mais longa. */
 const LEAD_TIME_BUCKET_DEFS: { label: string; minDays: number; maxDays: number | null }[] = [
   { label: "Até 1 semana", minDays: 0, maxDays: 7 },
@@ -418,19 +455,24 @@ function leadMedian(nums: number[]): number {
 }
 
 /**
- * Antecedência de agendamento sobre os shows do usuário. Para cada show não
- * cancelado calcula `leadDays = dia(date) - dia(createdAt)` (dias UTC inteiros):
- * >= 0 entra na amostra; < 0 é um lançamento retroativo (contado à parte). A
- * mediana e as médias são sobre a amostra; a distribuição reparte a amostra nas
- * faixas canônicas (com o cachê somado de cada faixa, para pesar em receita).
- * Pura.
+ * Antecedência de agendamento sobre os shows do usuário. Para cada show no
+ * escopo (ver `leadShowInScope`/`BookingLeadTimeScope`) calcula
+ * `leadDays = dia(date) - dia(createdAt)` (dias UTC inteiros): >= 0 entra na
+ * amostra; < 0 é um lançamento retroativo (contado à parte). A mediana e as
+ * médias são sobre a amostra; a distribuição reparte a amostra nas faixas
+ * canônicas (com o cachê somado de cada faixa, para pesar em receita). O
+ * `scope` padrão (`all`) mantém o comportamento histórico (todos os não
+ * cancelados); `firm` restringe a CONFIRMED+PLAYED. Pura.
  */
-export function bookingLeadTime<T extends LeadTimeShowLike>(shows: T[]): BookingLeadTime {
+export function bookingLeadTime<T extends LeadTimeShowLike>(
+  shows: T[],
+  scope: BookingLeadTimeScope = "all",
+): BookingLeadTime {
   const leads: number[] = [];
   let retroactiveCount = 0;
 
   for (const s of shows) {
-    if (s.status === "CANCELLED") continue;
+    if (!leadShowInScope(s.status, scope)) continue;
     const leadDays = Math.round(
       (leadUtcMidnight(s.date) - leadUtcMidnight(s.createdAt)) / DAY_MS,
     );
@@ -450,7 +492,7 @@ export function bookingLeadTime<T extends LeadTimeShowLike>(shows: T[]): Booking
 
   // Segunda passada para o cachê por faixa (precisa do fee junto do lead).
   for (const s of shows) {
-    if (s.status === "CANCELLED") continue;
+    if (!leadShowInScope(s.status, scope)) continue;
     const leadDays = Math.round(
       (leadUtcMidnight(s.date) - leadUtcMidnight(s.createdAt)) / DAY_MS,
     );
@@ -490,11 +532,16 @@ export function bookingLeadTime<T extends LeadTimeShowLike>(shows: T[]): Booking
  * vazia no seletor (mesmo cuidado de `cancelledShowYears`, que se ancora no
  * sinal da tela e não nos shows ativos). O ano é o da `date` do show — o mesmo
  * eixo de `filterShowsByYear`, que recorta a lista antes de `bookingLeadTime`.
+ * O `scope` é o mesmo de `bookingLeadTime`: no escopo `firm` os anos vêm só dos
+ * compromissos firmes, para o seletor não oferecer um ano que renderiza vazio.
  */
-export function bookingLeadTimeYears<T extends LeadTimeShowLike>(shows: T[]): number[] {
+export function bookingLeadTimeYears<T extends LeadTimeShowLike>(
+  shows: T[],
+  scope: BookingLeadTimeScope = "all",
+): number[] {
   const years = new Set<number>();
   for (const s of shows) {
-    if (s.status === "CANCELLED") continue;
+    if (!leadShowInScope(s.status, scope)) continue;
     const leadDays = Math.round(
       (leadUtcMidnight(s.date) - leadUtcMidnight(s.createdAt)) / DAY_MS,
     );

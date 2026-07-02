@@ -9,7 +9,17 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1116 testes** verdes após o **nudge de antecedência de
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1120 testes** verdes após o **seletor de escopo na
+antecedência de agendamento** (Sessão 197, D190 — a tela `/shows/antecedencia` (`bookingLeadTime`/D185) media sobre **todos** os
+shows não cancelados, incluindo propostas em aberto; a D185(a)/D189(d) apontavam "restringir a CONFIRMED+PLAYED (compromissos
+firmes)" como refinaria adiada. Novo `type BookingLeadTimeScope = "all" | "firm"` + `FIRM_LEAD_STATUSES` + predicado
+`leadShowInScope` + `parseLeadTimeScope` em `src/lib/shows.ts`; `bookingLeadTime(shows, scope="all")` e
+`bookingLeadTimeYears(shows, scope="all")` ganharam parâmetro opcional cujo **default preserva** o comportamento histórico — os
+chamadores existentes (nudge/D189, comparativo/D187, export/D185) seguem sem migração. No escopo `firm` a mediana/média/faixas/cachê e
+os anos do seletor recompõem só sobre CONFIRMED+PLAYED. Página: `ScopePicker` ("Todos os shows" × "Só confirmados/realizados"), empty
+state e rodapé cientes do escopo; `PeriodPicker` ganhou prop opcional `params` (query extra preservada, vazia por padrão) para o
+período não perder o escopo; export herda `?escopo=` e adiciona sufixo `-firmes` ao nome do arquivo. Separa o funil de prospecção
+(leads) do runway de execução (bookings firmes). **+4 testes**) sobre os **1116 testes** verdes após o **nudge de antecedência de
 agendamento no Painel** (Sessão 196, D189 — a antecedência de agendamento (`bookingLeadTime`/D185 + `/shows/antecedencia`) tinha
 página, CSV (D185), recorte por ano (D186) e comparativo ano-a-ano (D187), mas nenhuma presença no Painel — o nudge fora adiado
 duas vezes (D185(d)/D187(a)) por a leitura ser "um retrato, não um alarme". Reavaliado: uma antecedência mediana **curta** É um
@@ -3167,8 +3177,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    na Sessão 196 — `bookingLeadTimeHeadline` + `LEAD_TIME_SHORT_DAYS`(=14)/`LEAD_TIME_CRITICAL_DAYS`(=7) em `src/lib/shows.ts`
    + banner 🟠/🔴 "Você fecha shows em cima da hora" em `dashboard/page.tsx` quando a antecedência mediana é confiável e ≤ 14
    dias (crítico ≤ 7), reaproveitando os shows já carregados, linkando `/shows/antecedencia`, ver D189 (reverte a dupla
-   deferência D185(d)/D187(a): mediana curta É alarme de runway, com precedente no DSO/D70). Próximo possível — recortar a
-   amostra a CONFIRMED+PLAYED (compromissos firmes, adiado na D185(a)), separando leads de bookings de fato fechados.
+   deferência D185(d)/D187(a): mediana curta É alarme de runway, com precedente no DSO/D70). **Seletor de escopo (todos ×
+   compromissos firmes)** entregue na Sessão 197 — `BookingLeadTimeScope`/`FIRM_LEAD_STATUSES`/`leadShowInScope`/`parseLeadTimeScope`
+   em `src/lib/shows.ts` + parâmetro opcional `scope` em `bookingLeadTime`/`bookingLeadTimeYears` (default `all` preserva o histórico)
+   + `ScopePicker` na página e `?escopo=` no export (sufixo `-firmes`); `PeriodPicker` ganhou prop `params` para compor ano+escopo;
+   o escopo `firm` restringe a amostra a CONFIRMED+PLAYED, separando leads de bookings fechados (fecha a refinaria D185(a)/D189(d)),
+   ver D190. Próximo possível — restringir também a amostra do nudge do Painel (D189) ao escopo firme (adiável na D190(c): o Painel
+   usa a amostra ampla por design); ou um comparativo entre os dois escopos lado a lado.
 2c. **Sazonalidade de shows** (entregue na Sessão 141, `/shows/sazonalidade` + `gigSeasonality` em
    `src/lib/finance.ts`, ver D133): agrega os shows realizados por mês do calendário (jan→dez, somando todos os anos),
    com cards de destaque (mês mais cheio / mais faturamento / melhor cachê médio) e tabela com barra por nº de shows —
