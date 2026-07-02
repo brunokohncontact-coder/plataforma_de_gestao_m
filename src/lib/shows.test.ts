@@ -15,6 +15,7 @@ import {
   bookingLeadTimeYears,
   parseLeadTimeScope,
   compareBookingLeadTime,
+  compareBookingLeadTimeScopes,
   bookingLeadTimeHeadline,
   LEAD_TIME_TREND_EPSILON,
   LEAD_TIME_SHORT_DAYS,
@@ -737,6 +738,91 @@ describe("compareBookingLeadTime", () => {
     ]);
     expect(compareBookingLeadTime(up, base).trend).toBe("improved");
     expect(compareBookingLeadTime(down, base).trend).toBe("worsened");
+  });
+});
+
+describe("compareBookingLeadTimeScopes", () => {
+  // Show com antecedência `lead` dias e status escolhido (createdAt fixo).
+  const withLead = (lead: number, status: string) =>
+    leadShow({
+      status,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      date: new Date(Date.UTC(2026, 0, 1 + lead)).toISOString(),
+    });
+
+  it("firmes com mais folga: propostas em aberto puxam a mediana geral para baixo", () => {
+    // Firmes agendados com muita folga (40/45/50 → mediana 45); propostas em
+    // cima da hora (2/3/4) só entram no escopo amplo e derrubam a mediana geral.
+    const shows = [
+      withLead(40, "CONFIRMED"),
+      withLead(45, "PLAYED"),
+      withLead(50, "CONFIRMED"),
+      withLead(2, "PROPOSED"),
+      withLead(3, "PROPOSED"),
+      withLead(4, "PROPOSED"),
+    ];
+    const cmp = compareBookingLeadTimeScopes(
+      bookingLeadTime(shows, "all"),
+      bookingLeadTime(shows, "firm"),
+    );
+    expect(cmp.all.sample).toBe(6);
+    expect(cmp.firm.sample).toBe(3);
+    expect(cmp.openProposalCount).toBe(3);
+    // mediana firme 45 − mediana geral ~5.5→arred → positivo e além do limiar.
+    expect(cmp.medianDaysDelta).toBeGreaterThanOrEqual(LEAD_TIME_TREND_EPSILON);
+    expect(cmp.gap).toBe("firm-more-lead");
+  });
+
+  it("firmes em cima da hora: propostas distantes inflam a mediana geral", () => {
+    // Os shows que fecham entram em cima da hora (2/3/4 → mediana 3); as
+    // propostas distantes (80/85/90) só existem no escopo amplo e sobem a geral.
+    const shows = [
+      withLead(2, "CONFIRMED"),
+      withLead(3, "PLAYED"),
+      withLead(4, "CONFIRMED"),
+      withLead(80, "PROPOSED"),
+      withLead(85, "PROPOSED"),
+      withLead(90, "PROPOSED"),
+    ];
+    const cmp = compareBookingLeadTimeScopes(
+      bookingLeadTime(shows, "all"),
+      bookingLeadTime(shows, "firm"),
+    );
+    expect(cmp.medianDaysDelta).toBeLessThanOrEqual(-LEAD_TIME_TREND_EPSILON);
+    expect(cmp.gap).toBe("firm-less-lead");
+  });
+
+  it("sem proposta em aberto os dois escopos coincidem (gap similar, delta 0)", () => {
+    const shows = [
+      withLead(30, "CONFIRMED"),
+      withLead(31, "PLAYED"),
+      withLead(32, "CONFIRMED"),
+    ];
+    const cmp = compareBookingLeadTimeScopes(
+      bookingLeadTime(shows, "all"),
+      bookingLeadTime(shows, "firm"),
+    );
+    expect(cmp.openProposalCount).toBe(0);
+    expect(cmp.medianDaysDelta).toBe(0);
+    expect(cmp.avgDaysDelta).toBe(0);
+    expect(cmp.gap).toBe("similar");
+  });
+
+  it("variação da mediana dentro do limiar é 'similar' mesmo com propostas", () => {
+    const shows = [
+      withLead(20, "CONFIRMED"),
+      withLead(22, "PLAYED"),
+      withLead(24, "CONFIRMED"),
+      withLead(18, "PROPOSED"),
+      withLead(20, "PROPOSED"),
+    ];
+    const cmp = compareBookingLeadTimeScopes(
+      bookingLeadTime(shows, "all"),
+      bookingLeadTime(shows, "firm"),
+    );
+    expect(cmp.openProposalCount).toBe(2);
+    expect(Math.abs(cmp.medianDaysDelta)).toBeLessThan(LEAD_TIME_TREND_EPSILON);
+    expect(cmp.gap).toBe("similar");
   });
 });
 

@@ -9,7 +9,21 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1120 testes** verdes após o **seletor de escopo na
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1124 testes** verdes após o **comparativo entre escopos
+(todos × só firmes) na antecedência de agendamento** (Sessão 198, D191 — a D190 (Sessão 197) adicionou o `ScopePicker`
+(todos os não cancelados × só compromissos firmes) mas mostrava um escopo por vez, obrigando a alternar/memorizar para ver o quanto as
+propostas em aberto distorcem a leitura; era o próximo possível listado na própria D190. Novo helper puro
+`compareBookingLeadTimeScopes(all, firm)` + `type BookingLeadTimeScopeComparison` em `src/lib/shows.ts` (irmão de
+`compareBookingLeadTime`/D187, mas sobre **escopos** do mesmo período, não sobre dois anos): recebe duas `bookingLeadTime` já
+computadas e devolve `medianDaysDelta`/`avgDaysDelta` (firme − todos), `openProposalCount` (`all.sample − firm.sample`, as propostas
+em aberto que separam os escopos) e um veredito `gap` pela variação da **mediana** contra `LEAD_TIME_TREND_EPSILON` (=7 dias, reusado):
+`firm-more-lead` (mediana firme sobe além do limiar — as propostas puxavam a geral para baixo), `firm-less-lead` (cai além do limiar —
+os shows que fecham vêm em cima da hora e as propostas distantes inflam a geral) e `similar` (dentro do limiar). Card
+`BookingLeadTimeScopeCard` 🟢/🟠/⚪ "Todos os shows vs. só firmes" em `/shows/antecedencia`, logo após o card ano-a-ano, **independente
+do escopo ativo** (o gap é o mesmo dos dois lados), reaproveitando a `lead` já computada e computando só o outro escopo (zero I/O
+extra). Gate: só aparece com proposta em aberto separando os escopos e firmes com amostra mensurável (`firm.sample > 0 && all.sample >
+firm.sample`); nota de amostra pequena quando `!firm.reliable`. Ao contrário do card ano-a-ano (subir a mediana é melhora), aqui o gap é
+**diagnóstico**, não evolução — daí os rótulos neutros. **+4 testes**) sobre os **1120 testes** verdes após o **seletor de escopo na
 antecedência de agendamento** (Sessão 197, D190 — a tela `/shows/antecedencia` (`bookingLeadTime`/D185) media sobre **todos** os
 shows não cancelados, incluindo propostas em aberto; a D185(a)/D189(d) apontavam "restringir a CONFIRMED+PLAYED (compromissos
 firmes)" como refinaria adiada. Novo `type BookingLeadTimeScope = "all" | "firm"` + `FIRM_LEAD_STATUSES` + predicado
@@ -3182,8 +3196,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    em `src/lib/shows.ts` + parâmetro opcional `scope` em `bookingLeadTime`/`bookingLeadTimeYears` (default `all` preserva o histórico)
    + `ScopePicker` na página e `?escopo=` no export (sufixo `-firmes`); `PeriodPicker` ganhou prop `params` para compor ano+escopo;
    o escopo `firm` restringe a amostra a CONFIRMED+PLAYED, separando leads de bookings fechados (fecha a refinaria D185(a)/D189(d)),
-   ver D190. Próximo possível — restringir também a amostra do nudge do Painel (D189) ao escopo firme (adiável na D190(c): o Painel
-   usa a amostra ampla por design); ou um comparativo entre os dois escopos lado a lado.
+   ver D190. **Comparativo entre os dois escopos lado a lado** entregue na Sessão 198 — `compareBookingLeadTimeScopes(all, firm)` +
+   `BookingLeadTimeScopeComparison` em `src/lib/shows.ts` + card `BookingLeadTimeScopeCard` 🟢/🟠/⚪ "Todos os shows vs. só firmes" em
+   `/shows/antecedencia` (delta da mediana/média firme − todos, `openProposalCount` e veredito `gap` firm-more-lead/firm-less-lead/similar
+   pelo `LEAD_TIME_TREND_EPSILON` reusado), independente do escopo ativo, só com proposta em aberto separando os escopos, ver D191.
+   Próximo possível — restringir também a amostra do nudge do Painel (D189) ao escopo firme (adiável na D190(c): o Painel
+   usa a amostra ampla por design).
 2c. **Sazonalidade de shows** (entregue na Sessão 141, `/shows/sazonalidade` + `gigSeasonality` em
    `src/lib/finance.ts`, ver D133): agrega os shows realizados por mês do calendário (jan→dez, somando todos os anos),
    com cards de destaque (mês mais cheio / mais faturamento / melhor cachê médio) e tabela com barra por nº de shows —
