@@ -6300,3 +6300,42 @@ contexto, decisão, justificativa e alternativas consideradas.
   (`tsc --noEmit`) limpo; **1137 testes**; smoke test — app sobe (~1 s), `/login` 200 e `/` 200. `npm audit` **inalterado** vs.
   baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma
   dependência nova**.
+
+## 2026-07-02 — D196: Coluna "vs. {ano-1}" por linha na tabela do prazo de recebimento por contratante
+- **Contexto:** a D195 (Sessão 202) adicionou o card de destaques `PaymentLagMoversCard` ("Quem mudou de ritmo · {ano} vs. {ano-1}")
+  em `/shows/prazo-recebimento/por-contratante`, mas o card só expõe **dois extremos** (quem mais acelerou / mais desacelerou). Com
+  vários contratantes comparáveis, todos os do meio ficam sem leitura de tendência: o número está computado no `comparison.changes`
+  mas some da tela. A própria D195/escopo(a) e o PROGRESS listam "coluna 'vs. {ano-1}' por linha na tabela" como o passo seguinte
+  adiado — este é o item retomado agora.
+- **Decisão:** novo helper puro `indexContactPaymentLagChanges<C,S>(comparison)` em `src/lib/finance.ts` + tipo
+  `ContactPaymentLagRowStatus<C,S>` (`{kind:"changed", change}` | `{kind:"new"}` | `{kind:"none"}`). Recebe o
+  `PaymentLagByContactComparison` já computado (D195) e devolve uma **função de lookup por `contact.id`**: casa cada linha da tabela
+  (período atual) com sua variação em O(1) — "changed" para quem está nos dois períodos, "new" para quem só apareceu neste ano
+  (`newContacts`), "none" para o grupo sem contratante / ids desconhecidos. Na página, quando o comparativo existe (só com ano
+  específico), a tabela ganha uma coluna "vs. {ano-1}" após "Prazo médio", renderizada por `PaymentLagRowDelta`: `daysDelta`
+  colorido (🟢 `improved` / 🔴 `worsened` / cinza `stable`), "novo" para os novos pagadores, "—" para o resto. Nota de rodapé
+  explica o código de cores. **Zero lógica pura nova de comparação** — só a indexação do comparativo já existente; **zero I/O extra**
+  (reusa o `comparison`).
+- **Por que reabrir a deferência da D195 (motivo forte):** a D195 preferiu o card por argumentar que "a variação linha a linha é
+  ruído para a maioria dos contratantes de amostra pequena". A coluna endereça isso na **apresentação**, não removendo o card: (1) é
+  o par **detalhe** do card-**manchete**, exatamente a dobra que a página já usa (destaques "paga mais rápido/devagar" + tabela
+  completa); (2) o `trend` gateia a cor — variações dentro de `PAYMENT_LAG_TREND_EPSILON` (=7 d) ficam cinza-neutro, então
+  contratantes de amostra pequena com delta pequeno lêem como "estável", não como alarme; (3) a coluna só aparece com ano específico
+  e comparativo válido (o mesmo gate do card), some em "todos os anos". O card segue respondendo "de quem cuidar", a coluna completa
+  "e todos os outros".
+- **Por que uma função de lookup e não expor o `Map`/dois arrays:** o consumidor precisa distinguir três situações por linha
+  (variou / é novo / não comparável) numa só chamada; devolver um closure `(id) => status` mantém a máquina de estados na lógica
+  pura e testável, e deixa a página só escolhendo a renderização. Espelha como as telas irmãs resolvem o casamento por id.
+- **Escopo (o que ficou de fora):** (a) export CSV do comparativo — segue adiado como na D195 (o export emite o retrato do ano; o
+  comparativo é apresentação); a coluna não muda o CSV; (b) coluna equivalente na tela-mãe `/shows/prazo-recebimento` — lá o
+  comparativo é por período único (`comparePaymentLag`/D193), não por linha, então não há tabela por contratante para anotar.
+- **Alternativas consideradas:** (a) manter só o card (status quo D195) — descartado por deixar os contratantes do meio sem leitura;
+  (b) uma coluna sempre visível (também em "todos os anos") — descartado, sem período fixo não há "ano anterior"; (c) mostrar o
+  `medianDaysDelta` em vez do `avgDaysDelta` — descartado por coerência com o `trend`, que a D195 ancorou na média por amostra pequena.
+- **Testes:** +2 em `src/lib/finance.test.ts` (`indexContactPaymentLagChanges`): resolve "changed" com a variação para quem está nos
+  dois períodos; resolve "new" para quem só existe no atual e "none" para o grupo sem contratante / `null` / `undefined` / id
+  desconhecido. Suíte **1137 → 1139**, todos verdes.
+- **DoD:** build de produção verde (`/shows/prazo-recebimento/por-contratante` regenerada); lint (`next lint`, 0 avisos); typecheck
+  (`tsc --noEmit`) limpo; **1139 testes**; smoke test — app sobe, `/login` 200 e `/` 200. `npm audit` **inalterado** vs. baseline
+  (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência
+  nova**.

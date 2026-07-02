@@ -112,6 +112,7 @@ import {
   paymentLagHeadline,
   paymentLagByContact,
   comparePaymentLagByContact,
+  indexContactPaymentLagChanges,
   paymentSpeedBucket,
   PAYMENT_SPEED_BUCKET_ORDER,
   computeGoalProgress,
@@ -4633,6 +4634,72 @@ describe("comparePaymentLagByContact", () => {
     expect(c.changes.map((x) => x.contact.id)).toEqual(["desac", "acel"]);
     expect(c.biggestWorsening?.contact.id).toBe("desac");
     expect(c.biggestImprovement?.contact.id).toBe("acel");
+  });
+});
+
+describe("indexContactPaymentLagChanges", () => {
+  interface Contact {
+    id: string;
+    name: string;
+  }
+  type ShowWithPayer = ReceivableShowLike & { payer: Contact | null };
+  const getPayer = (s: ShowWithPayer) => s.payer;
+
+  function gig(partial: Partial<ShowWithPayer>): ShowWithPayer {
+    return {
+      id: "g",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-03-01T00:00:00.000Z",
+      payer: null,
+      ...partial,
+    };
+  }
+
+  function paid(id: string, payer: Contact | null, year: number, lagDays: number) {
+    const show = gig({ id, date: `${year}-03-01T00:00:00.000Z`, payer });
+    const paidDate = new Date(Date.UTC(year, 2, 1 + lagDays)).toISOString();
+    const t = tx({ type: "INCOME", amount: 100_00, received: true, showId: id, date: paidDate });
+    return { show, tx: t };
+  }
+
+  const ze = { id: "ze", name: "Bar do Zé" };
+  const novo = { id: "novo", name: "Novo" };
+
+  it("resolve 'changed' com a variação para quem está nos dois períodos", () => {
+    const cur = paymentLagByContact([paid("c", ze, 2026, 5).show], [paid("c", ze, 2026, 5).tx], getPayer);
+    const prev = paymentLagByContact([paid("p", ze, 2025, 40).show], [paid("p", ze, 2025, 40).tx], getPayer);
+    const lookup = indexContactPaymentLagChanges(comparePaymentLagByContact(cur, prev));
+    const status = lookup("ze");
+    expect(status.kind).toBe("changed");
+    if (status.kind === "changed") {
+      expect(status.change.avgDaysDelta).toBe(-35);
+      expect(status.change.trend).toBe("improved");
+    }
+  });
+
+  it("resolve 'new' para quem só existe no período atual e 'none' para o grupo sem contratante", () => {
+    const cur = paymentLagByContact(
+      [
+        paid("c1", ze, 2026, 5).show,
+        paid("c2", novo, 2026, 5).show,
+        gig({ id: "orfao", date: "2026-03-01T00:00:00.000Z", payer: null }),
+      ],
+      [
+        paid("c1", ze, 2026, 5).tx,
+        paid("c2", novo, 2026, 5).tx,
+        tx({ type: "INCOME", amount: 100_00, received: true, showId: "orfao", date: "2026-06-01T00:00:00.000Z" }),
+      ],
+      getPayer,
+    );
+    const prev = paymentLagByContact([paid("p", ze, 2025, 40).show], [paid("p", ze, 2025, 40).tx], getPayer);
+    const lookup = indexContactPaymentLagChanges(comparePaymentLagByContact(cur, prev));
+    expect(lookup("novo").kind).toBe("new");
+    expect(lookup("ze").kind).toBe("changed");
+    // Grupo "sem contratante" (contact null → id ausente) e ids desconhecidos: "none".
+    expect(lookup(null).kind).toBe("none");
+    expect(lookup(undefined).kind).toBe("none");
+    expect(lookup("inexistente").kind).toBe("none");
   });
 });
 

@@ -4531,7 +4531,52 @@ export function comparePaymentLagByContact<
 }
 
 /**
+ * Status de uma linha da tabela por contratante (período atual) frente ao período
+ * anterior, para a coluna "vs. {ano-1}":
+ * - "changed": o contratante existia nos dois períodos — traz a variação do prazo;
+ * - "new": só apareceu no período atual (começou a pagar agora);
+ * - "none": o grupo "sem contratante" (não é comparável).
+ */
+export type ContactPaymentLagRowStatus<
+  C,
+  S extends ReceivableShowLike = ReceivableShowLike,
+> =
+  | { kind: "changed"; change: ContactPaymentLagChange<C, S> }
+  | { kind: "new" }
+  | { kind: "none" };
+
+/**
+ * Casa cada linha da tabela por contratante (período atual) com sua situação no
+ * comparativo `comparePaymentLagByContact`, indexando por `contact.id` para o
+ * consumidor resolver a coluna "vs. {ano-1}" em O(1) — sem repetir a varredura na
+ * apresentação. Puro: recebe o comparativo já computado e devolve uma função de
+ * lookup. Um contratante presente nos dois períodos vira "changed"; um que só está
+ * no atual (em `newContacts`) vira "new"; qualquer outro id (incluindo o grupo sem
+ * contratante) vira "none".
+ */
+export function indexContactPaymentLagChanges<
+  C extends { id: string },
+  S extends ReceivableShowLike,
+>(
+  comparison: PaymentLagByContactComparison<C, S>,
+): (contactId: string | null | undefined) => ContactPaymentLagRowStatus<C, S> {
+  const changedById = new Map<string, ContactPaymentLagChange<C, S>>();
+  for (const c of comparison.changes) changedById.set(c.contact.id, c);
+  const newIds = new Set<string>();
+  for (const r of comparison.newContacts) if (r.contact) newIds.add(r.contact.id);
+
+  return (contactId) => {
+    if (!contactId) return { kind: "none" };
+    const change = changedById.get(contactId);
+    if (change) return { kind: "changed", change };
+    if (newIds.has(contactId)) return { kind: "new" };
+    return { kind: "none" };
+  };
+}
+
+/**
  * Decide quanto lançar ao quitar um cachê, dado o valor pedido pelo usuário e o
+ * saldo em aberto (recalculado no servidor — a fonte de verdade). Regras:
  * saldo em aberto (recalculado no servidor — a fonte de verdade). Regras:
  * saldo em aberto (recalculado no servidor — a fonte de verdade). Regras:
  * - Saldo <= 0 → 0 (nada a quitar).
