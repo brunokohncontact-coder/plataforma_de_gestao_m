@@ -5956,3 +5956,50 @@ contexto, decisão, justificativa e alternativas consideradas.
   sobe (~6 s), `/login` 200 e `/shows/antecedencia`, `/shows/antecedencia?ano=2026`, `/shows/antecedencia/export?ano=2026`
   todos 307 sem sessão (guardados por `requireUser`). `npm audit` **inalterado** vs. baseline (10 advisories —
   4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## 2026-07-02 — D187: Comparativo ano a ano da antecedência de agendamento (`compareBookingLeadTime`)
+- **Contexto:** a tela `/shows/antecedencia` (`bookingLeadTime`/D185) ganhou recorte por `?ano=` na D186, mas
+  comparava só um período por vez. Todas as leituras irmãs de risco/tendência já têm um card "vs. {ano-1}":
+  concentração (`compareGeoConcentration`/D120, `compareClientConcentration`/D122), papel
+  (`compareRoleConcentration`/D141) e cancelamento (`compareCancellationRate`/D181). A antecedência era a única
+  leitura nova sem esse espelho — e é justamente uma métrica de **hábito** que só ganha sentido comparada ("a
+  agenda ficou mais proativa que ano passado?"), como a própria D186(a) apontou.
+- **Decisão:** novo helper puro `compareBookingLeadTime(current, previous)` + tipo `BookingLeadTimeComparison`
+  + `LEAD_TIME_TREND_EPSILON` (=7 dias) em `src/lib/shows.ts`: recebe duas `bookingLeadTime` já computadas (uma
+  por período) e devolve `medianDaysDelta`/`avgDaysDelta` + `trend`. Card "Antecedência {ano} vs. {ano-1}"
+  (`BookingLeadTimeComparisonCard` 🟢/🔴/⚪) em `shows/antecedencia/page.tsx`, logo após os destaques, exibido só
+  com um ano específico selecionado e **ambos** os períodos tendo amostra mensurável (`sample > 0`). Reaproveita
+  o recorte por ano UTC (D108) sobre os registros já carregados, sem nova consulta.
+- **Justificativa:**
+  - **Aqui subir a mediana é a MELHORA (direção oposta a concentração/cancelamento):** mais dias de antecedência
+    = mais runway/previsibilidade de caixa e menos correria. `trend = improved` quando a mediana sobe ≥ ε,
+    `worsened` quando cai ≥ ε, `stable` no meio — o oposto de `compareCancellationRate` (D181), onde subir é a
+    piora. O card, os rótulos ("Agendando com mais folga" × "em cima da hora") e os tons refletem essa inversão.
+  - **Veredito ancorado na MEDIANA, não na média:** a mediana resiste a um único show fechado com muita/pouca
+    folga (mesma razão de `bookingLeadTime` liderar pela mediana, D185). A média entra no card como segunda
+    métrica (informativa), mas não decide a tendência — coberto por teste (medianas iguais + média puxada por
+    outlier → `stable`).
+  - **Limiar de 7 dias (uma semana):** grande o bastante para não oscilar a cada show isolado, pequeno o bastante
+    para captar uma mudança real de hábito. Espelha `CANCELLATION_TREND_EPSILON`/`GEO_TREND_EPSILON` no eixo de
+    dias. Inclusivo nas duas pontas (±ε já vira tendência), coberto por teste.
+  - **Gate de exibição em `sample > 0` nos dois períodos:** a mediana de amostra vazia é 0 por construção; comparar
+    contra um 0 fantasma diria "piorou 40 dias" sem base. Exigir amostra mensurável nos dois anos (mesmo espírito
+    do `report.totalShows > 0` de `compareCancellationRate`). O card ainda anota "amostra pequena" quando um dos
+    anos fica abaixo de `MIN_LEAD_TIME_SAMPLE` (a comparação aparece, mas com a ressalva de ruído, como na página).
+  - **Helper paralelo, não generalização:** `BookingLeadTime` é um tipo distinto de `ContactCancellations`/
+    `GeoConcentration` e a direção do veredito é invertida; um helper próprio (como `compareClientConcentration`
+    foi paralelo a `compareGeoConcentration`, D122) é mais claro que forçar um genérico.
+- **Alternativas consideradas:** (a) nudge no Painel em vez do card (a D185(d) adiou o nudge por a leitura ser um
+  retrato, não um alarme) — o card ano-a-ano é o formato certo para tendência, e mantém a paridade com as telas
+  irmãs; o nudge segue adiado. (b) exigir `reliable` (amostra ≥ 3) nos dois anos para exibir — descartado: esconde
+  a comparação de quem tem poucos shows/ano (comum cedo); melhor mostrar com a ressalva de ruído (mesma escolha da
+  UI da página, D185). (c) decidir a tendência pela média — descartado: sensível a outlier, contra o design da D185.
+- **Ressalva de dados:** herdada da D185/D186 — a fidelidade de `createdAt` (e da antecedência) depende do cadastro
+  perto do fechamento; seed/import distorcem. O comparativo não altera essa ressalva.
+- **Testes:** `compareBookingLeadTime` (mediana subindo ≥ ε → improved; caindo ≥ ε → worsened; dentro do limiar →
+  stable; veredito olha só a mediana com a média divergindo; limiar inclusivo nas duas pontas) — **+5 testes**.
+  Total **1097 → 1102**.
+- **DoD:** build de produção verde (rota `/shows/antecedencia` regenerada); lint (`next lint`, 0 avisos); typecheck
+  (`tsc --noEmit`) limpo; **1102 testes** (`vitest run`); smoke test — app sobe (~6 s), `/login` 200. `npm audit`
+  **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss
+  bundlado; ver D6/bloqueios); **nenhuma dependência nova**.

@@ -13,6 +13,8 @@ import {
   isValidShowStatus,
   bookingLeadTime,
   bookingLeadTimeYears,
+  compareBookingLeadTime,
+  LEAD_TIME_TREND_EPSILON,
   MIN_LEAD_TIME_SAMPLE,
   type ConflictShowLike,
   type LeadTimeShowLike,
@@ -620,5 +622,66 @@ describe("bookingLeadTimeYears", () => {
       leadShow({ createdAt: "2025-01-01T00:00:00.000Z", date: "2025-05-01T00:00:00.000Z" }),
     ]);
     expect(years).toEqual([2025]);
+  });
+});
+
+describe("compareBookingLeadTime", () => {
+  // Show com antecedência `lead` dias, ancorado num createdAt fixo (a data
+  // sai `lead` dias depois). Ano é irrelevante aqui — o helper compara duas
+  // `bookingLeadTime` já computadas, agnóstico ao recorte por período.
+  const withLead = (lead: number) =>
+    leadShow({
+      createdAt: "2026-01-01T00:00:00.000Z",
+      date: new Date(Date.UTC(2026, 0, 1 + lead)).toISOString(),
+    });
+
+  it("mediana subindo além do limiar é melhora (mais folga para agendar)", () => {
+    const current = bookingLeadTime([withLead(40), withLead(45), withLead(50)]); // mediana 45
+    const previous = bookingLeadTime([withLead(10), withLead(12), withLead(14)]); // mediana 12
+    const cmp = compareBookingLeadTime(current, previous);
+    expect(cmp.medianDaysDelta).toBe(33);
+    expect(cmp.trend).toBe("improved");
+  });
+
+  it("mediana caindo além do limiar é piora (agendando em cima da hora)", () => {
+    const current = bookingLeadTime([withLead(3), withLead(4), withLead(5)]); // mediana 4
+    const previous = bookingLeadTime([withLead(30), withLead(31), withLead(32)]); // mediana 31
+    const cmp = compareBookingLeadTime(current, previous);
+    expect(cmp.medianDaysDelta).toBe(-27);
+    expect(cmp.trend).toBe("worsened");
+  });
+
+  it("variação dentro do limiar é estável", () => {
+    const current = bookingLeadTime([withLead(20), withLead(22), withLead(24)]); // mediana 22
+    const previous = bookingLeadTime([withLead(18), withLead(20), withLead(22)]); // mediana 20
+    const cmp = compareBookingLeadTime(current, previous);
+    expect(cmp.medianDaysDelta).toBe(2);
+    expect(cmp.trend).toBe("stable");
+  });
+
+  it("o veredito olha só a mediana — a média pode divergir sem virar tendência", () => {
+    // Medianas iguais (10 × 10), mas a média atual é puxada por um outlier.
+    const current = bookingLeadTime([withLead(10), withLead(10), withLead(200)]); // mediana 10, média 73
+    const previous = bookingLeadTime([withLead(9), withLead(10), withLead(11)]); // mediana 10, média 10
+    const cmp = compareBookingLeadTime(current, previous);
+    expect(cmp.medianDaysDelta).toBe(0);
+    expect(cmp.avgDaysDelta).toBe(63);
+    expect(cmp.trend).toBe("stable");
+  });
+
+  it("o limiar é inclusivo nas duas pontas (±epsilon já vira tendência)", () => {
+    const base = bookingLeadTime([withLead(30), withLead(30), withLead(30)]); // mediana 30
+    const up = bookingLeadTime([
+      withLead(30 + LEAD_TIME_TREND_EPSILON),
+      withLead(30 + LEAD_TIME_TREND_EPSILON),
+      withLead(30 + LEAD_TIME_TREND_EPSILON),
+    ]);
+    const down = bookingLeadTime([
+      withLead(30 - LEAD_TIME_TREND_EPSILON),
+      withLead(30 - LEAD_TIME_TREND_EPSILON),
+      withLead(30 - LEAD_TIME_TREND_EPSILON),
+    ]);
+    expect(compareBookingLeadTime(up, base).trend).toBe("improved");
+    expect(compareBookingLeadTime(down, base).trend).toBe("worsened");
   });
 });
