@@ -1084,3 +1084,81 @@ export function pipelineByContact<C extends ContactRankLike>(
     overallConversionRate: totalDecided === 0 ? null : totalPlayed / totalDecided,
   };
 }
+
+/**
+ * Participação a partir da qual o maior contratante concentra o pipeline aberto
+ * o bastante para virar nudge (metade ou mais do cachê a fechar está com ele).
+ */
+export const PIPELINE_CONCENTRATION_HIGH_SHARE = 0.5;
+/**
+ * Participação a partir da qual o nudge sobe o tom (crítico): dois terços ou mais
+ * do pipeline aberto num único contratante — espelha o 2/3 de
+ * `clientConcentrationHeadline`.
+ */
+export const PIPELINE_CONCENTRATION_CRITICAL_SHARE = 2 / 3;
+
+export interface PipelineByContactHeadline<C extends ContactRankLike> {
+  /**
+   * Deve aparecer no Painel? Só quando o **pipeline aberto** (PROPOSED +
+   * CONFIRMED — a receita futura ainda não realizada) está concentrado num único
+   * contratante que responde por `highShare` ou mais do cachê a fechar. Com o
+   * pipeline distribuído o aviso seria ruído (mesma disciplina de
+   * `clientConcentrationHeadline`/`cancellationHeadline`: o nudge só surge quando
+   * a dependência morde). Distinto da concentração de receita
+   * (`clientConcentration`, sobre o cachê já realizado): aqui o eixo é o que está
+   * **por vir** — se o maior deal cair, quanto da agenda futura vai junto.
+   */
+  show: boolean;
+  /**
+   * Caso extremo: **um único** contratante tem todo o pipeline aberto, ou o maior
+   * sozinho carrega ≥ 2/3 dele. Permite ao Painel subir o tom (🔴 vs 🟠).
+   */
+  critical: boolean;
+  /** Maior contratante por cachê em aberto, ou null se não há pipeline. */
+  contact: C | null;
+  /** Cachê em aberto desse contratante (PROPOSED + CONFIRMED, centavos). */
+  openValue: number;
+  /** Shows em aberto desse contratante. */
+  openCount: number;
+  /** Participação desse contratante no pipeline aberto da carteira (0..1). */
+  topShare: number;
+  /** Cachê total em aberto na carteira (centavos). */
+  totalOpenValue: number;
+  /** Nº de contratantes com pipeline aberto. */
+  contactCount: number;
+}
+
+/**
+ * Resumo de Painel do **funil por contratante**: deriva, de uma
+ * `pipelineByContact` já computada, se o nudge de dependência do pipeline aberto
+ * deve aparecer e com que urgência. Puro, sem I/O — espelha
+ * `clientConcentrationHeadline`/`cancellationHeadline`: a regra de exibição vive
+ * aqui, o Painel só consome. Só dispara quando o maior contratante concentra
+ * `highShare` ou mais do cachê a fechar (receita futura refém de um só pagador);
+ * `critical` quando é um contratante único ou o maior passa de `criticalShare`.
+ * `report.rows` já vem ordenado por cachê em aberto desc, então `rows[0]` é o topo.
+ */
+export function pipelineByContactHeadline<C extends ContactRankLike>(
+  report: ContactPipeline<C>,
+  highShare: number = PIPELINE_CONCENTRATION_HIGH_SHARE,
+  criticalShare: number = PIPELINE_CONCENTRATION_CRITICAL_SHARE,
+): PipelineByContactHeadline<C> {
+  const top = report.rows[0] ?? null;
+  const topShare =
+    top !== null && report.totalOpenValue > 0
+      ? top.openValue / report.totalOpenValue
+      : 0;
+  const show = top !== null && report.totalOpenValue > 0 && topShare >= highShare;
+  const critical =
+    show && (report.contactCount === 1 || topShare >= criticalShare);
+  return {
+    show,
+    critical,
+    contact: top?.contact ?? null,
+    openValue: top?.openValue ?? 0,
+    openCount: top?.openCount ?? 0,
+    topShare,
+    totalOpenValue: report.totalOpenValue,
+    contactCount: report.contactCount,
+  };
+}

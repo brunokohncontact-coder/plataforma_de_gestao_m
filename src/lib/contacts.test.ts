@@ -109,6 +109,9 @@ import {
   cancellationHeadline,
   compareCancellationRate,
   pipelineByContact,
+  pipelineByContactHeadline,
+  PIPELINE_CONCENTRATION_HIGH_SHARE,
+  PIPELINE_CONCENTRATION_CRITICAL_SHARE,
   CANCELLATION_TREND_EPSILON,
   clientConcentration,
   clientRetention,
@@ -1019,6 +1022,100 @@ describe("pipelineByContact", () => {
     expect(r.totalConfirmedValue).toBe(500_00);
     expect(r.totalOpenValue).toBe(700_00);
     expect(r.totalOpenCount).toBe(2);
+  });
+});
+
+describe("pipelineByContactHeadline", () => {
+  function s(over: Partial<ContactRankShowLike> = {}): ContactRankShowLike {
+    return { status: "PROPOSED", date: "2026-05-01T20:00:00Z", fee: 100_00, ...over };
+  }
+  function item(
+    id: string,
+    name: string,
+    shows: ContactRankShowLike[],
+  ): ContactWithShows<ContactRankLike> {
+    return { contact: { id, name }, shows };
+  }
+
+  it("não mostra sem pipeline aberto", () => {
+    const h = pipelineByContactHeadline(pipelineByContact([]));
+    expect(h.show).toBe(false);
+    expect(h.critical).toBe(false);
+    expect(h.contact).toBeNull();
+    expect(h.topShare).toBe(0);
+    expect(h.totalOpenValue).toBe(0);
+  });
+
+  it("contratante único com pipeline aberto → crítico (100%)", () => {
+    const h = pipelineByContactHeadline(
+      pipelineByContact([item("uni", "Único", [s({ fee: 500_00 })])]),
+    );
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(true);
+    expect(h.contact?.id).toBe("uni");
+    expect(h.openValue).toBe(500_00);
+    expect(h.topShare).toBeCloseTo(1);
+    expect(h.contactCount).toBe(1);
+  });
+
+  it("mostra quando o maior concentra ≥ metade do pipeline (mas < 2/3 → não crítico)", () => {
+    // Maior = 550 de 1000 = 55% → acima do HIGH (0.5), abaixo do CRITICAL (2/3)
+    const h = pipelineByContactHeadline(
+      pipelineByContact([
+        item("grande", "Grande", [s({ fee: 550_00 })]),
+        item("b", "B", [s({ fee: 250_00 })]),
+        item("c", "C", [s({ fee: 200_00 })]),
+      ]),
+    );
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(false);
+    expect(h.contact?.id).toBe("grande");
+    expect(h.topShare).toBeCloseTo(0.55);
+  });
+
+  it("não mostra quando o pipeline está distribuído (< metade no maior)", () => {
+    // Maior = 400 de 1000 = 40% → abaixo do HIGH (0.5)
+    const h = pipelineByContactHeadline(
+      pipelineByContact([
+        item("a", "A", [s({ fee: 400_00 })]),
+        item("b", "B", [s({ fee: 350_00 })]),
+        item("c", "C", [s({ fee: 250_00 })]),
+      ]),
+    );
+    expect(h.show).toBe(false);
+    expect(h.topShare).toBeCloseTo(0.4);
+  });
+
+  it("crítico quando o maior passa de 2/3 do pipeline, com mais de um contratante", () => {
+    // Maior = 700 de 1000 = 70% → acima do CRITICAL (2/3)
+    const h = pipelineByContactHeadline(
+      pipelineByContact([
+        item("dominante", "Dominante", [s({ fee: 700_00 })]),
+        item("b", "B", [s({ fee: 300_00 })]),
+      ]),
+    );
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(true);
+    expect(h.contact?.id).toBe("dominante");
+    expect(h.contactCount).toBe(2);
+  });
+
+  it("respeita limiares injetados", () => {
+    const report = pipelineByContact([
+      item("a", "A", [s({ fee: 400_00 })]),
+      item("b", "B", [s({ fee: 600_00 })]),
+    ]);
+    // topShare = 0.6: com HIGH=0.5 default mostra; com HIGH=0.7 não
+    expect(pipelineByContactHeadline(report).show).toBe(true);
+    expect(pipelineByContactHeadline(report, 0.7).show).toBe(false);
+    // com CRITICAL=0.5, o 0.6 vira crítico
+    expect(pipelineByContactHeadline(report, 0.5, 0.5).critical).toBe(true);
+  });
+
+  it("os limiares default são coerentes (HIGH < CRITICAL)", () => {
+    expect(PIPELINE_CONCENTRATION_HIGH_SHARE).toBeLessThan(
+      PIPELINE_CONCENTRATION_CRITICAL_SHARE,
+    );
   });
 });
 

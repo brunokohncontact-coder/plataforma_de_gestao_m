@@ -9,7 +9,20 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1102 testes** verdes após o **comparativo ano a ano
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1109 testes** verdes após o **nudge de funil por
+contratante no Painel** (Sessão 195, D188 — o funil por contratante (`pipelineByContact`/D183 + `/contatos/funil`) tinha página e
+CSV (D184) mas nenhuma presença no Painel — era a única leitura recente do eixo Contatos sem nudge, enquanto concentração de
+clientes/geo (`clientConcentrationHeadline`/`geoConcentrationHeadline`) e cancelamentos (`cancellationHeadline`/D179) já ecoam no
+dashboard. Novo helper puro `pipelineByContactHeadline(report, highShare=0.5, criticalShare=2/3)` + `PipelineByContactHeadline<C>` +
+`PIPELINE_CONCENTRATION_HIGH_SHARE`/`PIPELINE_CONCENTRATION_CRITICAL_SHARE` em `src/lib/contacts.ts` (espelho de
+`clientConcentrationHeadline`): de uma `pipelineByContact` já computada decide se o nudge de **dependência do pipeline aberto**
+aparece — `rows[0]` é o maior por cachê em aberto, `topShare = openValue/totalOpenValue`; `show` quando o maior concentra ≥ metade
+do pipeline aberto, `critical` quando é contratante **único** (100%) ou passa de 2/3 (o mesmo corte de
+`clientConcentrationHeadline`). Banner 🟠/🔴 em `dashboard/page.tsx` logo após o nudge de cancelamentos, reaproveitando o **mesmo**
+pivô show×contato já montado para o nudge de cancelamentos (zero consulta nova), linkando `/contatos/funil`. Eixo genuinamente
+distinto da concentração de RECEITA (`clientConcentration`, sobre o cachê já **realizado** — o passado): aqui é o pipeline
+**aberto** (PROPOSED + CONFIRMED), a receita futura ainda não realizada — se o maior deal cair, quanto da agenda futura vai junto.
+**+7 testes**) sobre os **1102 testes** verdes após o **comparativo ano a ano
 da antecedência de agendamento** (Sessão 194, D187 — a tela `/shows/antecedencia` tinha página, CSV (D185) e recorte por ano (D186),
 mas comparava só um período por vez, enquanto todas as leituras irmãs de tendência já têm um card "vs. {ano-1}"
 (concentração/D120/D122, papel/D141, cancelamento/D181). Novo helper puro `compareBookingLeadTime(current, previous)` +
@@ -3167,9 +3180,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    (Contratante/Papel/Em aberto/Shows em aberto/Em negociação/Propostos/Confirmado/Confirmados/Concretização/
    Realizados/Decididos + linha Total com contagens por etapa em branco), uma linha por contratante com pipeline
    aberto na ordem da página, sem `?ano=`, nome `funil-por-contratante.csv`, botão "⬇ CSV" gated por `hasData`,
-   ver D184. Próximo possível — registrar **transições de status** (log) para uma taxa de
+   ver D184. **Nudge no Painel** entregue na Sessão 195 — `pipelineByContactHeadline` + banner 🟠/🔴 em
+   `dashboard/page.tsx` quando o maior contratante concentra ≥ metade do pipeline aberto (crítico se único/≥2/3),
+   reaproveitando o pivô show×contato do nudge de cancelamentos, linkando `/contatos/funil`, ver D188. Próximo
+   possível — registrar **transições de status** (log) para uma taxa de
    conversão proposta→realizado de verdade e tempo médio em cada etapa (segue sendo o maior passo em aberto
-   do funil, precisa de um modelo de eventos no schema).
+   do funil, precisa de um modelo de eventos no schema); ou recorte por `?ano=`/comparativo ano a ano do funil
+   por contratante.
 3. **Filtros — evoluções**: persistência do último filtro entregue para Finanças (Sessão 32),
    Shows e Contatos (Sessão 33) — módulo genérico `src/lib/listFilter.ts` + middleware (ver D23/D24);
    **indicador visual de "filtro lembrado"** entregue na Sessão 79 — marcador `?lembrado=1` na
