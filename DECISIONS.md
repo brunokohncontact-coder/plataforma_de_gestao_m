@@ -6193,3 +6193,39 @@ contexto, decisão, justificativa e alternativas consideradas.
   typecheck (`tsc --noEmit`) limpo; **1128 testes** (`vitest run`); smoke test — app sobe (~6 s), `/` 200 e
   `/shows/prazo-recebimento` (e `?ano=2026`) 307→login. `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate /
   5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## 2026-07-02 — D193: Comparativo ano a ano do prazo de recebimento (`comparePaymentLag`)
+- **Contexto:** a tela `/shows/prazo-recebimento` (`paymentLag`/D51 — o DSO do músico) ganhou o `PeriodPicker` (D192/`?ano=`)
+  mas comparava só um período por vez, enquanto todas as leituras irmãs de tendência já têm um card "vs. {ano-1}"
+  (concentração/D120/D122, cancelamento/D181, antecedência de agendamento/D187). Era o item (c) explicitamente adiado na
+  própria D192 ("já entregar o comparativo ano a ano do DSO … fica como próximo passo") — o recorte por ano era o pré-requisito
+  e já está na `main`.
+- **Decisão:** helper puro `comparePaymentLag<S>(current, previous)` + `PaymentLagComparison<S>` + `PAYMENT_LAG_TREND_EPSILON`
+  (=7 dias) em `src/lib/finance.ts`, espelho de `compareBookingLeadTime`/D187: recebe dois `paymentLag` já computados (um por
+  período) e devolve `medianDaysDelta`/`avgDaysDelta` (atual − anterior) + `trend`. **Direção invertida** em relação ao booking
+  lead time: aqui **descer** a mediana é a melhora (o cachê entra mais cedo), a mesma direção que cancelamento/concentração
+  (número menor é melhor) — `improved` quando a mediana cai ≥ ε, `worsened` quando sobe ≥ ε, `stable` no meio. Veredito
+  ancorado na **mediana** (resiste a um recebimento muito atrasado, como o próprio `paymentLag`/D57); a média entra no card só
+  como informação. Card `PaymentLagComparisonCard` 🟢/🔴/⚪ "Prazo de recebimento {ano} vs. {ano-1}" em `/shows/prazo-recebimento`,
+  logo após os destaques, exibido só com um ano específico e ambos os períodos com recebimento (`showCount > 0`); nota de amostra
+  pequena quando qualquer dos anos tem menos de `MIN_MEDIAN_LAG_SAMPLE` (=3) shows pagos. Reaproveita os **mesmos** registros já
+  carregados (recorte por `date` UTC/D108 — computa o ano anterior sem nova consulta), zero I/O extra.
+- **Por que ancorar o veredito na mediana e não na média:** um único cachê muito atrasado infla o DSO médio de um ano sem
+  representar o hábito típico — a mediana ponderada (o dia em que metade do faturamento entrou) é a leitura estável, e a
+  comparação de hábito entre anos precisa dela. A média fica visível no card para não esconder o outlier, mas não decide a cor.
+- **Por que gate em `showCount > 0` nos dois anos (e não em amostra "confiável"):** com um ano sem nenhum recebimento a
+  comparação de medianas é vazia/enganosa; com 1–2 shows ela é ruidosa mas ainda informativa — daí exibir o card e apenas
+  **sinalizar** a amostra pequena (mesma disciplina do card irmão de antecedência/D187, que mostra e ressalva em vez de esconder).
+- **Alternativas consideradas:** (a) reusar `LEAD_TIME_TREND_EPSILON` em vez de um `PAYMENT_LAG_TREND_EPSILON` próprio —
+  descartado: são eixos distintos (runway em dias de antecedência × DSO em dias de atraso) e podem divergir no futuro; um limiar
+  nomeado por eixo documenta melhor a intenção, ainda que hoje ambos valham 7. (b) exibir o card também em "todos os anos"
+  comparando o ano corrente contra o anterior — descartado: o `PeriodPicker` já é o gesto de escolher um ano, e um comparativo
+  implícito em "todos" seria surpreendente (mesma decisão dos cards irmãos). (c) já recortar/comparar a tela **por contratante**
+  (`/shows/prazo-recebimento/por-contratante`) — adiado (segue como próximo passo do item 5, mesmo par página+export).
+- **Testes:** `comparePaymentLag` — descer a mediana além do limiar é `improved`; subir é `worsened`; variação < ε é `stable`;
+  limiar inclusivo nas duas pontas (== ε já é tendência); preserva as referências `current`/`previous` e ancora o veredito na
+  mediana e não na média (mediana igual com média inflada → `stable`) — **+5 testes**. Total **1128 → 1133**.
+- **DoD:** build de produção verde (`/shows/prazo-recebimento` regenerada); lint (`next lint`, 0 avisos); typecheck
+  (`tsc --noEmit`) limpo; **1133 testes** (`vitest run`); smoke test — app sobe (~6 s), `/login` 200 e
+  `/shows/prazo-recebimento` 307→login. `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high /
+  1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.

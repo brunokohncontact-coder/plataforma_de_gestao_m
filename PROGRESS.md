@@ -9,7 +9,21 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1128 testes** verdes após o **recorte por período
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1133 testes** verdes após o **comparativo ano a ano do
+prazo de recebimento** (Sessão 200, D193 — a tela `/shows/prazo-recebimento` (`paymentLag`/D51, o DSO do músico) ganhou o
+`PeriodPicker` (D192/`?ano=`) mas comparava só um período por vez, enquanto todas as leituras irmãs de tendência já têm um card
+"vs. {ano-1}" (concentração/D120/D122, cancelamento/D181, antecedência de agendamento/D187); era o item (c) adiado na própria
+D192, e o recorte por ano — o pré-requisito — já estava na `main`. Novo helper puro `comparePaymentLag<S>(current, previous)` +
+`PaymentLagComparison<S>` + `PAYMENT_LAG_TREND_EPSILON` (=7 dias) em `src/lib/finance.ts`, espelho de `compareBookingLeadTime`/D187:
+recebe dois `paymentLag` já computados (um por período) e devolve `medianDaysDelta`/`avgDaysDelta` (atual − anterior) + `trend`, mas
+com a **direção invertida** — aqui **descer** a mediana é a melhora (o cachê entra mais cedo), a mesma direção que
+cancelamento/concentração (número menor é melhor): `improved` quando a mediana cai ≥ ε, `worsened` quando sobe ≥ ε, `stable` no meio.
+Veredito ancorado na **mediana** (resiste a um recebimento muito atrasado, como o próprio `paymentLag`/D57); a média entra no card só
+como informação. Card `PaymentLagComparisonCard` 🟢/🔴/⚪ "Prazo de recebimento {ano} vs. {ano-1}" em `/shows/prazo-recebimento`, logo
+após os destaques, exibido só com um ano específico e ambos os períodos com recebimento (`showCount > 0`), com nota de amostra pequena
+quando qualquer ano tem menos de `MIN_MEDIAN_LAG_SAMPLE` (=3) shows pagos; reaproveita os mesmos registros já carregados (computa o ano
+anterior pelo recorte por `date` UTC/D108, zero I/O extra). Adiado (D193): recortar/comparar também a tela por contratante. **+5 testes**)
+sobre os **1128 testes** verdes após o **recorte por período
 (`?ano=`) no prazo de recebimento** (Sessão 199, D192 — a tela `/shows/prazo-recebimento` (`paymentLag`/D51, o DSO do músico) era um
 retrato do acervo inteiro, a última leitura de dinheiro do eixo Shows sem o `PeriodPicker` (D119) que as telas irmãs de tendência já
 têm. Novo helper puro `paymentLagYears<S>(shows, txs)` em `src/lib/finance.ts` (irmão de `bookingLeadTimeYears`/`cancelledShowYears`):
@@ -3307,9 +3321,14 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    em `src/lib/finance.ts` (anos UTC desc dos shows com prazo mensurável — não cancelados e já com recebimento qualificável) +
    `PeriodPicker` em `/shows/prazo-recebimento` (página e export via `parseProfitYear`/`filterShowsByYear`, D108): DSO médio/mediano,
    baldes e tabela recortados pelo ano da `date` do show, empty state período-ciente, export `prazo-recebimento-<ano|todos>.csv`, ver D192.
-   Próximo possível — recorte por `?ano=` também na tela **por contratante** (`/shows/prazo-recebimento/por-contratante`, mesmo par
-   página+export); ou o **comparativo ano a ano do DSO** (`comparePaymentLag`, espelho de `compareBookingLeadTime`/D187 — subir o prazo
-   é a piora, direção oposta à antecedência), agora que o recorte por ano existe; ou lembrar a última escolha de contato por show; ou
+   **Comparativo ano a ano do DSO** entregue na Sessão 200 — `comparePaymentLag(current, previous)` + `PaymentLagComparison<S>` +
+   `PAYMENT_LAG_TREND_EPSILON` (=7 dias) em `src/lib/finance.ts` (espelho de `compareBookingLeadTime`/D187, mas com direção invertida:
+   **descer** a mediana é a melhora, como em cancelamento/concentração) + card `PaymentLagComparisonCard` 🟢/🔴/⚪ "Prazo de recebimento
+   {ano} vs. {ano-1}" em `/shows/prazo-recebimento`, exibido só com um ano específico e ambos os períodos com recebimento, com nota de
+   amostra pequena abaixo de `MIN_MEDIAN_LAG_SAMPLE`; reaproveita os registros já carregados (ano anterior por `filterShowsByYear`, zero
+   I/O extra), veredito na mediana, ver D193.
+   Próximo possível — recorte por `?ano=` (e comparativo) também na tela **por contratante** (`/shows/prazo-recebimento/por-contratante`,
+   mesmo par página+export); ou lembrar a última escolha de contato por show; ou
    levar o prazo mediano por contratante também ao card do Painel (adiado na D130: o Painel já mostra o DSO mediano global via
    `paymentLagHeadline`); ou exportar o agregado por baldes de velocidade (5 linhas-resumo) se houver demanda (descartado
    na D132(a) por baixo valor de planilha).
