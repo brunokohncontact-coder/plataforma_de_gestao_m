@@ -6229,3 +6229,37 @@ contexto, decisão, justificativa e alternativas consideradas.
   (`tsc --noEmit`) limpo; **1133 testes** (`vitest run`); smoke test — app sobe (~6 s), `/login` 200 e
   `/shows/prazo-recebimento` 307→login. `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high /
   1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## 2026-07-02 — D194: Recorte por período (`?ano=`) no prazo de recebimento por contratante
+- **Contexto:** a tela `/shows/prazo-recebimento/por-contratante` (`paymentLagByContact`/D52 — quem te paga rápido × devagar)
+  era um retrato do acervo inteiro. A tela-mãe `/shows/prazo-recebimento` ganhou o `PeriodPicker` (D192/`?ano=`) e o comparativo
+  ano a ano do DSO (D193), mas a irmã por contratante ficou sem recorte — a própria D192(c)/D193(c) listava "recortar/comparar
+  também a tela por contratante" como o próximo passo (item 5), e o pré-requisito (`paymentLagYears` + `filterShowsByYear`) já
+  vivia na `main`.
+- **Decisão:** página e export de `/shows/prazo-recebimento/por-contratante` passam a recortar por ano reaproveitando os mesmos
+  helpers puros da tela-mãe (`paymentLagYears`/`parseProfitYear`/`filterShowsByYear`, D108/D192) — **zero lógica pura nova**. Os
+  anos do seletor vêm de `paymentLagYears(shows, txs)` (shows não cancelados que já receberam algo, a mesma amostra da tela-mãe),
+  para o `PeriodPicker` nunca cair numa lista vazia. Filtra os shows pela **`date`** (`filterShowsByYear`, D108 — quando o show
+  aconteceu) **antes** de agregar por contratante, então os destaques (prazo médio, paga mais rápido/devagar), a tabela por
+  contratante e o detalhe por show saem recortados sem tocar `paymentLagByContact`. Empty state período-ciente ("Nenhum cachê
+  recebido de shows de {ano}"), o export herda `?ano=` no link e no nome do arquivo (`prazo-recebimento-por-contratante-<ano|todos>.csv`).
+- **Por que o eixo do filtro é a `date` do show (e não a data do pagamento):** consistência total com a tela-mãe (D192) e com
+  todas as leituras irmãs de período — a pergunta é "quão rápido fui pago pelos shows **daquele ano**", não "que dinheiro entrou
+  naquele ano civil". O ano agrupa o esforço (o show), não o fluxo de caixa.
+- **Por que sufixar `-todos` no nome do CSV sem filtro (mudando o nome default):** alinha ao par página+export da tela-mãe
+  (`prazo-recebimento-<ano|todos>.csv`, D192) — o sufixo sempre presente torna óbvio o recorte de qualquer arquivo baixado, e a
+  regressão de nome é aceitável num CSV efêmero de planilha.
+- **Escopo (o que ficou de fora):** o **comparativo ano a ano por contratante** (um card de tendência por linha, ou global desta
+  tela) — adiado: exigiria um helper novo (`comparePaymentLagByContact`), é um passo maior, e o comparativo global do DSO já vive
+  na tela-mãe (D193); duplicá-lo aqui seria redundante. Segue como próximo passo do item 5.
+- **Alternativas consideradas:** (a) filtrar pela data do recebimento (`Transaction.date`) em vez da `date` do show — descartado
+  por divergir da tela-mãe e das irmãs (quebraria a leitura comparável entre telas). (b) manter o nome do CSV sem sufixo quando
+  em "todos" — descartado por assimetria com a tela-mãe. (c) já entregar o comparativo por contratante nesta sessão — adiado para
+  manter o escopo pequeno e fechado (só o recorte, que é o pré-requisito).
+- **Testes:** nenhum teste novo — a mudança é plumbing de UI sobre helpers puros **já testados** (`paymentLagYears`/D192,
+  `filterShowsByYear`/D108, `paymentLagByContact`/D52). Suíte **inalterada em 1133 testes** (`vitest run`), todos verdes.
+- **DoD:** build de produção verde (`/shows/prazo-recebimento/por-contratante` + export regeneradas); lint (`next lint`, 0
+  avisos); typecheck (`tsc --noEmit`) limpo; **1133 testes**; smoke test — app sobe (~0,5 s), `/login` 200 e
+  `/shows/prazo-recebimento/por-contratante?ano=2025` 307→login (rota compila e roda). `npm audit` **inalterado** vs. baseline
+  (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma
+  dependência nova**.

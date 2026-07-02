@@ -1,8 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   paymentLagByContact,
+  paymentLagYears,
+  parseProfitYear,
+  filterShowsByYear,
   type ReceivableShowLike,
   type TxLike,
 } from "@/lib/finance";
@@ -26,7 +29,8 @@ interface PayerContact {
 // fica em `@/lib/csv` (`paymentLagByContactToCsv`, testada). Uma linha por
 // contratante, do prazo mais lento ao mais rápido (grupo "Sem contratante" por
 // último), com o prazo mediano só a partir de `MIN_MEDIAN_LAG_SAMPLE` shows pagos.
-export async function GET() {
+// Recorte por período opcional via `?ano=` (mesmo eixo/`date` da página, D192).
+export async function GET(request: NextRequest) {
   const user = await requireUser();
 
   const [shows, transactions] = await Promise.all([
@@ -56,8 +60,16 @@ export async function GET() {
     return picked ? { id: picked.id, name: picked.name, role: picked.role } : null;
   };
 
+  // Recorte por ano espelhando a página: só anos com prazo mensurável, filtra
+  // os shows pela `date` (D108) antes de agregar por contratante.
+  const availableYears = paymentLagYears(shows, txs);
+  const yearFilter = parseProfitYear(
+    request.nextUrl.searchParams.get("ano") ?? undefined,
+    availableYears,
+  );
+
   const lag = paymentLagByContact(
-    shows as (ReceivableShowLike & ShowRow)[],
+    filterShowsByYear(shows, yearFilter) as (ReceivableShowLike & ShowRow)[],
     txs,
     getPayer as (s: ReceivableShowLike & ShowRow) => PayerContact | null,
   );
@@ -77,8 +89,9 @@ export async function GET() {
 
   // BOM UTF-8 para preservar acentuação ao abrir no Excel.
   const body = "﻿" + csv;
-  // Nome ASCII (sem acento) para evitar caracteres não-ASCII no header HTTP.
-  const filename = "prazo-recebimento-por-contratante.csv";
+  // Nome ASCII (sem acento) para evitar caracteres não-ASCII no header HTTP;
+  // herda o ano do recorte (`-todos` quando sem filtro), como a tela-mãe (D192).
+  const filename = `prazo-recebimento-por-contratante-${yearFilter === "all" ? "todos" : yearFilter}.csv`;
 
   return new NextResponse(body, {
     status: 200,
