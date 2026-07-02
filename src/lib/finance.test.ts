@@ -106,6 +106,7 @@ import {
   expenseMix,
   expenseMixYears,
   paymentLag,
+  paymentLagYears,
   paymentLagHeadline,
   paymentLagByContact,
   paymentSpeedBucket,
@@ -4142,6 +4143,69 @@ describe("paymentLag", () => {
     const r = paymentLag(shows, txs);
     expect(r.avgDays).toBe(20); // (10*300 + 50*100)/400
     expect(r.medianDays).toBe(10);
+  });
+});
+
+describe("paymentLagYears", () => {
+  function gig(partial: Partial<ReceivableShowLike>): ReceivableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-03-01T20:00:00.000Z",
+      ...partial,
+    };
+  }
+
+  it("retorna vazio sem recebimentos vinculados", () => {
+    expect(paymentLagYears([gig({})], [])).toEqual([]);
+  });
+
+  it("lista os anos (UTC, desc) só dos shows que já receberam algo", () => {
+    const shows = [
+      gig({ id: "a", date: "2024-05-10T20:00:00.000Z" }),
+      gig({ id: "b", date: "2025-08-01T20:00:00.000Z" }),
+      gig({ id: "sem-pgto", date: "2026-01-01T20:00:00.000Z" }),
+    ];
+    const txs = [
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "a", date: "2024-05-20T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "b", date: "2025-08-05T00:00:00.000Z" }),
+    ];
+    // 2026 não entra: o show desse ano não recebeu nada (seria opção vazia).
+    expect(paymentLagYears(shows, txs)).toEqual([2025, 2024]);
+  });
+
+  it("deduplica e usa o ano UTC da data do show (não o do pagamento)", () => {
+    const shows = [
+      gig({ id: "a", date: "2025-01-01T00:00:00.000Z" }),
+      gig({ id: "b", date: "2025-12-31T23:00:00.000Z" }), // UTC ainda 2025
+    ];
+    const txs = [
+      // Pagamento no ano seguinte não muda o ano do seletor (âncora = show).
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "a", date: "2026-02-01T00:00:00.000Z" }),
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "b", date: "2026-01-10T00:00:00.000Z" }),
+    ];
+    expect(paymentLagYears(shows, txs)).toEqual([2025]);
+  });
+
+  it("ignora shows cancelados e recebimentos não qualificáveis", () => {
+    const shows = [
+      gig({ id: "cancelado", status: "CANCELLED", date: "2024-06-01T20:00:00.000Z" }),
+      gig({ id: "nao-recebido", date: "2023-06-01T20:00:00.000Z" }),
+      gig({ id: "despesa", date: "2022-06-01T20:00:00.000Z" }),
+      gig({ id: "ok", date: "2025-06-01T20:00:00.000Z" }),
+    ];
+    const txs = [
+      // recebimento de show cancelado: não conta
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "cancelado", date: "2024-06-10T00:00:00.000Z" }),
+      // ainda não recebido (received=false): não conta
+      tx({ type: "INCOME", amount: 100_00, received: false, showId: "nao-recebido", date: "2023-06-10T00:00:00.000Z" }),
+      // despesa vinculada: não conta
+      tx({ type: "EXPENSE", amount: 100_00, received: true, showId: "despesa", date: "2022-06-10T00:00:00.000Z" }),
+      // recebimento válido
+      tx({ type: "INCOME", amount: 100_00, received: true, showId: "ok", date: "2025-06-10T00:00:00.000Z" }),
+    ];
+    expect(paymentLagYears(shows, txs)).toEqual([2025]);
   });
 });
 

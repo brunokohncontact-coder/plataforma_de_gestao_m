@@ -3,14 +3,20 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   paymentLag,
+  paymentLagYears,
+  parseProfitYear,
+  filterShowsByYear,
   type PaymentSpeedBucketKey,
   type ReceivableShowLike,
   type TxLike,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { formatDate } from "@/lib/format";
+import { PeriodPicker } from "@/components/PeriodPicker";
 
 export const dynamic = "force-dynamic";
+
+type SearchParams = { [key: string]: string | string[] | undefined };
 
 function pct(share: number): string {
   return `${Math.round(share * 100)}%`;
@@ -31,7 +37,11 @@ const BUCKET_TONES: Record<PaymentSpeedBucketKey, string> = {
   slow: "bg-red-400",
 };
 
-export default async function PaymentLagPage() {
+export default async function PaymentLagPage({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
   const user = await requireUser();
 
   // Shows não cancelados (a data deles é a âncora do prazo) e as receitas já
@@ -58,11 +68,24 @@ export default async function PaymentLagPage() {
     showId: t.showId,
   }));
 
-  const lag = paymentLag(shows as (ReceivableShowLike & {
+  type Gig = ReceivableShowLike & {
     title: string;
     venue: string | null;
     city: string | null;
-  })[], txs);
+  };
+
+  // Recorte por período (ano): só oferece os anos com prazo mensurável
+  // (`paymentLagYears` — shows não cancelados que já receberam algo), para o
+  // seletor nunca cair numa lista vazia. Filtra os shows (prisma, `date: Date`)
+  // pelo ano da `date` (`filterShowsByYear`, D108) antes de agregar — o DSO
+  // médio/mediano, os baldes e a tabela saem recortados sem tocar a lógica pura
+  // de `paymentLag` (o eixo é quando o show aconteceu, não quando o dinheiro
+  // entrou).
+  const availableYears = paymentLagYears(shows, txs);
+  const yearFilter = parseProfitYear(searchParams?.ano, availableYears);
+  const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
+
+  const lag = paymentLag(filterShowsByYear(shows, yearFilter) as Gig[], txs);
 
   type Row = (typeof lag.rows)[number];
   const showInfo = (r: Row) =>
@@ -81,7 +104,9 @@ export default async function PaymentLagPage() {
         <div className="flex flex-wrap items-center gap-2">
           {lag.rows.length > 0 && (
             <a
-              href="/shows/prazo-recebimento/export"
+              href={`/shows/prazo-recebimento/export${
+                yearFilter === "all" ? "" : `?ano=${yearFilter}`
+              }`}
               className="btn-secondary text-sm"
               download
             >
@@ -97,18 +122,43 @@ export default async function PaymentLagPage() {
         </div>
       </div>
 
+      {availableYears.length > 0 && (
+        <PeriodPicker
+          years={availableYears}
+          active={yearFilter}
+          basePath="/shows/prazo-recebimento"
+        />
+      )}
+
       {lag.showCount === 0 ? (
         <div className="card text-center text-gray-500">
-          <p>
-            Ainda não há cachês recebidos e vinculados a shows para medir o seu prazo de
-            recebimento.
-          </p>
-          <Link
-            href="/shows/a-receber"
-            className="mt-3 inline-block text-brand-700 hover:underline"
-          >
-            Ver cachês a receber
-          </Link>
+          {yearFilter === "all" ? (
+            <>
+              <p>
+                Ainda não há cachês recebidos e vinculados a shows para medir o seu prazo de
+                recebimento.
+              </p>
+              <Link
+                href="/shows/a-receber"
+                className="mt-3 inline-block text-brand-700 hover:underline"
+              >
+                Ver cachês a receber
+              </Link>
+            </>
+          ) : (
+            <>
+              <p>Nenhum cachê recebido de shows de {periodLabel}.</p>
+              <p className="mt-1 text-sm">
+                Escolha outro período acima para ver o prazo de recebimento.
+              </p>
+              <Link
+                href="/shows/prazo-recebimento"
+                className="mt-3 inline-block text-brand-700 hover:underline"
+              >
+                Ver todos os anos
+              </Link>
+            </>
+          )}
         </div>
       ) : (
         <>

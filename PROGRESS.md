@@ -9,7 +9,18 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1124 testes** verdes após o **comparativo entre escopos
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1128 testes** verdes após o **recorte por período
+(`?ano=`) no prazo de recebimento** (Sessão 199, D192 — a tela `/shows/prazo-recebimento` (`paymentLag`/D51, o DSO do músico) era um
+retrato do acervo inteiro, a última leitura de dinheiro do eixo Shows sem o `PeriodPicker` (D119) que as telas irmãs de tendência já
+têm. Novo helper puro `paymentLagYears<S>(shows, txs)` em `src/lib/finance.ts` (irmão de `bookingLeadTimeYears`/`cancelledShowYears`):
+anos (UTC, desc) **dos shows com prazo mensurável** — não cancelados e com ao menos um recebimento qualificável (a mesma regra de
+entrada de `paymentLag`: INCOME + `received` + `showId` + valor positivo), para o seletor nunca cair numa lista vazia. Página e export
+reaproveitam `parseProfitYear`/`filterShowsByYear` (D108): filtram os shows pela **`date`** (quando o show aconteceu, o mesmo eixo das
+irmãs) antes de `paymentLag`, então o DSO médio/mediano, os baldes de velocidade e a tabela por show saem recortados sem tocar a lógica
+pura; `PeriodPicker` na página, empty state período-ciente ("Nenhum cachê recebido de shows de {ano}"), export herda o ano no nome
+`prazo-recebimento-<ano|todos>.csv`. O ano é o da `date` do show, não o do pagamento: a pergunta é "quão rápido fui pago pelos shows
+daquele ano". Adiados (D192): recortar também a tela por contratante e o comparativo ano a ano do DSO (`comparePaymentLag`). **+4 testes**)
+sobre os **1124 testes** verdes após o **comparativo entre escopos
 (todos × só firmes) na antecedência de agendamento** (Sessão 198, D191 — a D190 (Sessão 197) adicionou o `ScopePicker`
 (todos os não cancelados × só compromissos firmes) mas mostrava um escopo por vez, obrigando a alternar/memorizar para ver o quanto as
 propostas em aberto distorcem a leitura; era o próximo possível listado na própria D190. Novo helper puro
@@ -3292,8 +3303,14 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    prazo/velocidade), uma linha por show na ordem do mais lento ao mais rápido, sem prazo mediano por linha (é propriedade
    de grupo, não de show isolado), botão "⬇ CSV" só com linhas; fecha a alternativa (b) adiada na D131 e a última lacuna
    de exportação tabular do acervo, ver D132.
-   Próximo possível — lembrar a última escolha de contato por show; ou levar o
-   prazo mediano por contratante também ao card do Painel (adiado na D130: o Painel já mostra o DSO mediano global via
+   **Recorte por período (`?ano=`) no prazo de recebimento (tela-mãe)** entregue na Sessão 199 — `paymentLagYears<S>(shows, txs)`
+   em `src/lib/finance.ts` (anos UTC desc dos shows com prazo mensurável — não cancelados e já com recebimento qualificável) +
+   `PeriodPicker` em `/shows/prazo-recebimento` (página e export via `parseProfitYear`/`filterShowsByYear`, D108): DSO médio/mediano,
+   baldes e tabela recortados pelo ano da `date` do show, empty state período-ciente, export `prazo-recebimento-<ano|todos>.csv`, ver D192.
+   Próximo possível — recorte por `?ano=` também na tela **por contratante** (`/shows/prazo-recebimento/por-contratante`, mesmo par
+   página+export); ou o **comparativo ano a ano do DSO** (`comparePaymentLag`, espelho de `compareBookingLeadTime`/D187 — subir o prazo
+   é a piora, direção oposta à antecedência), agora que o recorte por ano existe; ou lembrar a última escolha de contato por show; ou
+   levar o prazo mediano por contratante também ao card do Painel (adiado na D130: o Painel já mostra o DSO mediano global via
    `paymentLagHeadline`); ou exportar o agregado por baldes de velocidade (5 linhas-resumo) se houver demanda (descartado
    na D132(a) por baixo valor de planilha).
 4. **Sessões/segurança / gestão de conta**: invalidação ao trocar a senha entregue na Sessão 26
