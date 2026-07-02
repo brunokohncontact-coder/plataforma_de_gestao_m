@@ -57,7 +57,10 @@ import {
   findScheduleConflicts,
   findOpenWeekends,
   formatWeekendLabel,
+  bookingLeadTime,
+  bookingLeadTimeHeadline,
   type ConflictShowLike,
+  type LeadTimeShowLike,
 } from "@/lib/shows";
 import {
   cancellationByContact,
@@ -361,6 +364,17 @@ export default async function DashboardPage() {
   // nudge de mês forte: aparece só quando NÃO há um pico chegando (no máximo um
   // nudge de sazonalidade por vez).
   const seasonLull = gigSeasonalityLull(season);
+
+  // Antecedência de agendamento (D185): "estou fechando shows em cima da hora?".
+  // Reaproveita os shows já carregados (createdAt vem na consulta, sem I/O extra):
+  // bookingLeadTime mede a antecedência mediana entre cadastrar e tocar e o nudge
+  // só aparece quando a amostra é confiável E a mediana cai na faixa apertada
+  // (≤ 14 dias; crítico ≤ 7). Curto = pouco fôlego para prospectar/precificar —
+  // a mesma tese de planejar com folga dos nudges de fins de semana e sazonalidade.
+  // O detalhe completo está em /shows/antecedencia.
+  const leadHeadline = bookingLeadTimeHeadline(
+    bookingLeadTime(shows as LeadTimeShowLike[]),
+  );
 
   // Rentabilidade: top shows realizados por resultado
   const playedShows = shows.filter((s) => s.status === "PLAYED");
@@ -787,6 +801,33 @@ export default async function DashboardPage() {
           </span>
           <span
             className={pipelineHead.critical ? "text-red-600" : "text-amber-600"}
+          >
+            Ver →
+          </span>
+        </Link>
+      )}
+
+      {leadHeadline.show && (
+        <Link
+          href="/shows/antecedencia"
+          className={
+            "flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3 text-sm transition " +
+            (leadHeadline.critical
+              ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100")
+          }
+        >
+          <span className="font-semibold">
+            {leadHeadline.critical ? "🔴" : "🟠"} Você fecha shows em cima da hora
+          </span>
+          <span>
+            Os shows entram na agenda com <strong>{daysLabel(leadHeadline.medianDays)}</strong> de
+            antecedência mediana (média de {daysLabel(leadHeadline.avgDays)} sobre{" "}
+            {leadHeadline.sample}{" "}
+            {leadHeadline.sample === 1 ? "show" : "shows"}) — vale prospectar com mais folga
+          </span>
+          <span
+            className={leadHeadline.critical ? "text-red-600" : "text-amber-600"}
           >
             Ver →
           </span>
