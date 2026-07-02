@@ -6003,3 +6003,38 @@ contexto, decisão, justificativa e alternativas consideradas.
   (`tsc --noEmit`) limpo; **1102 testes** (`vitest run`); smoke test — app sobe (~6 s), `/login` 200. `npm audit`
   **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss
   bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+---
+
+## 2026-07-02 — D188: Nudge de funil por contratante no Painel (`pipelineByContactHeadline`)
+- **Contexto:** o funil por contratante (`pipelineByContact`/D183 + `/contatos/funil`) ganhou página e CSV (D184),
+  mas nenhuma presença no Painel — era a única leitura recente do eixo Contatos sem nudge, enquanto concentração de
+  clientes (`clientConcentrationHeadline`), geo (`geoConcentrationHeadline`) e cancelamentos (`cancellationHeadline`/D179)
+  já ecoam no dashboard. O dashboard já carrega os shows com contatos e monta um pivô show×contato para o nudge de
+  cancelamentos; o mesmo pivô serve o funil sem I/O extra.
+- **Decisão:** novo helper puro `pipelineByContactHeadline(report, highShare=0.5, criticalShare=2/3)` em
+  `src/lib/contacts.ts` (espelho de `clientConcentrationHeadline`): de uma `pipelineByContact` já computada, decide se
+  o nudge de **dependência do pipeline aberto** aparece e com que urgência. `report.rows` já vem ordenado por cachê em
+  aberto desc, então `rows[0]` é o maior; `topShare = openValue do maior / totalOpenValue`. `show` quando há pipeline
+  aberto e o maior concentra ≥ `highShare` (metade) dele; `critical` quando é um contratante **único** (100%) ou o
+  maior passa de `criticalShare` (2/3, o mesmo corte de `clientConcentrationHeadline`). Banner 🟠/🔴 em
+  `dashboard/page.tsx` logo após o nudge de cancelamentos, reaproveitando o **mesmo** pivô show×contato já montado
+  (zero consulta nova), linkando `/contatos/funil`.
+- **Justificativa:** eixo genuinamente distinto da concentração de receita (`clientConcentration`, sobre o cachê já
+  **realizado** — o passado): aqui o eixo é o pipeline **aberto** (PROPOSED + CONFIRMED), a receita futura ainda não
+  realizada. Um músico pode ter receita passada diversificada e um pipeline futuro perigosamente refém de um deal —
+  se cair, quanto da agenda vai junto. O gate por share mantém o banner raro (só quando a dependência morde), mesma
+  disciplina dos nudges irmãos. O corte 2/3 para crítico reusa o de `clientConcentrationHeadline` por consistência.
+- **Alternativas consideradas:** (a) sempre mostrar um card de "maior pipeline" (como o funil global/D43) — descartado:
+  o Painel já é denso e um lembrete sempre-ligado vira ruído; o valor está no alerta de dependência. (b) ancorar o
+  nudge na taxa de concretização baixa do maior contratante ("aposta grande em quem fecha pouco") — adiável: exige
+  histórico decidido confiável e mistura dois sinais; a concentração de share é a leitura mais limpa e direta. (c)
+  gate por valor absoluto do pipeline — descartado: sem referência do porte da carteira, um limiar em reais seria
+  arbitrário; o share é auto-normalizado.
+- **Testes:** `pipelineByContactHeadline` (sem pipeline → não mostra; contratante único → crítico 100%; maior ≥ metade
+  mas < 2/3 → mostra não-crítico; pipeline distribuído < metade → não mostra; maior > 2/3 com 2+ contratantes →
+  crítico; limiares injetados; HIGH < CRITICAL) — **+7 testes**. Total **1102 → 1109**.
+- **DoD:** build de produção verde (rota `/dashboard` regenerada); lint (`next lint`, 0 avisos); typecheck
+  (`tsc --noEmit`) limpo; **1109 testes** (`vitest run`); smoke test — app sobe (~6 s), `/login` 200. `npm audit`
+  **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss
+  bundlado; ver D6/bloqueios); **nenhuma dependência nova**.

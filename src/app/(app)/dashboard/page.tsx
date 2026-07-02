@@ -62,6 +62,8 @@ import {
 import {
   cancellationByContact,
   cancellationHeadline,
+  pipelineByContact,
+  pipelineByContactHeadline,
   type ContactRankLike,
 } from "@/lib/contacts";
 import { pickPayerContact } from "@/lib/billing";
@@ -332,6 +334,17 @@ export default async function DashboardPage() {
   }
   const cancellationHead = cancellationHeadline(
     cancellationByContact([...cancelByContact.values()]),
+  );
+
+  // Funil por contratante (D183/D184): "meu pipeline futuro depende demais de um
+  // pagador só?". Reaproveita o MESMO pivô show×contato já montado acima (zero
+  // I/O extra) para agregar o cachê em aberto (PROPOSED + CONFIRMED) por
+  // contratante. Vira nudge só quando o maior concentra metade ou mais do
+  // pipeline aberto — receita futura refém de um deal (pipelineByContactHeadline
+  // resolve isso no gate). Distinto da concentração de RECEITA (já realizada):
+  // aqui o eixo é o que está por vir. O detalhe está em /contatos/funil.
+  const pipelineHead = pipelineByContactHeadline(
+    pipelineByContact([...cancelByContact.values()]),
   );
 
   // Sazonalidade dos shows (D133/D134): "qual o próximo mês forte chegando?".
@@ -745,6 +758,35 @@ export default async function DashboardPage() {
             className={
               cancellationHead.critical ? "text-red-600" : "text-amber-600"
             }
+          >
+            Ver →
+          </span>
+        </Link>
+      )}
+
+      {pipelineHead.show && pipelineHead.contact && (
+        <Link
+          href="/contatos/funil"
+          className={
+            "flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3 text-sm transition " +
+            (pipelineHead.critical
+              ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100")
+          }
+        >
+          <span className="font-semibold">
+            {pipelineHead.critical ? "🔴" : "🟠"} Pipeline concentrado num contratante
+          </span>
+          <span>
+            <strong>{formatMoney(pipelineHead.openValue)}</strong> em cachê a fechar
+            ({Math.round(pipelineHead.topShare * 100)}% do pipeline aberto) está com{" "}
+            <strong>{pipelineHead.contact.name}</strong> —{" "}
+            {pipelineHead.contactCount === 1
+              ? "toda a agenda futura depende dele"
+              : "vale diversificar a prospecção"}
+          </span>
+          <span
+            className={pipelineHead.critical ? "text-red-600" : "text-amber-600"}
           >
             Ver →
           </span>
