@@ -1,17 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { bookingLeadTime, bookingLeadTimeYears, type LeadTimeShowLike } from "@/lib/shows";
+import {
+  bookingLeadTime,
+  bookingLeadTimeYears,
+  parseLeadTimeScope,
+  type LeadTimeShowLike,
+} from "@/lib/shows";
 import { parseProfitYear, filterShowsByYear } from "@/lib/finance";
 import { bookingLeadTimeToCsv } from "@/lib/csv";
 
 export const dynamic = "force-dynamic";
 
 // Exporta a antecedência de agendamento (booking lead time) em CSV — espelha a
-// página `/shows/antecedencia`, incluindo o recorte por ano (`?ano=`). A camada
-// pura está em `@/lib/shows` (`bookingLeadTime`) e `@/lib/csv`
-// (`bookingLeadTimeToCsv`), ambas testadas; aqui só fazemos a consulta,
-// aplicamos o mesmo recorte da página e embrulhamos no HTTP.
+// página `/shows/antecedencia`, incluindo o recorte por ano (`?ano=`) e o
+// escopo da amostra (`?escopo=`, D190). A camada pura está em `@/lib/shows`
+// (`bookingLeadTime`) e `@/lib/csv` (`bookingLeadTimeToCsv`), ambas testadas;
+// aqui só fazemos a consulta, aplicamos o mesmo recorte da página e embrulhamos
+// no HTTP.
 export async function GET(req: NextRequest) {
   const user = await requireUser();
 
@@ -21,8 +27,9 @@ export async function GET(req: NextRequest) {
     select: { status: true, date: true, createdAt: true, fee: true },
   });
 
-  // Mesmo recorte por ano da página (helpers da D108).
-  const availableYears = bookingLeadTimeYears(rows);
+  // Mesmo escopo + recorte por ano da página (D190 / helpers da D108).
+  const scope = parseLeadTimeScope(req.nextUrl.searchParams.get("escopo") ?? undefined);
+  const availableYears = bookingLeadTimeYears(rows, scope);
   const yearFilter = parseProfitYear(
     req.nextUrl.searchParams.get("ano") ?? undefined,
     availableYears,
@@ -36,13 +43,14 @@ export async function GET(req: NextRequest) {
     fee: s.fee,
   }));
 
-  const lead = bookingLeadTime(shows);
+  const lead = bookingLeadTime(shows, scope);
   const csv = bookingLeadTimeToCsv(lead);
 
   // BOM UTF-8 para preservar acentuação ao abrir no Excel.
   const body = "﻿" + csv;
   const suffix = yearFilter === "all" ? "todos" : String(yearFilter);
-  const filename = `antecedencia-de-agendamento-${suffix}.csv`;
+  const scopeSuffix = scope === "firm" ? "-firmes" : "";
+  const filename = `antecedencia-de-agendamento-${suffix}${scopeSuffix}.csv`;
 
   return new NextResponse(body, {
     status: 200,

@@ -13,6 +13,7 @@ import {
   isValidShowStatus,
   bookingLeadTime,
   bookingLeadTimeYears,
+  parseLeadTimeScope,
   compareBookingLeadTime,
   bookingLeadTimeHeadline,
   LEAD_TIME_TREND_EPSILON,
@@ -591,6 +592,45 @@ describe("bookingLeadTime", () => {
     expect(bookingLeadTime(two).reliable).toBe(false);
     expect(bookingLeadTime(enough).reliable).toBe(true);
   });
+
+  it("escopo padrão (all) inclui propostas, cancelados de fora", () => {
+    const r = bookingLeadTime([
+      leadShow({ status: "PROPOSED", createdAt: "2026-01-01T00:00:00.000Z", date: "2026-01-11T00:00:00.000Z" }), // 10
+      leadShow({ status: "CONFIRMED", createdAt: "2026-01-01T00:00:00.000Z", date: "2026-01-31T00:00:00.000Z" }), // 30
+      leadShow({ status: "CANCELLED", createdAt: "2026-01-01T00:00:00.000Z", date: "2026-06-01T00:00:00.000Z" }),
+    ]);
+    expect(r.sample).toBe(2);
+    expect(r.medianDays).toBe(20); // (10+30)/2
+  });
+
+  it("escopo firm conta só CONFIRMED+PLAYED, ignora propostas", () => {
+    const shows = [
+      leadShow({ status: "PROPOSED", createdAt: "2026-01-01T00:00:00.000Z", date: "2026-01-04T00:00:00.000Z" }), // 3
+      leadShow({ status: "CONFIRMED", createdAt: "2026-01-01T00:00:00.000Z", date: "2026-01-31T00:00:00.000Z" }), // 30
+      leadShow({ status: "PLAYED", createdAt: "2026-01-01T00:00:00.000Z", date: "2026-03-02T00:00:00.000Z" }), // 60
+      leadShow({ status: "CANCELLED", createdAt: "2026-01-01T00:00:00.000Z", date: "2026-06-01T00:00:00.000Z" }),
+    ];
+    const firm = bookingLeadTime(shows, "firm");
+    expect(firm.sample).toBe(2); // só o CONFIRMED e o PLAYED
+    expect(firm.medianDays).toBe(45); // (30+60)/2
+    // o cachê por faixa também respeita o escopo (proposta de fora)
+    expect(firm.buckets[0].count).toBe(0); // "Até 1 semana" (a proposta de 3 dias saiu)
+    // o escopo all vê os três não cancelados
+    expect(bookingLeadTime(shows, "all").sample).toBe(3);
+  });
+});
+
+describe("parseLeadTimeScope", () => {
+  it("só 'firm' liga o escopo firme; o resto cai em 'all'", () => {
+    expect(parseLeadTimeScope("firm")).toBe("firm");
+    expect(parseLeadTimeScope("FIRM")).toBe("firm");
+    expect(parseLeadTimeScope(" firm ")).toBe("firm");
+    expect(parseLeadTimeScope("all")).toBe("all");
+    expect(parseLeadTimeScope(undefined)).toBe("all");
+    expect(parseLeadTimeScope("")).toBe("all");
+    expect(parseLeadTimeScope("qualquer")).toBe("all");
+    expect(parseLeadTimeScope(["firm", "all"])).toBe("firm"); // primeiro valor
+  });
 });
 
 describe("bookingLeadTimeYears", () => {
@@ -625,6 +665,17 @@ describe("bookingLeadTimeYears", () => {
       leadShow({ createdAt: "2025-01-01T00:00:00.000Z", date: "2025-05-01T00:00:00.000Z" }),
     ]);
     expect(years).toEqual([2025]);
+  });
+
+  it("no escopo firm os anos vêm só de compromissos firmes", () => {
+    const shows = [
+      // proposta em 2024 → entra no escopo all, fora do firm
+      leadShow({ status: "PROPOSED", createdAt: "2024-01-01T00:00:00.000Z", date: "2024-06-01T00:00:00.000Z" }),
+      // confirmado em 2026 → entra em ambos
+      leadShow({ status: "CONFIRMED", createdAt: "2026-01-01T00:00:00.000Z", date: "2026-03-01T00:00:00.000Z" }),
+    ];
+    expect(bookingLeadTimeYears(shows)).toEqual([2026, 2024]);
+    expect(bookingLeadTimeYears(shows, "firm")).toEqual([2026]);
   });
 });
 

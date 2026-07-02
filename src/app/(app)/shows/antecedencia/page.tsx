@@ -5,7 +5,9 @@ import {
   bookingLeadTime,
   bookingLeadTimeYears,
   compareBookingLeadTime,
+  parseLeadTimeScope,
   type BookingLeadTimeComparison,
+  type BookingLeadTimeScope,
   type LeadTimeShowLike,
 } from "@/lib/shows";
 import { parseProfitYear, filterShowsByYear } from "@/lib/finance";
@@ -36,6 +38,46 @@ const BUCKET_TONES = [
   "bg-emerald-400",
 ] as const;
 
+const SCOPE_OPTIONS: { value: BookingLeadTimeScope; label: string }[] = [
+  { value: "all", label: "Todos os shows" },
+  { value: "firm", label: "Só confirmados/realizados" },
+];
+
+/**
+ * Seletor de escopo da amostra (D190): "Todos os shows" (não cancelados, inclui
+ * propostas) × "Só confirmados/realizados" (compromissos firmes). Preserva o
+ * ano ativo em cada link via `buildHref`. Server component puro, no espírito do
+ * `PeriodPicker`.
+ */
+function ScopePicker({
+  active,
+  buildHref,
+}: {
+  active: BookingLeadTimeScope;
+  buildHref: (path: string, over?: { scope?: BookingLeadTimeScope }) => string;
+}) {
+  const base = "rounded-full px-3 py-1 text-sm font-medium transition-colors";
+  const on = "bg-brand-600 text-white";
+  const off = "bg-gray-100 text-gray-600 hover:bg-gray-200";
+  return (
+    <nav aria-label="Escopo da amostra" className="flex flex-wrap items-center gap-2">
+      <span className="text-xs font-medium uppercase tracking-wide text-gray-500">
+        Escopo
+      </span>
+      {SCOPE_OPTIONS.map((opt) => (
+        <Link
+          key={opt.value}
+          href={buildHref("/shows/antecedencia", { scope: opt.value })}
+          className={base + " " + (active === opt.value ? on : off)}
+          aria-current={active === opt.value ? "page" : undefined}
+        >
+          {opt.label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
 export default async function BookingLeadTimePage({
   searchParams,
 }: {
@@ -49,11 +91,17 @@ export default async function BookingLeadTimePage({
     select: { status: true, date: true, createdAt: true, fee: true },
   });
 
+  // Escopo da amostra (D190): todos os não cancelados × só compromissos firmes
+  // (CONFIRMED+PLAYED). Os anos do seletor e o comparativo ano a ano recompõem
+  // sobre o escopo ativo, para nunca oferecer um ano/uma comparação vazia.
+  const scope = parseLeadTimeScope(searchParams?.escopo);
+
   // Recorte por período (ano), reaproveitando os helpers da D108. Os anos do
-  // seletor vêm só dos shows com antecedência mensurável (`bookingLeadTimeYears`),
-  // para não oferecer um ano que renderiza vazio. Filtra-se os registros ANTES
-  // de mapear/`bookingLeadTime`, que segue agnóstico ao recorte.
-  const availableYears = bookingLeadTimeYears(rows);
+  // seletor vêm só dos shows com antecedência mensurável no escopo ativo
+  // (`bookingLeadTimeYears`), para não oferecer um ano que renderiza vazio.
+  // Filtra-se os registros ANTES de mapear/`bookingLeadTime`, que segue
+  // agnóstico ao recorte por ano.
+  const availableYears = bookingLeadTimeYears(rows, scope);
   const yearFilter = parseProfitYear(searchParams?.ano, availableYears);
   const periodRows = filterShowsByYear(rows, yearFilter);
 
@@ -64,8 +112,23 @@ export default async function BookingLeadTimePage({
     fee: s.fee,
   }));
 
-  const lead = bookingLeadTime(shows);
+  const lead = bookingLeadTime(shows, scope);
   const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
+
+  // Monta uma query preservando ano+escopo (para o export e o seletor de
+  // escopo). Omite o padrão de cada eixo (ano="all", escopo="all") para manter
+  // as URLs limpas.
+  const buildHref = (
+    path: string,
+    over: { scope?: BookingLeadTimeScope } = {},
+  ): string => {
+    const nextScope = over.scope ?? scope;
+    const q = new URLSearchParams();
+    if (yearFilter !== "all") q.set("ano", String(yearFilter));
+    if (nextScope !== "all") q.set("escopo", nextScope);
+    const qs = q.toString();
+    return qs ? `${path}?${qs}` : path;
+  };
   const peakShare = Math.max(0.0001, ...lead.buckets.map((b) => b.share));
 
   // Comparativo ano a ano da antecedência mediana (espelha o card de
@@ -85,6 +148,7 @@ export default async function BookingLeadTimePage({
         createdAt: s.createdAt,
         fee: s.fee,
       })),
+      scope,
     );
     if (lead.sample > 0 && previousLead.sample > 0) {
       comparison = compareBookingLeadTime(lead, previousLead);
@@ -109,9 +173,7 @@ export default async function BookingLeadTimePage({
         <div className="flex flex-wrap items-center gap-2">
           {lead.sample > 0 && (
             <a
-              href={`/shows/antecedencia/export${
-                yearFilter === "all" ? "" : `?ano=${yearFilter}`
-              }`}
+              href={buildHref("/shows/antecedencia/export")}
               className="btn-secondary text-sm"
               download
             >
@@ -124,17 +186,31 @@ export default async function BookingLeadTimePage({
         </div>
       </div>
 
+      <ScopePicker active={scope} buildHref={buildHref} />
+
       {availableYears.length > 0 && (
         <PeriodPicker
           years={availableYears}
           active={yearFilter}
           basePath="/shows/antecedencia"
+          params={scope === "all" ? undefined : { escopo: scope }}
         />
       )}
 
       {lead.sample === 0 ? (
         <div className="card text-center text-gray-500">
-          {yearFilter === "all" ? (
+          {scope === "firm" ? (
+            <>
+              <p>
+                Nenhum compromisso firme (confirmado ou realizado) com antecedência
+                mensurável{yearFilter === "all" ? "" : ` em ${periodLabel}`}.
+              </p>
+              <p className="mt-1 text-sm">
+                Troque o escopo para <strong>Todos os shows</strong> acima para incluir as
+                propostas em aberto.
+              </p>
+            </>
+          ) : yearFilter === "all" ? (
             <>
               <p>
                 Ainda não há shows com antecedência mensurável.
@@ -261,7 +337,10 @@ export default async function BookingLeadTimePage({
 
           <p className="text-xs text-gray-400">
             A antecedência de cada show é a diferença em dias entre a data em que ele entrou
-            na agenda e a data em que acontece. Shows cancelados não entram.{" "}
+            na agenda e a data em que acontece.{" "}
+            {scope === "firm"
+              ? "Escopo atual: só compromissos firmes (confirmados ou realizados) — as propostas em aberto ficam de fora, isolando com quanta antecedência os shows que de fato fecham são agendados. "
+              : "Escopo atual: todos os shows não cancelados (inclui propostas em aberto que ainda podem cair). "}
             {lead.retroactiveCount > 0 && (
               <>
                 {lead.retroactiveCount}{" "}
