@@ -3,6 +3,9 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   paymentLagByContact,
+  paymentLagYears,
+  parseProfitYear,
+  filterShowsByYear,
   MIN_MEDIAN_LAG_SAMPLE,
   type PaymentSpeedBucketKey,
   type ReceivableShowLike,
@@ -12,8 +15,11 @@ import { pickPayerContact } from "@/lib/billing";
 import { CONTACT_ROLE_LABELS, type ContactRole } from "@/lib/domain";
 import { formatMoney } from "@/lib/money";
 import { formatDate } from "@/lib/format";
+import { PeriodPicker } from "@/components/PeriodPicker";
 
 export const dynamic = "force-dynamic";
+
+type SearchParams = { [key: string]: string | string[] | undefined };
 
 /** Contato resolvido como pagador de um show (campos usados na página). */
 interface PayerContact {
@@ -53,7 +59,11 @@ const BUCKET_TEXT_TONES: Record<PaymentSpeedBucketKey, string> = {
   slow: "text-red-600",
 };
 
-export default async function PaymentLagByContactPage() {
+export default async function PaymentLagByContactPage({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
   const user = await requireUser();
 
   // Shows não cancelados (a data deles é a âncora do prazo) com os contatos
@@ -88,8 +98,18 @@ export default async function PaymentLagByContactPage() {
       : null;
   };
 
+  // Recorte por período (ano): o seletor só oferece anos com prazo mensurável
+  // (`paymentLagYears` — shows não cancelados que já receberam algo), casando a
+  // tela-mãe (D192). Filtra os shows pelo ano da `date` (`filterShowsByYear`,
+  // D108) antes de agregar por contratante — os destaques, a tabela e o detalhe
+  // saem recortados sem tocar a lógica pura de `paymentLagByContact` (o eixo é
+  // quando o show aconteceu, não quando o dinheiro entrou).
+  const availableYears = paymentLagYears(shows, txs);
+  const yearFilter = parseProfitYear(searchParams?.ano, availableYears);
+  const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
+
   const lag = paymentLagByContact(
-    shows as (ReceivableShowLike & ShowRow)[],
+    filterShowsByYear(shows, yearFilter) as (ReceivableShowLike & ShowRow)[],
     txs,
     getPayer as (s: ReceivableShowLike & ShowRow) => PayerContact | null,
   );
@@ -110,7 +130,9 @@ export default async function PaymentLagByContactPage() {
         <div className="flex flex-wrap gap-2">
           {lag.rows.length > 0 && (
             <a
-              href="/shows/prazo-recebimento/por-contratante/export"
+              href={`/shows/prazo-recebimento/por-contratante/export${
+                yearFilter === "all" ? "" : `?ano=${yearFilter}`
+              }`}
               className="btn-secondary text-sm"
               download
             >
@@ -123,18 +145,43 @@ export default async function PaymentLagByContactPage() {
         </div>
       </div>
 
+      {availableYears.length > 0 && (
+        <PeriodPicker
+          years={availableYears}
+          active={yearFilter}
+          basePath="/shows/prazo-recebimento/por-contratante"
+        />
+      )}
+
       {lag.contactCount === 0 && lag.rows.length === 0 ? (
         <div className="card text-center text-gray-500">
-          <p>
-            Ainda não há cachês recebidos e vinculados a shows para medir o prazo por
-            contratante.
-          </p>
-          <Link
-            href="/shows/a-receber"
-            className="mt-3 inline-block text-brand-700 hover:underline"
-          >
-            Ver cachês a receber
-          </Link>
+          {yearFilter === "all" ? (
+            <>
+              <p>
+                Ainda não há cachês recebidos e vinculados a shows para medir o prazo por
+                contratante.
+              </p>
+              <Link
+                href="/shows/a-receber"
+                className="mt-3 inline-block text-brand-700 hover:underline"
+              >
+                Ver cachês a receber
+              </Link>
+            </>
+          ) : (
+            <>
+              <p>Nenhum cachê recebido de shows de {periodLabel}.</p>
+              <p className="mt-1 text-sm">
+                Escolha outro período acima para ver o prazo por contratante.
+              </p>
+              <Link
+                href="/shows/prazo-recebimento/por-contratante"
+                className="mt-3 inline-block text-brand-700 hover:underline"
+              >
+                Ver todos os anos
+              </Link>
+            </>
+          )}
         </div>
       ) : (
         <>

@@ -9,7 +9,21 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1133 testes** verdes após o **comparativo ano a ano do
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1133 testes** verdes após o **recorte por período
+(`?ano=`) no prazo de recebimento por contratante** (Sessão 201, D194 — a tela `/shows/prazo-recebimento/por-contratante`
+(`paymentLagByContact`/D52, quem te paga rápido × devagar) era um retrato do acervo inteiro: a tela-mãe já tinha `PeriodPicker`
+(D192) e comparativo ano a ano do DSO (D193), mas a irmã por contratante ficou sem recorte — era o próximo passo listado na
+própria D192(c)/D193(c). Página e export agora recortam por ano reaproveitando os **mesmos** helpers puros da tela-mãe
+(`paymentLagYears`/`parseProfitYear`/`filterShowsByYear`, D108/D192), **zero lógica pura nova**: os anos do seletor vêm de
+`paymentLagYears(shows, txs)` (shows não cancelados que já receberam algo, a mesma amostra da mãe, para o seletor nunca cair
+em lista vazia); filtra os shows pela **`date`** (`filterShowsByYear`, D108) **antes** de agregar por contratante, então os
+destaques (prazo médio, paga mais rápido/devagar), a tabela por contratante e o detalhe por show saem recortados sem tocar
+`paymentLagByContact`. `PeriodPicker` na página com `basePath="/shows/prazo-recebimento/por-contratante"`, empty state
+período-ciente ("Nenhum cachê recebido de shows de {ano}"), o export herda `?ano=` no link e no nome
+`prazo-recebimento-por-contratante-<ano|todos>.csv`. O ano é o da `date` do show (quando o show aconteceu), consistente com a
+mãe: "quão rápido fui pago pelos shows daquele ano". Adiado (D194): o comparativo ano a ano **por contratante**
+(`comparePaymentLagByContact`) — passo maior, e o comparativo global do DSO já vive na tela-mãe. **Sem novos testes** (plumbing
+sobre helpers já testados); suíte inalterada em **1133 testes**) sobre os **1133 testes** verdes após o **comparativo ano a ano do
 prazo de recebimento** (Sessão 200, D193 — a tela `/shows/prazo-recebimento` (`paymentLag`/D51, o DSO do músico) ganhou o
 `PeriodPicker` (D192/`?ano=`) mas comparava só um período por vez, enquanto todas as leituras irmãs de tendência já têm um card
 "vs. {ano-1}" (concentração/D120/D122, cancelamento/D181, antecedência de agendamento/D187); era o item (c) adiado na própria
@@ -3327,8 +3341,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    {ano} vs. {ano-1}" em `/shows/prazo-recebimento`, exibido só com um ano específico e ambos os períodos com recebimento, com nota de
    amostra pequena abaixo de `MIN_MEDIAN_LAG_SAMPLE`; reaproveita os registros já carregados (ano anterior por `filterShowsByYear`, zero
    I/O extra), veredito na mediana, ver D193.
-   Próximo possível — recorte por `?ano=` (e comparativo) também na tela **por contratante** (`/shows/prazo-recebimento/por-contratante`,
-   mesmo par página+export); ou lembrar a última escolha de contato por show; ou
+   **Recorte por período (`?ano=`) na tela por contratante** entregue na Sessão 201 — `PeriodPicker` +
+   `paymentLagYears`/`parseProfitYear`/`filterShowsByYear` (D108/D192, zero lógica pura nova) em
+   `/shows/prazo-recebimento/por-contratante` (página e export): filtra os shows pela `date` antes de agregar por contratante,
+   então destaques/tabela/detalhe saem recortados sem tocar `paymentLagByContact`; empty state período-ciente, export herda
+   `?ano=` no nome `prazo-recebimento-por-contratante-<ano|todos>.csv`, ver D194.
+   Próximo possível — o **comparativo ano a ano por contratante** (`comparePaymentLagByContact`, adiado na D194 por ser passo
+   maior e o comparativo global do DSO já viver na tela-mãe); ou lembrar a última escolha de contato por show; ou
    levar o prazo mediano por contratante também ao card do Painel (adiado na D130: o Painel já mostra o DSO mediano global via
    `paymentLagHeadline`); ou exportar o agregado por baldes de velocidade (5 linhas-resumo) se houver demanda (descartado
    na D132(a) por baixo valor de planilha).
