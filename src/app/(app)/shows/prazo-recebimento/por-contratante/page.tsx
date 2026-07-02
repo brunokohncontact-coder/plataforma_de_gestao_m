@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import {
   paymentLagByContact,
   comparePaymentLagByContact,
+  indexContactPaymentLagChanges,
   paymentLagYears,
   parseProfitYear,
   filterShowsByYear,
@@ -12,6 +13,7 @@ import {
   type PaymentSpeedBucketKey,
   type PaymentLagByContactComparison,
   type ContactPaymentLagChange,
+  type ContactPaymentLagRowStatus,
   type ReceivableShowLike,
   type TxLike,
 } from "@/lib/finance";
@@ -139,6 +141,11 @@ export default async function PaymentLagByContactPage({
       if (c.changes.length > 0) comparison = c;
     }
   }
+
+  // Lookup por `contact.id` para a coluna "vs. {ano-1}" da tabela: casa cada linha
+  // (período atual) com sua variação de prazo, ou marca "novo"/"—" (D195). Reusa o
+  // mesmo comparativo já computado — zero lógica pura nova na página.
+  const rowStatus = comparison ? indexContactPaymentLagChanges(comparison) : null;
 
   return (
     <div className="space-y-6">
@@ -277,6 +284,9 @@ export default async function PaymentLagByContactPage({
                   <th className="px-4 py-3 text-right font-medium">Recebido</th>
                   <th className="px-4 py-3 text-right font-medium">Shows</th>
                   <th className="px-4 py-3 text-right font-medium">Prazo médio</th>
+                  {rowStatus && (
+                    <th className="px-4 py-3 text-right font-medium">vs. {previousYear}</th>
+                  )}
                   <th className="px-4 py-3 text-right font-medium">Prazo mediano</th>
                   <th className="px-4 py-3 text-right font-medium">Pior prazo</th>
                 </tr>
@@ -315,6 +325,11 @@ export default async function PaymentLagByContactPage({
                         {daysLabel(r.avgDays)}
                       </span>
                     </td>
+                    {rowStatus && (
+                      <td className="px-4 py-3 text-right">
+                        <PaymentLagRowDelta status={rowStatus(r.contact?.id)} year={previousYear} />
+                      </td>
+                    )}
                     <td className="px-4 py-3 text-right text-gray-500">
                       {r.showCount >= MIN_MEDIAN_LAG_SAMPLE ? (
                         daysLabel(r.medianDays)
@@ -396,6 +411,15 @@ export default async function PaymentLagByContactPage({
             de {MIN_MEDIAN_LAG_SAMPLE} shows pagos — abaixo disso é ruidoso demais. Shows sem
             contato vinculado caem em &quot;Sem contratante&quot;. Considera só receitas já
             recebidas e vinculadas a um show.
+            {rowStatus && (
+              <>
+                {" "}
+                A coluna <strong>vs. {previousYear}</strong> mostra a variação do prazo médio de
+                cada contratante frente ao ano anterior — <span className="text-emerald-600">
+                  verde</span> passou a pagar mais cedo, <span className="text-red-600">vermelho
+                </span> demorou mais, &quot;novo&quot; começou a pagar só neste ano.
+              </>
+            )}
           </p>
         </>
       )}
@@ -408,6 +432,40 @@ function daysDelta(delta: number): string {
   if (delta === 0) return "0 dias";
   const abs = Math.abs(delta);
   return `${delta > 0 ? "+" : "−"}${abs} ${abs === 1 ? "dia" : "dias"}`;
+}
+
+/**
+ * Célula da coluna "vs. {ano-1}" na tabela por contratante: a variação do prazo
+ * médio deste contratante frente ao ano anterior (`indexContactPaymentLagChanges`,
+ * D195). Descer o prazo é melhora (verde, o cachê entra mais cedo); subir é piora
+ * (vermelho); dentro do limiar é estável (cinza). Quem só apareceu neste ano vira
+ * "novo"; o grupo sem contratante e quem não é comparável ficam em "—".
+ */
+function PaymentLagRowDelta({
+  status,
+  year,
+}: {
+  status: ContactPaymentLagRowStatus<PayerContact>;
+  year: number;
+}) {
+  if (status.kind === "new") {
+    return (
+      <span className="text-xs text-gray-400" title={`Começou a pagar depois de ${year}`}>
+        novo
+      </span>
+    );
+  }
+  if (status.kind === "none") {
+    return <span className="text-gray-300">—</span>;
+  }
+  const { avgDaysDelta, trend } = status.change;
+  const tone =
+    trend === "improved"
+      ? "text-emerald-600"
+      : trend === "worsened"
+        ? "text-red-600"
+        : "text-gray-500";
+  return <span className={"font-medium " + tone}>{daysDelta(avgDaysDelta)}</span>;
 }
 
 /** Um lado do card de "movers": quem acelerou ou quem desacelerou. */

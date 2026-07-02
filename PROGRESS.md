@@ -9,7 +9,22 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1137 testes** verdes após o **comparativo ano a ano do
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1139 testes** verdes após a **coluna "vs. {ano-1}" por
+linha na tabela do prazo de recebimento por contratante** (Sessão 203, D196 — a D195 (Sessão 202) adicionou o card de destaques
+`PaymentLagMoversCard` mas ele só mostra dois extremos (quem mais acelerou / desacelerou); com vários contratantes comparáveis os do
+meio ficavam sem leitura de tendência, embora o número já estivesse em `comparison.changes`. Era o passo seguinte listado na própria
+D195/escopo(a) e no PROGRESS. Novo helper puro `indexContactPaymentLagChanges<C,S>(comparison)` + tipo `ContactPaymentLagRowStatus<C,S>`
+(`changed`/`new`/`none`) em `src/lib/finance.ts`: do `PaymentLagByContactComparison` já computado (D195) devolve uma função de lookup
+por `contact.id` que casa cada linha da tabela (período atual) com sua variação em O(1) — `changed` para quem está nos dois períodos,
+`new` para quem só apareceu neste ano (`newContacts`), `none` para o grupo sem contratante / ids desconhecidos. Na página, quando o
+comparativo existe (só com ano específico, mesmo gate do card), a tabela ganha a coluna "vs. {ano-1}" após "Prazo médio", renderizada
+por `PaymentLagRowDelta`: `daysDelta` colorido (🟢 `improved` desceu o prazo / 🔴 `worsened` subiu / cinza `stable` dentro de
+`PAYMENT_LAG_TREND_EPSILON`=7 d), "novo" para novos pagadores, "—" para o resto; rodapé explica o código de cores. Reabre a deferência
+da D195 (que preferiu o card citando "ruído por amostra pequena") na **apresentação**, não removendo o card: a coluna é o **detalhe**
+do card-**manchete** (mesma dobra de "paga mais rápido/devagar" + tabela), e o `trend` gateia a cor — deltas pequenos ficam cinza, não
+lêem como alarme. **Zero lógica pura nova de comparação** (só a indexação do comparativo já testado) e **zero I/O extra**. Adiado
+(D196): export CSV do comparativo (segue o precedente da D195/D193 — o comparativo é apresentação); coluna equivalente na tela-mãe
+(lá o comparativo é por período único, não por linha). **+2 testes**) sobre os **1137 testes** verdes após o **comparativo ano a ano do
 prazo de recebimento por contratante** (Sessão 202, D195 — a D194 (Sessão 201) recortou `/shows/prazo-recebimento/por-contratante`
 por ano mas deixou explícito o comparativo por contratante como o "passo maior" adiado (item 5). A tela-mãe já tem o card global do
 DSO (`comparePaymentLag`/D193), então o que faltava e é genuinamente novo é **por pagador**: quem começou a te pagar mais rápido /
