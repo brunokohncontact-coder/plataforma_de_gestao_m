@@ -4388,7 +4388,151 @@ export function paymentLagByContact<
 }
 
 /**
+ * Variação do prazo de recebimento de UM contratante entre dois períodos (o ano
+ * selecionado × o anterior). Espelha o comparativo global (`PaymentLagComparison`/
+ * D193) mas por pagador. `avgDaysDelta` negativo = o contratante passou a te pagar
+ * **mais rápido** (melhora); positivo = mais devagar (piora).
+ */
+export interface ContactPaymentLagChange<
+  C,
+  S extends ReceivableShowLike = ReceivableShowLike,
+> {
+  /** Contratante comparado — sempre identificado (o grupo "sem contratante" fica de fora). */
+  contact: C;
+  /** Linha do contratante no período atual. */
+  current: ContactPaymentLagRow<C, S>;
+  /** Linha do contratante no período anterior. */
+  previous: ContactPaymentLagRow<C, S>;
+  /**
+   * Variação do prazo MÉDIO ponderado (atual − anterior, em dias). Negativo =
+   * pagando mais rápido agora; positivo = mais devagar. Ancora o veredito.
+   */
+  avgDaysDelta: number;
+  /** Variação do prazo MEDIANO (atual − anterior, em dias) — só informativo. */
+  medianDaysDelta: number;
+  /**
+   * Direção do hábito de pagamento do contratante, pela variação da **média**
+   * contra `PAYMENT_LAG_TREND_EPSILON`:
+   * - "improved": a média caiu além do limiar (te paga mais cedo);
+   * - "worsened": subiu além do limiar (demora mais);
+   * - "stable": dentro do limiar (ruído).
+   */
+  trend: "improved" | "worsened" | "stable";
+}
+
+export interface PaymentLagByContactComparison<
+  C,
+  S extends ReceivableShowLike = ReceivableShowLike,
+> {
+  /**
+   * Contratantes presentes nos DOIS períodos, com a variação do prazo. Ordenados
+   * da maior piora à maior melhora (quem desacelerou primeiro), para o "mover" de
+   * cima do card ser o que mais merece atenção.
+   */
+  changes: ContactPaymentLagChange<C, S>[];
+  /** Quem mais acelerou (variação de média mais negativa entre os "improved"). */
+  biggestImprovement: ContactPaymentLagChange<C, S> | null;
+  /** Quem mais desacelerou (variação de média mais positiva entre os "worsened"). */
+  biggestWorsening: ContactPaymentLagChange<C, S> | null;
+  /** Contratantes que só pagaram no período atual (novos pagadores). */
+  newContacts: ContactPaymentLagRow<C, S>[];
+  /** Contratantes que pagaram no anterior mas não no atual (sumiram do caixa). */
+  droppedContacts: ContactPaymentLagRow<C, S>[];
+}
+
+/**
+ * Compara o **prazo de recebimento por contratante** entre dois períodos (atual ×
+ * anterior), casando os contratantes por `contact.id`. Para cada um presente nos
+ * dois períodos devolve a variação do prazo (quem começou a te pagar mais rápido /
+ * mais devagar); os que aparecem só num período viram `newContacts`/`droppedContacts`.
+ *
+ * Pura, sem I/O: recebe dois `paymentLagByContact` já computados (cada um sobre os
+ * shows do seu período). Ao contrário do booking lead time (subir é melhora), aqui
+ * **descer** o prazo é a melhora — o cachê entra mais cedo, como no comparativo
+ * global (D193) e na taxa de cancelamento (D181).
+ *
+ * O veredito por contratante ancora na **média ponderada** (`avgDays`), não na
+ * mediana como o comparativo global: por pagador a amostra costuma ser pequena
+ * (< `MIN_MEDIAN_LAG_SAMPLE`) e a mediana fica ruidosa, ao passo que `avgDays` está
+ * sempre definido e é exatamente o eixo por que a página ordena e destaca "paga
+ * mais rápido/devagar". Reusa `PAYMENT_LAG_TREND_EPSILON` (=7 dias) como limiar. O
+ * chamador decide quando exibir (tipicamente só com um ano específico e ambos os
+ * períodos com recebimento).
+ */
+export function comparePaymentLagByContact<
+  C extends { id: string },
+  S extends ReceivableShowLike,
+>(
+  current: PaymentLagByContact<C, S>,
+  previous: PaymentLagByContact<C, S>,
+): PaymentLagByContactComparison<C, S> {
+  const prevById = new Map<string, ContactPaymentLagRow<C, S>>();
+  for (const r of previous.rows) {
+    if (r.contact) prevById.set(r.contact.id, r);
+  }
+
+  const currentIds = new Set<string>();
+  const changes: ContactPaymentLagChange<C, S>[] = [];
+  const newContacts: ContactPaymentLagRow<C, S>[] = [];
+
+  for (const cur of current.rows) {
+    if (!cur.contact) continue; // grupo "sem contratante" não é comparável
+    currentIds.add(cur.contact.id);
+    const prev = prevById.get(cur.contact.id);
+    if (!prev) {
+      newContacts.push(cur);
+      continue;
+    }
+    const avgDaysDelta = cur.avgDays - prev.avgDays;
+    changes.push({
+      contact: cur.contact,
+      current: cur,
+      previous: prev,
+      avgDaysDelta,
+      medianDaysDelta: cur.medianDays - prev.medianDays,
+      trend:
+        avgDaysDelta <= -PAYMENT_LAG_TREND_EPSILON
+          ? "improved"
+          : avgDaysDelta >= PAYMENT_LAG_TREND_EPSILON
+            ? "worsened"
+            : "stable",
+    });
+  }
+
+  const droppedContacts = previous.rows.filter(
+    (r): r is ContactPaymentLagRow<C, S> & { contact: C } =>
+      !!r.contact && !currentIds.has(r.contact.id),
+  );
+
+  // Maior piora no topo (variação de média desc); empate estável pelo id.
+  changes.sort(
+    (a, b) =>
+      b.avgDaysDelta - a.avgDaysDelta || a.contact.id.localeCompare(b.contact.id),
+  );
+
+  let biggestImprovement: ContactPaymentLagChange<C, S> | null = null;
+  let biggestWorsening: ContactPaymentLagChange<C, S> | null = null;
+  for (const c of changes) {
+    if (
+      c.trend === "improved" &&
+      (!biggestImprovement || c.avgDaysDelta < biggestImprovement.avgDaysDelta)
+    ) {
+      biggestImprovement = c;
+    }
+    if (
+      c.trend === "worsened" &&
+      (!biggestWorsening || c.avgDaysDelta > biggestWorsening.avgDaysDelta)
+    ) {
+      biggestWorsening = c;
+    }
+  }
+
+  return { changes, biggestImprovement, biggestWorsening, newContacts, droppedContacts };
+}
+
+/**
  * Decide quanto lançar ao quitar um cachê, dado o valor pedido pelo usuário e o
+ * saldo em aberto (recalculado no servidor — a fonte de verdade). Regras:
  * saldo em aberto (recalculado no servidor — a fonte de verdade). Regras:
  * - Saldo <= 0 → 0 (nada a quitar).
  * - Sem valor pedido (null/undefined), inválido (NaN) ou <= 0 → quita o saldo

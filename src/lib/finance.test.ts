@@ -111,6 +111,7 @@ import {
   PAYMENT_LAG_TREND_EPSILON,
   paymentLagHeadline,
   paymentLagByContact,
+  comparePaymentLagByContact,
   paymentSpeedBucket,
   PAYMENT_SPEED_BUCKET_ORDER,
   computeGoalProgress,
@@ -4510,6 +4511,128 @@ describe("paymentLagByContact", () => {
     const row = paymentLagByContact(shows, txs, getPayer).rows[0];
     expect(row.showCount).toBe(1);
     expect(row.medianDays).toBe(7);
+  });
+});
+
+describe("comparePaymentLagByContact", () => {
+  interface Contact {
+    id: string;
+    name: string;
+  }
+  type ShowWithPayer = ReceivableShowLike & { payer: Contact | null };
+  const getPayer = (s: ShowWithPayer) => s.payer;
+
+  function gig(partial: Partial<ShowWithPayer>): ShowWithPayer {
+    return {
+      id: "g",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-03-01T00:00:00.000Z",
+      payer: null,
+      ...partial,
+    };
+  }
+
+  /** Um par show+recebimento de um contratante, com prazo de `lagDays` dias. */
+  function paid(id: string, payer: Contact, year: number, lagDays: number) {
+    const show = gig({ id, date: `${year}-03-01T00:00:00.000Z`, payer });
+    const paidDate = new Date(Date.UTC(year, 2, 1 + lagDays)).toISOString();
+    const t = tx({
+      type: "INCOME",
+      amount: 100_00,
+      received: true,
+      showId: id,
+      date: paidDate,
+    });
+    return { show, tx: t };
+  }
+
+  const ze = { id: "ze", name: "Bar do Zé" };
+
+  it("casa por id e marca 'improved' quando o contratante passa a pagar mais rápido", () => {
+    const prev = paid("p", ze, 2025, 40);
+    const cur = paid("c", ze, 2026, 5);
+    const c = comparePaymentLagByContact(
+      paymentLagByContact([cur.show], [cur.tx], getPayer),
+      paymentLagByContact([prev.show], [prev.tx], getPayer),
+    );
+    expect(c.changes).toHaveLength(1);
+    expect(c.changes[0].contact.id).toBe("ze");
+    expect(c.changes[0].avgDaysDelta).toBe(-35);
+    expect(c.changes[0].trend).toBe("improved");
+    expect(c.biggestImprovement?.contact.id).toBe("ze");
+    expect(c.biggestWorsening).toBeNull();
+    expect(c.newContacts).toEqual([]);
+    expect(c.droppedContacts).toEqual([]);
+  });
+
+  it("marca 'worsened' quando desacelera e 'stable' dentro do limiar", () => {
+    const worse = comparePaymentLagByContact(
+      paymentLagByContact([paid("c", ze, 2026, 40).show], [paid("c", ze, 2026, 40).tx], getPayer),
+      paymentLagByContact([paid("p", ze, 2025, 5).show], [paid("p", ze, 2025, 5).tx], getPayer),
+    );
+    expect(worse.changes[0].trend).toBe("worsened");
+    expect(worse.biggestWorsening?.contact.id).toBe("ze");
+    expect(worse.biggestImprovement).toBeNull();
+
+    // Variação de 3 dias (< PAYMENT_LAG_TREND_EPSILON = 7) → estável.
+    const stable = comparePaymentLagByContact(
+      paymentLagByContact([paid("c", ze, 2026, 13).show], [paid("c", ze, 2026, 13).tx], getPayer),
+      paymentLagByContact([paid("p", ze, 2025, 10).show], [paid("p", ze, 2025, 10).tx], getPayer),
+    );
+    expect(stable.changes[0].avgDaysDelta).toBe(3);
+    expect(stable.changes[0].trend).toBe("stable");
+    expect(stable.biggestImprovement).toBeNull();
+    expect(stable.biggestWorsening).toBeNull();
+  });
+
+  it("particiona novos e sumidos e ignora o grupo sem contratante", () => {
+    const antigo = { id: "antigo", name: "Antigo" };
+    const novo = { id: "novo", name: "Novo" };
+    // Atual: ze (também no anterior) + novo (só no atual) + um show sem payer.
+    const curReport = paymentLagByContact(
+      [
+        paid("c1", ze, 2026, 5).show,
+        paid("c2", novo, 2026, 5).show,
+        gig({ id: "orfao", date: "2026-03-01T00:00:00.000Z", payer: null }),
+      ],
+      [
+        paid("c1", ze, 2026, 5).tx,
+        paid("c2", novo, 2026, 5).tx,
+        tx({ type: "INCOME", amount: 100_00, received: true, showId: "orfao", date: "2026-06-01T00:00:00.000Z" }),
+      ],
+      getPayer,
+    );
+    // Anterior: ze + antigo (só no anterior).
+    const prevReport = paymentLagByContact(
+      [paid("p1", ze, 2025, 40).show, paid("p2", antigo, 2025, 20).show],
+      [paid("p1", ze, 2025, 40).tx, paid("p2", antigo, 2025, 20).tx],
+      getPayer,
+    );
+    const c = comparePaymentLagByContact(curReport, prevReport);
+    expect(c.changes.map((x) => x.contact.id)).toEqual(["ze"]); // só quem está nos dois
+    expect(c.newContacts.map((x) => x.contact?.id)).toEqual(["novo"]);
+    expect(c.droppedContacts.map((x) => x.contact?.id)).toEqual(["antigo"]);
+  });
+
+  it("ordena as variações da maior piora à maior melhora e escolhe os extremos", () => {
+    const acelerou = { id: "acel", name: "Acelerou" };
+    const desacelerou = { id: "desac", name: "Desacelerou" };
+    const cur = paymentLagByContact(
+      [paid("a", acelerou, 2026, 5).show, paid("d", desacelerou, 2026, 50).show],
+      [paid("a", acelerou, 2026, 5).tx, paid("d", desacelerou, 2026, 50).tx],
+      getPayer,
+    );
+    const prev = paymentLagByContact(
+      [paid("pa", acelerou, 2025, 50).show, paid("pd", desacelerou, 2025, 5).show],
+      [paid("pa", acelerou, 2025, 50).tx, paid("pd", desacelerou, 2025, 5).tx],
+      getPayer,
+    );
+    const c = comparePaymentLagByContact(cur, prev);
+    // Piora (+45) no topo, melhora (−45) embaixo.
+    expect(c.changes.map((x) => x.contact.id)).toEqual(["desac", "acel"]);
+    expect(c.biggestWorsening?.contact.id).toBe("desac");
+    expect(c.biggestImprovement?.contact.id).toBe("acel");
   });
 });
 

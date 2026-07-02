@@ -6263,3 +6263,40 @@ contexto, decisão, justificativa e alternativas consideradas.
   `/shows/prazo-recebimento/por-contratante?ano=2025` 307→login (rota compila e roda). `npm audit` **inalterado** vs. baseline
   (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma
   dependência nova**.
+
+## 2026-07-02 — D195: Comparativo ano a ano do prazo de recebimento por contratante (`comparePaymentLagByContact`)
+- **Contexto:** a D194 recortou `/shows/prazo-recebimento/por-contratante` por ano (`?ano=`), mas deixou explícito (D194/escopo,
+  item 5) o **comparativo ano a ano por contratante** como o "passo maior" adiado. A tela-mãe já tem o card global do DSO
+  (`comparePaymentLag`/D193), mas duplicá-lo aqui seria redundante (é o mesmo DSO da carteira) — o que falta e é genuinamente novo
+  é **por pagador**: quem começou a te pagar mais rápido / mais devagar de um ano para o outro.
+- **Decisão:** novo helper puro `comparePaymentLagByContact<C,S>(current, previous)` + `PaymentLagByContactComparison<C,S>` +
+  `ContactPaymentLagChange<C,S>` em `src/lib/finance.ts`. Recebe dois `paymentLagByContact` já computados (um por período) e casa os
+  contratantes por `contact.id`: para cada um presente **nos dois** períodos devolve `avgDaysDelta`/`medianDaysDelta` (atual −
+  anterior) + `trend`; os que aparecem só num período viram `newContacts` (só no atual — começaram a pagar) / `droppedContacts` (só
+  no anterior — sumiram do caixa). Expõe `biggestImprovement`/`biggestWorsening` (os extremos) e ordena `changes` da maior piora à
+  maior melhora. Card `PaymentLagMoversCard` "Quem mudou de ritmo · {ano} vs. {ano-1}" na página, logo após os destaques, com dois
+  blocos (Acelerou 🟢 / Desacelerou 🔴) + rodapé de novos/sumidos; gate: só com um ano específico, ambos os períodos com
+  recebimento (`paymentCount > 0`) e ao menos um contratante comparável (`changes.length > 0`). Reusa os mesmos shows/txs já
+  carregados (recorte por `date` UTC/D108), **zero I/O extra**.
+- **Por que o veredito ancora na média (`avgDays`), não na mediana como o comparativo global (D193):** por pagador a amostra costuma
+  ser pequena (< `MIN_MEDIAN_LAG_SAMPLE`=3 shows), e nesse regime a mediana fica tão ruidosa quanto a média — ao passo que `avgDays`
+  está **sempre definido** e é exatamente o eixo por que a página já ordena as linhas e destaca "paga mais rápido/devagar". Usar a
+  média mantém o card coerente com o resto da tela. O `medianDaysDelta` segue no tipo como informação, mas não decide o `trend`.
+  Direção **invertida** vs. booking lead time (D187): descer o prazo é a melhora (`improved`), como no comparativo global (D193) e
+  na taxa de cancelamento (D181); limiar reusado `PAYMENT_LAG_TREND_EPSILON` (=7 dias).
+- **Por que "movers" (2 extremos) e não uma coluna de delta por linha na tabela:** um card de destaques espelha a idiomática já
+  presente ("Paga mais rápido/devagar") e responde à pergunta acionável ("de quem cobrar prazos melhores este ano") sem inflar a
+  tabela; a variação linha a linha é ruído para a maioria dos contratantes de amostra pequena.
+- **Escopo (o que ficou de fora):** (a) coluna "vs. {ano-1}" por linha na tabela — adiado, o card de extremos entrega o sinal
+  acionável; (b) export CSV do comparativo — adiado (o export já emite o retrato do ano; o comparativo é card de apresentação, como
+  em D193, que também não exportou o card); (c) recorte do próprio comparativo por papel/cidade — fora do eixo.
+- **Alternativas consideradas:** (a) reusar `comparePaymentLag` sobre o DSO global desta tela — descartado por ser idêntico ao card
+  da tela-mãe (D193); (b) ancorar o `trend` na mediana como o global — descartado pela amostra pequena por pagador (ver acima);
+  (c) exibir também com "todos os anos" — descartado, sem período fixo "vs. ano anterior" não tem sentido.
+- **Testes:** +4 em `src/lib/finance.test.ts` (`comparePaymentLagByContact`): casa por id e marca `improved` ao acelerar;
+  `worsened` ao desacelerar + `stable` dentro do limiar; particiona `newContacts`/`droppedContacts` ignorando o grupo sem
+  contratante; ordena da maior piora à maior melhora e escolhe os extremos. Suíte **1133 → 1137**, todos verdes.
+- **DoD:** build de produção verde (`/shows/prazo-recebimento/por-contratante` regenerada); lint (`next lint`, 0 avisos); typecheck
+  (`tsc --noEmit`) limpo; **1137 testes**; smoke test — app sobe (~1 s), `/login` 200 e `/` 200. `npm audit` **inalterado** vs.
+  baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma
+  dependência nova**.
