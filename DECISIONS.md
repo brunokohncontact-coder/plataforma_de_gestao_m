@@ -6160,3 +6160,36 @@ contexto, decisão, justificativa e alternativas consideradas.
   (`tsc --noEmit`) limpo; **1124 testes** (`vitest run`); smoke test — app sobe (~6 s), `/` 200 e `/shows/antecedencia`
   307→login. `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
   postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+## 2026-07-02 — D192: Recorte por período (`?ano=`) no prazo de recebimento (`paymentLagYears` + `PeriodPicker`)
+- **Contexto:** a tela `/shows/prazo-recebimento` (`paymentLag`/D51 — o DSO do músico: depois que ele toca, em quantos dias
+  o cachê cai no caixa) era um retrato do acervo **inteiro**, sem o `PeriodPicker` (D119/`?ano=`) que todas as telas irmãs
+  de tendência/rentabilidade já têm (rentabilidade por show/contato, concentração, cancelamentos/D180, antecedência de
+  agendamento/D186). Era a última leitura de dinheiro do eixo Shows sem recorte por ano — e "estou sendo pago mais rápido
+  ou mais devagar do que antes?" é uma pergunta anual legítima (o mesmo motivo que justificou o recorte na antecedência).
+- **Decisão:** helper puro `paymentLagYears<S>(shows, txs)` em `src/lib/finance.ts` (irmão de `bookingLeadTimeYears`/
+  `cancelledShowYears`) devolve os anos (UTC, desc) **dos shows com prazo mensurável** — não cancelados e com ao menos um
+  recebimento qualificável (a mesma regra de entrada de `paymentLag`: INCOME + `received` + `showId` + valor positivo).
+  Página e export reaproveitam `parseProfitYear`/`filterShowsByYear` (D108): filtram os shows (prisma, `date: Date`) pelo ano
+  da **`date`** (quando o show aconteceu, o mesmo eixo das telas irmãs) **antes** de `paymentLag`, então o DSO médio/mediano,
+  os baldes de velocidade e a tabela por show saem recortados sem tocar a lógica pura. `PeriodPicker` na página (pílula
+  "Todos" + um ano por pílula), empty state período-ciente ("Nenhum cachê recebido de shows de {ano}"), export herda o ano no
+  nome `prazo-recebimento-<ano|todos>.csv`.
+- **Por que ancorar o seletor nos shows com recebimento (e não em todos):** um ano só com shows ainda a receber (ou sem show)
+  não mede prazo e viraria uma opção que renderiza vazia — o mesmo cuidado de `cancelledShowYears`/`bookingLeadTimeYears`,
+  que se ancoram no **sinal da tela**. O ano do seletor é o da `date` do show, não o da data do pagamento: a pergunta é "quão
+  rápido fui pago pelos shows daquele ano", então um cachê que caiu no ano seguinte segue contando para o ano do show.
+- **Alternativas consideradas:** (a) ancorar o ano na **data do pagamento** — descartado: quebraria a consistência com
+  `filterShowsByYear` (que recorta pela `date` do show) e misturaria eixos (um show de dez/2025 pago em jan/2026 apareceria
+  em 2026, inflando o prazo daquele ano com dinheiro de show antigo). (b) recortar também a tela **por contratante**
+  (`/shows/prazo-recebimento/por-contratante`) nesta sessão — adiado para manter o escopo fechado (é a próxima unidade
+  natural, mesmo par página+export). (c) já entregar o comparativo ano a ano do DSO (`comparePaymentLag`, espelho de
+  `compareBookingLeadTime`/D187) — adiado: o recorte é o pré-requisito, e a cadência do projeto é um incremento por sessão;
+  fica como próximo passo.
+- **Testes:** `paymentLagYears` — vazio sem recebimentos; lista só os anos dos shows que já receberam (ignora o ano de um
+  show sem pagamento); deduplica e usa o ano UTC da `date` do show (não do pagamento); ignora cancelados, recebimentos
+  `received=false` e despesas vinculadas — **+4 testes**. Total **1124 → 1128**.
+- **DoD:** build de produção verde (`/shows/prazo-recebimento` + `/export` regeneradas); lint (`next lint`, 0 avisos);
+  typecheck (`tsc --noEmit`) limpo; **1128 testes** (`vitest run`); smoke test — app sobe (~6 s), `/` 200 e
+  `/shows/prazo-recebimento` (e `?ano=2026`) 307→login. `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate /
+  5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.

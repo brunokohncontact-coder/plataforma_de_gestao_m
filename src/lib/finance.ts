@@ -4085,6 +4085,38 @@ export function paymentLag<S extends ReceivableShowLike>(
 }
 
 /**
+ * Anos (UTC, decrescente) dos shows que entram na leitura de prazo de
+ * recebimento — para montar o seletor de período de `/shows/prazo-recebimento`.
+ * Considera só os shows com prazo **mensurável** (não cancelados e com ao menos
+ * um recebimento INCOME/`received`/vinculado/positivo, a mesma amostra de
+ * `paymentLag`): um ano em que nenhum cachê caiu no caixa não mede prazo e não
+ * deve virar uma opção vazia no seletor (mesmo cuidado de `cancelledShowYears`/
+ * `bookingLeadTimeYears`, que se ancoram no sinal da tela e não em todos os
+ * shows). O ano é o da `date` do show — o mesmo eixo de `filterShowsByYear`,
+ * que recorta a lista antes de `paymentLag`.
+ */
+export function paymentLagYears<S extends ReceivableShowLike>(
+  shows: S[],
+  txs: TxLike[],
+): number[] {
+  // Shows que receberam ao menos um pagamento qualificável — a mesma regra de
+  // entrada de `paymentLag`, para o seletor casar com a amostra da tela.
+  const paidShowIds = new Set<string>();
+  for (const t of txs) {
+    if (t.type !== "INCOME" || !t.received || t.showId == null || t.amount <= 0) continue;
+    paidShowIds.add(t.showId);
+  }
+
+  const years = new Set<number>();
+  for (const s of shows) {
+    if (s.status === "CANCELLED" || !paidShowIds.has(s.id)) continue;
+    const d = typeof s.date === "string" ? new Date(s.date) : s.date;
+    years.add(d.getUTCFullYear());
+  }
+  return [...years].sort((a, b) => b - a);
+}
+
+/**
  * Resumo do prazo de recebimento para o Painel: condensa um `PaymentLag` no que
  * cabe num card de dashboard. Decide se vale a pena mostrar (precisa de uma
  * amostra mínima de shows pagos), expõe o DSO médio e o mediano, o balde de

@@ -1,8 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   paymentLag,
+  paymentLagYears,
+  parseProfitYear,
+  filterShowsByYear,
   type ReceivableShowLike,
   type TxLike,
 } from "@/lib/finance";
@@ -11,11 +14,12 @@ import { paymentLagToCsv, type PaymentLagCsvRow } from "@/lib/csv";
 export const dynamic = "force-dynamic";
 
 // Exporta o prazo de recebimento por show (tela-mãe `/shows/prazo-recebimento`)
-// em CSV, espelhando a página: a mesma consulta (shows não cancelados + receitas
-// recebidas vinculadas) e a mesma agregação ponderada (`paymentLag`), toda na
-// camada pura testada. A serialização fica em `@/lib/csv` (`paymentLagToCsv`,
-// testada). Uma linha por show, do prazo médio mais lento ao mais rápido.
-export async function GET() {
+// em CSV, respeitando o recorte por período (?ano=YYYY) — espelha a mesma
+// consulta (shows não cancelados + receitas recebidas vinculadas) e a mesma
+// agregação ponderada (`paymentLag`), toda na camada pura testada. A
+// serialização fica em `@/lib/csv` (`paymentLagToCsv`, testada). Uma linha por
+// show, do prazo médio mais lento ao mais rápido.
+export async function GET(req: NextRequest) {
   const user = await requireUser();
 
   const [shows, transactions] = await Promise.all([
@@ -39,14 +43,20 @@ export async function GET() {
     showId: t.showId,
   }));
 
-  const lag = paymentLag(
-    shows as (ReceivableShowLike & {
-      title: string;
-      venue: string | null;
-      city: string | null;
-    })[],
-    txs,
+  type Gig = ReceivableShowLike & {
+    title: string;
+    venue: string | null;
+    city: string | null;
+  };
+
+  // Mesmo recorte por ano da página: oferece só os anos com prazo mensurável e
+  // filtra os shows (prisma, `date: Date`) pela `date` antes de agregar.
+  const availableYears = paymentLagYears(shows, txs);
+  const yearFilter = parseProfitYear(
+    req.nextUrl.searchParams.get("ano") ?? undefined,
+    availableYears,
   );
+  const lag = paymentLag(filterShowsByYear(shows, yearFilter) as Gig[], txs);
 
   const csvRows: PaymentLagCsvRow[] = lag.rows.map((r) => {
     const show = r.show as ReceivableShowLike & {
@@ -68,7 +78,8 @@ export async function GET() {
 
   // BOM UTF-8 para preservar acentuação ao abrir no Excel.
   const body = "﻿" + csv;
-  const filename = "prazo-recebimento.csv";
+  const suffix = yearFilter === "all" ? "todos" : String(yearFilter);
+  const filename = `prazo-recebimento-${suffix}.csv`;
 
   return new NextResponse(body, {
     status: 200,
