@@ -14,7 +14,10 @@ import {
   bookingLeadTime,
   bookingLeadTimeYears,
   compareBookingLeadTime,
+  bookingLeadTimeHeadline,
   LEAD_TIME_TREND_EPSILON,
+  LEAD_TIME_SHORT_DAYS,
+  LEAD_TIME_CRITICAL_DAYS,
   MIN_LEAD_TIME_SAMPLE,
   type ConflictShowLike,
   type LeadTimeShowLike,
@@ -683,5 +686,80 @@ describe("compareBookingLeadTime", () => {
     ]);
     expect(compareBookingLeadTime(up, base).trend).toBe("improved");
     expect(compareBookingLeadTime(down, base).trend).toBe("worsened");
+  });
+});
+
+describe("bookingLeadTimeHeadline", () => {
+  // Show com antecedência `lead` dias (createdAt fixo, data `lead` dias depois).
+  const withLead = (lead: number) =>
+    leadShow({
+      createdAt: "2026-01-01T00:00:00.000Z",
+      date: new Date(Date.UTC(2026, 0, 1 + lead)).toISOString(),
+    });
+
+  it("não mostra com amostra pequena, mesmo que a mediana seja curta", () => {
+    // 2 shows curtíssimos: mediana baixa, mas amostra abaixo de MIN → ruído.
+    const h = bookingLeadTimeHeadline(bookingLeadTime([withLead(2), withLead(3)]));
+    expect(h.show).toBe(false);
+  });
+
+  it("mediana longa com amostra confiável não dispara o nudge", () => {
+    const h = bookingLeadTimeHeadline(
+      bookingLeadTime([withLead(40), withLead(45), withLead(50)]), // mediana 45
+    );
+    expect(h.show).toBe(false);
+    expect(h.critical).toBe(false);
+    expect(h.medianDays).toBe(45);
+  });
+
+  it("mediana curta com amostra confiável mostra (não crítico entre crítico e curto)", () => {
+    const h = bookingLeadTimeHeadline(
+      bookingLeadTime([withLead(9), withLead(10), withLead(12)]), // mediana 10
+    );
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(false);
+    expect(h.medianDays).toBe(10);
+    expect(h.sample).toBe(3);
+  });
+
+  it("mediana muito curta é crítica", () => {
+    const h = bookingLeadTimeHeadline(
+      bookingLeadTime([withLead(3), withLead(5), withLead(6)]), // mediana 5
+    );
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(true);
+  });
+
+  it("os limiares são inclusivos (mediana == curto mostra; == crítico é crítica)", () => {
+    const atShort = bookingLeadTimeHeadline(
+      bookingLeadTime([
+        withLead(LEAD_TIME_SHORT_DAYS),
+        withLead(LEAD_TIME_SHORT_DAYS),
+        withLead(LEAD_TIME_SHORT_DAYS),
+      ]),
+    );
+    expect(atShort.show).toBe(true);
+    expect(atShort.critical).toBe(false);
+
+    const atCritical = bookingLeadTimeHeadline(
+      bookingLeadTime([
+        withLead(LEAD_TIME_CRITICAL_DAYS),
+        withLead(LEAD_TIME_CRITICAL_DAYS),
+        withLead(LEAD_TIME_CRITICAL_DAYS),
+      ]),
+    );
+    expect(atCritical.show).toBe(true);
+    expect(atCritical.critical).toBe(true);
+  });
+
+  it("aceita limiares injetados", () => {
+    const report = bookingLeadTime([withLead(20), withLead(20), withLead(20)]); // mediana 20
+    expect(bookingLeadTimeHeadline(report).show).toBe(false); // padrão 14: não
+    expect(bookingLeadTimeHeadline(report, 30, 15).show).toBe(true); // curto 30: mostra
+    expect(bookingLeadTimeHeadline(report, 30, 20).critical).toBe(true); // crítico 20: sim
+  });
+
+  it("os limiares crítico e curto respeitam a ordem esperada", () => {
+    expect(LEAD_TIME_CRITICAL_DAYS).toBeLessThan(LEAD_TIME_SHORT_DAYS);
   });
 });

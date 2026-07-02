@@ -9,7 +9,20 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1109 testes** verdes após o **nudge de funil por
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1116 testes** verdes após o **nudge de antecedência de
+agendamento no Painel** (Sessão 196, D189 — a antecedência de agendamento (`bookingLeadTime`/D185 + `/shows/antecedencia`) tinha
+página, CSV (D185), recorte por ano (D186) e comparativo ano-a-ano (D187), mas nenhuma presença no Painel — o nudge fora adiado
+duas vezes (D185(d)/D187(a)) por a leitura ser "um retrato, não um alarme". Reavaliado: uma antecedência mediana **curta** É um
+alarme (fecha shows em cima da hora → pouco runway para prospectar/precificar), com precedente no DSO/prazo de recebimento (também
+um retrato) que ganhou card no Painel (D70). Novo helper puro `bookingLeadTimeHeadline(report, shortDays=14, criticalDays=7)` +
+`BookingLeadTimeHeadline` + `LEAD_TIME_SHORT_DAYS`/`LEAD_TIME_CRITICAL_DAYS` em `src/lib/shows.ts` (espelho de `paymentLagHeadline`):
+de uma `bookingLeadTime` já computada, `show` só quando a amostra é **confiável** (`reliable`, ≥ `MIN_LEAD_TIME_SAMPLE=3` — a mediana
+representa um hábito, não 1–2 shows) **e** a mediana cai a ≤ `shortDays`; `critical` quando desce a ≤ `criticalDays`. Ao contrário do
+card ano-a-ano (subir a mediana é melhora), aqui o alarme é a ponta **baixa**. Banner 🟠/🔴 em `dashboard/page.tsx` logo após o nudge
+de funil por contratante, reaproveitando os shows já carregados (createdAt vem na consulta, zero I/O extra), linkando
+`/shows/antecedencia`. Gate apertado (só na faixa ≤ 14 dias) mantém o banner raro, mesma disciplina dos nudges irmãos.
+**Ressalva de dados** herdada da D185: `createdAt` só é fiel com cadastro perto do fechamento (seed/import distorcem). **+7 testes**)
+sobre os **1109 testes** verdes após o **nudge de funil por
 contratante no Painel** (Sessão 195, D188 — o funil por contratante (`pipelineByContact`/D183 + `/contatos/funil`) tinha página e
 CSV (D184) mas nenhuma presença no Painel — era a única leitura recente do eixo Contatos sem nudge, enquanto concentração de
 clientes/geo (`clientConcentrationHeadline`/`geoConcentrationHeadline`) e cancelamentos (`cancellationHeadline`/D179) já ecoam no
@@ -3150,9 +3163,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `BookingLeadTimeComparison` + `LEAD_TIME_TREND_EPSILON` (=7 dias) em `src/lib/shows.ts` + card "Antecedência {ano} vs.
    {ano-1}" (`BookingLeadTimeComparisonCard` 🟢/🔴/⚪) em `/shows/antecedencia`, exibido só com um ano específico e ambos os
    períodos tendo amostra mensurável; aqui **subir** a mediana é a melhora (mais runway), direção oposta ao card de
-   cancelamento/concentração, e o veredito olha a mediana (a média é informativa), ver D187. Próximo possível — nudge no
-   Painel (adiado na D185(d): a leitura é um retrato, não um alarme; avaliar se "fechando shows em cima da hora" merece
-   banner), ou recortar a amostra a CONFIRMED+PLAYED (compromissos firmes, adiado na D185(a)).
+   cancelamento/concentração, e o veredito olha a mediana (a média é informativa), ver D187. **Nudge no Painel** entregue
+   na Sessão 196 — `bookingLeadTimeHeadline` + `LEAD_TIME_SHORT_DAYS`(=14)/`LEAD_TIME_CRITICAL_DAYS`(=7) em `src/lib/shows.ts`
+   + banner 🟠/🔴 "Você fecha shows em cima da hora" em `dashboard/page.tsx` quando a antecedência mediana é confiável e ≤ 14
+   dias (crítico ≤ 7), reaproveitando os shows já carregados, linkando `/shows/antecedencia`, ver D189 (reverte a dupla
+   deferência D185(d)/D187(a): mediana curta É alarme de runway, com precedente no DSO/D70). Próximo possível — recortar a
+   amostra a CONFIRMED+PLAYED (compromissos firmes, adiado na D185(a)), separando leads de bookings de fato fechados.
 2c. **Sazonalidade de shows** (entregue na Sessão 141, `/shows/sazonalidade` + `gigSeasonality` em
    `src/lib/finance.ts`, ver D133): agrega os shows realizados por mês do calendário (jan→dez, somando todos os anos),
    com cards de destaque (mês mais cheio / mais faturamento / melhor cachê médio) e tabela com barra por nº de shows —

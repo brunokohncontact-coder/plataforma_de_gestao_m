@@ -567,3 +567,60 @@ export function compareBookingLeadTime(
           : "stable",
   };
 }
+
+/**
+ * Antecedência mediana (em dias) a partir da qual a agenda é considerada
+ * apertada — "fecha shows em cima da hora". Duas semanas de folga é o piso
+ * confortável para prospectar/precificar sem correria.
+ */
+export const LEAD_TIME_SHORT_DAYS = 14;
+
+/**
+ * Antecedência mediana (em dias) que dispara o alerta crítico — uma semana ou
+ * menos entre fechar e tocar deixa quase nenhum runway de agenda.
+ */
+export const LEAD_TIME_CRITICAL_DAYS = 7;
+
+/** Manchete de antecedência para o Painel (nudge de runway de agenda). */
+export interface BookingLeadTimeHeadline {
+  /** True quando o nudge deve aparecer (amostra confiável + mediana curta). */
+  show: boolean;
+  /** True quando a mediana entra na faixa crítica (≤ `criticalDays`). */
+  critical: boolean;
+  /** Antecedência mediana em dias (a métrica que decide o nudge). */
+  medianDays: number;
+  /** Antecedência média em dias (informativa no banner). */
+  avgDays: number;
+  /** Shows com antecedência mensurável na leitura. */
+  sample: number;
+}
+
+/**
+ * Decide se o Painel deve alertar que os shows vêm entrando na agenda em cima
+ * da hora — o eco de `bookingLeadTime` no dashboard, espelho de
+ * `paymentLagHeadline` (D70) no eixo de runway. Recebe uma `bookingLeadTime` já
+ * computada e não faz I/O. `show` só quando a amostra é **confiável**
+ * (`reliable` → mediana representa um hábito, não 1–2 shows) **e** a mediana cai
+ * a `shortDays` ou menos; `critical` quando desce a `criticalDays` ou menos.
+ *
+ * Ao contrário do card ano-a-ano (`compareBookingLeadTime`, onde subir a mediana
+ * é a melhora), aqui o alarme é a ponta **baixa**: uma antecedência mediana
+ * curta significa pouco fôlego para prospectar, precificar e encaixar a agenda —
+ * a mesma tese de planejar com folga que sustenta os nudges de fins de semana
+ * livres e de sazonalidade. Só dispara na faixa apertada, então fica raro
+ * (mesma disciplina de gate dos nudges irmãos). Pura.
+ */
+export function bookingLeadTimeHeadline(
+  report: BookingLeadTime,
+  shortDays: number = LEAD_TIME_SHORT_DAYS,
+  criticalDays: number = LEAD_TIME_CRITICAL_DAYS,
+): BookingLeadTimeHeadline {
+  const show = report.reliable && report.medianDays <= shortDays;
+  return {
+    show,
+    critical: show && report.medianDays <= criticalDays,
+    medianDays: report.medianDays,
+    avgDays: report.avgDays,
+    sample: report.sample,
+  };
+}

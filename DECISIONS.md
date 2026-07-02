@@ -6038,3 +6038,48 @@ contexto, decisão, justificativa e alternativas consideradas.
   (`tsc --noEmit`) limpo; **1109 testes** (`vitest run`); smoke test — app sobe (~6 s), `/login` 200. `npm audit`
   **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss
   bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+
+---
+
+## 2026-07-02 — D189: Nudge de antecedência de agendamento no Painel (`bookingLeadTimeHeadline`)
+- **Contexto:** a antecedência de agendamento (`bookingLeadTime`/D185 + `/shows/antecedencia`) já tinha página,
+  CSV (D185), recorte por ano (D186) e comparativo ano-a-ano (D187), mas nenhuma presença no Painel. O nudge fora
+  adiado **duas vezes** — D185(d) e D187(a) — com a justificativa de que "a leitura é um retrato, não um alarme".
+  Todos os outros sinais recentes do app (concentração, geo, cancelamento, funil por contratante) já ecoam no
+  dashboard; a antecedência era a única leitura recente de Shows ainda muda lá.
+- **Decisão:** reverter a deferência e criar o nudge. Novo helper puro
+  `bookingLeadTimeHeadline(report, shortDays=LEAD_TIME_SHORT_DAYS=14, criticalDays=LEAD_TIME_CRITICAL_DAYS=7)` +
+  `BookingLeadTimeHeadline` em `src/lib/shows.ts` (espelho de `paymentLagHeadline`/D70): recebe uma `bookingLeadTime`
+  já computada e decide só a exibição. `show` quando a amostra é **confiável** (`report.reliable`, ≥
+  `MIN_LEAD_TIME_SAMPLE=3`) **e** a mediana cai a ≤ `shortDays`; `critical` quando desce a ≤ `criticalDays`.
+  Banner 🟠/🔴 "Você fecha shows em cima da hora" em `dashboard/page.tsx` logo após o nudge de funil por contratante,
+  reaproveitando os `shows` já carregados (`createdAt` vem na consulta `include`, zero I/O extra), linkando
+  `/shows/antecedencia`.
+- **Justificativa:** a deferência tratou a antecedência como neutra, mas ela tem uma ponta **ruim** bem definida:
+  uma antecedência mediana **curta** significa que a agenda se enche em cima da hora — pouco runway para prospectar,
+  precificar e encaixar shows. Isso é exatamente a tese de "planejar com folga" que já sustenta os nudges de fins de
+  semana livres (D97) e de sazonalidade forte/fraca (D134/D135). Há precedente direto: o DSO/prazo de recebimento
+  (D70) também é um "retrato" de um hábito e ganhou card no Painel quando cruza a faixa problemática. O gate por
+  `reliable` + faixa apertada (≤ 14 dias) mantém o banner raro (mesma disciplina dos nudges irmãos), e o corte 14/7
+  espelha "duas semanas / uma semana" como pisos de folga confortável e de aperto agudo.
+- **Direção invertida vs. o card ano-a-ano:** no `compareBookingLeadTime` (D187) **subir** a mediana é a melhora
+  (mais runway); aqui o alarme é a ponta **baixa** (mediana curta). São leituras complementares — a tendência
+  (melhorou/piorou entre anos) vs. o nível absoluto (está apertado agora?) — e cada uma tem o seu veredito próprio.
+- **Alternativas consideradas:** (a) manter adiado (D185(d)/D187(a)) — descartado: a ambiguidade que motivou a
+  deferência ("retrato, não alarme") se resolve ao mirar só a ponta baixa e confiável, com precedente no DSO. (b)
+  ancorar o nudge na antecedência **média** em vez da mediana — descartado: a média é sensível a um outlier de
+  booking muito antecipado que mascararia o hábito de última hora; a mediana é o eixo robusto (a média entra só como
+  informação no banner). (c) alertar também a ponta **alta** ("você planeja com muita folga") — descartado: folga
+  não é problema, é o objetivo; só a ponta curta é acionável. (d) recortar a amostra a CONFIRMED+PLAYED antes de
+  medir (compromissos firmes) — adiável: é a mesma refinaria adiada na D185(a), ortogonal ao nudge; o headline usa a
+  mesma amostra da página para consistência.
+- **Ressalva de dados:** herdada da D185 — a fidelidade de `createdAt` (e portanto da antecedência) depende do
+  cadastro perto do fechamento; seed/import distorcem e podem manter o nudge mudo ou ruidoso. O gate por `reliable`
+  reduz o ruído, mas a ressalva permanece sinalizada.
+- **Testes:** `bookingLeadTimeHeadline` (amostra pequena não mostra mesmo com mediana curta; mediana longa não
+  dispara; mediana curta confiável mostra não-crítico; mediana muito curta é crítica; limiares inclusivos nas duas
+  pontas; limiares injetados; `CRITICAL < SHORT`) — **+7 testes**. Total **1109 → 1116**.
+- **DoD:** build de produção verde (rota `/dashboard` regenerada); lint (`next lint`, 0 avisos); typecheck
+  (`tsc --noEmit`) limpo; **1116 testes** (`vitest run`); smoke test — app sobe (~6 s), `/login` 200. `npm audit`
+  **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss
+  bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
