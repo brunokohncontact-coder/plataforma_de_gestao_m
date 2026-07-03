@@ -9,7 +9,19 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1155 testes** verdes após a **exportação CSV do ponto de
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1159 testes** verdes após o **recorte por período
+(`?ano=`) na concentração de contratantes** (Sessão 207, D200 — `/contatos/concentracao` (`clientConcentration`/D40) media a
+concentração de receita sobre o acervo inteiro, uma das poucas leituras do eixo Contatos sem o `PeriodPicker` (D119) que as irmãs já
+têm; o comparativo ano a ano da concentração já vive em `contatos/rentabilidade` (`compareClientConcentration`/D120–D122), mas a
+página **dedicada** — a única com a tabela completa por contratante + veredito HHI/nº efetivo — não deixava recortar "quão concentrada
+foi minha receita em 2025". Novo helper puro `clientConcentrationYears<C>(items)` em `src/lib/contacts.ts` (anos UTC desc dos shows que
+**entram** na concentração: não cancelados e com cachê > 0 — ancora o seletor no próprio sinal, não em todos os shows vinculados, para
+uma pílula nunca cair num estado vazio; mesma disciplina de `cancelledShowYears`/D180 e `bookingLeadTimeYears`/D186) + `PeriodPicker` em
+`/contatos/concentracao` (página e export), filtrando os shows de **cada contato** por `filterShowsByYear`/D108 **antes** de agregar —
+`clientConcentration` segue intocada. Empty state período-ciente ("Nenhum cachê de contratante em {ano}"), export herda `?ano=` no link
+e no nome `concentracao-contratantes-<ano|todos>.csv`. Zero lógica pura nova de agregação (só a extração de anos) e zero I/O extra.
+Adiado (D200): o card comparativo "vs. {ano-1}" na tela dedicada (já vive em `contatos/rentabilidade`). **+4 testes** puros) sobre os
+**1155 testes** verdes após a **exportação CSV do ponto de
 equilíbrio** (Sessão 206, D199 — varrendo as 44 entradas do hub de relatórios, `/financas/ponto-de-equilibrio` (`computeBreakEven`)
 era a **única** página sem rota `export/route.ts`; todas as outras leituras tabulares/de métricas já têm "⬇ CSV". Novo
 `breakEvenToCsv(analysis)` + `BREAK_EVEN_CSV_HEADERS` em `src/lib/csv.ts` + rota `/financas/ponto-de-equilibrio/export` + botão "⬇
@@ -378,7 +390,12 @@ concentração de contratantes** em `/contatos/concentracao/export` (Sessão 172
 contratante com faturamento (Contratante/Papel/Shows/Cachê (R$)/Participação (%), ordem cachê desc / nome pt-BR, `csvShare`
 "37%") + linha "Total" (soma de shows e cachê da carteira, participação em branco = 100% por construção, como
 `clientRetentionToCsv`); rota reusa a consulta/`clientConcentration` da página + BOM UTF-8, nome `concentracao-contratantes.csv`,
-botão só com `conc.clientCount > 0`; distinta da concentração geográfica (cidades/locais) — aqui o eixo é o pagador; **+3 testes**)
+botão só com `conc.clientCount > 0`; distinta da concentração geográfica (cidades/locais) — aqui o eixo é o pagador; **+3 testes**.
+**Recorte por período (`?ano=`)** entregue na Sessão 207 (D200) — `clientConcentrationYears<C>(items)` (anos UTC desc dos shows que
+faturam) + `PeriodPicker` em `/contatos/concentracao` (página e export via `filterShowsByYear`/D108, zero lógica pura nova de
+agregação): filtra os shows de cada contato pela `date` antes de `clientConcentration`, empty state período-ciente, export herda
+`?ano=` no nome `concentracao-contratantes-<ano|todos>.csv`; adiado o card comparativo "vs. {ano-1}" na tela dedicada (já vive em
+`contatos/rentabilidade`))
 sobre os **995 testes** da **exportação CSV da
 projeção de caixa** em `/financas/fluxo-de-caixa/export` (Sessão 171, D164 — a tela "Fluxo de caixa projetado"
 (`projectCashflow`) ganhou botão "⬇ CSV"; serializador puro `cashflowProjectionToCsv(projection)` +

@@ -3,13 +3,18 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   clientConcentration,
+  clientConcentrationYears,
   type ClientConcentrationLevel,
   type ContactRankLike,
 } from "@/lib/contacts";
+import { parseProfitYear, filterShowsByYear } from "@/lib/finance";
+import { PeriodPicker } from "@/components/PeriodPicker";
 import { formatMoney } from "@/lib/money";
 import { CONTACT_ROLE_LABELS, type ContactRole } from "@/lib/domain";
 
 export const dynamic = "force-dynamic";
+
+type SearchParams = { [key: string]: string | string[] | undefined };
 
 interface ConcentrationContact extends ContactRankLike {
   role: string;
@@ -31,7 +36,11 @@ function pct(share: number): string {
   return `${Math.round(share * 100)}%`;
 }
 
-export default async function ContatosConcentracaoPage() {
+export default async function ContatosConcentracaoPage({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
   const user = await requireUser();
 
   const contacts = await prisma.contact.findMany({
@@ -54,7 +63,21 @@ export default async function ContatosConcentracaoPage() {
     shows: c.shows.map((cs) => cs.show),
   }));
 
-  const conc = clientConcentration(items);
+  // Recorte por período: anos ancorados nos shows que de fato entram na
+  // concentração (não cancelados, com cachê), filtrando os shows de cada contato
+  // pela `date` (UTC/D108) antes de agregar — a lógica pura segue intocada.
+  const availableYears = clientConcentrationYears(items);
+  const yearFilter = parseProfitYear(searchParams?.ano, availableYears);
+  const periodItems = items.map((it) => ({
+    contact: it.contact,
+    shows: filterShowsByYear(it.shows, yearFilter),
+  }));
+
+  const conc = clientConcentration(periodItems);
+  const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
+  const exportHref =
+    "/contatos/concentracao/export" +
+    (yearFilter === "all" ? "" : `?ano=${yearFilter}`);
 
   return (
     <div className="space-y-6">
@@ -68,7 +91,7 @@ export default async function ContatosConcentracaoPage() {
         </div>
         <div className="flex items-center gap-2">
           {conc.clientCount > 0 && (
-            <a href="/contatos/concentracao/export" className="btn-secondary">
+            <a href={exportHref} className="btn-secondary">
               ⬇ CSV
             </a>
           )}
@@ -81,9 +104,21 @@ export default async function ContatosConcentracaoPage() {
         </div>
       </div>
 
+      {availableYears.length > 0 && (
+        <PeriodPicker
+          years={availableYears}
+          active={yearFilter}
+          basePath="/contatos/concentracao"
+        />
+      )}
+
       {conc.clientCount === 0 ? (
         <div className="card text-center text-gray-500">
-          <p>Ainda não há cachê de contratantes para medir a concentração.</p>
+          <p>
+            {yearFilter === "all"
+              ? "Ainda não há cachê de contratantes para medir a concentração."
+              : `Nenhum cachê de contratante em ${periodLabel}.`}
+          </p>
           <p className="mt-1 text-sm">
             Vincule contatos aos seus shows (com cachê) na tela de detalhe do show.
           </p>

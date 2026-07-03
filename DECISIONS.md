@@ -6482,3 +6482,39 @@ contexto, decisão, justificativa e alternativas consideradas.
   (home 200), `/financas/ponto-de-equilibrio/export` 307 → `/login` (rota protegida). `npm audit`
   **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
   postcss bundlado; ver D6); **nenhuma dependência nova**.
+
+## 2026-07-03 — D200: Recorte por período (`?ano=`) na concentração de contratantes
+- **Contexto:** `/contatos/concentracao` (`clientConcentration`/D40) media a concentração de receita
+  sobre o **acervo inteiro** — era uma das poucas leituras analíticas do eixo Contatos sem o
+  `PeriodPicker` (D119) que as telas irmãs já têm (rentabilidade/D108, rentabilidade por papel,
+  cancelamentos/D180, prazo de recebimento/D192). O comparativo ano a ano da concentração já vive na
+  tela de **rentabilidade por contratante** (`compareClientConcentration`/D120–D122), mas a página
+  **dedicada** — a única com a tabela completa por contratante + veredito HHI/nº efetivo — não deixava
+  recortar "quão concentrada foi minha receita em 2025".
+- **Decisão:** novo helper puro `clientConcentrationYears<C>(items)` em `src/lib/contacts.ts` (anos
+  UTC desc dos shows que **entram** na concentração — não cancelados e com cachê > 0) + `PeriodPicker`
+  em `/contatos/concentracao` (página e export), filtrando os shows de **cada contato** por
+  `filterShowsByYear` (D108) **antes** de agregar — a lógica pura `clientConcentration` segue intocada.
+  Empty state período-ciente ("Nenhum cachê de contratante em {ano}"), export herda `?ano=` no link e
+  no nome `concentracao-contratantes-<ano|todos>.csv`.
+- **Ancoragem do seletor no sinal:** os anos vêm dos shows que faturam (não cancelados, cachê > 0), não
+  de todos os shows vinculados — um ano só com cancelados/cachê 0 não mede concentração e viraria uma
+  pílula que cai num estado vazio. Mesma disciplina de `cancelledShowYears`/D180 e `bookingLeadTimeYears`/D186.
+  O eixo do filtro é a `date` do show (quando aconteceu), consistente com as irmãs.
+- **Justificativa:** consistência de produto (toda leitura de tendência recorta por período) + baixo
+  risco: **zero lógica pura nova de agregação** (só a extração de anos, testada), o recorte é o mesmo
+  `filterShowsByYear` já usado por ~14 páginas, e a página/export são plumbing que espelha o padrão.
+- **Alternativas consideradas:** (a) não recortar (a concentração é "risco do estado atual") —
+  descartado: o comparativo ano a ano em `contatos/rentabilidade` já prova que a concentração por ano
+  é uma leitura útil, e a tela dedicada era a única sem o recorte; (b) adicionar também o card
+  comparativo "vs. {ano-1}" aqui — **adiado**: já vive em `contatos/rentabilidade`
+  (`compareClientConcentration`), duplicá-lo na tela dedicada é o próximo passo possível, não este
+  escopo; (c) montar os anos de todos os shows vinculados — descartado por poder oferecer um ano vazio.
+- **Testes:** +4 em `contacts.test.ts` (`clientConcentrationYears`: lista vazia; anos UTC desc
+  deduplicados; ignora cancelados e cachê 0; fronteira 01/01 00:00Z conta como o próprio ano). Suíte
+  **1155 → 1159**, todos verdes.
+- **DoD:** build de produção verde (rotas `/contatos/concentracao` e `.../export` no manifesto); lint
+  (`next lint`, 0 avisos); typecheck (`tsc --noEmit`) limpo; **1159 testes**; smoke test — app sobe
+  (home 200), `/contatos/concentracao` 307 → `/login` (rota protegida). `npm audit` **inalterado** vs.
+  baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver
+  D6); **nenhuma dependência nova**.
