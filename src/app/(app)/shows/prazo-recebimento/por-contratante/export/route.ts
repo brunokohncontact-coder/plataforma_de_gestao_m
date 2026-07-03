@@ -6,8 +6,11 @@ import {
   paymentLagYears,
   parseProfitYear,
   filterShowsByYear,
+  comparePaymentLagByContact,
+  indexContactPaymentLagChanges,
   type ReceivableShowLike,
   type TxLike,
+  type ContactPaymentLagRowStatus,
 } from "@/lib/finance";
 import { pickPayerContact } from "@/lib/billing";
 import { paymentLagByContactToCsv, type PaymentLagByContactCsvRow } from "@/lib/csv";
@@ -74,18 +77,46 @@ export async function GET(request: NextRequest) {
     getPayer as (s: ReceivableShowLike & ShowRow) => PayerContact | null,
   );
 
-  const csvRows: PaymentLagByContactCsvRow[] = lag.rows.map((r) => ({
-    contact: r.contact ? { name: r.contact.name, role: r.contact.role } : null,
-    received: r.received,
-    showCount: r.showCount,
-    avgDays: r.avgDays,
-    medianDays: r.medianDays,
-    lastDays: r.lastDays,
-    share: r.share,
-    bucket: r.bucket,
-  }));
+  // Comparativo ano a ano por contratante (D195), espelhando a página: só com um
+  // ano específico e ambos os períodos com recebimento. Quando existe, a planilha
+  // ganha a coluna "vs. {ano-1}"; senão fica idêntica à histórica.
+  let rowStatus:
+    | ((id: string | null | undefined) => ContactPaymentLagRowStatus<PayerContact>)
+    | null = null;
+  let previousYear: number | null = null;
+  if (yearFilter !== "all") {
+    const prev = yearFilter - 1;
+    const previousLag = paymentLagByContact(
+      filterShowsByYear(shows, prev) as (ReceivableShowLike & ShowRow)[],
+      txs,
+      getPayer as (s: ReceivableShowLike & ShowRow) => PayerContact | null,
+    );
+    if (lag.paymentCount > 0 && previousLag.paymentCount > 0) {
+      const comparison = comparePaymentLagByContact(lag, previousLag);
+      if (comparison.changes.length > 0) {
+        rowStatus = indexContactPaymentLagChanges(comparison);
+        previousYear = prev;
+      }
+    }
+  }
 
-  const csv = paymentLagByContactToCsv(csvRows);
+  const csvRows: PaymentLagByContactCsvRow[] = lag.rows.map((r) => {
+    const status = rowStatus?.(r.contact?.id);
+    return {
+      contact: r.contact ? { name: r.contact.name, role: r.contact.role } : null,
+      received: r.received,
+      showCount: r.showCount,
+      avgDays: r.avgDays,
+      medianDays: r.medianDays,
+      lastDays: r.lastDays,
+      share: r.share,
+      bucket: r.bucket,
+      avgDaysDelta: status?.kind === "changed" ? status.change.avgDaysDelta : null,
+      isNew: status?.kind === "new",
+    };
+  });
+
+  const csv = paymentLagByContactToCsv(csvRows, undefined, previousYear);
 
   // BOM UTF-8 para preservar acentuação ao abrir no Excel.
   const body = "﻿" + csv;

@@ -860,6 +860,47 @@ describe("paymentLagByContactToCsv", () => {
     expect(lines[1].startsWith("Lento;")).toBe(true);
     expect(lines[2].startsWith("Rápido;")).toBe(true);
   });
+
+  it("sem previousYear não adiciona a coluna de tendência (saída histórica)", () => {
+    const cols = paymentLagByContactToCsv([row({ avgDaysDelta: 12 })])
+      .split("\r\n")[0]
+      .split(";");
+    expect(cols).toHaveLength(PAYMENT_LAG_BY_CONTACT_CSV_HEADERS.length);
+    expect(cols.some((c) => c.includes("vs."))).toBe(false);
+  });
+
+  it("com previousYear adiciona a coluna 'vs. {ano-1}' no cabeçalho", () => {
+    const header = paymentLagByContactToCsv([], ";", 2023).split("\r\n")[0];
+    expect(header.endsWith(";vs. 2023 (dias)")).toBe(true);
+  });
+
+  it("emite a variação do prazo médio com sinal quando o contratante mudou", () => {
+    const cols = paymentLagByContactToCsv([row({ avgDaysDelta: 12 })], ";", 2023)
+      .split("\r\n")[1]
+      .split(";");
+    expect(cols[cols.length - 1]).toBe("+12");
+  });
+
+  it("emite variação negativa (passou a pagar mais rápido) sem '+'", () => {
+    const cols = paymentLagByContactToCsv([row({ avgDaysDelta: -5 })], ";", 2023)
+      .split("\r\n")[1]
+      .split(";");
+    expect(cols[cols.length - 1]).toBe("-5");
+  });
+
+  it("marca 'novo' quem só apareceu no ano atual", () => {
+    const cols = paymentLagByContactToCsv([row({ isNew: true })], ";", 2023)
+      .split("\r\n")[1]
+      .split(";");
+    expect(cols[cols.length - 1]).toBe("novo");
+  });
+
+  it("deixa a coluna de tendência em branco para linhas não comparáveis", () => {
+    const cols = paymentLagByContactToCsv([row({ contact: null })], ";", 2023)
+      .split("\r\n")[1]
+      .split(";");
+    expect(cols[cols.length - 1]).toBe("");
+  });
 });
 
 describe("paymentLagToCsv", () => {

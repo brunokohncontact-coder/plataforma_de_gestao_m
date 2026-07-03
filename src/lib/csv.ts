@@ -856,6 +856,23 @@ export interface PaymentLagByContactCsvRow {
   lastDays: number; // pior prazo entre os shows (dias)
   share: number; // participação no total recebido (0..1)
   bucket: PaymentSpeedBucketKey; // balde de velocidade derivado de avgDays
+  /**
+   * Situação da linha frente ao período anterior, para a coluna opcional
+   * "vs. {ano-1}" (espelha `ContactPaymentLagRowStatus`/D195): variação do prazo
+   * MÉDIO (atual − anterior, dias; negativo = passou a pagar mais rápido) quando o
+   * contratante existe nos dois períodos. Só entra na saída quando o serializador
+   * recebe `previousYear`; deixe `undefined`/`null` para as linhas não comparáveis
+   * (grupo sem contratante, ou quando não há recorte por ano).
+   */
+  avgDaysDelta?: number | null;
+  /** `true` quando o contratante só apareceu no período atual ("novo" na coluna). */
+  isNew?: boolean;
+}
+
+/** Variação em dias com sinal para planilha: 12 → "+12", -1 → "-1", 0 → "0". */
+function csvSignedDays(delta: number): string {
+  const rounded = Math.round(delta);
+  return `${rounded > 0 ? "+" : ""}${rounded}`;
 }
 
 /**
@@ -869,14 +886,26 @@ export interface PaymentLagByContactCsvRow {
  * (abaixo disso, em branco — mesma regra de apresentação da UI, onde fica "—").
  * A ordem das linhas é preservada (a página ordena do mais lento ao mais rápido,
  * "Sem contratante" por último). Pura.
+ *
+ * Quando `previousYear` é informado (recorte por ano com comparativo, D196), a
+ * planilha ganha uma última coluna "vs. {previousYear} (dias)" espelhando a coluna
+ * da página: variação assinada do prazo médio para quem existe nos dois períodos
+ * (negativo = passou a pagar mais rápido), "novo" para quem só apareceu no ano
+ * atual (`isNew`) e em branco para as linhas não comparáveis (grupo sem
+ * contratante / `avgDaysDelta` ausente). Sem `previousYear`, a saída é idêntica à
+ * histórica (9 colunas).
  */
 export function paymentLagByContactToCsv(
   rows: PaymentLagByContactCsvRow[],
   delimiter = DEFAULT_DELIMITER,
+  previousYear?: number | null,
 ): string {
-  const out: string[][] = [Array.from(PAYMENT_LAG_BY_CONTACT_CSV_HEADERS)];
+  const withTrend = previousYear != null;
+  const header = Array.from(PAYMENT_LAG_BY_CONTACT_CSV_HEADERS) as string[];
+  if (withTrend) header.push(`vs. ${previousYear} (dias)`);
+  const out: string[][] = [header];
   for (const row of rows) {
-    out.push([
+    const cols = [
       row.contact ? row.contact.name : "Sem contratante",
       row.contact ? contactRoleLabel(row.contact.role) : "",
       centsToCsvAmount(row.received),
@@ -886,7 +915,17 @@ export function paymentLagByContactToCsv(
       String(row.lastDays),
       csvShare(row.share),
       PAYMENT_SPEED_BUCKET_LABELS[row.bucket],
-    ]);
+    ];
+    if (withTrend) {
+      cols.push(
+        row.isNew
+          ? "novo"
+          : row.avgDaysDelta != null
+            ? csvSignedDays(row.avgDaysDelta)
+            : "",
+      );
+    }
+    out.push(cols);
   }
   return toCsv(out, delimiter);
 }

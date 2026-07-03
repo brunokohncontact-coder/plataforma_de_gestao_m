@@ -6339,3 +6339,44 @@ contexto, decisão, justificativa e alternativas consideradas.
   (`tsc --noEmit`) limpo; **1139 testes**; smoke test — app sobe, `/login` 200 e `/` 200. `npm audit` **inalterado** vs. baseline
   (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência
   nova**.
+
+## 2026-07-03 — D197: Coluna "vs. {ano-1}" no CSV do prazo de recebimento por contratante
+- **Contexto:** a D196 (Sessão 203) levou a variação ano a ano do prazo médio para a **tela** de
+  `/shows/prazo-recebimento/por-contratante` (coluna "vs. {ano-1}" por linha, via `indexContactPaymentLagChanges`), mas o
+  CSV do mesmo recorte (`/shows/prazo-recebimento/por-contratante/export`, D131) seguia emitindo só o retrato do ano — quem
+  baixasse a planilha com `?ano=` selecionado perdia a leitura de tendência que a página mostra na mesma sessão. A D196/escopo(a)
+  deferiu o export "porque o comparativo é apresentação", mas a partir do momento em que a **coluna já existe na tela**, o CSV
+  virou a única superfície fora de paridade: exportar a mesma coluna é levar a planilha à paridade com a página, não inventar uma
+  leitura nova.
+- **Decisão:** `paymentLagByContactToCsv(rows, delimiter?, previousYear?)` ganhou um terceiro parâmetro opcional `previousYear`.
+  Quando informado (recorte por ano com comparativo válido), a planilha ganha uma **última coluna** "vs. {previousYear} (dias)"
+  espelhando a coluna da página: variação **assinada** do prazo médio (`csvSignedDays`: "+12" / "-5" / "0"; negativo = passou a
+  pagar mais rápido) para quem existe nos dois períodos, "novo" para quem só apareceu no ano atual (`isNew`) e **em branco** para
+  linhas não comparáveis (grupo sem contratante / `avgDaysDelta` ausente). Sem `previousYear`, a saída é **byte a byte idêntica**
+  à histórica (9 colunas) — a compatibilidade com os chamadores/testes existentes é preservada. `PaymentLagByContactCsvRow` ganhou
+  os campos opcionais `avgDaysDelta?: number | null` e `isNew?: boolean` (desacoplados de `ContactPaymentLagRowStatus`, como o
+  resto de `csv.ts` fica desacoplado do núcleo). O route recomputa o comparativo com o **mesmo gate da página** (só com ano
+  específico; ambos os períodos com `paymentCount > 0`; `changes.length > 0`), reusa `comparePaymentLagByContact` +
+  `indexContactPaymentLagChanges` (zero lógica pura nova) sobre os shows **já carregados** (só uma agregação extra do ano anterior,
+  em memória, zero I/O adicional) e passa `previousYear` só quando o comparativo é válido.
+- **Por que assinar em número puro (e não "+12 dias" como a UI):** o CSV é insumo de planilha; um inteiro assinado ("+12") é
+  ordenável/filtrável no Excel, ao passo que "+12 dias" vira texto. Segue o precedente de `csvSignedPct` (`yearPaceToCsv`/D166,
+  `monthPaceToCsv`/D170), que também emite a variação como número assinado enxuto, e não o rótulo verboso da tela.
+- **Por que `previousYear` como 3º parâmetro (e não um objeto de opções):** manter `delimiter` na 2ª posição preserva a assinatura
+  histórica — todos os chamadores e ~10 testes de `paymentLagByContactToCsv` seguem sem migração, e um 3º argumento opcional é a
+  extensão de menor atrito. O nome do arquivo não muda (o ano já vai no sufixo `-<ano>` desde a D194).
+- **Escopo (o que ficou de fora):** (a) coluna equivalente no CSV da tela-mãe `/shows/prazo-recebimento/export` — lá o comparativo
+  é por período único (`comparePaymentLag`/D193), não por linha, e a própria D196 já registrou que não há tabela por contratante
+  para anotar; (b) exportar também o `medianDaysDelta` — descartado por coerência com a coluna da tela (D196 ancorou o `trend` e a
+  coluna na **média** por amostra pequena por pagador); uma segunda coluna de tendência inflaria a planilha sem novo sinal.
+- **Alternativas consideradas:** (a) manter o export sem a coluna (status quo/deferência D196) — descartado: agora que a coluna
+  vive na tela, o CSV fora de paridade é a inconsistência, não a coluna; (b) emitir a coluna sempre (também em "todos os anos") —
+  descartado, sem período fixo não há "ano anterior", mesmo racional da coluna da tela; (c) um endpoint/arquivo separado só para o
+  comparativo — descartado por duplicar consulta e superfície; a coluna extra na mesma planilha é o menor incremento.
+- **Testes:** +6 em `src/lib/csv.test.ts` (`paymentLagByContactToCsv`): sem `previousYear` a saída mantém as 9 colunas
+  históricas; com `previousYear` o cabeçalho ganha "vs. {ano-1} (dias)"; variação positiva sai "+12", negativa "-5", "novo" para
+  `isNew`, e em branco para linha não comparável (grupo sem contratante). Suíte **1139 → 1145**, todos verdes.
+- **DoD:** build de produção verde (`/shows/prazo-recebimento/por-contratante/export` recompilada); lint (`next lint`, 0 avisos);
+  typecheck (`tsc --noEmit`) limpo; **1145 testes**; smoke test — app sobe, `/login` 200. `npm audit` **inalterado** vs. baseline
+  (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência
+  nova**.
