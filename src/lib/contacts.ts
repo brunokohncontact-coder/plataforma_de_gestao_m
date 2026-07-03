@@ -649,6 +649,28 @@ export function clientConcentration<C extends ContactRankLike>(
   };
 }
 
+/**
+ * Anos (UTC, decrescente) dos shows que ENTRAM na concentração de contratantes —
+ * não cancelados e com cachê > 0. Ancora o seletor de período no próprio sinal
+ * (e não em todos os shows vinculados): um ano só com cancelados ou cachê 0 não
+ * mede concentração e viraria uma pílula que cai num estado vazio — mesma
+ * disciplina de `cancelledShowYears`/`bookingLeadTimeYears`. Pura e determinística;
+ * deduplica e usa o ano UTC da `date`, consistente com `filterShowsByYear`/D108.
+ */
+export function clientConcentrationYears<C extends ContactRankLike>(
+  items: ContactWithShows<C>[],
+): number[] {
+  const years = new Set<number>();
+  for (const { shows } of items) {
+    for (const s of shows) {
+      if (s.status === "CANCELLED") continue;
+      if (s.fee <= 0) continue;
+      years.add(new Date(s.date).getUTCFullYear());
+    }
+  }
+  return [...years].sort((a, b) => b - a);
+}
+
 // ── Cancelamentos por contratante (quem mais fura o combinado?) ─────────────
 // Responde "quais contratantes mais cancelam shows já marcados?": para cada
 // contato, cruza os shows CANCELLED com o total de shows vinculados e mede a

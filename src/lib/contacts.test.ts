@@ -114,6 +114,7 @@ import {
   PIPELINE_CONCENTRATION_CRITICAL_SHARE,
   CANCELLATION_TREND_EPSILON,
   clientConcentration,
+  clientConcentrationYears,
   clientRetention,
   filterContacts,
   findContactsToReengage,
@@ -600,6 +601,48 @@ describe("clientConcentration", () => {
     ]);
     expect(r.hhi).toBeCloseTo(0.3125);
     expect(r.level).toBe("moderate");
+  });
+});
+
+describe("clientConcentrationYears", () => {
+  function s(over: Partial<ContactRankShowLike> = {}): ContactRankShowLike {
+    return { status: "CONFIRMED", date: "2026-05-01T20:00:00Z", fee: 100_00, ...over };
+  }
+  function item(
+    id: string,
+    shows: ContactRankShowLike[],
+  ): ContactWithShows<ContactRankLike> {
+    return { contact: { id, name: id.toUpperCase() }, shows };
+  }
+
+  it("lista vazia → sem anos", () => {
+    expect(clientConcentrationYears([])).toEqual([]);
+  });
+
+  it("anos UTC decrescentes e deduplicados dos shows que faturam", () => {
+    const years = clientConcentrationYears([
+      item("a", [s({ date: "2024-03-01T20:00:00Z" }), s({ date: "2026-01-10T20:00:00Z" })]),
+      item("b", [s({ date: "2024-11-20T20:00:00Z" }), s({ date: "2025-07-07T20:00:00Z" })]),
+    ]);
+    expect(years).toEqual([2026, 2025, 2024]);
+  });
+
+  it("ignora shows cancelados e sem cachê (não entram na concentração)", () => {
+    const years = clientConcentrationYears([
+      item("a", [
+        s({ date: "2025-06-01T20:00:00Z", status: "CANCELLED" }),
+        s({ date: "2024-06-01T20:00:00Z", fee: 0 }),
+        s({ date: "2023-06-01T20:00:00Z", fee: 50_00 }),
+      ]),
+    ]);
+    expect(years).toEqual([2023]);
+  });
+
+  it("usa o ano UTC da fronteira (01/01 00:00Z conta como o próprio ano)", () => {
+    const years = clientConcentrationYears([
+      item("a", [s({ date: "2025-01-01T00:00:00Z" })]),
+    ]);
+    expect(years).toEqual([2025]);
   });
 });
 

@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { clientConcentration, type ContactRankLike } from "@/lib/contacts";
+import {
+  clientConcentration,
+  clientConcentrationYears,
+  type ContactRankLike,
+} from "@/lib/contacts";
+import { parseProfitYear, filterShowsByYear } from "@/lib/finance";
 import { clientConcentrationToCsv } from "@/lib/csv";
 
 export const dynamic = "force-dynamic";
@@ -11,11 +16,11 @@ interface ConcentrationContact extends ContactRankLike {
 }
 
 // Exporta a concentração da carteira (`/contatos/concentracao`) em CSV — espelha
-// a mesma query/`clientConcentration` da página. A camada pura está em `@/lib/csv`
-// (`clientConcentrationToCsv`) e `@/lib/contacts` (`clientConcentration`). Uma
-// linha por contratante com faturamento (cachê, nº de shows, participação),
-// encerrada num "Total".
-export async function GET() {
+// a mesma query/`clientConcentration` da página, incluindo o recorte por período
+// (`?ano=`, D108). A camada pura está em `@/lib/csv` (`clientConcentrationToCsv`)
+// e `@/lib/contacts` (`clientConcentration`). Uma linha por contratante com
+// faturamento (cachê, nº de shows, participação), encerrada num "Total".
+export async function GET(request: Request) {
   const user = await requireUser();
 
   const contacts = await prisma.contact.findMany({
@@ -38,7 +43,17 @@ export async function GET() {
     shows: c.shows.map((cs) => cs.show),
   }));
 
-  const concentration = clientConcentration(items);
+  // Recorte por ano herdado da página (mesmos helpers/`filterShowsByYear`).
+  const availableYears = clientConcentrationYears(items);
+  const rawYear = new URL(request.url).searchParams.get("ano") ?? undefined;
+  const yearFilter = parseProfitYear(rawYear, availableYears);
+  const periodItems = items.map((it) => ({
+    contact: it.contact,
+    shows: filterShowsByYear(it.shows, yearFilter),
+  }));
+
+  const concentration = clientConcentration(periodItems);
+  const yearSuffix = yearFilter === "all" ? "todos" : `${yearFilter}`;
 
   const csv = clientConcentrationToCsv(concentration);
 
@@ -49,7 +64,7 @@ export async function GET() {
     status: 200,
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="concentracao-contratantes.csv"`,
+      "Content-Disposition": `attachment; filename="concentracao-contratantes-${yearSuffix}.csv"`,
       "Cache-Control": "no-store",
     },
   });
