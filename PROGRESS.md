@@ -9,7 +9,23 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1160 testes** verdes após o **card comparativo
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1167 testes** verdes após a **coluna "vs. {ano-1}" por
+contratante na concentração (tela + CSV)** (Sessão 209, D202 — a D201 (Sessão 208) levou o card-manchete agregado "Concentração {ano}
+vs. {ano-1}" para `/contatos/concentracao`, mas o card só mostra os dois números do topo (maior contratante + clientes efetivos); com
+vários contratantes na tabela não dava para ver de **quais** veio a mudança de dependência — faltava o detalhe por linha do card, a mesma
+relação card-manchete → coluna-detalhe da D196 (prazo de recebimento por contratante). Novo helper puro `indexClientShareChanges<C>(current,
+previous)` + `ClientShareChange`/`ClientShareRowStatus`/`ClientShareTrend` + `CLIENT_SHARE_TREND_EPSILON` (=0,02 = 2 p.p.) em
+`src/lib/contacts.ts`: de duas `clientConcentration` já computadas devolve um lookup por `contact.id` casando cada linha do ano atual com
+sua situação frente ao anterior em O(1) — `changed` (com `shareDelta`/`trend`), `new` (só faturou no atual), `none` (id fora da carteira),
+espelhando `indexContactPaymentLagChanges`/D196. Na página, com o comparativo válido (mesmo gate do card: ano específico + contratante nos
+dois anos) a tabela ganha a coluna "vs. {ano-1}" (`ShareDelta`): variação da participação em p.p. com sinal, 🔴 subiu (mais dependência
+dele)/🟢 caiu/cinza estável dentro do epsilon, "novo" para quem só faturou no atual, "—" para não comparáveis; rodapé explica o código. No
+CSV, `clientConcentrationToCsv` ganhou 3º/4º parâmetros opcionais `previous`/`previousYear` que acrescentam a coluna "vs. {previousYear}
+(p.p.)" com o **mesmo** helper (zero lógica pura nova): valor assinado inteiro (`csvSignedPoints`), "novo", branco na linha Total; sem eles
+a saída é byte a byte idêntica à histórica (5 colunas). O route `/contatos/concentracao/export` recomputa o ano anterior com o mesmo gate
+sobre os `items` já carregados (uma agregação extra em memória, zero I/O adicional). Subir a participação de UM contratante lê como
+concentração (🔴), na mesma moldura do card agregado. Adiado (D202): coluna de variação de **cachê** (R$) por contratante (drift do
+enquadramento do card, que é sobre share). **+7 testes**) sobre os **1160 testes** verdes após o **card comparativo
 "vs. {ano-1}" na tela dedicada de concentração de contratantes** (Sessão 208, D201 — a D200 (Sessão 207) levou o `PeriodPicker`
 (`?ano=`) para `/contatos/concentracao` mas adiou (alternativa (b)) o card comparativo "vs. {ano-1}" que toda leitura irmã de tendência
 já tem (rentabilidade/D120–D122, geo/D120, papel/D141, cancelamento/D181, antecedência/D187, prazo de recebimento/D193); a tela
@@ -416,8 +432,14 @@ sem nova consulta) + `compareClientConcentration`/D120 e renderiza `ClientCompar
 (variação do maior contratante em p.p. + clientes efetivos) após o veredito de nível, inline como o card geo/rentabilidade;
 `compareClientConcentration` virou genérico sobre o mínimo estrutural `ClientConcentrationLike` (`{topShare;effectiveClients}`) para
 servir aos dois `clientConcentration` (finance/contacts) sem duplicar a aritmética, zero lógica pura nova, backward-compatible.
-Próximo possível — export CSV do comparativo (segue o precedente da D193, que não exportou o card) ou coluna "vs. {ano-1}" por
-linha na tabela por contratante.)
+**Coluna "vs. {ano-1}" por linha na tabela + CSV** entregue na Sessão 209 (D202) — `indexClientShareChanges<C>(current, previous)` +
+`ClientShareChange`/`ClientShareRowStatus`/`ClientShareTrend` + `CLIENT_SHARE_TREND_EPSILON` (=0,02) em `src/lib/contacts.ts` (lookup
+por `contact.id` do detalhe por linha do card-manchete, espelhando `indexContactPaymentLagChanges`/D196): a tabela ganha a coluna
+"vs. {ano-1}" (`ShareDelta`, 🔴 subiu/🟢 caiu/cinza estável, "novo"/"—") com o mesmo gate do card, e `clientConcentrationToCsv` ganhou
+os parâmetros opcionais `previous`/`previousYear` que acrescentam a coluna "vs. {previousYear} (p.p.)" com o mesmo helper (assinada,
+"novo", branco no Total); sem eles a saída é byte a byte idêntica à histórica (5 colunas). Próximo possível — coluna de variação de
+**cachê** (R$) por contratante (adiada na D202: drift do enquadramento do card, que é sobre share), ou um nudge dessa concentração
+no Painel.)
 sobre os **995 testes** da **exportação CSV da
 projeção de caixa** em `/financas/fluxo-de-caixa/export` (Sessão 171, D164 — a tela "Fluxo de caixa projetado"
 (`projectCashflow`) ganhou botão "⬇ CSV"; serializador puro `cashflowProjectionToCsv(projection)` +

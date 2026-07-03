@@ -4,7 +4,10 @@ import { prisma } from "@/lib/prisma";
 import {
   clientConcentration,
   clientConcentrationYears,
+  indexClientShareChanges,
   type ClientConcentrationLevel,
+  type ClientShareRowStatus,
+  type ClientShareTrend,
   type ContactRankLike,
 } from "@/lib/contacts";
 import {
@@ -89,6 +92,12 @@ export default async function ContatosConcentracaoPage({
   let comparison: ClientConcentrationComparison<ClientConcentrationLike> | null =
     null;
   let previousYear = 0;
+  // Lookup por contratante para a coluna "vs. {ano-1}" da tabela: o detalhe
+  // por linha do card-manchete agregado (mesmo gate). null quando não há
+  // comparativo — a coluna não é renderizada.
+  let shareLookup:
+    | ((contactId: string | null | undefined) => ClientShareRowStatus<ConcentrationContact>)
+    | null = null;
   if (yearFilter !== "all") {
     previousYear = yearFilter - 1;
     const previousItems = items.map((it) => ({
@@ -98,6 +107,7 @@ export default async function ContatosConcentracaoPage({
     const previousConc = clientConcentration(previousItems);
     if (conc.clientCount > 0 && previousConc.clientCount > 0) {
       comparison = compareClientConcentration(conc, previousConc);
+      shareLookup = indexClientShareChanges(conc, previousConc);
     }
   }
 
@@ -233,6 +243,11 @@ export default async function ContatosConcentracaoPage({
                   <th className="px-4 py-3 text-right font-medium">Shows</th>
                   <th className="px-4 py-3 text-right font-medium">Cachê</th>
                   <th className="px-4 py-3 font-medium">Participação</th>
+                  {shareLookup && (
+                    <th className="px-4 py-3 text-right font-medium">
+                      vs. {previousYear}
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -269,6 +284,11 @@ export default async function ContatosConcentracaoPage({
                         </div>
                       </div>
                     </td>
+                    {shareLookup && (
+                      <td className="px-4 py-3 text-right">
+                        <ShareDelta status={shareLookup(r.contact.id)} />
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -279,6 +299,14 @@ export default async function ContatosConcentracaoPage({
             O cachê é por contato: um show com vários contatos conta para cada um. Shows
             cancelados e contatos sem cachê não entram. O número efetivo de contratantes
             resume a concentração: quanto maior, menos dependente você é de um só cliente.
+            {shareLookup && (
+              <>
+                {" "}A coluna <strong>vs. {previousYear}</strong> mostra a variação da
+                participação de cada contratante em pontos percentuais — 🔴 subiu (mais
+                dependência dele), 🟢 caiu, cinza estável; “novo” apareceu só em{" "}
+                {periodLabel}.
+              </>
+            )}
           </p>
         </>
       )}
@@ -372,6 +400,35 @@ function ClientComparisonCard({
       </div>
       <p className="mt-3 text-xs opacity-90">{trend.note}</p>
     </div>
+  );
+}
+
+/** Cor da coluna "vs. {ano-1}" por direção da variação de share. Subir a
+ * dependência de um contratante (`up`) é o sinal de concentração → vermelho,
+ * na mesma moldura do card agregado; cair → verde; ruído → cinza. */
+const SHARE_TREND_CLASSES: Record<ClientShareTrend, string> = {
+  up: "text-red-600",
+  down: "text-emerald-600",
+  flat: "text-gray-400",
+};
+
+/** Célula "vs. {ano-1}" da tabela: variação de participação em p.p. com sinal,
+ * "novo" para quem só faturou no ano atual, "—" para não comparáveis. */
+function ShareDelta({
+  status,
+}: {
+  status: ClientShareRowStatus<ConcentrationContact>;
+}) {
+  if (status.kind === "new") {
+    return <span className="text-xs font-medium text-brand-600">novo</span>;
+  }
+  if (status.kind === "none") {
+    return <span className="text-gray-300">—</span>;
+  }
+  return (
+    <span className={"text-xs font-semibold " + SHARE_TREND_CLASSES[status.change.trend]}>
+      {deltaPp(status.change.shareDelta)}
+    </span>
   );
 }
 
