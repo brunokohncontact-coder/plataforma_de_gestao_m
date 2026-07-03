@@ -9,7 +9,17 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1152 testes** verdes após **lembrar a última escolha de
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1155 testes** verdes após a **exportação CSV do ponto de
+equilíbrio** (Sessão 206, D199 — varrendo as 44 entradas do hub de relatórios, `/financas/ponto-de-equilibrio` (`computeBreakEven`)
+era a **única** página sem rota `export/route.ts`; todas as outras leituras tabulares/de métricas já têm "⬇ CSV". Novo
+`breakEvenToCsv(analysis)` + `BREAK_EVEN_CSV_HEADERS` em `src/lib/csv.ts` + rota `/financas/ponto-de-equilibrio/export` + botão "⬇
+CSV" na página, gated por `monthlyFixedCost > 0` (mesmo gate do estado-vazio). Formato **chave→valor** (colunas "Métrica"/"Valor",
+uma linha por número na ordem da página: custo fixo mensal → resultado médio por show → shows considerados → ritmo atual → shows/mês
+para o equilíbrio → cobre o custo fixo?), porque o relatório é um punhado de métricas heterogêneas, não linhas homogêneas — precedente
+`yearPaceToCsv`/D166. Dinheiro via `centsToCsvAmount`, ritmo com uma casa via novo `csvRate`, veredito "Sim"/"Não"; meta e veredito
+saem em branco quando não estimáveis (`showsNeeded == null`), espelhando o "não dá para estimar" da UI; sem linha Total; nome fixo
+`ponto-de-equilibrio.csv`; rota responde 404 sem custo fixo. **+3 testes** puros. Fecha a última lacuna de exportação dos relatórios)
+sobre os **1152 testes** verdes após **lembrar a última escolha de
 contato "quem cobrar" por show** (Sessão 205, D198 — a lista de cachês a receber (`/shows/a-receber`) monta por show os contatos
 alcançáveis em ordem de prioridade por papel (`buildShowBillings`/D30) e o `BillingActions` oferece um `<select>` "quem cobrar", mas
 a escolha era **efêmera** (só `useState`): reabrir a lista sempre voltava à escolha automática, obrigando o usuário a reeleger o

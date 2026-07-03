@@ -74,6 +74,8 @@ import {
   DUE_AGENDA_CSV_HEADERS,
   yearPaceToCsv,
   YEAR_PACE_CSV_HEADERS,
+  breakEvenToCsv,
+  BREAK_EVEN_CSV_HEADERS,
   monthPaceToCsv,
   MONTH_PACE_CSV_HEADERS,
   monthlyReportToCsv,
@@ -141,7 +143,9 @@ import {
   taxReserve,
   DEFAULT_TAX_RATE,
   yearEndScenarioView,
+  computeBreakEven,
   type YearEndShowLike,
+  type BreakEvenShowLike,
   type TxLike,
   type ShowProfitRow,
   type VenueProfitRow,
@@ -2316,6 +2320,69 @@ describe("yearPaceToCsv", () => {
     // Sem receita/despesa em 2025 até o corte → previous 0 → pct null → "".
     expect(lines[1]).toBe("Receitas;500,00;0,00;");
     expect(lines[3]).toBe("Resultado;500,00;0,00;");
+  });
+});
+
+describe("breakEvenToCsv", () => {
+  const NOW = "2026-06-15T00:00:00.000Z"; // junho/2026
+
+  const btx = (over: Partial<TxLike> = {}): TxLike => ({
+    type: "EXPENSE",
+    amount: 300_00,
+    category: "Sala",
+    date: "2026-06-10T00:00:00.000Z",
+    received: false,
+    ...over,
+  });
+
+  // Custo fixo de R$ 300/mês: "Sala" repetida em abr/mai/jun.
+  const fixedCostTxs: TxLike[] = [
+    btx({ date: "2026-04-10T00:00:00.000Z" }),
+    btx({ date: "2026-05-10T00:00:00.000Z" }),
+    btx({ date: "2026-06-10T00:00:00.000Z" }),
+  ];
+
+  it("emite o cabeçalho e uma linha por métrica, na ordem da página", () => {
+    // Dois shows de cachê 200 (net 200) em mai/jun → média 200, ritmo 1 show/mês,
+    // meta ceil(300/200)=2 → não cobre.
+    const shows: BreakEvenShowLike[] = [
+      { id: "s1", fee: 200_00, status: "PLAYED", date: "2026-05-05T00:00:00.000Z" },
+      { id: "s2", fee: 200_00, status: "PLAYED", date: "2026-06-05T00:00:00.000Z" },
+    ];
+    const csv = breakEvenToCsv(computeBreakEven(shows, fixedCostTxs, { now: NOW }));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(BREAK_EVEN_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(7); // cabeçalho + 6 métricas, sem Total
+    expect(lines[1]).toBe("Custo fixo mensal (R$);300,00");
+    expect(lines[2]).toBe("Resultado médio por show (R$);200,00");
+    expect(lines[3]).toBe("Shows realizados considerados;2");
+    expect(lines[4]).toBe("Ritmo atual (shows/mês);1,0");
+    expect(lines[5]).toBe("Shows/mês para o equilíbrio;2");
+    expect(lines[6]).toBe("Cobre o custo fixo?;Não");
+  });
+
+  it("marca 'Sim' quando o ritmo atual já cobre a meta", () => {
+    // Três shows num único mês (jun) → ritmo 3/mês; meta 2 → cobre.
+    const shows: BreakEvenShowLike[] = [
+      { id: "s1", fee: 200_00, status: "PLAYED", date: "2026-06-05T00:00:00.000Z" },
+      { id: "s2", fee: 200_00, status: "PLAYED", date: "2026-06-10T00:00:00.000Z" },
+      { id: "s3", fee: 200_00, status: "PLAYED", date: "2026-06-20T00:00:00.000Z" },
+    ];
+    const csv = breakEvenToCsv(computeBreakEven(shows, fixedCostTxs, { now: NOW }));
+    const lines = csv.split("\r\n");
+    expect(lines[4]).toBe("Ritmo atual (shows/mês);3,0");
+    expect(lines[6]).toBe("Cobre o custo fixo?;Sim");
+  });
+
+  it("deixa a meta e o veredito em branco quando não são estimáveis", () => {
+    // Custo fixo existe mas nenhum show realizado → showsNeeded/covered null.
+    const csv = breakEvenToCsv(computeBreakEven([], fixedCostTxs, { now: NOW }));
+    const lines = csv.split("\r\n");
+    expect(lines[2]).toBe("Resultado médio por show (R$);0,00");
+    expect(lines[3]).toBe("Shows realizados considerados;0");
+    expect(lines[4]).toBe("Ritmo atual (shows/mês);0,0");
+    expect(lines[5]).toBe("Shows/mês para o equilíbrio;"); // não estimável → branco
+    expect(lines[6]).toBe("Cobre o custo fixo?;"); // idem
   });
 });
 
