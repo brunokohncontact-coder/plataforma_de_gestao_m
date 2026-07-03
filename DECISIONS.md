@@ -6778,3 +6778,34 @@ contexto, decisão, justificativa e alternativas consideradas.
   testes**; smoke test — build compila a rota `/financas/sazonalidade/export`. `npm audit` **inalterado** vs.
   baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6);
   **nenhuma dependência nova**.
+
+## 2026-07-03 — D208: Selos "melhor mês" / "mais fraco" por linha na tabela de `/financas/sazonalidade`
+- **Contexto:** a página `/financas/sazonalidade` já mostrava os dois destaques (melhor mês típico / mês mais
+  fraco, por resultado médio `avgNet`) apenas em **cards** no topo; a tabela "Média por mês do ano" listava os
+  12 meses sem marcar **quais** linhas são esses destaques. A tela irmã de shows (`/shows/sazonalidade`) já
+  destaca as linhas com selos ("mais cheio" / "mais fraco", D204/D211) e o CSV financeiro ganhou a coluna
+  "Destaque" na Sessão 214 (D207) — mas a **tabela** financeira seguia sem selos por linha. Era o "próximo
+  possível" do item 2c do PROGRESS e a alternativa (b) explicitamente adiada na D207.
+- **Decisão:** adicionar dois selos inline na célula "Mês" da tabela: 🟢 "melhor mês" quando
+  `seasonality.best?.monthIndex === m.monthIndex`, 🟠 "mais fraco" quando `seasonality.worst?.monthIndex ===
+  m.monthIndex`. Reusa os campos `best`/`worst` já computados por `monthlySeasonality` — **zero lógica pura
+  nova** — com a **mesma regra de desempate** do helper testado `seasonalMonthHighlight` do CSV (D207): quando
+  só há um mês ativo `best === worst` e "melhor mês" vence (o selo "mais fraco" é suprimido via `!isBest`).
+  Meses sem movimento (`years === 0`) nunca recebem selo (`!empty`).
+- **Justificativa:** fecha a última assimetria tela↔CSV↔tela-de-shows do eixo de sazonalidade financeira, sem
+  tocar em lógica de negócio nem I/O — é só apresentação sobre campos já computados. O estilo dos selos espelha
+  a tabela de shows (`rounded ... px-1.5 py-0.5 text-[10px] font-semibold uppercase`), com paleta emerald para o
+  melhor e amber para o vale, coerente com as cores dos cards e da regra "mais fraco" das telas irmãs.
+- **Alternativas consideradas:** (a) extrair a lógica do selo para um helper compartilhado com
+  `seasonalMonthHighlight` — descartada: o helper do CSV devolve **strings de rótulo pt-BR** ("Melhor mês
+  típico"), enquanto a UI quer dois booleans para renderizar `<span>` com estilos distintos; forçar um
+  denominador comum acoplaria camadas sem ganho (a regra de desempate é uma linha e está documentada nos dois
+  lados). (b) marcar também um selo por receita/despesa média — descartada pela mesma razão da D207(a): a tela
+  só destaca por resultado médio.
+- **Testes:** nenhum teste novo — a mudança é UI-only sobre `best`/`worst`, cuja computação (incl. o empate
+  best===worst com um único mês) já é coberta em `finance.test.ts`, e a regra de desempate é a mesma já testada
+  em `seasonalMonthHighlight` (`csv.test.ts`). Suíte inalterada em **1179** verdes.
+- **DoD:** build de produção verde (rota `/financas/sazonalidade` compila); lint (`next lint`, 0 avisos);
+  typecheck (`tsc --noEmit`) limpo; **1179 testes**; smoke test — `npm start`, `/financas/sazonalidade` → 307
+  redirect de auth (rota protegida, app sobe). `npm audit` **inalterado** vs. baseline (10 advisories —
+  4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6); **nenhuma dependência nova**.
