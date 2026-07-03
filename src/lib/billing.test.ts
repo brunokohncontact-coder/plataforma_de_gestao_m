@@ -9,6 +9,7 @@ import {
   buildWhatsappUrl,
   buildShowBilling,
   buildShowBillings,
+  preferredBillingIndex,
   buildContactDunning,
   buildContactBilling,
   type BillingContactLike,
@@ -266,6 +267,30 @@ describe("buildShowBillings", () => {
     ];
     const first = buildShowBillings(SHOW, contacts)[0];
     expect(buildShowBilling(SHOW, contacts)).toEqual(first);
+  });
+});
+
+describe("preferredBillingIndex", () => {
+  const billings = buildShowBillings(SHOW, [
+    contact({ id: "v", name: "Casa", role: "VENUE", email: "casa@x.com" }),
+    contact({ id: "b", name: "Booker", role: "BOOKER", email: "booker@x.com" }),
+  ]);
+  // Ordem por prioridade: Booker (b) primeiro, Casa (v) depois.
+
+  it("0 sem preferência (null/undefined)", () => {
+    expect(preferredBillingIndex(billings)).toBe(0);
+    expect(preferredBillingIndex(billings, null)).toBe(0);
+    expect(preferredBillingIndex(billings, "")).toBe(0);
+  });
+
+  it("índice do contato preferido quando ele está na lista", () => {
+    expect(preferredBillingIndex(billings, "v")).toBe(1);
+    expect(preferredBillingIndex(billings, "b")).toBe(0);
+  });
+
+  it("0 quando o preferido não é (mais) alcançável / é desconhecido", () => {
+    expect(preferredBillingIndex(billings, "fantasma")).toBe(0);
+    expect(preferredBillingIndex([], "b")).toBe(0);
   });
 });
 

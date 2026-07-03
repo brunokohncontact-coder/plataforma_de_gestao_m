@@ -11,13 +11,17 @@ import {
   type PaymentPromiseStatus,
   type TxLike,
 } from "@/lib/finance";
-import { buildShowBillings, type ShowBilling } from "@/lib/billing";
+import { buildShowBillings, preferredBillingIndex, type ShowBilling } from "@/lib/billing";
 import { formatMoney } from "@/lib/money";
 import { formatDate } from "@/lib/format";
 import { BillingActions } from "@/components/BillingActions";
 import { SettleFeeButton } from "@/components/SettleFeeButton";
 import { PromiseButton } from "@/components/PromiseButton";
-import { settleShowFeeAction, setPaymentPromiseAction } from "../actions";
+import {
+  settleShowFeeAction,
+  setPaymentPromiseAction,
+  setBillingContactAction,
+} from "../actions";
 
 /** Estado da promessa de um recebível, pronto para a UI (selo + input). */
 function promiseInfo(promisedAt: Date | string | null | undefined): {
@@ -305,7 +309,15 @@ export default async function ShowReceivablesPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1.5">
-                          <BillingActions billings={billings} />
+                          <BillingActions
+                            billings={billings}
+                            showId={row.show.id}
+                            initialIndex={preferredBillingIndex(
+                              billings,
+                              show?.billingContactId,
+                            )}
+                            action={setBillingContactAction}
+                          />
                           <SettleFeeButton
                             action={settleShowFeeAction}
                             id={row.show.id}

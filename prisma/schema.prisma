@@ -78,6 +78,13 @@ model Show {
   // cachê continua em aberto) sobem ao topo da fila de cobrança. Ver DECISIONS.md D94.
   paymentPromisedAt DateTime?
 
+  // Última escolha de contato no seletor "quem cobrar" da tela de cachês a receber:
+  // qual dos contatos vinculados o usuário prefere cobrar por este show. Campo `String`
+  // simples (não relação) — validado na app contra os contatos alcançáveis do show; um
+  // id que deixou de ser alcançável (contato desvinculado / sem canal) é ignorado e a
+  // cobrança volta à prioridade padrão por papel. Ver DECISIONS.md D198.
+  billingContactId String?
+
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
