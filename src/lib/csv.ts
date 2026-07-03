@@ -32,6 +32,7 @@ import {
   type GigMonthStat,
   type GigCadence,
   type WeekdayPerformance,
+  type WeekdayStat,
   type FeeDistribution,
   type FeeTrend,
   type CashFlowMonth,
@@ -1091,7 +1092,27 @@ export const WEEKDAY_PERFORMANCE_CSV_HEADERS = [
   "Faturamento (R$)",
   "% dos shows",
   "% do faturamento",
+  "Destaque",
 ] as const;
+
+/**
+ * Rótulo de destaque de um dia da semana, espelhando os cards de destaque da
+ * página `/shows/dias-semana` (mais cheio / mais faturamento / melhor cachê
+ * médio). Um dia pode acumular papéis (o dia mais cheio costuma ser também o de
+ * maior faturamento), então juntamos todos com " / ", na mesma ordem de
+ * `gigMonthHighlight` (mais cheio → faturamento → cachê médio) para os dois CSVs
+ * irmãos lerem igual. Diferente da sazonalidade, dias da semana não têm o papel
+ * "mais fraco" (`WeekdayPerformance` não computa `quietest`, D205). Dias sem
+ * shows nunca são destaque. Pura.
+ */
+function weekdayHighlight(wp: WeekdayPerformance, d: WeekdayStat): string {
+  if (d.count === 0) return "";
+  const roles: string[] = [];
+  if (wp.busiest?.weekday === d.weekday) roles.push("Dia mais cheio");
+  if (wp.bestByVolume?.weekday === d.weekday) roles.push("Mais faturamento");
+  if (wp.bestByAvg?.weekday === d.weekday) roles.push("Melhor cachê médio");
+  return roles.join(" / ");
+}
 
 /**
  * Serializa o desempenho por dia da semana (`weekdayPerformance`) em CSV, pronto
@@ -1100,9 +1121,13 @@ export const WEEKDAY_PERFORMANCE_CSV_HEADERS = [
  * lacunas da agenda que a tela destaca) com nº de shows, cachê médio,
  * faturamento e as duas participações (no nº de shows e no faturamento), seguida
  * de uma linha "Total". Diferente da UI (que mostra "—" nos dias vazios), o CSV
- * registra 0 e 0,00 para ficar legível por máquina. Mesma convenção pt-BR de
- * `transactionsToCsv` (delimitador ";", decimal com vírgula). As participações do
- * Total ficam em branco (são sempre 100% por construção). Irmão de
+ * registra 0 e 0,00 para ficar legível por máquina. A coluna "Destaque" replica
+ * os cards da tela (mais cheio / mais faturamento / melhor cachê médio), para a
+ * planilha ficar auto-explicativa e ordenável/filtrável por papel — espelho da
+ * coluna homônima de `gigSeasonalityToCsv` (D205), sem o papel "mais fraco" que
+ * dias da semana não computam. Mesma convenção pt-BR de `transactionsToCsv`
+ * (delimitador ";", decimal com vírgula). As participações e o destaque do Total
+ * ficam em branco (as participações são sempre 100% por construção). Irmão de
  * `gigSeasonalityToCsv` (mesmo eixo Stat → linhas + Total). Pura.
  */
 export function weekdayPerformanceToCsv(
@@ -1118,6 +1143,7 @@ export function weekdayPerformanceToCsv(
       centsToCsvAmount(d.totalFee),
       csvShare(d.countShare),
       csvShare(d.feeShare),
+      weekdayHighlight(wp, d),
     ]);
   }
   out.push([
@@ -1125,6 +1151,7 @@ export function weekdayPerformanceToCsv(
     String(wp.totalShows),
     centsToCsvAmount(wp.avgFee),
     centsToCsvAmount(wp.totalFee),
+    "",
     "",
     "",
   ]);

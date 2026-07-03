@@ -9,7 +9,18 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1175 testes** verdes após a **coluna "Destaque" no CSV da
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1177 testes** verdes após a **coluna "Destaque" no CSV do
+desempenho por dia da semana** (Sessão 213, D206 — a D205 (Sessão 212) levou a coluna "Destaque" para o CSV da sazonalidade de shows
+(`gigSeasonalityToCsv`) e deixou explícito como próximo passo a **coluna simétrica no CSV irmão de dias-da-semana**
+(`weekdayPerformanceToCsv`, `/shows/dias-semana`), o único dos dois CSVs de "eixo Stat → linhas + Total" ainda sem a marcação dos
+destaques que a tela mostra em cards. Nova 7ª coluna "Destaque" em `WEEKDAY_PERFORMANCE_CSV_HEADERS` + helper puro interno
+`weekdayHighlight(wp, day)` em `src/lib/csv.ts` (espelho de `gigMonthHighlight`/D205) que junta com " / " os papéis de cada dia
+(`busiest`→"Dia mais cheio" / `bestByVolume`→"Mais faturamento" / `bestByAvg`→"Melhor cachê médio"), reusando os campos de destaque
+já computados por `weekdayPerformance`, casando por `weekday`, **zero lógica pura nova de agregação**; dias sem shows e a linha Total
+ficam em branco. Diferente da sazonalidade, **não há papel "mais fraco"**: `WeekdayPerformance` não computa `quietest` (D205), então o
+mapeamento tem só os três papéis dos cards da tela. Ordem dos papéis igual à de `gigMonthHighlight` (mais cheio → faturamento → cachê
+médio) para os dois CSVs irmãos lerem consistente. Fecha o passo adiado na D205. **+2 testes** (+ 2 asserções de formato atualizadas
+no empty state e no dia zerado, que ganharam a 7ª coluna em branco)) sobre os **1175 testes** verdes após a **coluna "Destaque" no CSV da
 sazonalidade de shows** (Sessão 212, D205 — o CSV de `/shows/sazonalidade` (`gigSeasonalityToCsv`) trazia as 12 linhas de mês com
 contagem/cachê médio/faturamento/participações, mas era um retrato cru: não marcava **quais** meses são os destaques que a tela mostra
 (cards mais cheio/`busiest` + mais faturamento/`bestByVolume` + melhor cachê médio/`bestByAvg` + mais fraco/`quietest`; selos na tabela),
@@ -3421,10 +3432,14 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    **Coluna "Destaque" no CSV** entregue na Sessão 212 — 7ª coluna em `GIG_SEASONALITY_CSV_HEADERS` +
    `gigMonthHighlight` em `src/lib/csv.ts` marca os papéis de cada mês (mais cheio / mais faturamento / melhor cachê
    médio / mais fraco), tornando a planilha auto-explicativa e ordenável por papel, ver D205.
+   **Coluna "Destaque" no CSV irmão de dias-da-semana** entregue na Sessão 213 — 7ª coluna em
+   `WEEKDAY_PERFORMANCE_CSV_HEADERS` + `weekdayHighlight` em `src/lib/csv.ts` (espelho de `gigMonthHighlight`, três
+   papéis: mais cheio / mais faturamento / melhor cachê médio; sem "mais fraco" porque `WeekdayPerformance` não
+   computa `quietest`), ver D206.
    Próximo possível —
    recorte por ano (`?ano=`, adiado na D133(b) porque a sazonalidade ganha sentido somando os anos), a mesma coluna
-   "Destaque" no CSV irmão de dias-da-semana (`weekdayPerformanceToCsv`) e no mensal (adiado na D205; dias-da-semana
-   não tem `quietest`), ou um mini-gráfico dos 12 meses embutido no Painel (adiado na D134(d): o Painel já é denso).
+   "Destaque" no CSV de sazonalidade mensal de receita (`monthlySeasonalityToCsv`, embora lá o eixo seja financeiro,
+   não de shows), ou um mini-gráfico dos 12 meses embutido no Painel (adiado na D134(d): o Painel já é denso).
 2b. **Funil de propostas — evoluções** (entregue na Sessão 51, `/shows/funil` + `showPipeline`,
    ver D42; **card do funil no Painel** entregue na Sessão 52 — cachê em aberto + taxa de
    concretização, ver D43; **exportação CSV do funil** entregue na Sessão 167 — `pipelineToCsv` +
