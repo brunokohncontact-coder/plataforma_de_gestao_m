@@ -29,6 +29,7 @@ import {
   type PaymentPromiseStatus,
   type PaymentSpeedBucketKey,
   type GigSeasonality,
+  type GigMonthStat,
   type GigCadence,
   type WeekdayPerformance,
   type FeeDistribution,
@@ -1016,7 +1017,28 @@ export const GIG_SEASONALITY_CSV_HEADERS = [
   "Faturamento (R$)",
   "% dos shows",
   "% do faturamento",
+  "Destaque",
 ] as const;
+
+/**
+ * Rótulo de destaque de um mês na sazonalidade, espelhando os cards e selos da
+ * página `/shows/sazonalidade` (mais cheio / mais faturamento / melhor cachê
+ * médio / mais fraco). Um mês pode acumular papéis (o mais cheio costuma ser
+ * também o de maior faturamento), então juntamos todos com " / ", na mesma ordem
+ * dos cards. O selo "Mês mais fraco" é suprimido quando o mês é também o mais
+ * cheio (só há um mês ativo), a mesma regra de supressão da tabela da UI. Meses
+ * sem shows nunca são destaque. Pura.
+ */
+function gigMonthHighlight(season: GigSeasonality, m: GigMonthStat): string {
+  if (m.count === 0) return "";
+  const roles: string[] = [];
+  const isBusiest = season.busiest?.month === m.month;
+  if (isBusiest) roles.push("Mês mais cheio");
+  if (season.bestByVolume?.month === m.month) roles.push("Mais faturamento");
+  if (season.bestByAvg?.month === m.month) roles.push("Melhor cachê médio");
+  if (season.quietest?.month === m.month && !isBusiest) roles.push("Mês mais fraco");
+  return roles.join(" / ");
+}
 
 /**
  * Serializa a sazonalidade de shows por mês do ano (`gigSeasonality`) em CSV,
@@ -1025,9 +1047,12 @@ export const GIG_SEASONALITY_CSV_HEADERS = [
  * os vales da temporada) com nº de shows, cachê médio, faturamento e as duas
  * participações (no nº de shows e no faturamento), seguida de uma linha "Total".
  * Diferente da UI (que mostra "—" nos meses vazios), o CSV registra 0 e 0,00 para
- * ficar legível por máquina. Mesma convenção pt-BR de `transactionsToCsv`
- * (delimitador ";", decimal com vírgula). As participações do Total ficam em
- * branco (são sempre 100% por construção). Pura.
+ * ficar legível por máquina. A coluna "Destaque" replica os cards e selos da
+ * tela (mais cheio / mais faturamento / melhor cachê médio / mais fraco), para a
+ * planilha ficar auto-explicativa e ordenável/filtrável por papel sem recomputar
+ * os desempates. Mesma convenção pt-BR de `transactionsToCsv` (delimitador ";",
+ * decimal com vírgula). As participações e o destaque do Total ficam em branco
+ * (participações são sempre 100% por construção). Pura.
  */
 export function gigSeasonalityToCsv(
   season: GigSeasonality,
@@ -1042,6 +1067,7 @@ export function gigSeasonalityToCsv(
       centsToCsvAmount(m.totalFee),
       csvShare(m.countShare),
       csvShare(m.feeShare),
+      gigMonthHighlight(season, m),
     ]);
   }
   out.push([
@@ -1049,6 +1075,7 @@ export function gigSeasonalityToCsv(
     String(season.totalShows),
     centsToCsvAmount(season.avgFee),
     centsToCsvAmount(season.totalFee),
+    "",
     "",
     "",
   ]);

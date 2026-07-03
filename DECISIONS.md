@@ -6680,3 +6680,37 @@ contexto, decisão, justificativa e alternativas consideradas.
   typecheck (`tsc --noEmit`) limpo; **1173 testes**; smoke test — app sobe (`/` e `/login` 200). `npm audit`
   **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss
   bundlado; ver D6); **nenhuma dependência nova**.
+
+## 2026-07-03 — D205: Coluna "Destaque" no CSV da sazonalidade de shows (`gigSeasonalityToCsv`)
+- **Contexto:** o CSV de `/shows/sazonalidade` (`gigSeasonalityToCsv`/D133(d), depois entregue) já trazia as
+  12 linhas de mês com contagem, cachê médio, faturamento e as duas participações, mas era um retrato "cru":
+  quem baixava a planilha não via **quais** meses são os destaques que a tela mostra (4 cards: mais cheio /
+  mais faturamento / melhor cachê médio / mais fraco; + selos "mais cheio"/"mais fraco" na tabela). Para achar,
+  por ex., o "melhor cachê médio" era preciso reordenar a planilha e ainda replicar à mão os desempates
+  (empate de contagem → faturamento → mês mais cedo). A D204(c) tinha adiado "exportar o `quietest`" por ele
+  ser derivável do count; mas o valor real não é o número do vale (derivável) e sim o **rótulo** dos quatro
+  papéis com seus desempates determinísticos.
+- **Decisão:** 7ª coluna "Destaque" em `GIG_SEASONALITY_CSV_HEADERS` + helper puro interno `gigMonthHighlight
+  (season, month)` em `src/lib/csv.ts` que, para cada linha de mês, junta com " / " os papéis que aquele mês
+  acumula, na ordem dos cards: `busiest` → "Mês mais cheio", `bestByVolume` → "Mais faturamento", `bestByAvg`
+  → "Melhor cachê médio", `quietest` → "Mês mais fraco". Reusa os campos de destaque já computados por
+  `gigSeasonality` (casando por `month`), **zero lógica pura nova de agregação**. Meses sem shows (`count === 0`)
+  e a linha Total ficam com destaque em branco. O selo "Mês mais fraco" é **suprimido quando o mês é também o
+  mais cheio** — a mesma regra de supressão da tabela da UI (um único mês ativo é pico, não vale).
+- **Justificativa:** a coluna torna a planilha auto-explicativa e ordenável/filtrável por papel sem recomputar
+  os desempates — a mesma leitura que os cards dão ao olho na tela. Exportar **todos** os quatro destaques
+  (não só o `quietest` da D204(c)) fecha a lacuna de forma mais completa e coerente com a tela, ao custo de uma
+  coluna. É apresentação derivada de campos já testados; nenhum I/O extra (o route só embrulha o serializador).
+- **Alternativas consideradas:** (a) uma coluna booleana por papel (4 colunas) — descartada: mais ruidoso, e um
+  mês costuma acumular papéis (o mais cheio é quase sempre o de maior faturamento), o que a coluna única mostra
+  bem com " / "; (b) manter só "mais cheio"/"mais fraco" (paridade exata com os **selos** da tabela, não os
+  cards) — descartada: os cards mostram os quatro e a planilha se beneficia do conjunto completo; (c) espelhar
+  a mesma coluna no CSV irmão de dias-da-semana (`weekdayPerformanceToCsv`) e no mensal — adiado: fica como
+  próximo passo simétrico (dias-da-semana não tem `quietest`, então o mapeamento difere levemente).
+- **Testes:** +2 `it` em `csv.test.ts` (papéis por mês: mais cheio+faturamento, melhor cachê, mais fraco, e
+  Total/mês-vazio em branco; supressão do "mais fraco" no único mês ativo) + atualização das 2 asserções
+  existentes de formato (7ª coluna vazia no Total e no mês zerado). Suíte **1173 → 1175**, todos verdes.
+- **DoD:** build de produção verde (rota `/shows/sazonalidade/export` no manifesto); lint (`next lint`, 0
+  avisos); typecheck (`tsc --noEmit`) limpo; **1175 testes**; smoke test — app sobe (`/login` 200, export 307
+  redirect de auth). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical,
+  todos do Next 14 / postcss bundlado; ver D6); **nenhuma dependência nova**.

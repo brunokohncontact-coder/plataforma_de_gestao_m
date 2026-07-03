@@ -986,7 +986,8 @@ describe("gigSeasonalityToCsv", () => {
     expect(lines).toHaveLength(14);
     expect(lines[1].startsWith("Janeiro;0;")).toBe(true);
     expect(lines[12].startsWith("Dezembro;0;")).toBe(true);
-    expect(lines[13]).toBe("Total;0;0,00;0,00;;");
+    // 7ª coluna "Destaque" em branco (sem shows, nenhum mês é destaque).
+    expect(lines[13]).toBe("Total;0;0,00;0,00;;;");
   });
 
   it("serializa contagem, cachê médio, faturamento e participações por mês", () => {
@@ -1020,7 +1021,41 @@ describe("gigSeasonalityToCsv", () => {
       now: NOW,
     });
     const janeiro = gigSeasonalityToCsv(season).split("\r\n")[1].split(";");
-    expect(janeiro).toEqual(["Janeiro", "0", "0,00", "0,00", "0%", "0%"]);
+    expect(janeiro).toEqual(["Janeiro", "0", "0,00", "0,00", "0%", "0%", ""]);
+  });
+
+  it("flag na coluna 'Destaque' os papéis de cada mês (mais cheio / faturamento / cachê / fraco)", () => {
+    // Março: 2 shows, maior contagem → mais cheio; também maior faturamento total.
+    // Julho: 1 show de cachê alto → melhor cachê médio.
+    // Novembro: 1 show de cachê baixo → menos shows entre os ativos → mais fraco.
+    const season = gigSeasonality(
+      [
+        gig({ date: "2024-03-01T00:00:00.000Z", fee: 300000 }),
+        gig({ date: "2023-03-20T00:00:00.000Z", fee: 300000 }),
+        gig({ date: "2024-07-04T00:00:00.000Z", fee: 500000 }),
+        gig({ date: "2024-11-04T00:00:00.000Z", fee: 100000 }),
+      ],
+      { now: new Date(NOW) },
+    );
+    const rows = gigSeasonalityToCsv(season).split("\r\n");
+    const cell = (monthIndex: number) => rows[monthIndex].split(";")[6];
+    expect(cell(3)).toBe("Mês mais cheio / Mais faturamento"); // Março
+    expect(cell(7)).toBe("Melhor cachê médio"); // Julho
+    expect(cell(11)).toBe("Mês mais fraco"); // Novembro
+    expect(cell(1)).toBe(""); // Janeiro vazio, sem destaque
+    // Total sem destaque.
+    expect(rows[13].split(";")[6]).toBe("");
+  });
+
+  it("suprime 'Mês mais fraco' quando o único mês ativo é também o mais cheio", () => {
+    const season = gigSeasonality(
+      [gig({ date: "2024-05-01T00:00:00.000Z", fee: 100000 })],
+      { now: new Date(NOW) },
+    );
+    const maio = gigSeasonalityToCsv(season).split("\r\n")[5].split(";");
+    expect(maio[0]).toBe("Maio");
+    // Único mês ativo é busiest, bestByVolume e bestByAvg — mas não "mais fraco".
+    expect(maio[6]).toBe("Mês mais cheio / Mais faturamento / Melhor cachê médio");
   });
 });
 
