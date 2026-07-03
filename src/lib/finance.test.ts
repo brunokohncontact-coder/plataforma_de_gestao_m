@@ -1408,6 +1408,21 @@ describe("compareClientConcentration", () => {
     expect(cmp.current).toBe(cur);
     expect(cmp.previous).toBe(prev);
   });
+
+  it("é genérico sobre o mínimo estrutural (serve à concentração de contatos)", () => {
+    // A tela `/contatos/concentracao` usa o `ClientConcentration<C>` de
+    // `contacts.ts` (com `topShare`/`effectiveClients`), não o de `finance.ts`:
+    // o comparativo só depende desse mínimo e reaproveita a mesma aritmética.
+    const cur = { topShare: 0.8, effectiveClients: 1.5 };
+    const prev = { topShare: 0.2, effectiveClients: 5 };
+    const cmp = compareClientConcentration(cur, prev);
+    expect(cmp.topShareDelta).toBeCloseTo(0.6);
+    expect(cmp.effectiveClientsDelta).toBeCloseTo(-3.5);
+    expect(cmp.trend).toBe("worsened");
+    // Preserva os objetos de origem tipados como o argumento (não o de finance).
+    expect(cmp.current).toBe(cur);
+    expect(cmp.previous).toBe(prev);
+  });
 });
 
 describe("showProfitYears", () => {

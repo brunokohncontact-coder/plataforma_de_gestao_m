@@ -6518,3 +6518,52 @@ contexto, decisão, justificativa e alternativas consideradas.
   (home 200), `/contatos/concentracao` 307 → `/login` (rota protegida). `npm audit` **inalterado** vs.
   baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver
   D6); **nenhuma dependência nova**.
+
+## 2026-07-03 — D201: Card comparativo "vs. {ano-1}" na tela dedicada de concentração de contratantes
+- **Contexto:** a D200 (Sessão 207) levou o `PeriodPicker` (`?ano=`) para `/contatos/concentracao`, mas
+  deixou explícito (alternativa (b)) que o card comparativo "vs. {ano-1}" — que **toda** leitura irmã de
+  tendência já tem (rentabilidade por contratante/D120–D122, geográfica/D120, papel/D141,
+  cancelamento/D181, antecedência/D187, prazo de recebimento/D193) — seria o "próximo passo possível". A
+  tela dedicada é a **única** com a tabela completa por contratante + veredito HHI/nº efetivo; com o
+  recorte por ano já na `main`, o comparativo ano a ano fechado nela mesma responde "quão mais/menos
+  concentrada ficou minha receita neste ano vs. o anterior" sem sair para `contatos/rentabilidade`.
+- **Decisão:** na página, quando um ano específico está selecionado e **ambos** os períodos têm
+  contratante (`clientCount > 0`), computa a `clientConcentration` do ano anterior (reusando
+  `filterShowsByYear`/D108 sobre os `items` já carregados, **sem nova consulta**) e um
+  `compareClientConcentration` (D120), renderizando o card `ClientComparisonCard` 🟢/🔴/⚪ "Concentração
+  {ano} vs. {ano-1}" logo após o veredito de nível. Card **inline na página** (não componente
+  compartilhado), espelhando o precedente do eixo geográfico — `VenueComparisonCard`/`GeoComparisonCard`
+  vivem inline em `/shows/locais` e `/shows/cidades` — e o `ClientComparisonCard` de
+  `contatos/rentabilidade`. Mostra a variação do maior contratante (p.p.) e dos clientes efetivos, com
+  veredito de tendência (mais distribuída × mais concentrada).
+- **Reuso sem duplicar lógica pura — genérico estrutural:** havia atrito de tipo porque existem **dois**
+  `clientConcentration`: o de `finance.ts` (sobre `rankContactsByProfit`, tipo com `clients`/`total`) que
+  `compareClientConcentration` recebia, e o de `contacts.ts` (sobre shows por contato, tipo
+  `ClientConcentration<C>` com `rows`/`totalFee`) que esta página usa. O comparativo só lê `topShare` e
+  `effectiveClients` — comuns aos dois. Em vez de duplicar a aritmética num segundo helper, `compareClient
+  Concentration` passou a ser **genérico** sobre o mínimo estrutural `ClientConcentrationLike =
+  { topShare; effectiveClients }` (`ClientConcentrationComparison<T = ClientConcentration>` com default
+  preservando os chamadores existentes). **Zero lógica pura nova**, backward-compatible: os testes e o uso
+  em `contatos/rentabilidade` seguem intocados.
+- **Gate:** só com ano específico (`yearFilter !== "all"`) e contratante identificado **nos dois**
+  períodos — caso contrário a leitura "melhorou/piorou" seria enganosa (mesma regra do card de
+  rentabilidade). Reaproveita os mesmos registros já carregados; o ano anterior sai do recorte por `date`
+  UTC (D108), sem I/O extra.
+- **Justificativa:** consistência de produto (toda tendência tem seu card "vs. {ano-1}") + baixo risco —
+  plumbing sobre um helper já testado, generalização estrutural sem novo cálculo, e o card espelha byte a
+  byte o de rentabilidade.
+- **Alternativas consideradas:** (a) extrair um componente compartilhado do card entre rentabilidade e
+  concentração — descartado: o codebase repete o card inline por página (precedente geo locais/cidades),
+  e extrair tocaria a página bem-testada de rentabilidade sem ganho proporcional; (b) um segundo
+  `compareClientConcentration` em `contacts.ts` sobre `ClientConcentration<C>` — descartado por duplicar
+  a aritmética de tendência e criar colisão de nome; (c) não portar (o comparativo já vive em
+  rentabilidade) — descartado: a tela dedicada é a única com a tabela + veredito HHI e era a última irmã
+  sem o card.
+- **Testes:** +1 em `finance.test.ts` (`compareClientConcentration` genérico sobre o mínimo estrutural —
+  aceita `{ topShare; effectiveClients }` e preserva os objetos de origem, guardando contra re-narrow
+  futuro). Página é plumbing sobre helper testado (precedente D194). Suíte **1159 → 1160**, todos verdes.
+- **DoD:** build de produção verde (rota `/contatos/concentracao` no manifesto); lint (`next lint`, 0
+  avisos); typecheck (`tsc --noEmit`) limpo; **1160 testes**; smoke test — app sobe (`/login` 200,
+  `/contatos/concentracao` 307 → `/login`, rota protegida). `npm audit` **inalterado** vs. baseline (10
+  advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6); **nenhuma
+  dependência nova**.
