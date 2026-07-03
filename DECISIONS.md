@@ -6714,3 +6714,33 @@ contexto, decisão, justificativa e alternativas consideradas.
   avisos); typecheck (`tsc --noEmit`) limpo; **1175 testes**; smoke test — app sobe (`/login` 200, export 307
   redirect de auth). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical,
   todos do Next 14 / postcss bundlado; ver D6); **nenhuma dependência nova**.
+
+## 2026-07-03 — D206: Coluna "Destaque" no CSV do desempenho por dia da semana (`weekdayPerformanceToCsv`)
+- **Contexto:** a D205 (Sessão 212) levou a coluna "Destaque" para o CSV da sazonalidade de shows
+  (`gigSeasonalityToCsv`) e deixou explícito, na alternativa (c), o CSV irmão de dias-da-semana
+  (`weekdayPerformanceToCsv`, `/shows/dias-semana`) como próximo passo simétrico. Os dois CSVs compartilham o
+  eixo "Stat → uma linha por categoria + Total"; a tela de dias-da-semana mostra três cards de destaque
+  (Melhor cachê médio / Mais faturamento / Mais shows), mas o CSV era um retrato cru, sem marcar qual dia é qual.
+- **Decisão:** adicionar uma 7ª coluna "Destaque" em `WEEKDAY_PERFORMANCE_CSV_HEADERS` alimentada por um helper
+  puro interno `weekdayHighlight(wp, day)` em `src/lib/csv.ts`, espelho de `gigMonthHighlight` (D205): junta com
+  " / " os papéis de cada dia — `busiest`→"Dia mais cheio", `bestByVolume`→"Mais faturamento",
+  `bestByAvg`→"Melhor cachê médio" — reusando os campos de destaque já computados por `weekdayPerformance`
+  (casando por `weekday`), **zero lógica pura nova de agregação**. Dias sem shows (`count === 0`) e a linha Total
+  ficam com destaque em branco. A ordem dos papéis é a mesma de `gigMonthHighlight` (mais cheio → faturamento →
+  cachê médio) para os dois CSVs irmãos lerem consistente.
+- **Justificativa:** fecha a lacuna de simetria da D205 com a mesma mecânica já testada, tornando a planilha de
+  dias-da-semana auto-explicativa e ordenável/filtrável por papel. É apresentação derivada de campos já
+  computados; nenhum I/O extra (o route só embrulha o serializador).
+- **Alternativas consideradas:** (a) incluir um papel "mais fraco"/`quietest` como a sazonalidade tem —
+  **descartada** porque `WeekdayPerformance` não computa `quietest` (D205); adicioná-lo exigiria lógica pura nova
+  no `finance.ts` sem demanda clara (a tela de dias-da-semana também não mostra "dia mais fraco"), então o
+  mapeamento fica com os três papéis dos cards existentes; (b) seguir a ordem dos cards da tela (cachê médio →
+  faturamento → mais shows) em vez da ordem de `gigMonthHighlight` — descartada: preferi consistência entre os
+  dois CSVs irmãos à paridade com a ordem visual de uma tela específica.
+- **Testes:** +2 `it` em `csv.test.ts` (papéis por dia: mais cheio separado de faturamento+cachê num caso com
+  dois dias ativos; acúmulo dos três papéis no único dia ativo) + atualização das 2 asserções existentes de
+  formato (7ª coluna vazia no Total do empty state e no dia zerado). Suíte **1175 → 1177**, todos verdes.
+- **DoD:** build de produção verde; lint (`next lint`, 0 avisos); typecheck (`tsc --noEmit`) limpo; **1177
+  testes**; smoke test — app sobe (`npm start`, `/` responde 200). `npm audit` **inalterado** vs. baseline (10
+  advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6); **nenhuma
+  dependência nova**.

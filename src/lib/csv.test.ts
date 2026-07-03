@@ -1196,7 +1196,8 @@ describe("weekdayPerformanceToCsv", () => {
     expect(lines).toHaveLength(9);
     expect(lines[1].startsWith("Domingo;0;")).toBe(true);
     expect(lines[7].startsWith("Sábado;0;")).toBe(true);
-    expect(lines[8]).toBe("Total;0;0,00;0,00;;");
+    // 7ª coluna "Destaque" em branco (sem shows, nenhum dia é destaque).
+    expect(lines[8]).toBe("Total;0;0,00;0,00;;;");
   });
 
   it("serializa contagem, cachê médio, faturamento e participações por dia", () => {
@@ -1232,7 +1233,37 @@ describe("weekdayPerformanceToCsv", () => {
       { now: new Date(NOW) },
     );
     const domingo = weekdayPerformanceToCsv(wp).split("\r\n")[1].split(";");
-    expect(domingo).toEqual(["Domingo", "0", "0,00", "0,00", "0%", "0%"]);
+    expect(domingo).toEqual(["Domingo", "0", "0,00", "0,00", "0%", "0%", ""]);
+  });
+
+  it("flag na coluna 'Destaque' os papéis de cada dia (mais cheio / faturamento / cachê)", () => {
+    // Domingo: 2 shows (mais cheio), faturamento 4000.
+    // Quinta: 1 show de cachê alto (5000) → maior faturamento e melhor cachê médio.
+    const wp = weekdayPerformance(
+      [
+        gig({ date: "2024-03-10T00:00:00.000Z", fee: 100000 }), // domingo
+        gig({ date: "2023-03-05T00:00:00.000Z", fee: 300000 }), // domingo (outro ano)
+        gig({ date: "2024-07-04T00:00:00.000Z", fee: 500000 }), // quinta
+      ],
+      { now: new Date(NOW) },
+    );
+    const rows = weekdayPerformanceToCsv(wp).split("\r\n");
+    const cell = (weekdayIndex: number) => rows[weekdayIndex + 1].split(";")[6];
+    expect(cell(0)).toBe("Dia mais cheio"); // Domingo (mais shows)
+    expect(cell(4)).toBe("Mais faturamento / Melhor cachê médio"); // Quinta
+    expect(cell(1)).toBe(""); // Segunda vazia, sem destaque
+    // Total sem destaque.
+    expect(rows[8].split(";")[6]).toBe("");
+  });
+
+  it("acumula os três papéis no único dia ativo", () => {
+    const wp = weekdayPerformance(
+      [gig({ date: "2024-03-13T00:00:00.000Z", fee: 100000 })], // quarta
+      { now: new Date(NOW) },
+    );
+    const quarta = weekdayPerformanceToCsv(wp).split("\r\n")[4].split(";");
+    expect(quarta[0]).toBe("Quarta");
+    expect(quarta[6]).toBe("Dia mais cheio / Mais faturamento / Melhor cachê médio");
   });
 });
 
