@@ -9,7 +9,22 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1139 testes** verdes após a **coluna "vs. {ano-1}" por
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1145 testes** verdes após a **coluna "vs. {ano-1}" no
+CSV do prazo de recebimento por contratante** (Sessão 204, D197 — a D196 (Sessão 203) levou a variação ano a ano do prazo médio para
+a **tela** de `/shows/prazo-recebimento/por-contratante` (coluna "vs. {ano-1}" por linha via `indexContactPaymentLagChanges`), mas o
+CSV do mesmo recorte (`/shows/prazo-recebimento/por-contratante/export`, D131) seguia só com o retrato do ano — quem baixasse a
+planilha com `?ano=` selecionado perdia a leitura de tendência que a página mostra. `paymentLagByContactToCsv(rows, delimiter?,
+previousYear?)` ganhou um 3º parâmetro opcional `previousYear`: quando informado, a planilha ganha uma última coluna "vs. {ano-1}
+(dias)" espelhando a coluna da página — variação **assinada** do prazo médio (`csvSignedDays`: "+12"/"-5"/"0"; negativo = passou a
+pagar mais rápido) para quem existe nos dois períodos, "novo" para quem só apareceu no ano atual (`isNew`), em branco para linhas não
+comparáveis; sem `previousYear` a saída é byte a byte idêntica à histórica (9 colunas), preservando os chamadores/testes.
+`PaymentLagByContactCsvRow` ganhou `avgDaysDelta?`/`isNew?`. O route recomputa o comparativo com o **mesmo gate da página** (só com
+ano específico; ambos os períodos com recebimento; `changes.length > 0`), reusando `comparePaymentLagByContact` +
+`indexContactPaymentLagChanges` (zero lógica pura nova) sobre os shows já carregados (só uma agregação extra do ano anterior em
+memória, zero I/O adicional) e só passa `previousYear` quando o comparativo é válido; o botão "⬇ CSV" já herda `?ano=` (D194).
+Assina em número puro como `csvSignedPct` (D166/D170), não o "+12 dias" verboso da tela, para a planilha ficar ordenável. Adiado
+(D197): coluna equivalente no CSV da tela-mãe (lá o comparativo é por período único, não por linha) e exportar o `medianDaysDelta`
+(coerência com a coluna da tela, ancorada na média). **+6 testes**) sobre os **1139 testes** verdes após a **coluna "vs. {ano-1}" por
 linha na tabela do prazo de recebimento por contratante** (Sessão 203, D196 — a D195 (Sessão 202) adicionou o card de destaques
 `PaymentLagMoversCard` mas ele só mostra dois extremos (quem mais acelerou / desacelerou); com vários contratantes comparáveis os do
 meio ficavam sem leitura de tendência, embora o número já estivesse em `comparison.changes`. Era o passo seguinte listado na própria
@@ -3376,8 +3391,15 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `/shows/prazo-recebimento/por-contratante` (página e export): filtra os shows pela `date` antes de agregar por contratante,
    então destaques/tabela/detalhe saem recortados sem tocar `paymentLagByContact`; empty state período-ciente, export herda
    `?ano=` no nome `prazo-recebimento-por-contratante-<ano|todos>.csv`, ver D194.
-   Próximo possível — o **comparativo ano a ano por contratante** (`comparePaymentLagByContact`, adiado na D194 por ser passo
-   maior e o comparativo global do DSO já viver na tela-mãe); ou lembrar a última escolha de contato por show; ou
+   **Comparativo ano a ano por contratante** entregue na Sessão 202 — `comparePaymentLagByContact` + card `PaymentLagMoversCard`
+   "Quem mudou de ritmo · {ano} vs. {ano-1}" (quem acelerou 🟢 / desacelerou 🔴 + novos/sumidos), veredito na média ponderada, ver D195;
+   **coluna "vs. {ano-1}" por linha na tabela** entregue na Sessão 203 — `indexContactPaymentLagChanges` +
+   `ContactPaymentLagRowStatus` + `PaymentLagRowDelta`, o detalhe do card-manchete linha a linha (delta colorido pelo `trend` / "novo"
+   / "—"), ver D196; **coluna "vs. {ano-1}" no CSV** entregue na Sessão 204 — 3º parâmetro `previousYear` em `paymentLagByContactToCsv`
+   + `avgDaysDelta?`/`isNew?` em `PaymentLagByContactCsvRow` + `csvSignedDays`: `/shows/prazo-recebimento/por-contratante/export`
+   ganha a coluna "vs. {ano-1} (dias)" (variação assinada / "novo" / branco) com o mesmo gate da página, sem `previousYear` a saída é
+   idêntica à histórica, ver D197.
+   Próximo possível — lembrar a última escolha de contato por show; ou
    levar o prazo mediano por contratante também ao card do Painel (adiado na D130: o Painel já mostra o DSO mediano global via
    `paymentLagHeadline`); ou exportar o agregado por baldes de velocidade (5 linhas-resumo) se houver demanda (descartado
    na D132(a) por baixo valor de planilha).
