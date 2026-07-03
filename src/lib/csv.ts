@@ -57,6 +57,7 @@ import {
   type YearEndScenarioView,
   type RecurringExpensesReport,
   type TaxReserveReport,
+  type BreakEvenAnalysis,
 } from "./finance";
 import type {
   ClientRetention,
@@ -2021,6 +2022,53 @@ export function yearPaceToCsv(pace: YearToDatePace, delimiter = DEFAULT_DELIMITE
       csvSignedPct(delta.pct),
     ]);
   }
+  return toCsv(out, delimiter);
+}
+
+// ── Ponto de equilíbrio (shows/mês para cobrir o custo fixo) ──────────────────
+
+export const BREAK_EVEN_CSV_HEADERS = ["Métrica", "Valor"] as const;
+
+/** Ritmo de shows/mês -> uma casa decimal com vírgula pt-BR ("2,3"). */
+function csvRate(value: number): string {
+  return value.toFixed(1).replace(".", ",");
+}
+
+/**
+ * Serializa o ponto de equilíbrio (`computeBreakEven`) em CSV, pronto para
+ * download — uma fotografia dos números por trás de `/financas/ponto-de-equilibrio`.
+ * Diferente dos exports por linha (uma linha = um contratante/mês/show), aqui o
+ * relatório é um punhado de métricas heterogêneas (dinheiro, contagem, ritmo,
+ * veredito), então a forma honesta é chave→valor: coluna "Métrica" + coluna
+ * "Valor", uma linha por número, na mesma ordem que a página lê (a meta primeiro,
+ * depois os três blocos da conta, depois o veredito). Serve para colar num plano
+ * de negócio ou acompanhar como a meta de shows/mês se move ao longo do tempo.
+ *
+ * Convenções pt-BR dos irmãos: dinheiro via `centsToCsvAmount` (vírgula decimal),
+ * o ritmo com uma casa (`csvRate`, também vírgula), contagem inteira crua. Quando
+ * a meta não é estimável (`showsNeeded == null`: sem shows realizados ou show médio
+ * sem sobra), a linha "Shows/mês para o equilíbrio" e o veredito saem em branco —
+ * espelhando o "não dá para estimar" da UI. Sem linha "Total" (as métricas não
+ * somam entre si). Pura. O chamador só emite quando há custo fixo a cobrir
+ * (`monthlyFixedCost > 0`), o mesmo gate do botão e do estado-vazio da página.
+ */
+export function breakEvenToCsv(
+  analysis: BreakEvenAnalysis,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(BREAK_EVEN_CSV_HEADERS)];
+  out.push(["Custo fixo mensal (R$)", centsToCsvAmount(analysis.monthlyFixedCost)]);
+  out.push(["Resultado médio por show (R$)", centsToCsvAmount(analysis.avgNetPerShow)]);
+  out.push(["Shows realizados considerados", String(analysis.showsConsidered)]);
+  out.push(["Ritmo atual (shows/mês)", csvRate(analysis.avgShowsPerMonth)]);
+  out.push([
+    "Shows/mês para o equilíbrio",
+    analysis.showsNeeded == null ? "" : String(analysis.showsNeeded),
+  ]);
+  out.push([
+    "Cobre o custo fixo?",
+    analysis.covered == null ? "" : analysis.covered ? "Sim" : "Não",
+  ]);
   return toCsv(out, delimiter);
 }
 

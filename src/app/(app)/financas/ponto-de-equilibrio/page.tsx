@@ -61,9 +61,16 @@ export default async function BreakEvenPage() {
             Quantos shows por mês você precisa fazer só para cobrir seus custos fixos
           </p>
         </div>
-        <Link href="/financas" className="text-sm text-gray-500 hover:underline">
-          ← Finanças
-        </Link>
+        <div className="flex items-center gap-3">
+          {monthlyFixedCost > 0 && (
+            <a href="/financas/ponto-de-equilibrio/export" className="btn-secondary">
+              ⬇ CSV
+            </a>
+          )}
+          <Link href="/financas" className="text-sm text-gray-500 hover:underline">
+            ← Finanças
+          </Link>
+        </div>
       </div>
 
       {monthlyFixedCost <= 0 ? (

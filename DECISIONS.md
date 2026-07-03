@@ -6439,3 +6439,46 @@ contexto, decisão, justificativa e alternativas consideradas.
   audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do
   Next 14 / postcss bundlado; ver D6); **nenhuma dependência nova**. Schema aplicado ao dev/test DB
   via `prisma db push` (sem migrations, alinhado à D3).
+
+## 2026-07-03 — D199: Exportação CSV do ponto de equilíbrio (última lacuna de export dos relatórios)
+- **Contexto:** varrendo as 44 entradas do hub de relatórios (`REPORT_GROUPS`, D54), a página
+  `/financas/ponto-de-equilibrio` (`computeBreakEven`, D-quebra-de-equilíbrio) era a **única** sem
+  uma rota `export/route.ts` — todas as outras leituras tabulares/de métricas já têm "⬇ CSV"
+  (recebíveis/D128, prazo de recebimento/D131–D132, ritmo do ano/D166, ritmo do mês/D170, funil/D160,
+  rentabilidade por papel/D137, cancelamentos/D178, etc.). Fechar essa lacuna deixa o conjunto de
+  relatórios uniformemente exportável.
+- **Decisão:** `breakEvenToCsv(analysis)` + `BREAK_EVEN_CSV_HEADERS` em `src/lib/csv.ts` +
+  rota `/financas/ponto-de-equilibrio/export` + botão "⬇ CSV" no cabeçalho da página, exibido só
+  quando há custo fixo detectado (`monthlyFixedCost > 0`) — o **mesmo gate** do estado-vazio da
+  página (sem custo fixo, não há ponto de equilíbrio a mostrar nem a exportar).
+- **Formato — chave→valor, não por linha:** diferente dos demais exports (uma linha = um
+  contratante/mês/show), o ponto de equilíbrio é um punhado de **métricas heterogêneas** (dinheiro,
+  contagem, ritmo, veredito). A forma honesta é duas colunas "Métrica"/"Valor", uma linha por
+  número, **na ordem em que a página lê**: custo fixo mensal → resultado médio por show → shows
+  realizados considerados → ritmo atual (shows/mês) → shows/mês para o equilíbrio → cobre o custo
+  fixo?. Precedente de export de poucas métricas: `yearPaceToCsv` (D166, 3 linhas).
+- **Convenções pt-BR (herdadas dos irmãos):** dinheiro via `centsToCsvAmount` (vírgula decimal);
+  ritmo com uma casa via novo helper local `csvRate` (`toFixed(1)` + vírgula, ex.: "1,0"); contagem
+  inteira crua; veredito "Sim"/"Não". Quando a meta **não é estimável** (`showsNeeded == null`: sem
+  shows realizados ou show médio sem sobra), as linhas "Shows/mês para o equilíbrio" e "Cobre o custo
+  fixo?" saem **em branco**, espelhando o "não dá para estimar" da UI. Sem linha "Total" (as métricas
+  não somam entre si). BOM UTF-8 na camada HTTP (Excel); nome fixo `ponto-de-equilibrio.csv` (é um
+  retrato do estado atual, sem `?ano=`, como `ritmo-do-ano`). A rota responde **404** se acessada
+  direto sem custo fixo (coerente com o gate do botão).
+- **Justificativa:** consistência de produto (todo relatório exportável) + baixo risco: a lógica
+  pura (`computeBreakEven`) e o serializador são testados, a rota só consulta e embrulha no HTTP,
+  reusando o `computeBreakEven` idêntico ao da página (mesmo retrato).
+- **Alternativas consideradas:** (a) não exportar (é "só um punhado de números") — descartado: o
+  precedente `yearPaceToCsv`/D166 mostra que a plataforma exporta métricas-resumo, e esta era a
+  última página sem export, um buraco de consistência que um usuário que exporta o resto notaria;
+  (b) layout por coluna (Métrica como cabeçalho, uma linha de valores) — descartado: as métricas têm
+  unidades diferentes, chave→valor é mais legível numa planilha; (c) incluir o custo por show
+  detalhado — fora de escopo, já vive em `/shows/rentabilidade` (a própria página aponta pra lá).
+- **Testes:** +3 em `csv.test.ts` (`breakEvenToCsv`: cabeçalho + 6 métricas na ordem da página, não
+  cobre → "Não"; ritmo cobre a meta → "Sim"; meta/veredito em branco quando não estimável). Suíte
+  **1152 → 1155**, todos verdes.
+- **DoD:** build de produção verde (rota `/financas/ponto-de-equilibrio/export` no manifesto); lint
+  (`next lint`, 0 avisos); typecheck (`tsc --noEmit`) limpo; **1155 testes**; smoke test — app sobe
+  (home 200), `/financas/ponto-de-equilibrio/export` 307 → `/login` (rota protegida). `npm audit`
+  **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
+  postcss bundlado; ver D6); **nenhuma dependência nova**.
