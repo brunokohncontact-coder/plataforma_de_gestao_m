@@ -93,6 +93,8 @@ import {
   gigCadence,
   feeDistribution,
   feeDistributionYears,
+  compareFeeDistribution,
+  type FeeDistribution,
   weekdayPerformanceYears,
   feeBandKeyFor,
   FEE_BANDS,
@@ -6305,6 +6307,73 @@ describe("feeDistributionYears", () => {
 
   it("sem shows elegíveis retorna lista vazia", () => {
     expect(feeDistributionYears([], { now })).toEqual([]);
+  });
+});
+
+describe("compareFeeDistribution", () => {
+  const now = new Date("2026-06-15T12:00:00.000Z");
+
+  function gig(partial: Partial<ReceivableShowLike>): ReceivableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-01-10T20:00:00.000Z",
+      ...partial,
+    };
+  }
+
+  /** Distribuição de uma lista de cachês (centavos). */
+  function distOf(...fees: number[]): FeeDistribution {
+    return feeDistribution(
+      fees.map((fee, i) => gig({ id: `g${i}`, fee })),
+      { now },
+    );
+  }
+
+  it("mediana subindo além do limiar → up, com deltas e pct", () => {
+    const current = distOf(1_000_00, 1_200_00, 1_400_00); // mediana 1.200
+    const previous = distOf(800_00, 1_000_00, 1_200_00); // mediana 1.000
+    const cmp = compareFeeDistribution(current, previous);
+    expect(cmp.trend).toBe("up");
+    expect(cmp.medianFeeDelta).toBe(200_00);
+    expect(cmp.medianFeePct).toBeCloseTo(0.2, 5);
+    expect(cmp.avgFeeDelta).toBe(current.avgFee - previous.avgFee);
+  });
+
+  it("mediana caindo além do limiar → down (delta negativo)", () => {
+    const current = distOf(500_00, 600_00, 700_00); // mediana 600
+    const previous = distOf(900_00, 1_000_00, 1_100_00); // mediana 1.000
+    const cmp = compareFeeDistribution(current, previous);
+    expect(cmp.trend).toBe("down");
+    expect(cmp.medianFeeDelta).toBe(-400_00);
+    expect(cmp.medianFeePct).toBeCloseTo(-0.4, 5);
+  });
+
+  it("variação relativa abaixo de 5% → stable mesmo com delta acima do piso", () => {
+    // 2.000 → 2.060 = +3% (< 5%), mas +R$ 60 (> R$ 50): ainda estável.
+    const current = distOf(2_060_00);
+    const previous = distOf(2_000_00);
+    const cmp = compareFeeDistribution(current, previous);
+    expect(cmp.medianFeeDelta).toBe(60_00);
+    expect(cmp.trend).toBe("stable");
+  });
+
+  it("variação absoluta abaixo do piso → stable mesmo com pct grande", () => {
+    // 100 → 140 = +40% (>> 5%), mas só +R$ 40 (< R$ 50): estável (troco).
+    const current = distOf(140_00);
+    const previous = distOf(100_00);
+    const cmp = compareFeeDistribution(current, previous);
+    expect(cmp.medianFeeDelta).toBe(40_00);
+    expect(cmp.trend).toBe("stable");
+  });
+
+  it("sem mediana no ano anterior → pct null, mas ainda decide pelo piso", () => {
+    const current = distOf(1_000_00);
+    const previous = feeDistribution([], { now }); // medianFee 0
+    const cmp = compareFeeDistribution(current, previous);
+    expect(cmp.medianFeePct).toBeNull();
+    expect(cmp.trend).toBe("up");
   });
 });
 

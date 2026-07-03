@@ -6615,3 +6615,38 @@ contexto, decisão, justificativa e alternativas consideradas.
   (`/` 200, `/contatos/concentracao` 307 → `/login`, rota protegida). `npm audit` **inalterado** vs.
   baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver
   D6); **nenhuma dependência nova**.
+
+## 2026-07-03 — D203: Comparativo ano a ano do cachê mediano na distribuição de faixas (`compareFeeDistribution` + card em `/shows/faixas-de-cache`)
+- **Contexto:** `/shows/faixas-de-cache` (`feeDistribution`/D53, D148 recorte por ano) já dava o retrato da
+  tabela de cachês de um período (mediano/médio/faixa típica/onde está o faturamento) e o recorte por
+  `?ano=`, mas comparava só um ano por vez. Era a última leitura de "nível de preço" sem o card
+  "vs. {ano-1}" que as leituras irmãs de tendência já têm (antecedência/D187, concentração/D120, DSO/D193,
+  cancelamento/D181) — e é a pergunta mais direta de progressão de carreira ("meus cachês subiram este ano?"),
+  que a `feeTrend`/`evolucao-cache` só responde na textura mês a mês, sem um veredito anual limpo.
+- **Decisão:** novo helper puro `compareFeeDistribution(current, previous)` + `FeeDistributionComparison` +
+  `FEE_TREND_EPSILON` (=0,05 = 5%) + `FEE_TREND_FLOOR` (=R$ 50) em `src/lib/finance.ts` (espelho de
+  `compareBookingLeadTime`/D187): recebe duas `feeDistribution` já computadas e devolve
+  `medianFeeDelta`/`avgFeeDelta` (centavos) + `medianFeePct` (variação relativa do mediano, `null` sem base
+  anterior) + veredito `trend` (`up`/`down`/`stable`). Ancora na **mediana** (resiste a um cachê fora da
+  curva, como a própria `feeDistribution`); a média entra só como informação. Aqui **subir** é a melhora
+  (progressão), direção oposta a concentração/cancelamento. O veredito exige as **duas** condições —
+  variação relativa ≥ 5% **e** absoluta ≥ R$ 50 — para não oscilar nem numa mediana pequena (onde 5% é troco)
+  nem numa grande (onde R$ 50 é troco). Card `FeeComparisonCard` 🟢/🔴/⚪ "Cachê {ano} vs. {ano-1}" em
+  `/shows/faixas-de-cache`, logo após os destaques, exibido só com um ano específico e ambos os períodos
+  tendo shows realizados com cachê (`totalShows > 0`), reaproveitando o recorte por ano UTC (D108) sobre os
+  registros já carregados (uma agregação extra do ano anterior em memória, zero I/O adicional).
+- **Justificativa:** fecha a paridade com as demais leituras de tendência no eixo que mais fala de carreira.
+  Zero dependência nova; helper puro pequeno e testado; a página é plumbing sobre helper testado.
+- **Alternativas consideradas:** (a) comparar a **participação na faixa alta** (share de shows ≥ R$ 5.000) em
+  vez do mediano — descartada: o mediano é um número único e legível, e o card já resume a direção; a
+  migração de faixas fica visível na tabela; (b) limiar só relativo (como `cashFlowTrend`) sem piso absoluto
+  — descartada: numa mediana de R$ 100, +R$ 5 já daria +5% e leria como alta; o piso de R$ 50 filtra troco;
+  (c) exportar o comparativo no CSV — adiado: segue o precedente da D193 (o comparativo é apresentação; o
+  CSV mantém o retrato do período).
+- **Testes:** +5 puros em `finance.test.ts` (`compareFeeDistribution`: up/down; stable por relativo abaixo do
+  epsilon; stable por absoluto abaixo do piso; pct `null` sem base anterior mas decidindo pelo piso). Página
+  é plumbing sobre helper testado (precedente D187). Suíte **1167 → 1172**, todos verdes.
+- **DoD:** build de produção verde (rota `/shows/faixas-de-cache` no manifesto); lint (`next lint`, 0 avisos);
+  typecheck (`tsc --noEmit`) limpo; **1172 testes**; smoke test — app sobe (`/login` 200). `npm audit`
+  **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss
+  bundlado; ver D6); **nenhuma dependência nova**.

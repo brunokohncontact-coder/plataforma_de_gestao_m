@@ -9,7 +9,20 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1167 testes** verdes após a **coluna "vs. {ano-1}" por
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1172 testes** verdes após o **comparativo ano a ano do
+cachê mediano na distribuição de faixas** (Sessão 210, D203 — `/shows/faixas-de-cache` (`feeDistribution`/D53 + recorte `?ano=`/D148) dava
+o retrato da tabela de cachês de um período mas comparava só um ano por vez; era a última leitura de "nível de preço" sem o card
+"vs. {ano-1}" que as irmãs de tendência já têm (antecedência/D187, concentração/D120, DSO/D193, cancelamento/D181) — e é a pergunta mais
+direta de progressão de carreira ("meus cachês subiram este ano?"). Novo helper puro `compareFeeDistribution(current, previous)` +
+`FeeDistributionComparison` + `FEE_TREND_EPSILON` (=5%) + `FEE_TREND_FLOOR` (=R$ 50) em `src/lib/finance.ts` (espelho de
+`compareBookingLeadTime`): de duas `feeDistribution` já computadas devolve `medianFeeDelta`/`avgFeeDelta` (centavos) + `medianFeePct`
+(variação relativa do mediano, `null` sem base anterior) + veredito `trend` (`up`/`down`/`stable`), ancorado na **mediana** (a média é só
+informativa). Aqui **subir** é a melhora (progressão), direção oposta a concentração/cancelamento; o veredito exige as **duas** condições —
+relativo ≥ 5% **e** absoluto ≥ R$ 50 — para não oscilar nem numa mediana pequena (onde 5% é troco) nem numa grande (onde R$ 50 é troco).
+Card `FeeComparisonCard` 🟢/🔴/⚪ "Cachê {ano} vs. {ano-1}" em `/shows/faixas-de-cache`, logo após os destaques, exibido só com um ano
+específico e ambos os períodos tendo shows realizados com cachê, reaproveitando o recorte por ano UTC (D108) sobre os registros já
+carregados (zero I/O extra). Adiado (D203): comparar a participação na faixa alta (a tabela já mostra a migração) e exportar o comparativo
+no CSV (segue o precedente da D193 — o comparativo é apresentação). **+5 testes**) sobre os **1167 testes** verdes após a **coluna "vs. {ano-1}" por
 contratante na concentração (tela + CSV)** (Sessão 209, D202 — a D201 (Sessão 208) levou o card-manchete agregado "Concentração {ano}
 vs. {ano-1}" para `/contatos/concentracao`, mas o card só mostra os dois números do topo (maior contratante + clientes efetivos); com
 vários contratantes na tabela não dava para ver de **quais** veio a mudança de dependência — faltava o detalhe por linha do card, a mesma

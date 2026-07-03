@@ -6493,6 +6493,86 @@ export function feeDistributionYears(
   return [...years].sort((a, b) => b - a);
 }
 
+/**
+ * Variação relativa mínima do cachê mediano (5%) para o comparativo ano a ano de
+ * `feeDistribution` ler como tendência, e não ruído. Espelha a disciplina de
+ * limiar relativo de `cashFlowTrend` (D126), mas mais apertada por o cachê
+ * mediano ser mais estável que o fluxo de caixa mês a mês.
+ */
+export const FEE_TREND_EPSILON = 0.05;
+
+/**
+ * Piso absoluto (centavos, R$ 50) para a variação do cachê mediano contar. Junto
+ * ao `FEE_TREND_EPSILON`, evita que um centavo de diferença numa mediana pequena
+ * — ou um passo relativo grande sobre uma base minúscula — vire "subiu/caiu".
+ */
+export const FEE_TREND_FLOOR = 50_00;
+
+export interface FeeDistributionComparison {
+  /** Distribuição do período atual (tipicamente o ano selecionado). */
+  current: FeeDistribution;
+  /** Distribuição do período de comparação (tipicamente o ano anterior). */
+  previous: FeeDistribution;
+  /**
+   * Variação do cachê **mediano** (atual − anterior, centavos). Positivo = a
+   * tabela de cachês subiu (o show típico paga mais agora — a leitura de
+   * progressão de carreira); negativo = caiu. Aqui **subir** é a melhora.
+   */
+  medianFeeDelta: number;
+  /** Variação do cachê **médio** (atual − anterior, centavos). Informativo. */
+  avgFeeDelta: number;
+  /**
+   * Variação **relativa** do cachê mediano (atual/anterior − 1); `null` quando o
+   * ano anterior não tem mediana (`medianFee === 0`) e a razão seria indefinida.
+   */
+  medianFeePct: number | null;
+  /**
+   * Direção da tabela de cachês entre os dois períodos, decidida pela variação do
+   * cachê **mediano** (robusto a um show fora da curva) contra o limiar:
+   * - "up": mediana subiu além do limiar (cachês maiores — progressão);
+   * - "down": mediana caiu além do limiar (cachês menores — atenção);
+   * - "stable": variação dentro do limiar (ruído, sem leitura de tendência).
+   */
+  trend: "up" | "down" | "stable";
+}
+
+/**
+ * Compara a **distribuição de cachês** entre dois períodos (atual × anterior),
+ * espelhando o comparativo ano a ano de `compareBookingLeadTime`/
+ * `compareGeoConcentration` (D187/D120) no eixo do nível de preço. Pura, sem
+ * I/O: recebe duas `feeDistribution` já computadas (cada uma sobre os shows do
+ * seu período) e devolve a variação do cachê mediano/médio + um veredito de
+ * tendência. Ancora o veredito na **mediana** (resiste a um cachê fora da curva,
+ * como a própria `feeDistribution`); a média entra só como informação. O
+ * chamador decide quando exibir (tipicamente só com um ano específico e ambos os
+ * períodos tendo shows — caso contrário a comparação de medianas seria
+ * enganosa: mediana de amostra vazia é 0).
+ *
+ * A tendência exige as **duas** condições — variação relativa ≥ `FEE_TREND_EPSILON`
+ * (5%) **e** absoluta ≥ `FEE_TREND_FLOOR` (R$ 50) — para não oscilar nem numa
+ * mediana pequena (onde 5% é trocado) nem numa grande (onde R$ 50 é troco).
+ */
+export function compareFeeDistribution(
+  current: FeeDistribution,
+  previous: FeeDistribution,
+): FeeDistributionComparison {
+  const medianFeeDelta = current.medianFee - previous.medianFee;
+  const absOver = Math.abs(medianFeeDelta) >= FEE_TREND_FLOOR;
+  const relOver =
+    previous.medianFee > 0
+      ? Math.abs(medianFeeDelta) / previous.medianFee >= FEE_TREND_EPSILON
+      : medianFeeDelta !== 0; // sem base anterior, qualquer variação já conta
+  const material = absOver && relOver;
+  return {
+    current,
+    previous,
+    medianFeeDelta,
+    avgFeeDelta: current.avgFee - previous.avgFee,
+    medianFeePct: previous.medianFee > 0 ? medianFeeDelta / previous.medianFee : null,
+    trend: !material ? "stable" : medianFeeDelta > 0 ? "up" : "down",
+  };
+}
+
 // ── Cadência de shows (estou tocando mais ou menos ao longo do tempo?) ───────
 //
 // Responde "minha agenda está mais cheia?": conta os shows JÁ REALIZADOS (mesmo
