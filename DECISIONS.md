@@ -6744,3 +6744,37 @@ contexto, decisão, justificativa e alternativas consideradas.
   testes**; smoke test — app sobe (`npm start`, `/` responde 200). `npm audit` **inalterado** vs. baseline (10
   advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6); **nenhuma
   dependência nova**.
+
+## 2026-07-03 — D207: Coluna "Destaque" no CSV da sazonalidade financeira mensal (`monthlySeasonalityToCsv`)
+- **Contexto:** as D205/D206 (Sessões 212/213) levaram a coluna "Destaque" para os dois CSVs de shows do eixo
+  "Stat → uma linha por categoria + Total" (`gigSeasonalityToCsv` e `weekdayPerformanceToCsv`). O CSV irmão do
+  eixo **financeiro** — a sazonalidade de receita/despesa/resultado por mês do calendário
+  (`monthlySeasonalityToCsv`, `/financas/sazonalidade`) — seguia como retrato cru: as 12 linhas de mês traziam
+  receita/despesa/resultado médios + nº de anos ativos, mas não marcavam **quais** meses são os destaques que a
+  tela mostra em cards (melhor mês típico / mês mais fraco, ambos por resultado médio `avgNet`), obrigando quem
+  baixa a planilha a recomputar o desempate à mão. Foi o "próximo possível" registrado no item 2c do PROGRESS.
+- **Decisão:** adicionar uma 6ª coluna "Destaque" em `MONTHLY_SEASONALITY_CSV_HEADERS` alimentada por um helper
+  puro interno `seasonalMonthHighlight(season, m)` em `src/lib/csv.ts`, espelho conceitual de
+  `gigMonthHighlight`/`weekdayHighlight`: reusa os campos `best`/`worst` já computados por `monthlySeasonality`
+  (casando por `monthIndex`), **zero lógica pura nova de agregação**. `best`→"Melhor mês típico",
+  `worst`→"Mês mais fraco". Meses sem movimento (`years === 0`) e a linha Total ficam em branco.
+- **Justificativa:** fecha a lacuna de simetria dos CSVs de "Destaque" para o eixo das Finanças com a mesma
+  mecânica já testada, tornando a planilha auto-explicativa e ordenável/filtrável por papel. É apresentação
+  derivada de campos já computados; nenhum I/O extra (o route só embrulha o serializador) e a saída sem destaques
+  a distinguir permanece coerente. Sem `previousYear`/parâmetros novos: a assinatura pública fica intocada.
+- **Diferença estrutural vs. D205/D206:** ao contrário dos CSVs de shows (onde `busiest`/`bestByVolume`/`bestByAvg`
+  são eixos distintos e um mês/dia pode **acumular** papéis, juntados com " / "), a sazonalidade financeira tem um
+  **único** eixo — o resultado típico `avgNet` — então cada mês é o melhor **OU** o mais fraco, nunca os dois:
+  `seasonalMonthHighlight` devolve no máximo um rótulo, sem juntar com " / ". Quando só há um mês ativo, `best` e
+  `worst` apontam para ele e vence "Melhor mês típico" (mesma supressão do "mais fraco" da D204/`gigMonthHighlight`).
+- **Alternativas consideradas:** (a) marcar também destaques por **receita** ou **despesa** média (não só
+  resultado) — descartada: a tela só destaca por resultado médio, e inventar papéis que a UI não mostra quebraria
+  o espelhamento tela↔CSV; (b) selos na tabela da própria página (a UI só tem os dois cards, sem selos por linha,
+  diferente da tela de shows) — fora de escopo desta sessão, que é só o CSV.
+- **Testes:** +2 `it` em `csv.test.ts` (melhor + mais fraco marcados com um mês no meio sem papel; num único mês
+  ativo vence "Melhor mês típico") + atualização das 3 asserções existentes de formato (6ª coluna vazia no empty
+  state, no mês sem movimento e no Total). Suíte **1177 → 1179**, todos verdes.
+- **DoD:** build de produção verde; lint (`next lint`, 0 avisos); typecheck (`tsc --noEmit`) limpo; **1179
+  testes**; smoke test — build compila a rota `/financas/sazonalidade/export`. `npm audit` **inalterado** vs.
+  baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6);
+  **nenhuma dependência nova**.

@@ -9,7 +9,20 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1177 testes** verdes após a **coluna "Destaque" no CSV do
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1179 testes** verdes após a **coluna "Destaque" no CSV da
+sazonalidade financeira mensal** (Sessão 214, D207 — as D205/D206 (Sessões 212/213) levaram a coluna "Destaque" para os dois CSVs de
+shows do eixo "Stat → linhas + Total" (`gigSeasonalityToCsv` e `weekdayPerformanceToCsv`), mas o CSV irmão do eixo **financeiro** — a
+sazonalidade de receita/despesa/resultado por mês do calendário (`monthlySeasonalityToCsv`, `/financas/sazonalidade`) — seguia como
+retrato cru: 12 linhas de mês com receita/despesa/resultado médios + nº de anos ativos, sem marcar **quais** meses são os destaques que a
+tela mostra em cards (melhor mês típico / mês mais fraco, ambos por resultado médio `avgNet`). Nova 6ª coluna "Destaque" em
+`MONTHLY_SEASONALITY_CSV_HEADERS` + helper puro interno `seasonalMonthHighlight(season, m)` em `src/lib/csv.ts` que reusa os campos
+`best`/`worst` já computados por `monthlySeasonality` (casando por `monthIndex`, **zero lógica pura nova**): `best`→"Melhor mês típico",
+`worst`→"Mês mais fraco"; meses sem movimento (`years === 0`) e a linha Total ficam em branco. Diferente dos CSVs de shows (onde um
+mês/dia acumula papéis de eixos distintos, juntados com " / "), a sazonalidade financeira tem um **único** eixo — o resultado típico —
+então cada mês é o melhor **OU** o mais fraco, nunca os dois (no máximo um rótulo, sem juntar); com um só mês ativo `best === worst` e
+vence "Melhor mês típico" (mesma supressão da D204). Fecha a simetria dos CSVs de "Destaque" para o eixo das Finanças, apontada no item
+2c. **+2 testes** (+ 3 asserções de formato atualizadas: 6ª coluna vazia no empty state, no mês zerado e no Total)) sobre os **1177
+testes** verdes após a **coluna "Destaque" no CSV do
 desempenho por dia da semana** (Sessão 213, D206 — a D205 (Sessão 212) levou a coluna "Destaque" para o CSV da sazonalidade de shows
 (`gigSeasonalityToCsv`) e deixou explícito como próximo passo a **coluna simétrica no CSV irmão de dias-da-semana**
 (`weekdayPerformanceToCsv`, `/shows/dias-semana`), o único dos dois CSVs de "eixo Stat → linhas + Total" ainda sem a marcação dos
@@ -3436,10 +3449,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `WEEKDAY_PERFORMANCE_CSV_HEADERS` + `weekdayHighlight` em `src/lib/csv.ts` (espelho de `gigMonthHighlight`, três
    papéis: mais cheio / mais faturamento / melhor cachê médio; sem "mais fraco" porque `WeekdayPerformance` não
    computa `quietest`), ver D206.
+   **Coluna "Destaque" no CSV de sazonalidade financeira mensal** entregue na Sessão 214 — 6ª coluna em
+   `MONTHLY_SEASONALITY_CSV_HEADERS` + `seasonalMonthHighlight` em `src/lib/csv.ts` (reusa `best`/`worst` de
+   `monthlySeasonality`, um único eixo `avgNet` → melhor mês típico / mês mais fraco, no máximo um papel por mês), ver D207.
    Próximo possível —
-   recorte por ano (`?ano=`, adiado na D133(b) porque a sazonalidade ganha sentido somando os anos), a mesma coluna
-   "Destaque" no CSV de sazonalidade mensal de receita (`monthlySeasonalityToCsv`, embora lá o eixo seja financeiro,
-   não de shows), ou um mini-gráfico dos 12 meses embutido no Painel (adiado na D134(d): o Painel já é denso).
+   recorte por ano (`?ano=`, adiado na D133(b) porque a sazonalidade ganha sentido somando os anos), selos por linha na
+   própria tabela de `/financas/sazonalidade` (a UI só tem os dois cards, sem marca por linha), ou um mini-gráfico dos 12
+   meses embutido no Painel (adiado na D134(d): o Painel já é denso).
 2b. **Funil de propostas — evoluções** (entregue na Sessão 51, `/shows/funil` + `showPipeline`,
    ver D42; **card do funil no Painel** entregue na Sessão 52 — cachê em aberto + taxa de
    concretização, ver D43; **exportação CSV do funil** entregue na Sessão 167 — `pipelineToCsv` +

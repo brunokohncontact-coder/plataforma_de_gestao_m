@@ -1076,10 +1076,11 @@ describe("monthlySeasonalityToCsv", () => {
     expect(lines[0]).toBe(MONTHLY_SEASONALITY_CSV_HEADERS.join(";"));
     // cabeçalho + 12 meses + Total
     expect(lines).toHaveLength(14);
-    expect(lines[1]).toBe("Janeiro;0,00;0,00;0,00;0");
-    expect(lines[12]).toBe("Dezembro;0,00;0,00;0,00;0");
+    // Sem movimento nenhum mês é destaque (7ª coluna em branco).
+    expect(lines[1]).toBe("Janeiro;0,00;0,00;0,00;0;");
+    expect(lines[12]).toBe("Dezembro;0,00;0,00;0,00;0;");
     // Total = ano típico composto (zerado) + amplitude do histórico (0 anos).
-    expect(lines[13]).toBe("Total;0,00;0,00;0,00;0");
+    expect(lines[13]).toBe("Total;0,00;0,00;0,00;0;");
   });
 
   it("serializa a média por ano-ativo (receita/despesa/resultado) por mês + Total composto", () => {
@@ -1099,8 +1100,9 @@ describe("monthlySeasonalityToCsv", () => {
     expect(março[3]).toBe("1750,00");
     expect(março[4]).toBe("2"); // dois anos com movimento em março
     // Total: ano típico composto (soma das médias) + amplitude do histórico.
+    // Destaque do Total sempre em branco.
     const total = lines[13].split(";");
-    expect(total).toEqual(["Total", "2000,00", "250,00", "1750,00", "2"]);
+    expect(total).toEqual(["Total", "2000,00", "250,00", "1750,00", "2", ""]);
   });
 
   it("registra 0,00 e 0 nos meses sem movimento (não usa o '—' da UI)", () => {
@@ -1108,7 +1110,31 @@ describe("monthlySeasonalityToCsv", () => {
       tx({ date: "2024-03-01T00:00:00.000Z", amount: 100000 }),
     ]);
     const janeiro = monthlySeasonalityToCsv(seasonality).split("\r\n")[1].split(";");
-    expect(janeiro).toEqual(["Janeiro", "0,00", "0,00", "0,00", "0"]);
+    // Sem movimento em janeiro: destaque em branco (7ª coluna).
+    expect(janeiro).toEqual(["Janeiro", "0,00", "0,00", "0,00", "0", ""]);
+  });
+
+  it("marca na coluna Destaque o melhor mês típico e o mais fraco (por resultado médio)", () => {
+    // Março rende +1000 (melhor), agosto -500 (mais fraco), maio +200 (nenhum).
+    const seasonality = monthlySeasonality([
+      tx({ date: "2024-03-10T00:00:00.000Z", type: "INCOME", amount: 100000 }),
+      tx({ date: "2024-05-10T00:00:00.000Z", type: "INCOME", amount: 20000 }),
+      tx({ date: "2024-08-10T00:00:00.000Z", type: "EXPENSE", amount: 50000 }),
+    ]);
+    const lines = monthlySeasonalityToCsv(seasonality).split("\r\n");
+    expect(lines[3].split(";")[5]).toBe("Melhor mês típico"); // março
+    expect(lines[5].split(";")[5]).toBe(""); // maio, no meio
+    expect(lines[8].split(";")[5]).toBe("Mês mais fraco"); // agosto
+  });
+
+  it("com um só mês ativo, 'Melhor mês típico' vence (suprime 'Mês mais fraco')", () => {
+    // Só março tem movimento: best === worst; vence o melhor.
+    const seasonality = monthlySeasonality([
+      tx({ date: "2024-03-10T00:00:00.000Z", type: "INCOME", amount: 100000 }),
+    ]);
+    const março = monthlySeasonalityToCsv(seasonality).split("\r\n")[3].split(";");
+    expect(março[0]).toBe("Março");
+    expect(março[5]).toBe("Melhor mês típico");
   });
 });
 

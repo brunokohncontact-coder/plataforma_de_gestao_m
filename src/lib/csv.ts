@@ -21,6 +21,7 @@ import {
   type AnnualSummary,
   type MonthlySeasonality,
   type QuarterlySummary,
+  type SeasonalMonth,
   type ShowLike,
   type ShowProfitRow,
   type VenueProfitRow,
@@ -275,7 +276,27 @@ export const MONTHLY_SEASONALITY_CSV_HEADERS = [
   "Despesa média (R$)",
   "Resultado médio (R$)",
   "Anos",
+  "Destaque",
 ] as const;
+
+/**
+ * Rótulo de destaque de um mês na sazonalidade financeira, espelhando os dois
+ * cards de destaque da página `/financas/sazonalidade` (melhor mês típico /
+ * mês mais fraco, ambos por **resultado médio** `avgNet`). Diferente dos CSVs
+ * irmãos `gigMonthHighlight`/`weekdayHighlight` (que acumulam vários papéis com
+ * " / "), aqui há um único eixo — o resultado típico — e portanto no máximo um
+ * papel por mês: um mês é o melhor OU o mais fraco, nunca os dois. Quando só há
+ * um mês ativo, `best` e `worst` apontam para ele; nesse caso vence "Melhor mês
+ * típico" (a supressão do "mais fraco" quando o mês é também o melhor, mesma
+ * regra de `gigMonthHighlight`/D204). Meses sem movimento (`years === 0`) nunca
+ * são destaque. Pura.
+ */
+function seasonalMonthHighlight(season: MonthlySeasonality, m: SeasonalMonth): string {
+  if (m.years === 0) return "";
+  if (season.best?.monthIndex === m.monthIndex) return "Melhor mês típico";
+  if (season.worst?.monthIndex === m.monthIndex) return "Mês mais fraco";
+  return "";
+}
 
 /**
  * Serializa a sazonalidade financeira por mês do ano (`monthlySeasonality`) em
@@ -291,6 +312,13 @@ export const MONTHLY_SEASONALITY_CSV_HEADERS = [
  * — um número de planejamento, não a soma dos totais brutos. Na coluna "Anos"
  * traz `yearsObserved`, a amplitude do histórico (anos distintos com qualquer
  * transação), conceitualmente distinta dos anos-ativos por mês.
+ *
+ * A coluna "Destaque" replica os dois cards da tela (melhor mês típico / mês
+ * mais fraco, por resultado médio), para a planilha ficar auto-explicativa e
+ * ordenável/filtrável por papel — espelho da coluna homônima de
+ * `gigSeasonalityToCsv`/`weekdayPerformanceToCsv` (D205/D206), mas com um único
+ * eixo (o resultado típico), então no máximo um papel por mês. Meses sem
+ * movimento e a linha Total ficam em branco.
  *
  * Mesma convenção pt-BR de `transactionsToCsv` (delimitador ";", decimal com
  * vírgula). Irmão de `gigSeasonalityToCsv` no eixo das Finanças. Pura.
@@ -311,6 +339,7 @@ export function monthlySeasonalityToCsv(
       centsToCsvAmount(m.avgExpense),
       centsToCsvAmount(m.avgNet),
       String(m.years),
+      seasonalMonthHighlight(seasonality, m),
     ]);
   }
   rows.push([
@@ -319,6 +348,7 @@ export function monthlySeasonalityToCsv(
     centsToCsvAmount(typicalExpense),
     centsToCsvAmount(typicalIncome - typicalExpense),
     String(seasonality.yearsObserved),
+    "",
   ]);
   return toCsv(rows, delimiter);
 }
