@@ -4,10 +4,12 @@ import { prisma } from "@/lib/prisma";
 import {
   feeDistribution,
   feeDistributionYears,
+  compareFeeDistribution,
   parseProfitYear,
   filterShowsByYear,
   type ReceivableShowLike,
   type FeeBandStat,
+  type FeeDistributionComparison,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { PeriodPicker } from "@/components/PeriodPicker";
@@ -46,6 +48,29 @@ export default async function FeeDistributionPage({
 
   const dist = feeDistribution(shows);
   const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
+
+  // Comparativo ano a ano do cachê mediano (espelha o card de antecedência/
+  // concentração ano a ano, D187/D120, no eixo do nível de preço — "meus cachês
+  // subiram?"): só faz sentido com um ano específico e ambos os períodos tendo
+  // shows realizados com cachê — senão a comparação de medianas seria enganosa
+  // (mediana de amostra vazia é 0). Reaproveita o mesmo recorte por ano UTC
+  // (D108) sobre os registros já carregados, sem nova consulta.
+  let comparison: FeeDistributionComparison | null = null;
+  let previousYear = 0;
+  if (yearFilter !== "all") {
+    previousYear = yearFilter - 1;
+    const previousDist = feeDistribution(
+      filterShowsByYear(rows, previousYear).map((s) => ({
+        id: s.id,
+        fee: s.fee,
+        status: s.status,
+        date: s.date,
+      })),
+    );
+    if (dist.totalShows > 0 && previousDist.totalShows > 0) {
+      comparison = compareFeeDistribution(dist, previousDist);
+    }
+  }
 
   // Escala das barras: maior nº de shows numa faixa (distribuição por contagem).
   const peakCount = Math.max(1, ...dist.bands.map((b) => b.count));
@@ -145,6 +170,14 @@ export default async function FeeDistributionPage({
             />
           </div>
 
+          {comparison && (
+            <FeeComparisonCard
+              comparison={comparison}
+              currentYear={yearFilter as number}
+              previousYear={previousYear}
+            />
+          )}
+
           {/* Distribuição por faixa */}
           <section className="card overflow-x-auto">
             <h2 className="mb-1 font-semibold">Distribuição por faixa de preço</h2>
@@ -187,6 +220,97 @@ export default async function FeeDistributionPage({
           </section>
         </>
       )}
+    </div>
+  );
+}
+
+/** Rótulo + tom do veredito do comparativo ano a ano do cachê mediano. */
+const FEE_TREND: Record<
+  FeeDistributionComparison["trend"],
+  { label: string; emoji: string; classes: string; note: string }
+> = {
+  up: {
+    label: "Cachês em alta",
+    emoji: "🟢",
+    classes: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    note: "O cachê típico (mediano) subiu em relação ao ano anterior — sinal de progressão: os shows passaram a pagar mais. Bom momento para firmar o novo patamar nas próximas propostas.",
+  },
+  down: {
+    label: "Cachês em baixa",
+    emoji: "🔴",
+    classes: "border-red-200 bg-red-50 text-red-800",
+    note: "O cachê típico (mediano) caiu em relação ao ano anterior — os shows vêm pagando menos. Vale revisar a tabela de preços e priorizar contratantes/faixas que sustentam o valor.",
+  },
+  stable: {
+    label: "Estável",
+    emoji: "⚪",
+    classes: "border-gray-200 bg-gray-50 text-gray-700",
+    note: "O cachê típico (mediano) ficou praticamente igual ao do ano anterior.",
+  },
+};
+
+/** Variação em dinheiro com sinal (ex.: 20000 → "+R$ 200,00"; -5000 → "−R$ 50,00"). */
+function moneyDelta(delta: number): string {
+  if (delta === 0) return "R$ 0,00";
+  return `${delta > 0 ? "+" : "−"}${formatMoney(Math.abs(delta))}`;
+}
+
+/** Variação relativa (0..1) com sinal (ex.: 0.2 → "+20%"); null → "". */
+function pctDelta(pct: number | null): string {
+  if (pct == null) return "";
+  const rounded = Math.round(pct * 100);
+  if (rounded === 0) return "0%";
+  return `${rounded > 0 ? "+" : "−"}${Math.abs(rounded)}%`;
+}
+
+/**
+ * Card "Cachê {ano} vs. {ano-1}": compara o cachê mediano do ano selecionado com
+ * o do ano anterior (espelha o comparativo ano a ano de antecedência/concentração,
+ * D187/D120, no eixo do nível de preço). Mostra a variação do mediano (com %) e da
+ * média, com um veredito de tendência (em alta × em baixa). Aqui **subir** é a
+ * melhora — a leitura direta de progressão de carreira.
+ */
+function FeeComparisonCard({
+  comparison,
+  currentYear,
+  previousYear,
+}: {
+  comparison: FeeDistributionComparison;
+  currentYear: number;
+  previousYear: number;
+}) {
+  const trend = FEE_TREND[comparison.trend];
+  const { current, previous } = comparison;
+  const pct = pctDelta(comparison.medianFeePct);
+  return (
+    <div className={"card border " + trend.classes}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide opacity-80">
+          Cachê {currentYear} vs. {previousYear}
+        </p>
+        <span className="badge bg-white/70 font-semibold">
+          {trend.emoji} {trend.label}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+        <div>
+          <p className="text-2xl font-bold">
+            {moneyDelta(comparison.medianFeeDelta)}
+            {pct && <span className="ml-2 text-base font-semibold opacity-80">{pct}</span>}
+          </p>
+          <p className="text-xs opacity-80">
+            mediano: {formatMoney(previous.medianFee)} ({previousYear}) →{" "}
+            {formatMoney(current.medianFee)} ({currentYear})
+          </p>
+        </div>
+        <div>
+          <p className="text-2xl font-bold">{moneyDelta(comparison.avgFeeDelta)}</p>
+          <p className="text-xs opacity-80">
+            médio: {formatMoney(previous.avgFee)} → {formatMoney(current.avgFee)}
+          </p>
+        </div>
+      </div>
+      <p className="mt-3 text-xs opacity-90">{trend.note}</p>
     </div>
   );
 }
