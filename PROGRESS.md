@@ -9,7 +9,18 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1173 testes** verdes após o **destaque do "mês mais fraco"
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1175 testes** verdes após a **coluna "Destaque" no CSV da
+sazonalidade de shows** (Sessão 212, D205 — o CSV de `/shows/sazonalidade` (`gigSeasonalityToCsv`) trazia as 12 linhas de mês com
+contagem/cachê médio/faturamento/participações, mas era um retrato cru: não marcava **quais** meses são os destaques que a tela mostra
+(cards mais cheio/`busiest` + mais faturamento/`bestByVolume` + melhor cachê médio/`bestByAvg` + mais fraco/`quietest`; selos na tabela),
+obrigando quem baixa a planilha a reordenar e replicar à mão os desempates. Nova 7ª coluna "Destaque" em `GIG_SEASONALITY_CSV_HEADERS` +
+helper puro interno `gigMonthHighlight(season, month)` em `src/lib/csv.ts` que junta com " / " os papéis de cada mês na ordem dos cards
+(reusa os campos de destaque já computados por `gigSeasonality`, casando por `month`, **zero lógica pura nova de agregação**); meses sem
+shows e a linha Total ficam em branco; o selo "Mês mais fraco" é suprimido quando o mês é também o mais cheio (mesma regra da tabela da UI,
+D204). Fecha a lacuna adiada na D204(c) de forma mais completa que só exportar o `quietest`: exporta os quatro destaques, tornando a planilha
+auto-explicativa e ordenável/filtrável por papel. Adiado (D205): coluna simétrica no CSV irmão de dias-da-semana (`weekdayPerformanceToCsv`)
+e no mensal — próximo passo (dias-da-semana não tem `quietest`, mapeamento difere levemente). **+2 testes** (+ 2 asserções de formato
+atualizadas)) sobre os **1173 testes** verdes após o **destaque do "mês mais fraco"
 (vale da temporada) na sazonalidade de shows** (Sessão 211, D204 — `/shows/sazonalidade` (`gigSeasonality`/D133) já destacava três picos
 (mês mais cheio/`busiest` + mais faturamento/`bestByVolume` + melhor cachê médio/`bestByAvg`) e o texto da página fala em "revelar os vales
 da temporada — onde prospectar mais ou ajustar o preço", mas o **vale** não tinha destaque próprio (só o nudge forward-looking
@@ -3407,10 +3418,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    **Destaque do "mês mais fraco" (vale) na tela** entregue na Sessão 211 — campo `quietest` em `GigSeasonality`
    (`gigSeasonality`, mês de menos shows entre os ativos, espelho do `busiest` via `pick` negado, zero lógica pura nova) + 4º
    card de destaque "Mês mais fraco" (âmbar) e selo "mais fraco" na tabela de `/shows/sazonalidade`, ver D204.
+   **Coluna "Destaque" no CSV** entregue na Sessão 212 — 7ª coluna em `GIG_SEASONALITY_CSV_HEADERS` +
+   `gigMonthHighlight` em `src/lib/csv.ts` marca os papéis de cada mês (mais cheio / mais faturamento / melhor cachê
+   médio / mais fraco), tornando a planilha auto-explicativa e ordenável por papel, ver D205.
    Próximo possível —
-   recorte por ano (`?ano=`, adiado na D133(b) porque a sazonalidade ganha sentido somando os anos), exportação CSV
-   (adiada na D133(d): são só 12 linhas), ou um mini-gráfico dos 12 meses embutido no Painel (adiado na D134(d): o Painel
-   já é denso).
+   recorte por ano (`?ano=`, adiado na D133(b) porque a sazonalidade ganha sentido somando os anos), a mesma coluna
+   "Destaque" no CSV irmão de dias-da-semana (`weekdayPerformanceToCsv`) e no mensal (adiado na D205; dias-da-semana
+   não tem `quietest`), ou um mini-gráfico dos 12 meses embutido no Painel (adiado na D134(d): o Painel já é denso).
 2b. **Funil de propostas — evoluções** (entregue na Sessão 51, `/shows/funil` + `showPipeline`,
    ver D42; **card do funil no Painel** entregue na Sessão 52 — cachê em aberto + taxa de
    concretização, ver D43; **exportação CSV do funil** entregue na Sessão 167 — `pipelineToCsv` +
