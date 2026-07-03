@@ -9,7 +9,17 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1179 testes** verdes após a **coluna "Destaque" no CSV da
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1179 testes** verdes após os **selos "melhor mês" / "mais
+fraco" por linha na tabela de `/financas/sazonalidade`** (Sessão 215, D208 — a página já mostrava os dois destaques (melhor mês típico /
+mês mais fraco, por resultado médio `avgNet`) só em **cards** no topo; a tabela "Média por mês do ano" listava os 12 meses sem marcar
+**quais** linhas eram esses destaques, enquanto a tela irmã `/shows/sazonalidade` já destaca as linhas com selos (D204/D211) e o CSV
+financeiro ganhou a coluna "Destaque" na Sessão 214 (D207). Dois selos inline na célula "Mês": 🟢 "melhor mês" (`seasonality.best?.monthIndex
+=== m.monthIndex`, emerald) / 🟠 "mais fraco" (`seasonality.worst?.monthIndex === m.monthIndex`, amber), reusando os campos `best`/`worst` já
+computados por `monthlySeasonality` — **zero lógica pura nova** — com a **mesma regra de desempate** do helper testado `seasonalMonthHighlight`
+do CSV (D207): com um único mês ativo `best === worst` e "melhor mês" vence (o "mais fraco" é suprimido via `!isBest`); meses sem movimento
+(`years === 0`) nunca recebem selo. Fecha a assimetria tela↔CSV↔tela-de-shows e a alternativa (b) explicitamente adiada na D207. Mudança
+**UI-only** sobre campos já cobertos por `finance.test.ts`/`csv.test.ts`: **sem testes novos**, suíte inalterada em 1179 verdes) sobre os
+**1179 testes** verdes após a **coluna "Destaque" no CSV da
 sazonalidade financeira mensal** (Sessão 214, D207 — as D205/D206 (Sessões 212/213) levaram a coluna "Destaque" para os dois CSVs de
 shows do eixo "Stat → linhas + Total" (`gigSeasonalityToCsv` e `weekdayPerformanceToCsv`), mas o CSV irmão do eixo **financeiro** — a
 sazonalidade de receita/despesa/resultado por mês do calendário (`monthlySeasonalityToCsv`, `/financas/sazonalidade`) — seguia como
@@ -3452,10 +3462,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    **Coluna "Destaque" no CSV de sazonalidade financeira mensal** entregue na Sessão 214 — 6ª coluna em
    `MONTHLY_SEASONALITY_CSV_HEADERS` + `seasonalMonthHighlight` em `src/lib/csv.ts` (reusa `best`/`worst` de
    `monthlySeasonality`, um único eixo `avgNet` → melhor mês típico / mês mais fraco, no máximo um papel por mês), ver D207.
+   **Selos por linha na tabela de `/financas/sazonalidade`** entregue na Sessão 215 — selos inline 🟢 "melhor mês" /
+   🟠 "mais fraco" na célula "Mês" da tabela (reusa `best`/`worst`, mesma regra de desempate do CSV: com um único mês
+   ativo "melhor mês" vence; meses sem movimento nunca recebem selo), fechando a assimetria tela↔CSV↔tela-de-shows e a
+   alternativa (b) adiada na D207, ver D208.
    Próximo possível —
-   recorte por ano (`?ano=`, adiado na D133(b) porque a sazonalidade ganha sentido somando os anos), selos por linha na
-   própria tabela de `/financas/sazonalidade` (a UI só tem os dois cards, sem marca por linha), ou um mini-gráfico dos 12
-   meses embutido no Painel (adiado na D134(d): o Painel já é denso).
+   recorte por ano (`?ano=`, adiado na D133(b) porque a sazonalidade ganha sentido somando os anos) ou um mini-gráfico
+   dos 12 meses embutido no Painel (adiado na D134(d): o Painel já é denso).
 2b. **Funil de propostas — evoluções** (entregue na Sessão 51, `/shows/funil` + `showPipeline`,
    ver D42; **card do funil no Painel** entregue na Sessão 52 — cachê em aberto + taxa de
    concretização, ver D43; **exportação CSV do funil** entregue na Sessão 167 — `pipelineToCsv` +

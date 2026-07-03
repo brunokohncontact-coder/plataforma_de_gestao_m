@@ -120,12 +120,32 @@ export default async function FinanceSeasonalityPage() {
               <tbody>
                 {seasonality.months.map((m) => {
                   const empty = m.years === 0;
+                  const isBest =
+                    !empty && seasonality.best?.monthIndex === m.monthIndex;
+                  // Empate best === worst (um único mês ativo): "melhor" vence,
+                  // mesma regra da coluna "Destaque" do CSV (seasonalMonthHighlight/D207).
+                  const isWorst =
+                    !empty &&
+                    !isBest &&
+                    seasonality.worst?.monthIndex === m.monthIndex;
                   return (
                     <tr
                       key={m.monthIndex}
                       className={"border-b last:border-0 " + (empty ? "text-gray-400" : "")}
                     >
-                      <td className="py-2 pr-3 font-medium">{MONTH_NAMES[m.monthIndex - 1]}</td>
+                      <td className="py-2 pr-3 font-medium">
+                        {MONTH_NAMES[m.monthIndex - 1]}
+                        {isBest && (
+                          <span className="ml-2 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-700">
+                            melhor mês
+                          </span>
+                        )}
+                        {isWorst && (
+                          <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-600">
+                            mais fraco
+                          </span>
+                        )}
+                      </td>
                       <td className="py-2 px-3 text-right text-emerald-600">
                         {m.avgIncome > 0 ? formatMoney(m.avgIncome) : "—"}
                         <Bar value={m.avgIncome} peak={peak} tone="emerald" />
