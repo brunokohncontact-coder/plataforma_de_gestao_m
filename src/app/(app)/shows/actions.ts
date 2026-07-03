@@ -218,6 +218,41 @@ export async function setPaymentPromiseAction(formData: FormData): Promise<void>
   revalidatePath("/dashboard");
 }
 
+/**
+ * Lembra qual contato o usuário prefere cobrar por um show (a última escolha no
+ * seletor "quem cobrar" da lista de cachês a receber), para a próxima abertura da
+ * lista já vir pré-selecionada nele. Só grava um `contactId` que seja REALMENTE um
+ * contato do usuário vinculado ao show — qualquer outro valor (vazio, id desconhecido,
+ * contato de outro usuário) limpa a preferência (`null`), voltando à prioridade padrão
+ * por papel. Só atua sobre show do próprio usuário. Nunca confia no cliente. Ver D198.
+ */
+export async function setBillingContactAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const id = String(formData.get("id"));
+
+  // confirma posse do show antes de gravar
+  const show = await prisma.show.findFirst({ where: { id, userId: user.id } });
+  if (!show) return;
+
+  const rawContactId = formData.get("contactId");
+  const contactId =
+    typeof rawContactId === "string" && rawContactId.trim() !== ""
+      ? rawContactId.trim()
+      : null;
+
+  // só aceita um contato do usuário que esteja vinculado a este show; senão limpa
+  let value: string | null = null;
+  if (contactId) {
+    const link = await prisma.contactsOnShows.findFirst({
+      where: { showId: id, contactId, contact: { userId: user.id } },
+    });
+    value = link ? contactId : null;
+  }
+
+  await prisma.show.update({ where: { id }, data: { billingContactId: value } });
+  revalidatePath("/shows/a-receber");
+}
+
 export async function deleteShowAction(formData: FormData): Promise<void> {
   const user = await requireUser();
   const id = String(formData.get("id"));

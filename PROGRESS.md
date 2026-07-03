@@ -9,7 +9,21 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1145 testes** verdes após a **coluna "vs. {ano-1}" no
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1152 testes** verdes após **lembrar a última escolha de
+contato "quem cobrar" por show** (Sessão 205, D198 — a lista de cachês a receber (`/shows/a-receber`) monta por show os contatos
+alcançáveis em ordem de prioridade por papel (`buildShowBillings`/D30) e o `BillingActions` oferece um `<select>` "quem cobrar", mas
+a escolha era **efêmera** (só `useState`): reabrir a lista sempre voltava à escolha automática, obrigando o usuário a reeleger o
+contato de sempre daquele contratante toda vez — era o 1º "Próximo possível" do eixo de cachês a receber. Novo campo
+`Show.billingContactId` (`String?`, não relação) guarda a última escolha por show; helper puro `preferredBillingIndex(billings,
+preferredContactId?)` em `src/lib/billing.ts` devolve o índice do preferido na lista **já ordenada por prioridade** (0 sem
+preferência ou quando o preferido não é mais alcançável — a lista **não reordena**, só a seleção inicial muda, evitando
+reconciliação após `revalidatePath`); server action `setBillingContactAction` grava o `billingContactId` só quando o `contactId` é
+um contato **do usuário** e **vinculado ao show** (senão limpa para `null`), confirmando posse antes de gravar; `BillingActions`
+ganhou props opcionais `showId`/`initialIndex`/`action` e, na troca do seletor (com >1 contato), submete um form escondido para a
+action — sem `action`, segue puramente local. Campo simples e não relação: um id que deixou de ser alcançável é inofensivo (a lógica
+pura o ignora). Semântica de persistir na troca (revealed preference) e a opção de relação com `SetNull` ficaram registradas na
+D198. **+7 testes** (3 puros `preferredBillingIndex` + 4 de integração `setBillingContactAction`)) sobre os **1145 testes** verdes
+após a **coluna "vs. {ano-1}" no
 CSV do prazo de recebimento por contratante** (Sessão 204, D197 — a D196 (Sessão 203) levou a variação ano a ano do prazo médio para
 a **tela** de `/shows/prazo-recebimento/por-contratante` (coluna "vs. {ano-1}" por linha via `indexContactPaymentLagChanges`), mas o
 CSV do mesmo recorte (`/shows/prazo-recebimento/por-contratante/export`, D131) seguia só com o retrato do ano — quem baixasse a
@@ -3399,10 +3413,17 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    + `avgDaysDelta?`/`isNew?` em `PaymentLagByContactCsvRow` + `csvSignedDays`: `/shows/prazo-recebimento/por-contratante/export`
    ganha a coluna "vs. {ano-1} (dias)" (variação assinada / "novo" / branco) com o mesmo gate da página, sem `previousYear` a saída é
    idêntica à histórica, ver D197.
-   Próximo possível — lembrar a última escolha de contato por show; ou
+   **Lembrar a última escolha de contato "quem cobrar" por show** entregue na Sessão 205 — campo `Show.billingContactId` (`String?`)
+   + helper puro `preferredBillingIndex(billings, preferredContactId?)` em `src/lib/billing.ts` (índice do preferido na lista já
+   ordenada por prioridade; a lista **não reordena**, só a seleção inicial) + server action `setBillingContactAction` (grava só um
+   contato do usuário vinculado ao show, senão limpa; confirma posse) + props `showId`/`initialIndex`/`action` em `BillingActions`
+   (persiste na troca do seletor via form escondido). O seletor de `/shows/a-receber` reabre na última escolha do usuário para o
+   show em vez de sempre voltar à prioridade automática, ver D198.
+   Próximo possível —
    levar o prazo mediano por contratante também ao card do Painel (adiado na D130: o Painel já mostra o DSO mediano global via
    `paymentLagHeadline`); ou exportar o agregado por baldes de velocidade (5 linhas-resumo) se houver demanda (descartado
-   na D132(a) por baixo valor de planilha).
+   na D132(a) por baixo valor de planilha); ou promover `billingContactId` a relação com `onDelete: SetNull` na migração a Postgres
+   (adiado na D198).
 4. **Sessões/segurança / gestão de conta**: invalidação ao trocar a senha entregue na Sessão 26
    (`passwordChangedAt` + `isSessionFresh`, ver D17); **troca do e-mail de acesso** entregue na Sessão 189
    — `changeEmailAction` + `changeEmailSchema` + `EmailForm.tsx` na página `/conta` (exige a senha atual,

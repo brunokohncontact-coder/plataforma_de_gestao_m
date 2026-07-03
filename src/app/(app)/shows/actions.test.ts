@@ -35,6 +35,7 @@ import {
   linkContactToShowAction,
   settleShowFeeAction,
   setPaymentPromiseAction,
+  setBillingContactAction,
   unlinkContactFromShowAction,
   updateShowAction,
 } from "./actions";
@@ -383,6 +384,76 @@ describe("setPaymentPromiseAction — data prometida de pagamento", () => {
 
     const fresh = await prisma.show.findUnique({ where: { id: show.id } });
     expect(fresh?.paymentPromisedAt).toBeNull();
+  });
+});
+
+describe("setBillingContactAction — lembra quem cobrar", () => {
+  it("grava o contato preferido quando ele está vinculado ao show do usuário", async () => {
+    const owner = await createUser("owner@example.com");
+    const show = await createShow(owner.id, { fee: 50000, status: "PLAYED" });
+    const contact = await createContact(owner.id, { email: "c@x.com" });
+    await prisma.contactsOnShows.create({ data: { showId: show.id, contactId: contact.id } });
+
+    h.currentUser = owner;
+    const fd = new FormData();
+    fd.set("id", show.id);
+    fd.set("contactId", contact.id);
+    await setBillingContactAction(fd);
+
+    const fresh = await prisma.show.findUnique({ where: { id: show.id } });
+    expect(fresh?.billingContactId).toBe(contact.id);
+  });
+
+  it("limpa a preferência (null) quando o contactId vem vazio", async () => {
+    const owner = await createUser("owner@example.com");
+    const contact = await createContact(owner.id, { email: "c@x.com" });
+    const show = await createShow(owner.id, {
+      fee: 50000,
+      status: "PLAYED",
+      billingContactId: contact.id,
+    });
+    await prisma.contactsOnShows.create({ data: { showId: show.id, contactId: contact.id } });
+
+    h.currentUser = owner;
+    const fd = new FormData();
+    fd.set("id", show.id);
+    fd.set("contactId", "");
+    await setBillingContactAction(fd);
+
+    const fresh = await prisma.show.findUnique({ where: { id: show.id } });
+    expect(fresh?.billingContactId).toBeNull();
+  });
+
+  it("NÃO grava um contato que não está vinculado ao show (limpa)", async () => {
+    const owner = await createUser("owner@example.com");
+    const show = await createShow(owner.id, { fee: 50000, status: "PLAYED" });
+    const unlinked = await createContact(owner.id, { email: "c@x.com" });
+
+    h.currentUser = owner;
+    const fd = new FormData();
+    fd.set("id", show.id);
+    fd.set("contactId", unlinked.id); // do usuário, mas NÃO vinculado ao show
+    await setBillingContactAction(fd);
+
+    const fresh = await prisma.show.findUnique({ where: { id: show.id } });
+    expect(fresh?.billingContactId).toBeNull();
+  });
+
+  it("NÃO altera a preferência de um show de outro usuário", async () => {
+    const owner = await createUser("owner@example.com");
+    const attacker = await createUser("attacker@example.com");
+    const contact = await createContact(owner.id, { email: "c@x.com" });
+    const show = await createShow(owner.id, { fee: 50000, status: "PLAYED" });
+    await prisma.contactsOnShows.create({ data: { showId: show.id, contactId: contact.id } });
+
+    h.currentUser = attacker;
+    const fd = new FormData();
+    fd.set("id", show.id);
+    fd.set("contactId", contact.id);
+    await setBillingContactAction(fd);
+
+    const fresh = await prisma.show.findUnique({ where: { id: show.id } });
+    expect(fresh?.billingContactId).toBeNull(); // inalterado
   });
 });
 

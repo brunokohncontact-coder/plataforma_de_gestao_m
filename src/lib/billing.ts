@@ -247,6 +247,24 @@ export function buildShowBillings(
 }
 
 /**
+ * Índice do contato preferido (`preferredContactId`, a última escolha lembrada pelo
+ * usuário no seletor "quem cobrar") dentro de uma lista de cobranças já ordenada por
+ * prioridade (ver `buildShowBillings`). Serve para o seletor abrir já na última
+ * escolha SEM reordenar a lista — a ordem por papel permanece estável, só a seleção
+ * inicial muda. Devolve 0 (a escolha automática por prioridade) quando não há
+ * preferência ou quando o contato preferido não está mais entre os alcançáveis (foi
+ * desvinculado ou perdeu o canal de contato). Puro.
+ */
+export function preferredBillingIndex(
+  billings: ShowBilling[],
+  preferredContactId?: string | null,
+): number {
+  if (!preferredContactId) return 0;
+  const idx = billings.findIndex((b) => b.contact.id === preferredContactId);
+  return idx >= 0 ? idx : 0;
+}
+
+/**
  * Junta tudo para o contato de maior prioridade: escolhe o contato a cobrar, redige
  * a mensagem e monta os atalhos mailto/WhatsApp prontos para a UI. `null` quando o
  * show não tem nenhum contato alcançável vinculado (a UI então sugere vincular um).

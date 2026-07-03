@@ -6380,3 +6380,62 @@ contexto, decisão, justificativa e alternativas consideradas.
   typecheck (`tsc --noEmit`) limpo; **1145 testes**; smoke test — app sobe, `/login` 200. `npm audit` **inalterado** vs. baseline
   (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência
   nova**.
+
+## 2026-07-03 — D198: Lembrar a última escolha de contato "quem cobrar" por show
+- **Contexto:** a tela de cachês a receber (`/shows/a-receber`) monta, por show com saldo em
+  aberto, a lista de contatos alcançáveis em ordem de prioridade por papel (`buildShowBillings`,
+  D27/D30) e o componente client `BillingActions` oferece um `<select>` "quem cobrar" quando há
+  mais de um. Até aqui a escolha era **efêmera** (só `useState`): recarregar a lista (ou voltar a
+  ela depois) sempre reabria na escolha automática por prioridade, obrigando o usuário a reeleger o
+  contato de sempre daquele contratante toda vez. Era o 1º item do "Próximo possível" do eixo de
+  cachês a receber no PROGRESS (item 5).
+- **Decisão:** persistir a última escolha por show num novo campo `Show.billingContactId`
+  (`String?`) e reabrir o seletor já nela. Peças:
+  - **Schema:** `billingContactId String?` no `Show` — campo simples, **não** relação.
+  - **Lógica pura** (`src/lib/billing.ts`): `preferredBillingIndex(billings, preferredContactId?)`
+    devolve o índice do contato preferido na lista **já ordenada por prioridade** (0 sem
+    preferência ou quando o preferido não está mais entre os alcançáveis). A lista **não reordena** —
+    só a seleção inicial muda.
+  - **Server action** (`src/app/(app)/shows/actions.ts`): `setBillingContactAction` grava
+    `billingContactId` só quando o `contactId` é um contato **do usuário** e **vinculado ao show**;
+    qualquer outro valor (vazio, id desconhecido, contato de outro usuário) **limpa** a preferência
+    (`null`). Confirma posse do show antes de gravar; nunca confia no cliente.
+  - **UI** (`BillingActions.tsx`): novos props opcionais `showId`, `initialIndex`, `action`. Ao
+    trocar o contato no seletor (com >1 contato), submete um form escondido para a action,
+    persistindo a escolha; sem `action`, o seletor segue puramente local (comportamento histórico).
+- **Justificativa:**
+  - **Não reordenar, só pré-selecionar** (via `preferredBillingIndex`): evita a reconciliação
+    problemática de reordenar a lista no servidor após gravar — se a lista mudasse de ordem, o
+    índice otimista do cliente apontaria para outro contato depois do `revalidatePath`. Com ordem
+    estável, o `initialIndex` pós-refresh coincide com o índice já escolhido no cliente.
+  - **Campo `String?` simples, não relação:** evita uma back-relation em `Contact` e a
+    desambiguação de `@relation` (o `Show` já se relaciona a `Contact` via `ContactsOnShows`). Um id
+    que deixou de ser alcançável (contato desvinculado / sem canal) é **inofensivo**: a lógica pura
+    o ignora e a cobrança volta à prioridade por papel. Portável a Postgres (vira FK/`SetNull` se
+    quiser, sem migração de dados).
+  - **Validar contra o vínculo na action:** garante que a preferência gravada é sempre um contato
+    real do show do usuário (isolamento por usuário), mesma disciplina de `linkContactToShowAction`.
+- **Semântica (discutível):** persistir **na troca do seletor** (revealed preference) — a hipótese
+  é que trocar de contato para um show sinaliza "é este que eu cobro por aqui". Uma seleção
+  pontual vira o padrão dali em diante; para desfazer, basta reescolher. A alternativa de
+  persistir só ao **agir** (clicar E-mail/WhatsApp) foi descartada: os atalhos são `<a href>`
+  (mailto/wa.me) que saem da página, e amarrar um POST ao clique do link é frágil.
+- **Alternativas consideradas:** (a) manter efêmero (status quo) — descartado, é justamente o
+  atrito que o item de PROGRESS pedia resolver; (b) relação `billingContact Contact?` com
+  `onDelete: SetNull` — mais "correto" mas exige back-relation + nome de relação; adiável até a
+  migração a Postgres (o `String?` + validação na borda é a mesma postura da D5 para os "enums");
+  (c) botão explícito "⭐ padrão" em vez de persistir na troca — mais UI para o mesmo efeito, e a
+  troca no seletor já é o gesto natural de "quero cobrar este".
+- **Escopo (o que ficou de fora):** só a tela por-show (`/shows/a-receber`); a visão por
+  contratante (`/shows/a-receber/por-contratante`) cobra um contratante consolidado (D93), não tem
+  seleção por show a lembrar. Sem UI para "esquecer" além de reescolher.
+- **Testes:** +3 puros em `billing.test.ts` (`preferredBillingIndex`: sem preferência → 0;
+  índice do preferido presente; 0 para preferido desconhecido / lista vazia) e +4 de integração em
+  `shows/actions.test.ts` (`setBillingContactAction`: grava contato vinculado; limpa com contactId
+  vazio; não grava contato não vinculado ao show; não altera show de outro usuário). Suíte
+  **1145 → 1152**, todos verdes.
+- **DoD:** build de produção verde; lint (`next lint`, 0 avisos); typecheck (`tsc --noEmit`) limpo;
+  **1152 testes**; smoke test — app sobe, `/shows/a-receber` 307 → `/login` (rota protegida). `npm
+  audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do
+  Next 14 / postcss bundlado; ver D6); **nenhuma dependência nova**. Schema aplicado ao dev/test DB
+  via `prisma db push` (sem migrations, alinhado à D3).
