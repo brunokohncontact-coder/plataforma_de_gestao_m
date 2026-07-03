@@ -6924,6 +6924,14 @@ export interface GigSeasonality {
   bestByVolume: GigMonthStat | null;
   /** Mês com mais shows (empate → maior faturamento, depois mês mais cedo); null se nenhum. */
   busiest: GigMonthStat | null;
+  /**
+   * Mês mais quieto — o de MENOS shows entre os que tiveram algum (empate →
+   * menor faturamento, depois mês mais cedo); null se nenhum. O vale da
+   * temporada, para saber onde prospectar mais ou rever o preço. Considera só
+   * meses com shows (`count > 0`): um mês historicamente vazio não é "fraco",
+   * é ausência de dado.
+   */
+  quietest: GigMonthStat | null;
 }
 
 /**
@@ -7002,6 +7010,10 @@ export function gigSeasonality(
     bestByAvg: pick((m) => m.avgFee, (m) => m.count),
     bestByVolume: pick((m) => m.totalFee, (m) => m.count),
     busiest: pick((m) => m.count, (m) => m.totalFee),
+    // Espelho de `busiest`: negando rank e desempate, `pick` (que exige `>`
+    // estrito e itera jan→dez) devolve o menor count, depois o menor totalFee,
+    // depois o mês mais cedo — sem lógica nova.
+    quietest: pick((m) => -m.count, (m) => -m.totalFee),
   };
 }
 

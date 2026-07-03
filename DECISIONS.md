@@ -6650,3 +6650,33 @@ contexto, decisão, justificativa e alternativas consideradas.
   typecheck (`tsc --noEmit`) limpo; **1172 testes**; smoke test — app sobe (`/login` 200). `npm audit`
   **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss
   bundlado; ver D6); **nenhuma dependência nova**.
+
+## 2026-07-03 — D204: Destaque do "mês mais fraco" (vale da temporada) na sazonalidade de shows (`quietest` em `gigSeasonality`)
+- **Contexto:** `/shows/sazonalidade` (`gigSeasonality`/D133) já destacava três picos da temporada — mês
+  mais cheio (`busiest`), mais faturamento (`bestByVolume`) e melhor cachê médio (`bestByAvg`) — e o
+  rodapé/texto da página fala em "revelar os vales da temporada — onde prospectar mais ou ajustar o preço",
+  mas o **vale** em si não tinha destaque próprio: era preciso varrer a coluna de shows na tabela para achar
+  o mês mais quieto. O Painel tem o nudge `gigSeasonalityLull`/D135 ("mês fraco à frente"), forward-looking e
+  gated por janela; faltava o retrato simétrico do `busiest` na própria tela, sem janela.
+- **Decisão:** novo campo `quietest: GigMonthStat | null` em `GigSeasonality` — o mês com **menos** shows
+  entre os que tiveram algum (`count > 0`), empate → menor faturamento → mês mais cedo. Implementado como
+  espelho exato do `busiest`: `pick((m) => -m.count, (m) => -m.totalFee)` reusa o mesmo seletor determinístico
+  (exige `>` estrito, itera jan→dez), **zero lógica pura nova**. Na página, 4º card de destaque "Mês mais
+  fraco" (tom âmbar) e selo "mais fraco" na linha da tabela (suprimido quando o mês também é o `busiest`, i.e.
+  um único mês com shows não é ao mesmo tempo pico e vale). Grid dos destaques passou a `sm:grid-cols-2
+  lg:grid-cols-4`.
+- **Justificativa:** o vale é tão acionável quanto o pico para planejar prospecção/preço (é o próprio texto da
+  página), e o número já estava computado — só faltava expô-lo. Considerar só meses com shows evita chamar de
+  "fraco" um mês historicamente vazio (ausência de dado, não sinal).
+- **Alternativas consideradas:** (a) definir o vale por menor `feeShare` em vez de menor `count` — descartada:
+  "menos shows" é a leitura mais intuitiva de mês quieto e casa com o `busiest` (que é por count); o
+  faturamento entra só no desempate; (b) incluir meses zerados como candidatos a vale — descartada: um mês
+  sem histórico não é fraco, é desconhecido; a tabela já mostra os zerados; (c) exportar o `quietest` no CSV —
+  desnecessário: o CSV já traz as 12 linhas com o count por mês, o vale é derivável.
+- **Testes:** +1 `it` em `finance.test.ts` (vale = mês de menos shows entre os ativos; zerados não competem) +
+  asserções de `quietest` nos testes existentes de destaque, empate e "sem shows" (null). Página é plumbing.
+  Suíte **1172 → 1173**, todos verdes.
+- **DoD:** build de produção verde (rota `/shows/sazonalidade` no manifesto); lint (`next lint`, 0 avisos);
+  typecheck (`tsc --noEmit`) limpo; **1173 testes**; smoke test — app sobe (`/` e `/login` 200). `npm audit`
+  **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss
+  bundlado; ver D6); **nenhuma dependência nova**.
