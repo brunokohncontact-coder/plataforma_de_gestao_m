@@ -6606,6 +6606,7 @@ describe("gigSeasonality", () => {
     expect(s.bestByAvg).toBeNull();
     expect(s.bestByVolume).toBeNull();
     expect(s.busiest).toBeNull();
+    expect(s.quietest).toBeNull();
   });
 
   it("colapsa todos os anos no mesmo mês do calendário", () => {
@@ -6674,6 +6675,27 @@ describe("gigSeasonality", () => {
     expect(s.bestByAvg?.month).toBe(11); // dezembro (600)
     expect(s.bestByVolume?.month).toBe(11); // dezembro (600 total)
     expect(s.busiest?.month).toBe(4); // maio (2 shows)
+    // Vale: jan e dez têm 1 show cada; empate no count resolve pelo menor
+    // faturamento → janeiro (100 < 600).
+    expect(s.quietest?.month).toBe(0);
+  });
+
+  it("mês mais fraco é o de menos shows entre os que tiveram algum", () => {
+    const s = gigSeasonality(
+      [
+        // Março: 1 show (o vale)
+        gig({ id: "mar", date: "2026-03-10T20:00:00.000Z", fee: 500_00 }),
+        // Julho: 3 shows
+        gig({ id: "jul1", date: "2026-07-02T20:00:00.000Z", fee: 100_00 }),
+        gig({ id: "jul2", date: "2026-07-09T20:00:00.000Z", fee: 100_00 }),
+        gig({ id: "jul3", date: "2026-07-16T20:00:00.000Z", fee: 100_00 }),
+      ],
+      { now },
+    );
+    // Só março e julho têm shows; março é o mais fraco (1 < 3). Meses zerados
+    // (com count 0) não competem por "mais fraco".
+    expect(s.quietest?.month).toBe(2); // março
+    expect(s.busiest?.month).toBe(6); // julho
   });
 
   it("empate total de destaque resolve pelo mês mais cedo do ano", () => {
@@ -6688,6 +6710,8 @@ describe("gigSeasonality", () => {
     expect(s.bestByAvg?.month).toBe(0);
     expect(s.bestByVolume?.month).toBe(0);
     expect(s.busiest?.month).toBe(0);
+    // O vale também resolve empate total pelo mês mais cedo.
+    expect(s.quietest?.month).toBe(0);
   });
 });
 

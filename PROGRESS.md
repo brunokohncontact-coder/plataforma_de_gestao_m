@@ -9,7 +9,16 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1172 testes** verdes após o **comparativo ano a ano do
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1173 testes** verdes após o **destaque do "mês mais fraco"
+(vale da temporada) na sazonalidade de shows** (Sessão 211, D204 — `/shows/sazonalidade` (`gigSeasonality`/D133) já destacava três picos
+(mês mais cheio/`busiest` + mais faturamento/`bestByVolume` + melhor cachê médio/`bestByAvg`) e o texto da página fala em "revelar os vales
+da temporada — onde prospectar mais ou ajustar o preço", mas o **vale** não tinha destaque próprio (só o nudge forward-looking
+`gigSeasonalityLull`/D135 no Painel). Novo campo `quietest: GigMonthStat | null` em `GigSeasonality`: o mês de **menos** shows entre os que
+tiveram algum (`count > 0`), empate → menor faturamento → mês mais cedo — espelho exato do `busiest` via `pick((m) => -m.count, (m) =>
+-m.totalFee)`, **zero lógica pura nova**. 4º card "Mês mais fraco" (âmbar) + selo "mais fraco" na linha da tabela (suprimido quando o mês é
+também o `busiest`); grid dos destaques → `sm:grid-cols-2 lg:grid-cols-4`. Meses zerados não competem (ausência de dado ≠ mês fraco).
+Adiado (D204): vale por `feeShare` (o count é mais intuitivo); exportar o `quietest` no CSV (o count por mês já está nas 12 linhas). **+1
+teste** (+ asserções de `quietest` nos testes de destaque/empate/vazio)) sobre os **1172 testes** verdes após o **comparativo ano a ano do
 cachê mediano na distribuição de faixas** (Sessão 210, D203 — `/shows/faixas-de-cache` (`feeDistribution`/D53 + recorte `?ano=`/D148) dava
 o retrato da tabela de cachês de um período mas comparava só um ano por vez; era a última leitura de "nível de preço" sem o card
 "vs. {ano-1}" que as irmãs de tendência já têm (antecedência/D187, concentração/D120, DSO/D193, cancelamento/D181) — e é a pergunta mais
@@ -3395,6 +3404,9 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    de `gigSeasonalityHeadline`: mesma janela/amostra, `feeShare ≤ WEAK_MONTH_FACTOR/12` = 0.75/12, exige `count > 0`) +
    banner 🍂 âmbar em `dashboard/page.tsx` que **cede a vez** ao nudge de pico (só com `!seasonHeadline.show` → no máximo um
    nudge de sazonalidade por vez), avisando o próximo mês historicamente fraco para prospectar com antecedência, ver D135.
+   **Destaque do "mês mais fraco" (vale) na tela** entregue na Sessão 211 — campo `quietest` em `GigSeasonality`
+   (`gigSeasonality`, mês de menos shows entre os ativos, espelho do `busiest` via `pick` negado, zero lógica pura nova) + 4º
+   card de destaque "Mês mais fraco" (âmbar) e selo "mais fraco" na tabela de `/shows/sazonalidade`, ver D204.
    Próximo possível —
    recorte por ano (`?ano=`, adiado na D133(b) porque a sazonalidade ganha sentido somando os anos), exportação CSV
    (adiada na D133(d): são só 12 linhas), ou um mini-gráfico dos 12 meses embutido no Painel (adiado na D134(d): o Painel

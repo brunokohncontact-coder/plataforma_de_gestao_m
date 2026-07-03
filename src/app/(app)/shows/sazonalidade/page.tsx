@@ -80,7 +80,7 @@ export default async function GigSeasonalityPage() {
       ) : (
         <>
           {/* Destaques */}
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Highlight
               label="Mês mais cheio"
               month={season.busiest}
@@ -106,6 +106,16 @@ export default async function GigSeasonalityPage() {
               value={season.bestByAvg ? formatMoney(season.bestByAvg.avgFee) : "—"}
               tone="emerald"
             />
+            <Highlight
+              label="Mês mais fraco"
+              month={season.quietest}
+              value={
+                season.quietest
+                  ? `${season.quietest.count} ${season.quietest.count === 1 ? "show" : "shows"}`
+                  : "—"
+              }
+              tone="amber"
+            />
           </div>
 
           {/* Shows por mês do ano */}
@@ -129,6 +139,10 @@ export default async function GigSeasonalityPage() {
                 {season.months.map((m) => {
                   const isBusiest =
                     season.busiest?.month === m.month && m.count > 0;
+                  const isQuietest =
+                    season.quietest?.month === m.month &&
+                    m.count > 0 &&
+                    season.busiest?.month !== m.month;
                   return (
                     <tr
                       key={m.month}
@@ -142,6 +156,11 @@ export default async function GigSeasonalityPage() {
                         {isBusiest && (
                           <span className="ml-2 rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-brand-700">
                             mais cheio
+                          </span>
+                        )}
+                        {isQuietest && (
+                          <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-600">
+                            mais fraco
                           </span>
                         )}
                       </td>
@@ -213,11 +232,12 @@ function Highlight({
   label: string;
   month: GigMonthStat | null;
   value: string;
-  tone?: "emerald" | "brand" | "gray";
+  tone?: "emerald" | "brand" | "gray" | "amber";
 }) {
   const tones: Record<string, string> = {
     emerald: "text-emerald-600",
     brand: "text-brand-700",
+    amber: "text-amber-600",
     gray: "text-gray-900",
   };
   return (
