@@ -1175,11 +1175,26 @@ export function clientConcentrationHeadline(
   };
 }
 
-export interface ClientConcentrationComparison {
+/**
+ * Mínimo estrutural que `compareClientConcentration` precisa de cada período: a
+ * participação do maior contratante e o nº de clientes efetivos. Tanto o
+ * `ClientConcentration` daqui (sobre `rankContactsByProfit`) quanto o
+ * `ClientConcentration<C>` de `contacts.ts` (sobre shows por contato, usado na
+ * tela `/contatos/concentracao`) satisfazem esta forma — por isso o comparativo
+ * é genérico e serve aos dois eixos sem duplicar a aritmética de tendência.
+ */
+export interface ClientConcentrationLike {
+  topShare: number;
+  effectiveClients: number;
+}
+
+export interface ClientConcentrationComparison<
+  T extends ClientConcentrationLike = ClientConcentration,
+> {
   /** Concentração do período atual (tipicamente o ano selecionado). */
-  current: ClientConcentration;
+  current: T;
   /** Concentração do período de comparação (tipicamente o ano anterior). */
-  previous: ClientConcentration;
+  previous: T;
   /**
    * Variação da participação do maior contratante (atual − anterior, em pontos
    * -1..1). Positivo = o maior cliente pesa **mais** agora (carteira mais
@@ -1211,10 +1226,10 @@ export interface ClientConcentrationComparison {
  * decide quando exibir (tipicamente só com um ano específico selecionado e o ano
  * anterior tendo contratante — caso contrário a leitura é enganosa).
  */
-export function compareClientConcentration(
-  current: ClientConcentration,
-  previous: ClientConcentration,
-): ClientConcentrationComparison {
+export function compareClientConcentration<T extends ClientConcentrationLike>(
+  current: T,
+  previous: T,
+): ClientConcentrationComparison<T> {
   const topShareDelta = current.topShare - previous.topShare;
   const effectiveClientsDelta =
     current.effectiveClients - previous.effectiveClients;

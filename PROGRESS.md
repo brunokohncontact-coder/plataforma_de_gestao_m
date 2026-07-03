@@ -9,7 +9,22 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1159 testes** verdes após o **recorte por período
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1160 testes** verdes após o **card comparativo
+"vs. {ano-1}" na tela dedicada de concentração de contratantes** (Sessão 208, D201 — a D200 (Sessão 207) levou o `PeriodPicker`
+(`?ano=`) para `/contatos/concentracao` mas adiou (alternativa (b)) o card comparativo "vs. {ano-1}" que toda leitura irmã de tendência
+já tem (rentabilidade/D120–D122, geo/D120, papel/D141, cancelamento/D181, antecedência/D187, prazo de recebimento/D193); a tela
+dedicada — a única com a tabela completa por contratante + veredito HHI/nº efetivo — era a última irmã sem o card. Agora, com um ano
+específico selecionado e contratante nos **dois** períodos (`clientCount > 0`), a página computa a `clientConcentration` do ano anterior
+(reusando `filterShowsByYear`/D108 sobre os `items` já carregados, sem nova consulta) + `compareClientConcentration`/D120 e renderiza
+o card `ClientComparisonCard` 🟢/🔴/⚪ "Concentração {ano} vs. {ano-1}" (variação do maior contratante em p.p. + clientes efetivos, veredito
+mais distribuída × mais concentrada) logo após o veredito de nível — inline na página, espelhando o precedente geo (`VenueComparisonCard`/
+`GeoComparisonCard` inline em `/shows/locais` e `/shows/cidades`) e o card de `contatos/rentabilidade`. Reuso sem duplicar lógica: havia
+dois `clientConcentration` (o de `finance.ts` sobre rank rows, tipo com `clients`/`total`, que `compareClientConcentration` recebia; e o
+de `contacts.ts` sobre shows por contato, tipo `ClientConcentration<C>` com `rows`/`totalFee`, que a página usa) — o comparativo só lê
+`topShare`/`effectiveClients`, comuns aos dois, então `compareClientConcentration` virou **genérico** sobre o mínimo estrutural
+`ClientConcentrationLike` (`ClientConcentrationComparison<T = ClientConcentration>`, default preserva os chamadores), **zero lógica pura
+nova** e backward-compatible. **+1 teste** (genérico sobre o mínimo estrutural, guarda contra re-narrow)) sobre os **1159 testes** verdes
+após o **recorte por período
 (`?ano=`) na concentração de contratantes** (Sessão 207, D200 — `/contatos/concentracao` (`clientConcentration`/D40) media a
 concentração de receita sobre o acervo inteiro, uma das poucas leituras do eixo Contatos sem o `PeriodPicker` (D119) que as irmãs já
 têm; o comparativo ano a ano da concentração já vive em `contatos/rentabilidade` (`compareClientConcentration`/D120–D122), mas a
@@ -394,8 +409,15 @@ botão só com `conc.clientCount > 0`; distinta da concentração geográfica (c
 **Recorte por período (`?ano=`)** entregue na Sessão 207 (D200) — `clientConcentrationYears<C>(items)` (anos UTC desc dos shows que
 faturam) + `PeriodPicker` em `/contatos/concentracao` (página e export via `filterShowsByYear`/D108, zero lógica pura nova de
 agregação): filtra os shows de cada contato pela `date` antes de `clientConcentration`, empty state período-ciente, export herda
-`?ano=` no nome `concentracao-contratantes-<ano|todos>.csv`; adiado o card comparativo "vs. {ano-1}" na tela dedicada (já vive em
-`contatos/rentabilidade`))
+`?ano=` no nome `concentracao-contratantes-<ano|todos>.csv`.
+**Card comparativo "vs. {ano-1}" na tela dedicada** entregue na Sessão 208 (D201) — com um ano específico e contratante nos dois
+períodos, a página computa a `clientConcentration` do ano anterior (reusando `filterShowsByYear`/D108 sobre os itens já carregados,
+sem nova consulta) + `compareClientConcentration`/D120 e renderiza `ClientComparisonCard` 🟢/🔴/⚪ "Concentração {ano} vs. {ano-1}"
+(variação do maior contratante em p.p. + clientes efetivos) após o veredito de nível, inline como o card geo/rentabilidade;
+`compareClientConcentration` virou genérico sobre o mínimo estrutural `ClientConcentrationLike` (`{topShare;effectiveClients}`) para
+servir aos dois `clientConcentration` (finance/contacts) sem duplicar a aritmética, zero lógica pura nova, backward-compatible.
+Próximo possível — export CSV do comparativo (segue o precedente da D193, que não exportou o card) ou coluna "vs. {ano-1}" por
+linha na tabela por contratante.)
 sobre os **995 testes** da **exportação CSV da
 projeção de caixa** em `/financas/fluxo-de-caixa/export` (Sessão 171, D164 — a tela "Fluxo de caixa projetado"
 (`projectCashflow`) ganhou botão "⬇ CSV"; serializador puro `cashflowProjectionToCsv(projection)` +
