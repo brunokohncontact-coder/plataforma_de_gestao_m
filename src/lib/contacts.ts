@@ -650,6 +650,93 @@ export function clientConcentration<C extends ContactRankLike>(
 }
 
 /**
+ * Limiar (em participação, 0..1) abaixo do qual a variação de share de um
+ * contratante entre dois anos é ruído — não vira 🟢/🔴 na coluna "vs. {ano-1}".
+ * 0,02 = 2 pontos percentuais, na mesma escala inteira que a página exibe.
+ */
+export const CLIENT_SHARE_TREND_EPSILON = 0.02;
+
+/** Direção da variação da participação de UM contratante entre dois anos. */
+export type ClientShareTrend = "up" | "down" | "flat";
+
+export interface ClientShareChange<C extends ContactRankLike> {
+  contact: C;
+  /** Participação no cachê total no ano atual (0..1). */
+  currentShare: number;
+  /** Participação no cachê total no ano anterior (0..1). */
+  previousShare: number;
+  /** Variação da participação (atual − anterior), em pontos de participação. */
+  shareDelta: number;
+  /**
+   * `up` = a receita ficou MAIS dependente deste contratante que no ano anterior
+   * (participação subiu além do epsilon); `down` = menos dependente; `flat` =
+   * variação dentro de `CLIENT_SHARE_TREND_EPSILON` (ruído).
+   */
+  trend: ClientShareTrend;
+}
+
+/**
+ * Situação de uma linha da tabela de concentração (ano atual) frente ao ano
+ * anterior, para a coluna "vs. {ano-1}":
+ * - "changed": o contratante faturou nos dois anos — traz a variação de share;
+ * - "new": só apareceu no ano atual (começou a faturar agora);
+ * - "none": id desconhecido / não comparável.
+ */
+export type ClientShareRowStatus<C extends ContactRankLike> =
+  | { kind: "changed"; change: ClientShareChange<C> }
+  | { kind: "new" }
+  | { kind: "none" };
+
+/**
+ * Casa cada linha da concentração do ano atual com sua situação frente ao ano
+ * anterior, indexando por `contact.id` para o consumidor resolver a coluna
+ * "vs. {ano-1}" em O(1) — o detalhe por contratante do card-manchete agregado
+ * (`compareClientConcentration`/D120), espelhando `indexContactPaymentLagChanges`
+ * (D196). Puro: recebe as duas `clientConcentration` já computadas e devolve uma
+ * função de lookup. Um contratante com cachê nos dois anos vira "changed" (com o
+ * `shareDelta` e o `trend` gateado por `CLIENT_SHARE_TREND_EPSILON`); um que só
+ * faturou no atual vira "new"; qualquer id fora da carteira atual vira "none".
+ *
+ * A leitura de share é aplicada ao card-manchete por-linha: subir a dependência
+ * de UM contratante (`up`) é o sinal de concentração (🔴 na página), na mesma
+ * moldura em que o card agregado trata `topShare` subindo como piora.
+ */
+export function indexClientShareChanges<C extends ContactRankLike>(
+  current: ClientConcentration<C>,
+  previous: ClientConcentration<C>,
+): (contactId: string | null | undefined) => ClientShareRowStatus<C> {
+  const currById = new Map<string, ClientShareRow<C>>();
+  for (const r of current.rows) currById.set(r.contact.id, r);
+  const prevById = new Map<string, ClientShareRow<C>>();
+  for (const r of previous.rows) prevById.set(r.contact.id, r);
+
+  return (contactId) => {
+    if (!contactId) return { kind: "none" };
+    const cur = currById.get(contactId);
+    if (!cur) return { kind: "none" };
+    const prev = prevById.get(contactId);
+    if (!prev) return { kind: "new" };
+    const shareDelta = cur.share - prev.share;
+    const trend: ClientShareTrend =
+      shareDelta > CLIENT_SHARE_TREND_EPSILON
+        ? "up"
+        : shareDelta < -CLIENT_SHARE_TREND_EPSILON
+          ? "down"
+          : "flat";
+    return {
+      kind: "changed",
+      change: {
+        contact: cur.contact,
+        currentShare: cur.share,
+        previousShare: prev.share,
+        shareDelta,
+        trend,
+      },
+    };
+  };
+}
+
+/**
  * Anos (UTC, decrescente) dos shows que ENTRAM na concentração de contratantes —
  * não cancelados e com cachê > 0. Ancora o seletor de período no próprio sinal
  * (e não em todos os shows vinculados): um ano só com cancelados ou cachê 0 não

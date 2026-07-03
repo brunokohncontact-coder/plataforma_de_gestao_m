@@ -115,6 +115,8 @@ import {
   CANCELLATION_TREND_EPSILON,
   clientConcentration,
   clientConcentrationYears,
+  indexClientShareChanges,
+  CLIENT_SHARE_TREND_EPSILON,
   clientRetention,
   filterContacts,
   findContactsToReengage,
@@ -643,6 +645,91 @@ describe("clientConcentrationYears", () => {
       item("a", [s({ date: "2025-01-01T00:00:00Z" })]),
     ]);
     expect(years).toEqual([2025]);
+  });
+});
+
+describe("indexClientShareChanges", () => {
+  function s(over: Partial<ContactRankShowLike> = {}): ContactRankShowLike {
+    return { status: "CONFIRMED", date: "2026-05-01T20:00:00Z", fee: 100_00, ...over };
+  }
+  function item(
+    id: string,
+    name: string,
+    shows: ContactRankShowLike[],
+  ): ContactWithShows<ContactRankLike> {
+    return { contact: { id, name }, shows };
+  }
+
+  it("id nulo/undefined e ids fora da carteira atual → none", () => {
+    const cur = clientConcentration([item("a", "A", [s({ fee: 500_00 })])]);
+    const prev = clientConcentration([item("a", "A", [s({ fee: 500_00 })])]);
+    const lookup = indexClientShareChanges(cur, prev);
+    expect(lookup(null).kind).toBe("none");
+    expect(lookup(undefined).kind).toBe("none");
+    expect(lookup("desconhecido").kind).toBe("none");
+  });
+
+  it("contratante só no ano atual → new", () => {
+    const cur = clientConcentration([
+      item("a", "A", [s({ fee: 500_00 })]),
+      item("b", "B", [s({ fee: 500_00 })]),
+    ]);
+    const prev = clientConcentration([item("a", "A", [s({ fee: 500_00 })])]);
+    const lookup = indexClientShareChanges(cur, prev);
+    expect(lookup("b").kind).toBe("new");
+  });
+
+  it("subir a participação além do epsilon → up (mais dependência)", () => {
+    // atual: a=800/1000=0.8; anterior: a=500/1000=0.5 → +0.30
+    const cur = clientConcentration([
+      item("a", "A", [s({ fee: 800_00 })]),
+      item("b", "B", [s({ fee: 200_00 })]),
+    ]);
+    const prev = clientConcentration([
+      item("a", "A", [s({ fee: 500_00 })]),
+      item("b", "B", [s({ fee: 500_00 })]),
+    ]);
+    const st = indexClientShareChanges(cur, prev)("a");
+    expect(st.kind).toBe("changed");
+    if (st.kind === "changed") {
+      expect(st.change.currentShare).toBeCloseTo(0.8);
+      expect(st.change.previousShare).toBeCloseTo(0.5);
+      expect(st.change.shareDelta).toBeCloseTo(0.3);
+      expect(st.change.trend).toBe("up");
+    }
+  });
+
+  it("cair a participação além do epsilon → down (menos dependência)", () => {
+    const cur = clientConcentration([
+      item("a", "A", [s({ fee: 200_00 })]),
+      item("b", "B", [s({ fee: 800_00 })]),
+    ]);
+    const prev = clientConcentration([
+      item("a", "A", [s({ fee: 500_00 })]),
+      item("b", "B", [s({ fee: 500_00 })]),
+    ]);
+    const st = indexClientShareChanges(cur, prev)("a");
+    expect(st.kind).toBe("changed");
+    if (st.kind === "changed") expect(st.change.trend).toBe("down");
+  });
+
+  it("variação dentro do epsilon → flat", () => {
+    // +1 p.p. (0,01) < epsilon (0,02) → ruído, não vira up/down
+    const cur = clientConcentration([
+      item("a", "A", [s({ fee: 510_00 })]),
+      item("b", "B", [s({ fee: 490_00 })]),
+    ]);
+    const prev = clientConcentration([
+      item("a", "A", [s({ fee: 500_00 })]),
+      item("b", "B", [s({ fee: 500_00 })]),
+    ]);
+    const st = indexClientShareChanges(cur, prev)("a");
+    expect(st.kind).toBe("changed");
+    if (st.kind === "changed") {
+      expect(st.change.shareDelta).toBeCloseTo(0.01);
+      expect(st.change.shareDelta).toBeLessThan(CLIENT_SHARE_TREND_EPSILON);
+      expect(st.change.trend).toBe("flat");
+    }
   });
 });
 

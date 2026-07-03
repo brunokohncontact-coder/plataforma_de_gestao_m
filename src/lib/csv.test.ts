@@ -1663,6 +1663,49 @@ describe("clientConcentrationToCsv", () => {
     expect(lines[1]).toBe("Casa Nova;Outro;1;1000,00;100%");
     expect(lines[2]).toBe("Total;;1;1000,00;");
   });
+
+  it("com previous+previousYear ganha coluna 'vs. {ano} (p.p.)' assinada, 'novo' e Total em branco", () => {
+    const cur = clientConcentration<C>([
+      // a: 800/1000 = 80%; b (novo): 200/1000 = 20%
+      item({ id: "a", name: "Bar do Zé", role: "VENUE" }, [
+        { status: "PLAYED", date: "2026-02-10T00:00:00.000Z", fee: 800000 },
+      ]),
+      item({ id: "b", name: "Produtora Lua", role: "PROMOTER" }, [
+        { status: "PLAYED", date: "2026-03-20T00:00:00.000Z", fee: 200000 },
+      ]),
+    ]);
+    const prev = clientConcentration<C>([
+      // a: 500/1000 = 50% → +30 p.p.
+      item({ id: "a", name: "Bar do Zé", role: "VENUE" }, [
+        { status: "PLAYED", date: "2025-02-10T00:00:00.000Z", fee: 500000 },
+      ]),
+      item({ id: "c", name: "Antigo", role: "OTHER" }, [
+        { status: "PLAYED", date: "2025-03-20T00:00:00.000Z", fee: 500000 },
+      ]),
+    ]);
+    const lines = clientConcentrationToCsv(cur, undefined, prev, 2025).split("\r\n");
+    expect(lines[0]).toBe(
+      CLIENT_CONCENTRATION_CSV_HEADERS.join(";") + ";vs. 2025 (p.p.)",
+    );
+    // a: 80% agora, 50% antes → +30; b só apareceu agora → "novo".
+    expect(lines[1]).toBe("Bar do Zé;Casa de show;1;8000,00;80%;+30");
+    expect(lines[2]).toBe("Produtora Lua;Produtor/Promoter;1;2000,00;20%;novo");
+    // Total ganha coluna extra em branco.
+    expect(lines[3]).toBe("Total;;2;10000,00;;");
+  });
+
+  it("sem previous a saída é byte a byte idêntica à histórica (5 colunas)", () => {
+    const conc = clientConcentration<C>([
+      item({ id: "a", name: "Bar do Zé", role: "VENUE" }, [
+        { status: "PLAYED", date: "2026-02-10T00:00:00.000Z", fee: 300000 },
+      ]),
+    ]);
+    // previous sem previousYear (ou vice-versa) não ativa a coluna.
+    const base = clientConcentrationToCsv(conc);
+    expect(clientConcentrationToCsv(conc, undefined, conc, null)).toBe(base);
+    expect(clientConcentrationToCsv(conc, undefined, null, 2025)).toBe(base);
+    expect(base.split("\r\n")[0]).toBe(CLIENT_CONCENTRATION_CSV_HEADERS.join(";"));
+  });
 });
 
 describe("cancellationByContactToCsv", () => {

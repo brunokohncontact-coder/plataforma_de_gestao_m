@@ -6567,3 +6567,51 @@ contexto, decisão, justificativa e alternativas consideradas.
   `/contatos/concentracao` 307 → `/login`, rota protegida). `npm audit` **inalterado** vs. baseline (10
   advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6); **nenhuma
   dependência nova**.
+
+## 2026-07-03 — D202: Coluna "vs. {ano-1}" por contratante na concentração (tela + CSV)
+- **Contexto:** a D201 (Sessão 208) levou o card-manchete agregado "Concentração {ano} vs. {ano-1}"
+  (variação do maior contratante em p.p. + clientes efetivos) para `/contatos/concentracao`, mas o card
+  só mostra os dois números do topo — com vários contratantes na tabela, o leitor não via de quais
+  contratantes veio a mudança de dependência (o número por linha ainda não existia). Era o detalhe por
+  linha do card agregado, exatamente a relação card-manchete → coluna-detalhe da D196 (prazo de
+  recebimento por contratante). A tabela e o CSV de `/contatos/concentracao` seguiam sem qualquer leitura
+  de tendência por contratante.
+- **Decisão:** novo helper puro `indexClientShareChanges<C>(current, previous)` +
+  `ClientShareChange<C>`/`ClientShareRowStatus<C>`/`ClientShareTrend` + `CLIENT_SHARE_TREND_EPSILON` (=0,02
+  = 2 p.p.) em `src/lib/contacts.ts`: de duas `clientConcentration` já computadas, devolve uma função de
+  lookup por `contact.id` que casa cada linha da tabela do ano atual com sua situação frente ao anterior
+  em O(1) — `changed` (com `shareDelta` e `trend`), `new` (só faturou no atual), `none` (id fora da
+  carteira). Espelha `indexContactPaymentLagChanges`/D196. Na página `/contatos/concentracao`, quando o
+  comparativo é válido (mesmo gate do card: ano específico + contratante nos dois anos), a tabela ganha a
+  coluna "vs. {ano-1}" (`ShareDelta`): variação da participação em p.p. com sinal (`deltaPp`), colorida —
+  🔴 subiu (mais dependência dele), 🟢 caiu, cinza estável (dentro do epsilon) —, "novo" para quem só
+  faturou no ano atual, "—" para não comparáveis; rodapé explica o código. No CSV
+  (`clientConcentrationToCsv`), 3º/4º parâmetros opcionais `previous`/`previousYear` acrescentam a coluna
+  "vs. {previousYear} (p.p.)" com o **mesmo** helper (zero lógica pura nova): valor assinado inteiro
+  (`csvSignedPoints`), "novo" para novos, branco na linha Total. O route
+  `/contatos/concentracao/export` recomputa o ano anterior com o **mesmo gate da página** sobre os `items`
+  já carregados (só uma agregação extra em memória, zero I/O adicional) e só passa `previous` quando é
+  comparável.
+- **Semântica de share por linha:** subir a participação de UM contratante (`up`) é o sinal de
+  concentração → vermelho, na mesma moldura em que o card agregado trata `topShare` subindo como piora
+  (🔴). O denominador (cachê total) muda de um ano para o outro, então o delta de share por linha é
+  relativo — mas é justamente o detalhe do card, que já enquadra "mais concentrada × mais distribuída".
+- **Backward-compatible:** sem `previous`/`previousYear` (ou com um deles null), o CSV é byte a byte
+  idêntico à saída histórica de 5 colunas, preservando chamadores e testes.
+- **Justificativa:** consistência de produto (a manchete ganha seu detalhe por linha, como em D196) +
+  baixo risco — plumbing sobre um helper novo, pequeno e testado, e reuso do mesmo lookup na tela e no
+  CSV. O epsilon evita que microvariações de share leiam como alarme.
+- **Alternativas consideradas:** (a) coluna de variação de **cachê** (R$) por contratante em vez de share
+  — descartada: drift do enquadramento do card, que é sobre dependência/participação, não receita
+  absoluta; fica como leitura à parte se surgir demanda; (b) exportar o comparativo agregado como linhas
+  chave→valor no CSV (topShareDelta/effectiveClientsDelta) — descartada: são 2 números, e o detalhe por
+  linha é mais acionável; (c) colorir a coluna neutra (sem 🔴/🟢) — descartada: o card já moraliza a
+  direção, e a coluna é o detalhe dele; o epsilon protege contra ruído.
+- **Testes:** +5 puros em `contacts.test.ts` (`indexClientShareChanges`: none/new/up/down/flat) +2 em
+  `csv.test.ts` (coluna assinada + "novo" + Total em branco; e byte-idêntico sem `previous`). Página/route
+  são plumbing sobre helper testado (precedente D194/D196). Suíte **1160 → 1167**, todos verdes.
+- **DoD:** build de produção verde (rotas `/contatos/concentracao` e `.../export` no manifesto); lint
+  (`next lint`, 0 avisos); typecheck (`tsc --noEmit`) limpo; **1167 testes**; smoke test — app sobe
+  (`/` 200, `/contatos/concentracao` 307 → `/login`, rota protegida). `npm audit` **inalterado** vs.
+  baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver
+  D6); **nenhuma dependência nova**.

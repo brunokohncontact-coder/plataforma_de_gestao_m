@@ -67,6 +67,7 @@ import type {
   ContactRankLike,
   ReengageList,
 } from "./contacts";
+import { indexClientShareChanges } from "./contacts";
 import { MONTH_NAMES_LONG } from "./calendar";
 import type { BookingLeadTime, OpenWeekendsReport, ScheduleConflicts } from "./shows";
 
@@ -108,6 +109,13 @@ export function centsToCsvAmount(cents: number): string {
 /** Participação relativa (0..1) -> porcentagem inteira com símbolo ("37%"). */
 function csvShare(share: number): string {
   return `${Math.round(share * 100)}%`;
+}
+
+/** Variação de participação (0..1) -> pontos percentuais inteiros com sinal:
+ * 0,12 → "+12", -0,05 → "-5", 0 → "0". Para planilha ordenável. */
+function csvSignedPoints(delta: number): string {
+  const rounded = Math.round(delta * 100);
+  return `${rounded > 0 ? "+" : ""}${rounded}`;
 }
 
 /** Data -> "DD/MM/AAAA" (em UTC, mesma convenção de `dayKey`, estável em testes). */
@@ -1432,30 +1440,62 @@ export const CLIENT_CONCENTRATION_CSV_HEADERS = [
  * a participação do Total fica em branco (100% por construção, como
  * `clientRetentionToCsv`/`incomeMixToCsv`). Mesma convenção pt-BR dos irmãos
  * (delimitador ";", decimal com vírgula). Pura.
+ *
+ * Quando `previous` (a concentração do ano anterior) e `previousYear` são
+ * informados (recorte por ano com comparativo, D201), a planilha ganha uma última
+ * coluna "vs. {previousYear} (p.p.)" — o detalhe por contratante do card agregado:
+ * variação assinada da participação em pontos percentuais para quem faturou nos
+ * dois anos (positivo = ficou mais dependente dele), "novo" para quem só apareceu
+ * no ano atual e em branco na linha Total. Reaproveita `indexClientShareChanges`
+ * (zero lógica pura nova). Sem `previous`/`previousYear`, a saída é byte a byte
+ * idêntica à histórica (5 colunas), preservando os chamadores/testes.
  */
 export function clientConcentrationToCsv<C extends ContactRankLike & { role: string }>(
   concentration: ClientConcentration<C>,
   delimiter = DEFAULT_DELIMITER,
+  previous?: ClientConcentration<C> | null,
+  previousYear?: number | null,
 ): string {
-  const out: string[][] = [Array.from(CLIENT_CONCENTRATION_CSV_HEADERS)];
+  const withTrend = previous != null && previousYear != null;
+  const lookup = withTrend ? indexClientShareChanges(concentration, previous) : null;
+
+  const header = Array.from(CLIENT_CONCENTRATION_CSV_HEADERS) as string[];
+  if (withTrend) header.push(`vs. ${previousYear} (p.p.)`);
+  const out: string[][] = [header];
+
   let totalShows = 0;
   for (const row of concentration.rows) {
     totalShows += row.activeShows;
-    out.push([
+    const cols = [
       row.contact.name,
       contactRoleLabel(row.contact.role),
       String(row.activeShows),
       centsToCsvAmount(row.totalFee),
       csvShare(row.share),
-    ]);
+    ];
+    if (lookup) {
+      const status = lookup(row.contact.id);
+      cols.push(
+        status.kind === "new"
+          ? "novo"
+          : status.kind === "changed"
+            ? csvSignedPoints(status.change.shareDelta)
+            : "",
+      );
+    }
+    out.push(cols);
   }
-  out.push([
+
+  const totalCols = [
     "Total",
     "",
     String(totalShows),
     centsToCsvAmount(concentration.totalFee),
     "",
-  ]);
+  ];
+  if (withTrend) totalCols.push("");
+  out.push(totalCols);
+
   return toCsv(out, delimiter);
 }
 
