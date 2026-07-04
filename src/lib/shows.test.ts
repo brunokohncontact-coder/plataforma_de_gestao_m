@@ -19,7 +19,10 @@ import {
   bookingLeadTimeHeadline,
   summarizeMonthShows,
   buildDuplicatedShow,
+  parseDuplicateInterval,
   DUPLICATE_SHOW_WEEKS_AHEAD,
+  DUPLICATE_INTERVAL_WEEKS,
+  DEFAULT_DUPLICATE_INTERVAL,
   LEAD_TIME_TREND_EPSILON,
   LEAD_TIME_SHORT_DAYS,
   LEAD_TIME_CRITICAL_DAYS,
@@ -1055,5 +1058,40 @@ describe("buildDuplicatedShow", () => {
   it("cachê nulo vira 0 (convenção de show sem cachê acordado)", () => {
     const dup = buildDuplicatedShow({ ...base, fee: null });
     expect(dup.fee).toBe(0);
+  });
+});
+
+describe("parseDuplicateInterval", () => {
+  it("mapeia cada opção conhecida no nº de semanas correto", () => {
+    expect(parseDuplicateInterval("weekly")).toBe(1);
+    expect(parseDuplicateInterval("biweekly")).toBe(2);
+    expect(parseDuplicateInterval("monthly")).toBe(4);
+  });
+
+  it("valor desconhecido/ausente cai no padrão (semanal)", () => {
+    const defaultWeeks = DUPLICATE_INTERVAL_WEEKS[DEFAULT_DUPLICATE_INTERVAL];
+    for (const bad of ["", "anual", "1", null, undefined, 2, {}]) {
+      expect(parseDuplicateInterval(bad)).toBe(defaultWeeks);
+    }
+    expect(defaultWeeks).toBe(DUPLICATE_SHOW_WEEKS_AHEAD);
+  });
+
+  it("não confunde chaves herdadas do Object com opções válidas", () => {
+    expect(parseDuplicateInterval("toString")).toBe(
+      DUPLICATE_INTERVAL_WEEKS[DEFAULT_DUPLICATE_INTERVAL],
+    );
+    expect(parseDuplicateInterval("hasOwnProperty")).toBe(
+      DUPLICATE_INTERVAL_WEEKS[DEFAULT_DUPLICATE_INTERVAL],
+    );
+  });
+
+  it("compõe com buildDuplicatedShow: mensal cai 4 semanas à frente, mesmo dia da semana", () => {
+    const from = new Date("2026-03-06T22:00:00.000Z"); // sexta
+    const dup = buildDuplicatedShow(
+      { title: "Residência", date: from },
+      parseDuplicateInterval("monthly"),
+    );
+    expect(dup.date.toISOString()).toBe("2026-04-03T22:00:00.000Z");
+    expect(dup.date.getUTCDay()).toBe(from.getUTCDay());
   });
 });

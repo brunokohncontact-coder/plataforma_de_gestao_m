@@ -7205,3 +7205,42 @@ contexto, decisão, justificativa e alternativas consideradas.
   **1227 testes** (`vitest run`); smoke test — `next start`, `/login` → HTTP 200 e `/shows/xyz` → 307
   (auth-gated; app sobe). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high /
   1 critical, todos do Next 14 / postcss bundlado; ver D6); **nenhuma dependência nova**.
+
+## 2026-07-04 — D219: Seletor de intervalo na duplicação de shows (semanal/quinzenal/mensal) — `parseDuplicateInterval`
+- **Contexto:** a ação "Duplicar show" (D218) sempre criava a cópia **+1 semana** à frente, com o
+  intervalo real (semanal/quinzenal/mensal) deixado para o usuário ajustar na tela de edição da cópia.
+  A própria D218 já previa isso na alternativa (c): `weeksAhead` era parametrizável no helper puro
+  `buildDuplicatedShow` (testado com 4 ≈ mensal), mas a **UI expunha só o padrão semanal**. Uma
+  residência quinzenal ou um evento mensal ainda obrigava a corrigir a data manualmente a cada cópia.
+- **Decisão:** expor um `<select>` "intervalo" (name `intervalo`) ao lado do botão "Duplicar" na tela de
+  detalhe do show, com três opções — **+1 semana** (`weekly`), **+2 semanas** (`biweekly`) e **+1 mês
+  (4 sem.)** (`monthly`) — ligando direto no parâmetro `weeksAhead` já existente e testado. Nova regra
+  pura `parseDuplicateInterval(value)` em `src/lib/shows.ts` traduz a string do formulário no nº de
+  semanas via a tabela `DUPLICATE_INTERVAL_WEEKS` (`weekly:1`/`biweekly:2`/`monthly:4`), caindo no
+  padrão semanal (`DEFAULT_DUPLICATE_INTERVAL`) para qualquer valor desconhecido/ausente. A action
+  `duplicateShowAction` lê `formData.get("intervalo")`, passa por `parseDuplicateInterval` e repassa a
+  `buildDuplicatedShow(show, weeksAhead)`. O resto da ação (copiar contatos, resetar status, não copiar
+  transações, redirecionar para a edição) fica intocado.
+- **Justificativa:** o núcleo já suportava o parâmetro; faltava só o controle de UI — mudança mínima,
+  sem tocar a regra de derivação da data. Manter "mensal ≈ 4 semanas inteiras" (28 dias) em vez de +1 mês
+  de calendário **preserva o dia da semana**, que é o que define uma residência/evento recorrente (o
+  mesmo princípio da D218; +1 mês civil deslocaria o dia da semana). A validação por lista branca com
+  `Object.prototype.hasOwnProperty.call` (não `value in obj`) evita que chaves herdadas do protótipo
+  (`toString`, `hasOwnProperty`) sejam aceitas como intervalos. O default preserva o comportamento
+  histórico da D218 (semanal), então nada muda para quem só clica "Duplicar".
+- **Alternativas consideradas:** (a) campo numérico livre de semanas — descartado: três opções cobrem os
+  casos reais (semanal/quinzenal/mensal) sem o atrito de digitar um número; o helper segue aberto a
+  qualquer inteiro se surgir demanda. (b) opção "mensal" como +1 mês de calendário — descartada: quebraria
+  o mesmo-dia-da-semana que é o cerne da recorrência (ver D218). (c) `value in DUPLICATE_INTERVAL_WEEKS` —
+  descartada em favor de `hasOwnProperty` para não aceitar chaves de protótipo. (d) lembrar o último
+  intervalo escolhido por usuário/show — adiado: é uma ação de um clique com palpite sensato (semanal);
+  a persistência só se justifica se a maioria das duplicações usar o mesmo intervalo não-padrão.
+- **Testes:** **+4** em `shows.test.ts` (`describe("parseDuplicateInterval")`): mapeia cada opção conhecida
+  no nº de semanas correto (weekly→1/biweekly→2/monthly→4); valor desconhecido/ausente (`""`, `"anual"`,
+  `"1"`, `null`, `undefined`, número, objeto) cai no padrão semanal (= `DUPLICATE_SHOW_WEEKS_AHEAD`); não
+  confunde chaves herdadas do Object (`toString`/`hasOwnProperty`) com opções válidas; compõe com
+  `buildDuplicatedShow` (mensal → 4 semanas à frente, mesmo dia da semana). Suíte **1231** verdes (era 1227).
+- **DoD:** build de produção verde; lint (`next lint`, 0 avisos); typecheck (`tsc --noEmit`) limpo;
+  **1231 testes** (`vitest run`); smoke test — `next start`, `/login` → HTTP 200 e `/shows/abc123` → 307
+  (auth-gated; app sobe). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high /
+  1 critical, todos do Next 14 / postcss bundlado; ver D6); **nenhuma dependência nova**.

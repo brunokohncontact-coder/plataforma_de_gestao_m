@@ -9,7 +9,19 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1227 testes** verdes após a **ação "Duplicar show"**
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1231 testes** verdes após o **seletor de intervalo na
+duplicação de shows** (Sessão 226, D219 — a ação "Duplicar show" (D218) sempre criava a cópia **+1 semana** à frente; o intervalo real
+(semanal/quinzenal/mensal) ficava para o usuário corrigir na edição. A própria D218(c) já previa isso: `weeksAhead` era parametrizável no
+helper puro `buildDuplicatedShow` (testado com 4 ≈ mensal), mas a UI expunha só o padrão semanal. Novo helper puro
+`parseDuplicateInterval(value)` + tabela `DUPLICATE_INTERVAL_WEEKS` (`weekly:1`/`biweekly:2`/`monthly:4`) + `DEFAULT_DUPLICATE_INTERVAL`/tipo
+`DuplicateInterval` em `src/lib/shows.ts`: traduz a string do formulário no nº de semanas, caindo no padrão semanal para valor
+desconhecido/ausente (validação por lista branca com `hasOwnProperty`, não `in`, para não aceitar chaves de protótipo). A tela de detalhe do
+show ganhou um `<select>` "intervalo" (+1 semana / +2 semanas / +1 mês (4 sem.)) ao lado do botão "Duplicar"; a action `duplicateShowAction`
+lê `formData.get("intervalo")` → `parseDuplicateInterval` → `buildDuplicatedShow(show, weeksAhead)`, com o resto intocado. "Mensal ≈ 4
+semanas inteiras" preserva o dia da semana que define uma residência (o mesmo princípio da D218). O default preserva o comportamento
+histórico (semanal). **+4 testes** (mapeia cada opção; valor inválido → padrão; ignora chaves herdadas do Object; compõe com
+`buildDuplicatedShow`). Smoke test (`next start`) → `/login` 200 e `/shows/abc123` 307 (auth-gated). `npm audit` sem novas vulnerabilidades
+(mesmos advisories Next/postcss da D6). Ver D219). Segue a **ação "Duplicar show"**
 (Sessão 225, D218 — o cadastro de shows não tinha atalho para eventos recorrentes: um músico com uma **residência semanal** (mesma casa,
 todo sábado) redigitava o mesmo show semana após semana. Novo helper puro `buildDuplicatedShow(show, weeksAhead=1)` + tipos
 `DuplicableShow`/`DuplicatedShowData` + const `DUPLICATE_SHOW_WEEKS_AHEAD` em `src/lib/shows.ts`: copia o conteúdo de forma do evento
@@ -4044,10 +4056,14 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    Fora dela, o eixo de exportação tabular segue **esgotado** e próximas sessões podem evoluir feature maior (calendário drag&drop,
    log de transições do funil, recuperação de senha).
    **Duplicar show** entregue na Sessão 225 — `buildDuplicatedShow` + `duplicateShowAction` + botão "Duplicar" no detalhe do show:
-   primeiro atalho operacional de redução de atrito (residências / eventos recorrentes), ver D218. Próximo possível para esta feature:
-   (a) seletor de intervalo (semanal/quinzenal/mensal) na hora de duplicar — o `weeksAhead` do helper já é parametrizável e testado
-   (4 ≈ mensal), falta só a UI; (b) duplicar em lote (criar as N próximas semanas de uma residência de uma vez), reusando o mesmo helper
-   com `weeksAhead` 1..N; (c) botão "Duplicar" também na lista de shows (hoje só no detalhe).
+   primeiro atalho operacional de redução de atrito (residências / eventos recorrentes), ver D218.
+   **Seletor de intervalo (semanal/quinzenal/mensal)** entregue na Sessão 226 — `parseDuplicateInterval` + `DUPLICATE_INTERVAL_WEEKS`
+   (`weekly:1`/`biweekly:2`/`monthly:4`) + `DEFAULT_DUPLICATE_INTERVAL`/tipo `DuplicateInterval` em `src/lib/shows.ts` + `<select>`
+   "intervalo" na tela de detalhe do show ligando direto no `weeksAhead` já testado; a action lê `formData.get("intervalo")` e repassa a
+   `buildDuplicatedShow`; "mensal ≈ 4 semanas" preserva o dia da semana, default semanal preserva o comportamento da D218, ver D219.
+   Próximo possível para esta feature: (b) duplicar em lote (criar as N próximas semanas de uma residência de uma vez), reusando o mesmo
+   helper com `weeksAhead` 1..N; (c) botão "Duplicar" também na lista de shows (hoje só no detalhe); (d) lembrar o último intervalo
+   escolhido por show (adiado na D219: ação de um clique com palpite sensato).
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)
