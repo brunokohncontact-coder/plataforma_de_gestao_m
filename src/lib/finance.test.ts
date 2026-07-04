@@ -94,6 +94,7 @@ import {
   feeDistribution,
   feeDistributionYears,
   compareFeeDistribution,
+  premiumBandShare,
   type FeeDistribution,
   weekdayPerformanceYears,
   feeBandKeyFor,
@@ -6374,6 +6375,34 @@ describe("compareFeeDistribution", () => {
     const cmp = compareFeeDistribution(current, previous);
     expect(cmp.medianFeePct).toBeNull();
     expect(cmp.trend).toBe("up");
+  });
+
+  it("participação premium (faixa 'acima de R$ 5.000') sobe entre os anos", () => {
+    // Atual: 1 de 4 shows na faixa premium (25%). Anterior: 0 de 4 (0%).
+    const current = distOf(6_000_00, 1_000_00, 1_000_00, 1_000_00);
+    const previous = distOf(1_000_00, 1_000_00, 1_000_00, 1_000_00);
+    const cmp = compareFeeDistribution(current, previous);
+    expect(cmp.premiumShareCurrent).toBeCloseTo(0.25, 5);
+    expect(cmp.premiumSharePrevious).toBe(0);
+    expect(cmp.premiumShareDelta).toBeCloseTo(0.25, 5);
+  });
+
+  it("participação premium capta migração para o topo mesmo com mediana estável", () => {
+    // Mediana idêntica (1.000) nos dois anos, mas a cauda de cima engordou:
+    // atual tem 2 shows premium, anterior tem 0 — a mediana não vê, o premium sim.
+    const current = distOf(1_000_00, 1_000_00, 1_000_00, 8_000_00, 9_000_00);
+    const previous = distOf(1_000_00, 1_000_00, 1_000_00, 900_00, 900_00);
+    const cmp = compareFeeDistribution(current, previous);
+    expect(current.medianFee).toBe(previous.medianFee); // mesma mediana (1.000)
+    expect(cmp.premiumShareCurrent).toBeCloseTo(2 / 5, 5);
+    expect(cmp.premiumSharePrevious).toBe(0);
+    expect(cmp.premiumShareDelta).toBeGreaterThan(0);
+  });
+
+  it("premiumBandShare lê o countShare da faixa premium direto da distribuição", () => {
+    const dist = distOf(6_000_00, 6_000_00, 1_000_00, 1_000_00); // 2 de 4 premium
+    expect(premiumBandShare(dist)).toBeCloseTo(0.5, 5);
+    expect(premiumBandShare(feeDistribution([], { now }))).toBe(0); // vazio → 0
   });
 });
 

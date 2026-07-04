@@ -6508,6 +6508,26 @@ export const FEE_TREND_EPSILON = 0.05;
  */
 export const FEE_TREND_FLOOR = 50_00;
 
+/**
+ * A faixa "premium" da tabela de cachês: a mais alta de `FEE_BANDS`
+ * (`gte5k` = "Acima de R$ 5.000"). É o topo natural para medir "estou levando
+ * mais shows para a faixa alta?", complementando a mediana no comparativo ano a
+ * ano: dois anos podem ter a **mesma** mediana enquanto a cauda de cima
+ * engorda — a participação premium captura essa migração que a mediana esconde.
+ */
+export const PREMIUM_FEE_BAND_KEY: FeeBandKey = "gte5k";
+
+/**
+ * Participação (nº de shows, 0..1) da faixa premium (`PREMIUM_FEE_BAND_KEY`)
+ * numa distribuição já computada. Lê o `countShare` da faixa direto de `bands`
+ * (que sempre traz as 6 faixas, inclusive as vazias) — zero agregação nova. 0
+ * quando não há shows na faixa (ou nenhum show no período).
+ */
+export function premiumBandShare(dist: FeeDistribution): number {
+  const band = dist.bands.find((b) => b.key === PREMIUM_FEE_BAND_KEY);
+  return band ? band.countShare : 0;
+}
+
 export interface FeeDistributionComparison {
   /** Distribuição do período atual (tipicamente o ano selecionado). */
   current: FeeDistribution;
@@ -6534,6 +6554,21 @@ export interface FeeDistributionComparison {
    * - "stable": variação dentro do limiar (ruído, sem leitura de tendência).
    */
   trend: "up" | "down" | "stable";
+  /**
+   * Participação (nº de shows, 0..1) na faixa premium (`PREMIUM_FEE_BAND_KEY`,
+   * "Acima de R$ 5.000") no período **atual**. Complementa a mediana: mostra
+   * quanto da agenda já paga no topo da tabela.
+   */
+  premiumShareCurrent: number;
+  /** Idem, no período **anterior**. */
+  premiumSharePrevious: number;
+  /**
+   * Variação da participação premium (atual − anterior, em pontos 0..1).
+   * Positivo = mais shows migraram para a faixa alta (progressão que a mediana
+   * pode não mostrar quando o meio da distribuição não se moveu). Apenas
+   * informativo — não altera o veredito `trend`, que segue ancorado na mediana.
+   */
+  premiumShareDelta: number;
 }
 
 /**
@@ -6563,6 +6598,8 @@ export function compareFeeDistribution(
       ? Math.abs(medianFeeDelta) / previous.medianFee >= FEE_TREND_EPSILON
       : medianFeeDelta !== 0; // sem base anterior, qualquer variação já conta
   const material = absOver && relOver;
+  const premiumShareCurrent = premiumBandShare(current);
+  const premiumSharePrevious = premiumBandShare(previous);
   return {
     current,
     previous,
@@ -6570,6 +6607,9 @@ export function compareFeeDistribution(
     avgFeeDelta: current.avgFee - previous.avgFee,
     medianFeePct: previous.medianFee > 0 ? medianFeeDelta / previous.medianFee : null,
     trend: !material ? "stable" : medianFeeDelta > 0 ? "up" : "down",
+    premiumShareCurrent,
+    premiumSharePrevious,
+    premiumShareDelta: premiumShareCurrent - premiumSharePrevious,
   };
 }
 

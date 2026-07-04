@@ -6809,3 +6809,39 @@ contexto, decisão, justificativa e alternativas consideradas.
   typecheck (`tsc --noEmit`) limpo; **1179 testes**; smoke test — `npm start`, `/financas/sazonalidade` → 307
   redirect de auth (rota protegida, app sobe). `npm audit` **inalterado** vs. baseline (10 advisories —
   4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6); **nenhuma dependência nova**.
+
+## 2026-07-04 — D209: Participação na faixa premium no comparativo ano a ano de `/shows/faixas-de-cache`
+- **Contexto:** o card "Cachê {ano} vs. {ano-1}" (`compareFeeDistribution`, D203) comparava só a **mediana**
+  (e a média, informativa) do cachê entre dois anos. Mas dois anos podem ter a **mesma** mediana enquanto a
+  cauda de cima engorda — o músico leva mais shows para a faixa alta sem mover o meio da distribuição, e a
+  mediana esconde essa progressão. Exportar/comparar a participação na faixa alta foi o item explicitamente
+  **adiado na D203** ("comparar a participação na faixa alta"), e é a leitura mais direta de "estou subindo de
+  patamar?" que a mediana sozinha não captura.
+- **Decisão:** definir a **faixa premium** como a mais alta de `FEE_BANDS` (`PREMIUM_FEE_BAND_KEY = "gte5k"`,
+  "Acima de R$ 5.000") e acrescentar a `FeeDistributionComparison` três campos: `premiumShareCurrent`,
+  `premiumSharePrevious` e `premiumShareDelta` (participação em **nº de shows**, 0..1, atual − anterior). O
+  helper puro `premiumBandShare(dist)` lê o `countShare` da faixa premium direto de `dist.bands` (que sempre
+  traz as 6 faixas, inclusive vazias) — **zero agregação nova**; devolve 0 quando a faixa (ou o período) está
+  vazio. O card ganha uma linha "Faixa premium (acima de R$ 5.000): X% → Y% dos shows  +Z p.p." sob os deltas
+  de mediano/médio, com formatador `pointsDelta` (pontos percentuais assinados).
+- **Justificativa:** complemento barato e alto-sinal à mediana, reusando a distribuição já computada de cada
+  ano (as duas `feeDistribution` que `compareFeeDistribution` já recebe) — nenhuma consulta nem lógica de
+  agregação nova. O veredito `trend` do card **segue ancorado só na mediana** (a participação premium é
+  apenas informativa, na mesma disciplina da média): mover a cauda de cima é sinal positivo, mas com amostra
+  pequena um único show premium vira um salto de participação enorme, então não pode ditar o veredito.
+- **Alternativas consideradas:** (a) definir premium como as **duas** faixas do topo (≥ R$ 3.500) — descartada:
+  a faixa única de topo é o "premium" mais inequívoco e casa com o rótulo exibido; um limiar composto exigiria
+  explicar qual corte. (b) usar `feeShare` (participação no faturamento) em vez de `countShare` — descartada:
+  a pergunta é "quantos dos meus shows já pagam no topo", não "quanto do faturamento vem do topo" (essa já é o
+  card "Onde está o faturamento"); `countShare` é a leitura de migração de patamar. (c) deixar o premium
+  influenciar o veredito `trend` — descartada pela fragilidade em amostra pequena (ver Justificativa). (d)
+  levar a coluna também ao CSV — adiada: o CSV já lista `count`/`countShare` por faixa (a linha `gte5k` já dá
+  a participação premium de cada ano); o comparativo é apresentação, seguindo o precedente da D193/D203.
+- **Testes:** **+3** em `finance.test.ts` (`compareFeeDistribution`): premium sobe entre anos; premium capta
+  migração para o topo com **mediana estável** (mesma mediana nos dois anos, cauda de cima cresce); e
+  `premiumBandShare` lendo o `countShare` da faixa direto da distribuição (incl. distribuição vazia → 0).
+  Suíte **1182** verdes (era 1179).
+- **DoD:** build de produção verde (rota `/shows/faixas-de-cache` compila); lint (`next lint`, 0 avisos);
+  typecheck (`tsc --noEmit`) limpo; **1182 testes**; smoke test — `npm start`, `/login` e `/` → HTTP 200
+  (app sobe). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos
+  do Next 14 / postcss bundlado; ver D6); **nenhuma dependência nova**.
