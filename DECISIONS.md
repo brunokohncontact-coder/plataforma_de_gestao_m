@@ -7011,3 +7011,43 @@ contexto, decisão, justificativa e alternativas consideradas.
   `/shows/rentabilidade?ano=2025` / `/shows/rentabilidade/export?ano=2025` → 307 (auth-gated; app sobe).
   `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
   postcss bundlado; ver D6); **nenhuma dependência nova**.
+
+## 2026-07-04 — D214: Recorte por período (`?ano=`) na sazonalidade de shows (`/shows/sazonalidade`)
+- **Contexto:** `/shows/sazonalidade` (`gigSeasonality`, D133) agrega os shows realizados por mês do calendário
+  **somando todos os anos** — os picos e vales da temporada. Era das últimas telas de shows **sem** recorte por
+  período: quase todo o acervo já ganhou `PeriodPicker`/`?ano=` (rentabilidade por show/local/cidade/contratante,
+  cadência, dias-da-semana, funil, cancelamentos…). O recorte foi **adiado na D133(b)** com a justificativa "a
+  sazonalidade ganha sentido somando os anos" — mas a leitura **por ano** (o padrão mensal recente, que pode
+  divergir do histórico de longo prazo) é distinta e complementar, não substituta. Entregar um `?ano=` antes
+  adiado é prática estabelecida aqui (D115/D118/D186 fizeram o mesmo em telas irmãs).
+- **Decisão:** `/shows/sazonalidade` (página e `/export`) ganhou o `PeriodPicker` compartilhado (D119) via `?ano=`,
+  reaproveitando `parseProfitYear`/`filterShowsByYear` (D108). O **padrão segue "Todos"** (`yearFilter="all"`),
+  preservando a leitura multi-ano da D133(b); um ano específico recorta os shows (por `date` UTC) **antes** de
+  `gigSeasonality`, então o helper de agregação segue **agnóstico ao recorte** (zero mudança em `gigSeasonality`).
+  Os anos do seletor vêm do **novo helper puro `gigSeasonalityYears(shows, {now})`** em `src/lib/finance.ts`, que
+  devolve os anos UTC (decrescente) **só dos shows que a sazonalidade conta** (`isHappenedGig` + `fee > 0`, mesmo
+  critério de `gigSeasonality`) — assim nenhuma pílula abre a tela vazia, espelhando a disciplina de
+  `cancelledShowYears`/`bookingLeadTimeYears` (D180). Distinto de `showProfitYears`, que olha a `date` de todos os
+  shows independentemente do status. O CSV leva o ano no nome (`sazonalidade-shows-{ano}.csv`); a moldura textual
+  da página (subtítulo/descrição) fica período-ciente ("em {ano}" × "somando todos os anos").
+- **Justificativa:** consistência com o resto da suíte analítica (o usuário espera fatiar a sazonalidade por ano
+  como já fatia tudo o mais) sem sacrificar o insight original: o padrão multi-ano continua sendo a visão default.
+  O helper dedicado de anos evita pílulas mortas e mantém a camada pura testável; a filtragem antes da agregação
+  mantém `gigSeasonality`/`gigSeasonalityToCsv` intocados (a coluna "Destaque"/D205 e os selos por linha seguem
+  funcionando por ano). Nota sobre a D133(b): não é uma reversão da decisão, e sim a entrega do "próximo possível"
+  que ela própria listava — o default preserva a soma dos anos.
+- **Alternativas consideradas:** (a) derivar os anos de `showProfitYears` (todas as datas) — descartada: ofereceria
+  anos só com propostos/futuros que renderiam a tela vazia; o helper dedicado casa a lista de anos com o universo
+  que a sazonalidade conta. (b) **comparativo ano a ano** da sazonalidade (espelhando os cards "vs. {ano-1}") —
+  adiada: é um passo maior (comparar 12 baldes mês a mês) e o valor imediato é o recorte; reavaliável. (c) aplicar
+  o mesmo `?ano=` à **sazonalidade financeira** (`/financas/sazonalidade`, `monthlySeasonality`) — fora de escopo
+  nesta sessão (eixo distinto: transações, não shows); candidato natural a uma sessão irmã.
+- **Testes:** **+4** em `finance.test.ts` (`describe("gigSeasonalityYears")`): vazio sem gigs contáveis; anos UTC
+  distintos decrescentes só dos gigs que entram (PLAYED + CONFIRMED-passado); ignora proposto/cancelado/futuro/
+  cachê-zero (mesmo critério de `gigSeasonality`); consistência — todo ano retornado rende uma sazonalidade
+  não-vazia. Suíte **1205** verdes (era 1201).
+- **DoD:** build de produção verde (`/shows/sazonalidade` + `/export` compilam); lint (`next lint`, 0 avisos);
+  typecheck (`tsc --noEmit`) limpo; **1205 testes** (`vitest run`); smoke test — `next start`, `/login` → HTTP 200 e
+  `/shows/sazonalidade` (+ `?ano=2026`) / `/shows/sazonalidade/export` (+ `?ano=2026`) → 307 (auth-gated; app sobe).
+  `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
+  postcss bundlado; ver D6); **nenhuma dependência nova**.

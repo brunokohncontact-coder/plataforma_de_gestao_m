@@ -3,19 +3,29 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   gigSeasonality,
+  gigSeasonalityYears,
+  parseProfitYear,
+  filterShowsByYear,
   GIG_MONTH_SHORT,
   type ReceivableShowLike,
   type GigMonthStat,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
+import { PeriodPicker } from "@/components/PeriodPicker";
 
 export const dynamic = "force-dynamic";
+
+type SearchParams = { [key: string]: string | string[] | undefined };
 
 function pct(share: number): string {
   return `${Math.round(share * 100)}%`;
 }
 
-export default async function GigSeasonalityPage() {
+export default async function GigSeasonalityPage({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
   const user = await requireUser();
 
   const rows = await prisma.show.findMany({
@@ -31,7 +41,24 @@ export default async function GigSeasonalityPage() {
     date: s.date,
   }));
 
-  const season = gigSeasonality(shows);
+  // Recorte por período opcional (`?ano=`): o padrão segue "todos os anos"
+  // (a sazonalidade ganha sentido somando anos, D133b), mas um ano específico
+  // revela o padrão recente. Os anos do seletor vêm só dos shows que a
+  // sazonalidade conta (`gigSeasonalityYears`), para nenhuma pílula abrir vazia.
+  const availableYears = gigSeasonalityYears(shows);
+  const yearFilter = parseProfitYear(searchParams?.ano, availableYears);
+  // Filtra as `rows` (com `date: Date`) antes de mapear — `ReceivableShowLike`
+  // tem `date: string | Date`, incompatível com o `{ date: Date }` do helper.
+  const periodShows: ReceivableShowLike[] = filterShowsByYear(rows, yearFilter).map(
+    (s) => ({ id: s.id, fee: s.fee, status: s.status, date: s.date }),
+  );
+  const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
+  const exportHref =
+    yearFilter === "all"
+      ? "/shows/sazonalidade/export"
+      : `/shows/sazonalidade/export?ano=${yearFilter}`;
+
+  const season = gigSeasonality(periodShows);
 
   // Escala das barras: maior nº de shows entre os meses.
   const peakCount = Math.max(1, ...season.months.map((m) => m.count));
@@ -43,17 +70,13 @@ export default async function GigSeasonalityPage() {
           <h1 className="text-2xl font-bold">Sazonalidade de shows</h1>
           <p className="text-sm text-gray-500">
             Quais meses do ano historicamente rendem mais shows e maiores cachês
-            — somando todos os anos — para planejar prospecção e preço pela
-            temporada.
+            {yearFilter === "all" ? " — somando todos os anos — " : ` em ${yearFilter} `}
+            para planejar prospecção e preço pela temporada.
           </p>
         </div>
         <div className="flex items-center gap-2">
           {season.totalShows > 0 && (
-            <a
-              href="/shows/sazonalidade/export"
-              className="btn-secondary text-sm"
-              download
-            >
+            <a href={exportHref} className="btn-secondary text-sm" download>
               ⬇ CSV
             </a>
           )}
@@ -62,6 +85,14 @@ export default async function GigSeasonalityPage() {
           </Link>
         </div>
       </div>
+
+      {availableYears.length > 0 && (
+        <PeriodPicker
+          years={availableYears}
+          active={yearFilter}
+          basePath="/shows/sazonalidade"
+        />
+      )}
 
       {season.totalShows === 0 ? (
         <div className="card text-center text-gray-500">
@@ -123,8 +154,8 @@ export default async function GigSeasonalityPage() {
             <h2 className="mb-1 font-semibold">Shows por mês do ano</h2>
             <p className="mb-4 text-xs text-gray-500">
               Considera apenas shows já realizados (PLAYED, ou confirmados com
-              data passada) que tenham cachê registrado. Cada mês soma todos os
-              anos do histórico.
+              data passada) que tenham cachê registrado. Cada mês soma{" "}
+              {yearFilter === "all" ? "todos os anos do histórico" : `o ano de ${yearFilter}`}.
             </p>
             <table className="w-full text-sm">
               <thead>
