@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { computeShowPnL, type TxLike } from "@/lib/finance";
+import { DEFAULT_DUPLICATE_INTERVAL } from "@/lib/shows";
 import { formatMoney } from "@/lib/money";
 import { formatDateTime, formatDate } from "@/lib/format";
 import {
@@ -208,12 +209,26 @@ export default async function ShowDetailPage({ params }: { params: { id: string 
         <Link href={`/shows/${show.id}/editar`} className="btn-secondary">
           Editar
         </Link>
-        <form action={duplicateShowAction}>
+        <form action={duplicateShowAction} className="flex items-center gap-2">
           <input type="hidden" name="id" value={show.id} />
+          <label htmlFor="dup-intervalo" className="sr-only">
+            Intervalo da cópia
+          </label>
+          <select
+            id="dup-intervalo"
+            name="intervalo"
+            defaultValue={DEFAULT_DUPLICATE_INTERVAL}
+            className="input max-w-[10rem]"
+            title="A quantas datas à frente a cópia deve cair (mesmo dia da semana)"
+          >
+            <option value="weekly">+1 semana</option>
+            <option value="biweekly">+2 semanas</option>
+            <option value="monthly">+1 mês (4 sem.)</option>
+          </select>
           <button
             type="submit"
             className="btn-secondary"
-            title="Criar uma cópia deste show na próxima semana (para residências)"
+            title="Criar uma cópia deste show à frente (para residências e eventos recorrentes)"
           >
             Duplicar
           </button>

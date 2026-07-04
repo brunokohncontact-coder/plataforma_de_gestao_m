@@ -10,7 +10,7 @@ import {
   resolvePromiseDate,
 } from "@/lib/finance";
 import { parseMoneyToCents, showSchema } from "@/lib/validation";
-import { buildDuplicatedShow } from "@/lib/shows";
+import { buildDuplicatedShow, parseDuplicateInterval } from "@/lib/shows";
 
 export interface FormState {
   error?: string;
@@ -257,9 +257,9 @@ export async function setBillingContactAction(formData: FormData): Promise<void>
 /**
  * Duplica um show existente — para residências / eventos recorrentes (mesma casa,
  * toda semana), poupando redigitar o mesmo cadastro. Cria uma cópia com o mesmo
- * conteúdo (título, local, cidade, cachê acordado, notas), data deslocada uma
- * semana à frente (mesmo dia/horário) e status de volta a `PROPOSED` — ver a regra
- * pura `buildDuplicatedShow`. Copia os vínculos de contato (o contratante/casa da
+ * conteúdo (título, local, cidade, cachê acordado, notas), data deslocada à frente
+ * pelo intervalo escolhido (semanal/quinzenal/mensal, mesmo dia/horário) e status de
+ * volta a `PROPOSED` — ver as regras puras `parseDuplicateInterval`/`buildDuplicatedShow`. Copia os vínculos de contato (o contratante/casa da
  * residência costuma ser o mesmo), mas NÃO copia transações (são realizados do
  * evento passado) nem o estado de cobrança (promessa/contato de cobrança). Só atua
  * sobre show do próprio usuário. Ao fim, redireciona para a edição da cópia, para o
@@ -275,7 +275,8 @@ export async function duplicateShowAction(formData: FormData): Promise<void> {
   });
   if (!show) return;
 
-  const data = buildDuplicatedShow(show);
+  const weeksAhead = parseDuplicateInterval(formData.get("intervalo"));
+  const data = buildDuplicatedShow(show, weeksAhead);
 
   const created = await prisma.show.create({
     data: {

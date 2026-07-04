@@ -845,6 +845,37 @@ export interface DuplicatedShowData {
  *  próxima semana, no mesmo dia e horário. */
 export const DUPLICATE_SHOW_WEEKS_AHEAD = 1;
 
+/** Intervalos oferecidos ao duplicar um show recorrente. Cada opção mapeia
+ *  direto no parâmetro `weeksAhead` de `buildDuplicatedShow` — em semanas
+ *  inteiras, para a cópia cair sempre no mesmo dia da semana (o que define uma
+ *  residência). "Mensal" ≈ 4 semanas (28 dias): preserva o dia da semana, ao
+ *  contrário de +1 mês de calendário, que o deslocaria. */
+export type DuplicateInterval = "weekly" | "biweekly" | "monthly";
+
+/** Semanas somadas por opção de intervalo (fonte única de verdade). */
+export const DUPLICATE_INTERVAL_WEEKS: Record<DuplicateInterval, number> = {
+  weekly: 1,
+  biweekly: 2,
+  monthly: 4,
+};
+
+/** Intervalo padrão do seletor de duplicação (uma semana). */
+export const DEFAULT_DUPLICATE_INTERVAL: DuplicateInterval = "weekly";
+
+/**
+ * Converte a escolha de intervalo (string do formulário) no número de semanas a
+ * somar na duplicação. Valor desconhecido/ausente cai no padrão semanal. Pura.
+ */
+export function parseDuplicateInterval(value: unknown): number {
+  if (
+    typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(DUPLICATE_INTERVAL_WEEKS, value)
+  ) {
+    return DUPLICATE_INTERVAL_WEEKS[value as DuplicateInterval];
+  }
+  return DUPLICATE_INTERVAL_WEEKS[DEFAULT_DUPLICATE_INTERVAL];
+}
+
 /**
  * Deriva os dados de um show duplicado a partir de um show existente. Copia o
  * conteúdo "de forma" do evento (título, local, cidade, cachê acordado, notas)
