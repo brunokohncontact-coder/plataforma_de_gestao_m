@@ -17,6 +17,7 @@ import {
   compareBookingLeadTime,
   compareBookingLeadTimeScopes,
   bookingLeadTimeHeadline,
+  summarizeMonthShows,
   LEAD_TIME_TREND_EPSILON,
   LEAD_TIME_SHORT_DAYS,
   LEAD_TIME_CRITICAL_DAYS,
@@ -898,5 +899,90 @@ describe("bookingLeadTimeHeadline", () => {
 
   it("os limiares crítico e curto respeitam a ordem esperada", () => {
     expect(LEAD_TIME_CRITICAL_DAYS).toBeLessThan(LEAD_TIME_SHORT_DAYS);
+  });
+});
+
+describe("summarizeMonthShows", () => {
+  // Datas em horário LOCAL (a mesma convenção da grade do calendário).
+  const local = (y: number, m: number, d: number, hh = 20, mm = 0) =>
+    new Date(y, m - 1, d, hh, mm);
+
+  it("soma o cachê confirmado (CONFIRMED+PLAYED) e o pendente (PROPOSED)", () => {
+    const shows = [
+      { date: local(2026, 3, 5), status: "CONFIRMED", fee: 100_00 },
+      { date: local(2026, 3, 12), status: "PLAYED", fee: 250_00 },
+      { date: local(2026, 3, 20), status: "PROPOSED", fee: 400_00 },
+    ];
+    const s = summarizeMonthShows(shows, 2026, 3);
+    expect(s.total).toBe(3);
+    expect(s.confirmedFee).toBe(350_00);
+    expect(s.pendingFee).toBe(400_00);
+    expect(s.totalFee).toBe(750_00);
+    expect(s.byStatus).toEqual({
+      PROPOSED: 1,
+      CONFIRMED: 1,
+      PLAYED: 1,
+      CANCELLED: 0,
+    });
+  });
+
+  it("exclui cancelados do total e dos cachês, mas os conta à parte", () => {
+    const shows = [
+      { date: local(2026, 3, 5), status: "CONFIRMED", fee: 100_00 },
+      { date: local(2026, 3, 8), status: "CANCELLED", fee: 999_00 },
+      { date: local(2026, 3, 9), status: "CANCELLED", fee: 500_00 },
+    ];
+    const s = summarizeMonthShows(shows, 2026, 3);
+    expect(s.total).toBe(1);
+    expect(s.cancelled).toBe(2);
+    expect(s.confirmedFee).toBe(100_00);
+    expect(s.pendingFee).toBe(0);
+    expect(s.totalFee).toBe(100_00);
+  });
+
+  it("ignora shows de outros meses (bordas da grade) pela data LOCAL", () => {
+    const shows = [
+      { date: local(2026, 2, 28), status: "CONFIRMED", fee: 100_00 }, // fev
+      { date: local(2026, 3, 1), status: "CONFIRMED", fee: 200_00 }, // mar
+      { date: local(2026, 3, 31), status: "PROPOSED", fee: 300_00 }, // mar
+      { date: local(2026, 4, 1), status: "CONFIRMED", fee: 400_00 }, // abr
+    ];
+    const s = summarizeMonthShows(shows, 2026, 3);
+    expect(s.total).toBe(2);
+    expect(s.confirmedFee).toBe(200_00);
+    expect(s.pendingFee).toBe(300_00);
+  });
+
+  it("aceita datas como string ISO e trata fee ausente como zero", () => {
+    const shows = [
+      { date: "2026-03-10T23:00:00.000Z", status: "CONFIRMED" },
+      { date: local(2026, 3, 15), status: "PLAYED", fee: 80_00 },
+    ];
+    const s = summarizeMonthShows(shows, 2026, 3);
+    expect(s.total).toBe(2);
+    expect(s.confirmedFee).toBe(80_00);
+  });
+
+  it("ignora status desconhecido (fora do domínio)", () => {
+    const shows = [
+      { date: local(2026, 3, 10), status: "CONFIRMED", fee: 100_00 },
+      { date: local(2026, 3, 11), status: "RASCUNHO", fee: 999_00 },
+    ];
+    const s = summarizeMonthShows(shows, 2026, 3);
+    expect(s.total).toBe(1);
+    expect(s.confirmedFee).toBe(100_00);
+    expect(s.byStatus.CONFIRMED).toBe(1);
+  });
+
+  it("mês sem shows zera tudo", () => {
+    const s = summarizeMonthShows([], 2026, 3);
+    expect(s).toEqual({
+      total: 0,
+      cancelled: 0,
+      confirmedFee: 0,
+      pendingFee: 0,
+      totalFee: 0,
+      byStatus: { PROPOSED: 0, CONFIRMED: 0, PLAYED: 0, CANCELLED: 0 },
+    });
   });
 });

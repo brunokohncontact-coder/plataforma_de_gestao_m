@@ -7094,3 +7094,40 @@ contexto, decisão, justificativa e alternativas consideradas.
   `/shows/sazonalidade?ano=2025` → 307 (auth-gated; app sobe). `npm audit` **inalterado** vs. baseline (10
   advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6); **nenhuma
   dependência nova**.
+
+## 2026-07-04 — D216: Faixa de resumo do mês no calendário (`summarizeMonthShows`)
+- **Contexto:** o calendário (`/shows/calendario`) mostra a grade do mês com os pontos de status
+  por dia, mas não respondia, num relance, "quanto este mês vale?" — quantos shows tenho, quanto de
+  cachê já está confirmado (CONFIRMED+PLAYED) e quanto ainda depende de fechar proposta (PROPOSED).
+  Essa leitura existia só recortada em telas próprias (`/shows/receita-agendada`, rentabilidade), nunca
+  sobre o mês que o usuário está navegando no calendário. Item 2 dos próximos passos ("Calendário —
+  evoluções"; mini-calendário/resumo).
+- **Decisão:** novo helper puro `summarizeMonthShows(shows, year, month)` + tipo `MonthShowsSummary`
+  em `src/lib/shows.ts` (não `finance.ts`, que está sob forte contenção paralela; é lógica de domínio
+  de shows). De uma lista que pode conter bordas de outros meses (como a grade carrega), recorta pela
+  **data LOCAL** (`getFullYear()`/`getMonth()`) — casando exatamente o `inMonth` da grade (`calendar.ts`),
+  **não** o dia UTC das leituras de rentabilidade — e devolve: `total` (shows exceto cancelados),
+  `cancelled` (à parte, contexto), `confirmedFee` (Σ fee de CONFIRMED+PLAYED, centavos), `pendingFee`
+  (Σ fee de PROPOSED), `totalFee` e `byStatus`. Status fora do domínio é ignorado (robustez do módulo).
+  A página passou a selecionar `fee` na consulta que já existia (**zero I/O extra** — mesma query da grade)
+  e renderiza uma faixa (`card`) acima da grade com 4 tiles (Shows no mês / Cachê confirmado 🟢 / A confirmar
+  🟠 / Cachê total) + nota de cancelados; mês vazio mostra "Nenhum show em {mês}".
+- **Justificativa:** transforma o calendário de "onde estão meus shows" em "o que este mês me rende",
+  a leitura financeira que o músico quer ao planejar a agenda, sem sair da tela e sem nova consulta.
+  Cancelados ficam fora da soma (não são compromisso) mas visíveis para explicar buracos. Cachê confirmado
+  × a confirmar separa dinheiro firme de expectativa — a mesma distinção do funil, aqui ancorada no mês.
+- **Alternativas consideradas:** (a) pôr o helper em `finance.ts` — descartada: é domínio de shows e
+  `finance.ts` está sob edição concorrente pesada (menos conflito em `shows.ts`). (b) recortar por dia UTC
+  (convenção de rentabilidade) — descartada: a grade é LOCAL; usar UTC deslocaria shows de fronteira para
+  o mês errado vs. o que o usuário vê. (c) somar cachê dos cancelados — descartada: cancelado não é receita
+  nem compromisso; contá-lo à parte preserva o contexto sem inflar o total. (d) export CSV do resumo —
+  não feito: é retrato de um número agregado, não uma tabela; o eixo de export tabular segue esgotado.
+- **Testes:** **+6** em `shows.test.ts` (`describe("summarizeMonthShows")`): soma confirmado × pendente;
+  cancelados fora do total/cachês mas contados; ignora bordas de outros meses pela data local; aceita
+  string ISO e trata `fee` ausente como zero; ignora status desconhecido; mês vazio zera tudo. Suíte
+  **1215** verdes (era 1209).
+- **DoD:** build de produção verde (`/shows/calendario` compila); lint (`next lint`, 0 avisos); typecheck
+  (`tsc --noEmit`) limpo; **1215 testes** (`vitest run`); smoke test — `next start`, `/login` → HTTP 200 e
+  `/shows/calendario` + `?mes=2026-03` → 307 (auth-gated; app sobe). `npm audit` **inalterado** vs. baseline
+  (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6);
+  **nenhuma dependência nova**.
