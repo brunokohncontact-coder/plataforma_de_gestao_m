@@ -77,6 +77,14 @@ export interface ShowsProfitability<S extends ShowLike = ShowLike> {
   totalExpenses: number;
   /** Resultado líquido somado. */
   totalNet: number;
+  /**
+   * Margem líquida AGREGADA do período (0..1): `totalNet / totalIncome`,
+   * ponderada pela receita bruta (não é a média das margens por show — um show
+   * grande pesa mais que um pequeno, que é a leitura honesta de "quanto de cada
+   * real bruto sobrou"). 0 quando não há receita bruta, espelhando a convenção
+   * de `computeShowPnL`. Pode ser negativa se as despesas superarem a receita.
+   */
+  totalMargin: number;
   /** Show mais rentável (maior `net`) ou null se não houver shows. */
   best: ShowProfitRow<S> | null;
   /** Show menos rentável (menor `net`) ou null se não houver shows. */
@@ -107,6 +115,7 @@ export function rankShowsByProfit<S extends ShowLike>(
   const totalIncome = sum(rows.map((r) => r.pnl.fee + r.pnl.extraIncome));
   const totalExpenses = sum(rows.map((r) => r.pnl.expenses));
   const totalNet = sum(rows.map((r) => r.pnl.net));
+  const totalMargin = totalIncome === 0 ? 0 : totalNet / totalIncome;
 
   return {
     rows,
@@ -114,6 +123,7 @@ export function rankShowsByProfit<S extends ShowLike>(
     totalIncome,
     totalExpenses,
     totalNet,
+    totalMargin,
     best: rows.length > 0 ? rows[0] : null,
     worst: rows.length > 0 ? rows[rows.length - 1] : null,
   };

@@ -6972,3 +6972,42 @@ contexto, decisão, justificativa e alternativas consideradas.
   **1196 testes**; smoke test — `next start`, `/login` → HTTP 200 e `/shows/dias-semana` +
   `/shows/dias-semana?ano=2025` → 307 (auth-gated; app sobe). `npm audit` **inalterado** vs. baseline
   (mesmos advisories Next 14 / postcss da D6); **nenhuma dependência nova**.
+
+## 2026-07-04 — D211: Margem líquida agregada na rentabilidade por show (`totalMargin` + linha Total no CSV)
+- **Contexto:** `/shows/rentabilidade` (`rankShowsByProfit`, F4) já mostrava a margem **por show** (coluna
+  "Margem" na tabela e no CSV, `computeShowPnL.margin`) e os totais de receita/despesa/resultado do período
+  em cards, mas **não** havia a leitura direta "de cada real bruto que entrou no período, quanto sobrou
+  líquido?" — a **margem líquida agregada** do período. E o CSV `showProfitToCsv`, ao contrário dos CSVs
+  irmãos do mesmo eixo (sazonalidade/faixas/dias-da-semana, que fecham com uma linha **Total** — D205/D206/
+  D209), era o único ranking tabular sem linha Total: quem baixava a planilha tinha de somar as colunas à mão.
+  Dois gaps do mesmo tema (o agregado do período) numa das telas mais centrais do produto.
+- **Decisão:** novo campo `totalMargin` em `ShowsProfitability` (`src/lib/finance.ts`): margem líquida
+  **agregada** = `totalNet / totalIncome`, **ponderada pela receita bruta** (não a média simples das margens
+  por show — um show grande pesa mais que um pequeno, que é a leitura honesta), 0 quando não há receita bruta
+  (espelha a convenção de `computeShowPnL`), podendo ser negativa se as despesas superarem a receita. Calculada
+  no mesmo `reduce`/`sum` já existente do helper — **zero agregação nova, zero I/O**. A página exibe a margem
+  como `hint` (linha secundária) sob o card "Resultado líquido" — sem inflar o grid de 4 cards com um 5º — via
+  prop opcional `hint` no componente `Stat`. O CSV `showProfitToCsv` passa a acrescentar, quando há linhas, uma
+  linha **"Total"** (Data/Status em branco) com cachê/extras/despesas/resultado somados + a margem agregada na
+  coluna "Margem" (reusa `csvMargin`); com zero linhas a saída segue idêntica (só o cabeçalho, empty state
+  preservado).
+- **Justificativa:** o agregado ponderado responde à pergunta certa de F4 ("quanto sobrou de cada real bruto")
+  e é a base honesta (uma média simples das margens deixaria um show pequeno de margem alta distorcer o número).
+  A linha Total fecha a assimetria com os CSVs irmãos, tornando a planilha auto-suficiente. Ambos reusam valores
+  já computados — nada de nova consulta ou passo de agregação. Puro e determinístico, sem dependência nova.
+- **Alternativas consideradas:** (a) exibir a margem como a **média simples** das margens por show — descartada:
+  distorce com shows pequenos de margem extrema; o agregado ponderado pela receita é a leitura correta do
+  período. (b) um **5º card** de Stat "Margem líquida" — descartada: quebraria o grid `lg:grid-cols-4`; o `hint`
+  sob o resultado líquido é mais econômico e liga a margem ao número que ela qualifica. (c) **comparar a margem
+  ano a ano** no card `ProfitComparisonCard` (D210) — adiada: o veredito de D210 já ancora no resultado médio
+  por show (a margem é o mesmo eixo por outra lente); reavaliável se surgir demanda. (d) levar a margem agregada
+  ao **card do Painel** — adiada: o Painel já é denso (mesma disciplina da D210(d)).
+- **Testes:** **+5** — `finance.test.ts` (`rankShowsByProfit`): margem agregada ponderada (`totalNet/totalIncome`,
+  não média das margens); margem negativa quando despesa > receita; margem 0 sem receita bruta; `totalMargin: 0`
+  no estado vazio. `csv.test.ts` (`showProfitToCsv`): linha Total com agregados + margem ponderada (72%); sem
+  linha Total quando não há linhas. Suíte **1192** verdes (era 1187).
+- **DoD:** build de produção verde (`/shows/rentabilidade` + `/export` compilam); lint (`next lint`, 0 avisos);
+  typecheck (`tsc --noEmit`) limpo; **1192 testes**; smoke test — `next start`, `/login` → HTTP 200 e
+  `/shows/rentabilidade?ano=2025` / `/shows/rentabilidade/export?ano=2025` → 307 (auth-gated; app sobe).
+  `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
+  postcss bundlado; ver D6); **nenhuma dependência nova**.
