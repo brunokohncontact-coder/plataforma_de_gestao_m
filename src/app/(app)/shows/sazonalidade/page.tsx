@@ -4,11 +4,13 @@ import { prisma } from "@/lib/prisma";
 import {
   gigSeasonality,
   gigSeasonalityYears,
+  compareGigSeasonality,
   parseProfitYear,
   filterShowsByYear,
   GIG_MONTH_SHORT,
   type ReceivableShowLike,
   type GigMonthStat,
+  type GigSeasonalityComparison,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { PeriodPicker } from "@/components/PeriodPicker";
@@ -59,6 +61,21 @@ export default async function GigSeasonalityPage({
       : `/shows/sazonalidade/export?ano=${yearFilter}`;
 
   const season = gigSeasonality(periodShows);
+
+  // Comparativo ano a ano dos "movers" da temporada: só com um ano específico
+  // selecionado e ambos os períodos com shows realizados. O ano anterior sai do
+  // mesmo acervo já carregado (zero I/O extra), recortado por `filterShowsByYear`.
+  let comparison: GigSeasonalityComparison | null = null;
+  if (yearFilter !== "all") {
+    const prevShows: ReceivableShowLike[] = filterShowsByYear(
+      rows,
+      yearFilter - 1,
+    ).map((s) => ({ id: s.id, fee: s.fee, status: s.status, date: s.date }));
+    const prevSeason = gigSeasonality(prevShows);
+    if (season.totalShows > 0 && prevSeason.totalShows > 0) {
+      comparison = compareGigSeasonality(season, prevSeason);
+    }
+  }
 
   // Escala das barras: maior nº de shows entre os meses.
   const peakCount = Math.max(1, ...season.months.map((m) => m.count));
@@ -149,6 +166,15 @@ export default async function GigSeasonalityPage({
             />
           </div>
 
+          {/* Comparativo ano a ano — os meses que mais mudaram */}
+          {comparison && yearFilter !== "all" && (
+            <SeasonComparison
+              comparison={comparison}
+              year={yearFilter}
+              previousYear={yearFilter - 1}
+            />
+          )}
+
           {/* Shows por mês do ano */}
           <section className="card overflow-x-auto">
             <h2 className="mb-1 font-semibold">Shows por mês do ano</h2>
@@ -236,6 +262,105 @@ export default async function GigSeasonalityPage({
             onde prospectar mais ou ajustar o preço.
           </p>
         </>
+      )}
+    </div>
+  );
+}
+
+function signedShows(delta: number): string {
+  const abs = Math.abs(delta);
+  const noun = abs === 1 ? "show" : "shows";
+  if (delta > 0) return `+${abs} ${noun}`;
+  if (delta < 0) return `−${abs} ${noun}`;
+  return `0 ${noun}`;
+}
+
+function signedMoney(delta: number): string {
+  const sign = delta > 0 ? "+" : delta < 0 ? "−" : "";
+  return `${sign}${formatMoney(Math.abs(delta))}`;
+}
+
+function SeasonComparison({
+  comparison,
+  year,
+  previousYear,
+}: {
+  comparison: GigSeasonalityComparison;
+  year: number;
+  previousYear: number;
+}) {
+  const { biggestGain, biggestDrop, totalShowsDelta, totalFeeDelta } = comparison;
+  const totalTone =
+    totalShowsDelta > 0
+      ? "text-emerald-600"
+      : totalShowsDelta < 0
+        ? "text-red-600"
+        : "text-gray-500";
+
+  return (
+    <section className="card">
+      <div className="mb-1 flex items-baseline justify-between gap-2">
+        <h2 className="font-semibold">
+          Temporada {year} vs. {previousYear}
+        </h2>
+        <span className={"text-sm font-semibold " + totalTone}>
+          {signedShows(totalShowsDelta)} · {signedMoney(totalFeeDelta)}
+        </span>
+      </div>
+      <p className="mb-4 text-xs text-gray-500">
+        Em que meses você agendou mais ou menos shows do que no ano anterior — se a
+        forma da temporada mudou, onde prospectar ou rever o preço.
+      </p>
+
+      {!biggestGain && !biggestDrop ? (
+        <p className="text-sm text-gray-500">
+          Os dois anos têm a mesma distribuição de shows por mês — nenhum mês subiu
+          ou caiu.
+        </p>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <MoverCard
+            label="Mês que mais cresceu"
+            change={biggestGain}
+            tone="emerald"
+          />
+          <MoverCard label="Mês que mais caiu" change={biggestDrop} tone="red" />
+        </div>
+      )}
+    </section>
+  );
+}
+
+function MoverCard({
+  label,
+  change,
+  tone,
+}: {
+  label: string;
+  change: GigSeasonalityComparison["biggestGain"];
+  tone: "emerald" | "red";
+}) {
+  const valueTone = tone === "emerald" ? "text-emerald-600" : "text-red-600";
+  return (
+    <div className="rounded-lg border border-gray-100 p-3">
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+        {label}
+      </p>
+      {change ? (
+        <>
+          <p className="mt-1 text-lg font-bold text-gray-900">{change.label}</p>
+          <p className={"mt-0.5 text-sm font-semibold " + valueTone}>
+            {signedShows(change.countDelta)}
+            <span className="ml-1 font-normal text-gray-400">
+              ({change.previousCount} → {change.currentCount})
+            </span>
+          </p>
+          <p className="mt-0.5 text-xs text-gray-500">
+            Faturamento {signedMoney(change.feeDelta)}
+          </p>
+        </>
+      ) : (
+        <p className="mt-1 text-sm text-gray-400">Nenhum mês {tone === "emerald" ? "subiu" : "caiu"}.</p>
       )}
     </div>
   );

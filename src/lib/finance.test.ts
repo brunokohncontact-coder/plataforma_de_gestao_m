@@ -106,6 +106,7 @@ import {
   weekdaySplit,
   WEEKEND_WEEKDAYS,
   gigSeasonality,
+  compareGigSeasonality,
   gigSeasonalityYears,
   gigSeasonalityHeadline,
   gigSeasonalityLull,
@@ -7052,6 +7053,112 @@ describe("gigSeasonality", () => {
     expect(s.busiest?.month).toBe(0);
     // O vale também resolve empate total pelo mês mais cedo.
     expect(s.quietest?.month).toBe(0);
+  });
+});
+
+describe("compareGigSeasonality", () => {
+  const now = new Date("2027-06-15T12:00:00.000Z");
+
+  function gig(partial: Partial<ReceivableShowLike>): ReceivableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-03-10T20:00:00.000Z",
+      ...partial,
+    };
+  }
+
+  it("devolve 12 meses e destaca o mês que mais cresceu e o que mais caiu em shows", () => {
+    const current = gigSeasonality(
+      [
+        // Março 2026: 3 shows
+        gig({ id: "c-mar1", date: "2026-03-04T20:00:00.000Z" }),
+        gig({ id: "c-mar2", date: "2026-03-11T20:00:00.000Z" }),
+        gig({ id: "c-mar3", date: "2026-03-18T20:00:00.000Z" }),
+        // Julho 2026: 1 show
+        gig({ id: "c-jul1", date: "2026-07-06T20:00:00.000Z" }),
+      ],
+      { now },
+    );
+    const previous = gigSeasonality(
+      [
+        // Março 2025: 1 show → março cresceu +2
+        gig({ id: "p-mar1", date: "2025-03-04T20:00:00.000Z" }),
+        // Julho 2025: 3 shows → julho caiu −2
+        gig({ id: "p-jul1", date: "2025-07-06T20:00:00.000Z" }),
+        gig({ id: "p-jul2", date: "2025-07-13T20:00:00.000Z" }),
+        gig({ id: "p-jul3", date: "2025-07-20T20:00:00.000Z" }),
+      ],
+      { now },
+    );
+
+    const cmp = compareGigSeasonality(current, previous);
+    expect(cmp.months).toHaveLength(12);
+    expect(cmp.totalShowsDelta).toBe(0); // 4 vs 4
+    expect(cmp.biggestGain?.month).toBe(2); // março
+    expect(cmp.biggestGain?.countDelta).toBe(2);
+    expect(cmp.biggestDrop?.month).toBe(6); // julho
+    expect(cmp.biggestDrop?.countDelta).toBe(-2);
+
+    // A linha de março reflete os dois lados e o delta de faturamento.
+    const mar = cmp.months[2];
+    expect(mar).toMatchObject({
+      currentCount: 3,
+      previousCount: 1,
+      countDelta: 2,
+      feeDelta: 200_00, // 300_00 − 100_00
+    });
+  });
+
+  it("sem base anterior: todo mês com show conta como ganho, nenhum como queda", () => {
+    const current = gigSeasonality(
+      [gig({ id: "c-abr", date: "2026-04-02T20:00:00.000Z" })],
+      { now },
+    );
+    const previous = gigSeasonality([], { now });
+
+    const cmp = compareGigSeasonality(current, previous);
+    expect(cmp.totalShowsDelta).toBe(1);
+    expect(cmp.biggestGain?.month).toBe(3); // abril
+    expect(cmp.biggestDrop).toBeNull();
+  });
+
+  it("períodos idênticos: sem movers e deltas zerados", () => {
+    const shows = [
+      gig({ id: "a", date: "2026-05-02T20:00:00.000Z", fee: 150_00 }),
+      gig({ id: "b", date: "2026-05-09T20:00:00.000Z", fee: 150_00 }),
+    ];
+    const previousShows = [
+      gig({ id: "pa", date: "2025-05-02T20:00:00.000Z", fee: 150_00 }),
+      gig({ id: "pb", date: "2025-05-09T20:00:00.000Z", fee: 150_00 }),
+    ];
+    const cmp = compareGigSeasonality(
+      gigSeasonality(shows, { now }),
+      gigSeasonality(previousShows, { now }),
+    );
+    expect(cmp.totalShowsDelta).toBe(0);
+    expect(cmp.totalFeeDelta).toBe(0);
+    expect(cmp.biggestGain).toBeNull();
+    expect(cmp.biggestDrop).toBeNull();
+    expect(cmp.months.every((m) => m.countDelta === 0 && m.feeDelta === 0)).toBe(true);
+  });
+
+  it("empate no nº de shows é desempatado pelo maior/menor delta de faturamento", () => {
+    // Fevereiro e abril crescem +1 show; fevereiro troca por um cachê maior.
+    const current = gigSeasonality(
+      [
+        gig({ id: "c-fev", date: "2026-02-10T20:00:00.000Z", fee: 500_00 }),
+        gig({ id: "c-abr", date: "2026-04-10T20:00:00.000Z", fee: 120_00 }),
+      ],
+      { now },
+    );
+    const previous = gigSeasonality([], { now });
+
+    const cmp = compareGigSeasonality(current, previous);
+    // Ambos +1 show; fevereiro (feeDelta 500) vence o ganho, abril (feeDelta 120) fica.
+    expect(cmp.biggestGain?.month).toBe(1); // fevereiro
+    expect(cmp.biggestGain?.feeDelta).toBe(500_00);
   });
 });
 
