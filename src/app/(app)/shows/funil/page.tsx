@@ -1,7 +1,15 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { showPipeline, type ShowLike } from "@/lib/finance";
+import {
+  showPipeline,
+  compareShowPipelines,
+  showProfitYears,
+  parseProfitYear,
+  filterShowsByYear,
+  type ShowLike,
+  type ShowPipelineComparison,
+} from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import {
   SHOW_STATUS_LABELS,
@@ -9,19 +17,54 @@ import {
   SHOW_STATUS_DOT,
   type ShowStatus,
 } from "@/lib/domain";
+import { PeriodPicker } from "@/components/PeriodPicker";
 
 export const dynamic = "force-dynamic";
 
-export default async function ShowFunnelPage() {
+type SearchParams = { [key: string]: string | string[] | undefined };
+
+export default async function ShowFunnelPage({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
   const user = await requireUser();
 
-  const shows = await prisma.show.findMany({
+  const rows = await prisma.show.findMany({
     where: { userId: user.id },
-    select: { id: true, status: true, fee: true },
+    select: { id: true, status: true, fee: true, date: true },
   });
 
-  const pipeline = showPipeline(shows as ShowLike[]);
+  // Recorte por período (ano da `date` do show), reaproveitando os helpers da
+  // D108. Os anos do seletor vêm de todos os shows (`showProfitYears`); filtra-se
+  // ANTES de agregar, então `showPipeline` segue agnóstico ao recorte.
+  const availableYears = showProfitYears(rows.map((s) => s.date));
+  const yearFilter = parseProfitYear(searchParams?.ano, availableYears);
+  const periodShows = filterShowsByYear(rows, yearFilter);
+
+  const pipeline = showPipeline(periodShows as ShowLike[]);
   const maxCount = Math.max(1, ...pipeline.stages.map((s) => s.count));
+  const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
+
+  // Comparativo ano a ano da taxa de concretização (espelha o card de
+  // antecedência/cachê ano a ano, D187/D209): só faz sentido com um ano
+  // específico e ambos os períodos tendo shows já decididos — caso contrário a
+  // taxa é indefinida e não há tendência a ler. Reaproveita o mesmo recorte por
+  // ano UTC (D108) sobre os registros já carregados, sem nova consulta.
+  let comparison: ShowPipelineComparison | null = null;
+  let previousYear = 0;
+  if (yearFilter !== "all") {
+    previousYear = yearFilter - 1;
+    const previousPipeline = showPipeline(
+      filterShowsByYear(rows, previousYear) as ShowLike[],
+    );
+    if (pipeline.decidedCount > 0 && previousPipeline.decidedCount > 0) {
+      comparison = compareShowPipelines(pipeline, previousPipeline);
+    }
+  }
+
+  const exportHref =
+    yearFilter === "all" ? "/shows/funil/export" : `/shows/funil/export?ano=${yearFilter}`;
 
   return (
     <div className="space-y-6">
@@ -35,7 +78,7 @@ export default async function ShowFunnelPage() {
         </div>
         <div className="flex items-center gap-2">
           {pipeline.total > 0 && (
-            <a href="/shows/funil/export" className="btn-secondary text-sm" download>
+            <a href={exportHref} className="btn-secondary text-sm" download>
               ⬇ CSV
             </a>
           )}
@@ -44,6 +87,10 @@ export default async function ShowFunnelPage() {
           </Link>
         </div>
       </div>
+
+      {availableYears.length > 0 && (
+        <PeriodPicker years={availableYears} active={yearFilter} basePath="/shows/funil" />
+      )}
 
       {pipeline.total === 0 ? (
         <div className="card text-center text-gray-500">
@@ -89,10 +136,18 @@ export default async function ShowFunnelPage() {
             />
           </div>
 
+          {comparison && (
+            <ConversionComparisonCard
+              comparison={comparison}
+              currentYear={yearFilter as number}
+              previousYear={previousYear}
+            />
+          )}
+
           <section className="card">
             <h2 className="mb-1 font-semibold">Shows por etapa</h2>
             <p className="mb-4 text-xs text-gray-500">
-              Retrato do estado atual de cada show (não um histórico de conversão).
+              Retrato do estado de cada show ({periodLabel}) — não um histórico de conversão.
             </p>
             <div className="space-y-4">
               {pipeline.stages.map((stage) => {
@@ -180,6 +235,85 @@ function Stat({
       <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
       <p className={"mt-1 text-xl font-bold " + tones[tone]}>{value}</p>
       {hint && <p className="mt-1 text-xs text-gray-400">{hint}</p>}
+    </div>
+  );
+}
+
+const CONVERSION_TREND: Record<
+  ShowPipelineComparison["trend"],
+  { label: string; emoji: string; classes: string; note: string }
+> = {
+  improved: {
+    label: "Fechando mais",
+    emoji: "🟢",
+    classes: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    note: "De tudo que teve desfecho, você concretizou uma fração maior de shows que no ano anterior — mais do que negocia está virando palco.",
+  },
+  worsened: {
+    label: "Perdendo mais",
+    emoji: "🔴",
+    classes: "border-red-200 bg-red-50 text-red-800",
+    note: "A taxa de concretização caiu em relação ao ano anterior — mais propostas estão sendo canceladas. Vale revisar o que trava o fechamento (preço, disponibilidade, follow-up).",
+  },
+  stable: {
+    label: "Estável",
+    emoji: "⚪",
+    classes: "border-gray-200 bg-gray-50 text-gray-700",
+    note: "A taxa de concretização ficou praticamente igual à do ano anterior.",
+  },
+};
+
+/** Taxa de concretização (0..1) como percentual inteiro, ou "—" quando indefinida. */
+function rateLabel(rate: number | null): string {
+  return rate == null ? "—" : `${(rate * 100).toFixed(0)}%`;
+}
+
+/** Variação de taxa em pontos percentuais, com sinal (ex.: 0.3 → "+30 p.p."). */
+function pointsDelta(delta: number): string {
+  const pp = Math.round(delta * 100);
+  if (pp === 0) return "0 p.p.";
+  return `${pp > 0 ? "+" : "−"}${Math.abs(pp)} p.p.`;
+}
+
+/**
+ * Card "Concretização {ano} vs. {ano-1}": compara a taxa de concretização
+ * (realizados / decididos) do ano selecionado com a do ano anterior (espelha o
+ * comparativo ano a ano de antecedência/cachê, D187/D209, no eixo de
+ * fechamento). Mostra a variação em pontos percentuais + as taxas de cada ano,
+ * com um veredito de tendência. Aqui **subir** é a melhora.
+ */
+function ConversionComparisonCard({
+  comparison,
+  currentYear,
+  previousYear,
+}: {
+  comparison: ShowPipelineComparison;
+  currentYear: number;
+  previousYear: number;
+}) {
+  const trend = CONVERSION_TREND[comparison.trend];
+  const { current, previous, conversionRateDelta } = comparison;
+  return (
+    <div className={"card border " + trend.classes}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide opacity-80">
+          Concretização {currentYear} vs. {previousYear}
+        </p>
+        <span className="badge bg-white/70 font-semibold">
+          {trend.emoji} {trend.label}
+        </span>
+      </div>
+      <div className="mt-3">
+        <p className="text-2xl font-bold">
+          {conversionRateDelta == null ? "—" : pointsDelta(conversionRateDelta)}
+        </p>
+        <p className="text-xs opacity-80">
+          {rateLabel(previous.conversionRate)} ({previousYear}, {previous.playedCount}/
+          {previous.decidedCount}) → {rateLabel(current.conversionRate)} ({currentYear},{" "}
+          {current.playedCount}/{current.decidedCount})
+        </p>
+      </div>
+      <p className="mt-3 text-xs opacity-90">{trend.note}</p>
     </div>
   );
 }

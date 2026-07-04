@@ -9,7 +9,22 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1187 testes** verdes após o **comparativo ano a ano do
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1192 testes** verdes após o **recorte por período (`?ano=`) +
+comparativo ano a ano da taxa de concretização no funil de propostas** (Sessão 218, D212 — `/shows/funil` (`showPipeline`) era a última
+leitura de tendência de shows ainda sem o recorte por período (`?ano=`/`PeriodPicker`) e sem o card "vs. {ano-1}" que as irmãs já têm
+(antecedência/D187, faixas-de-cache/D203/D209, rentabilidade/D210, prazo-recebimento/D193), deixando sem resposta direta a pergunta de
+progressão do funil "fechei uma fração maior do que negociei este ano vs. ano passado?". (a) A página e o export ganham o recorte por ano
+UTC da `date` reusando `showProfitYears`/`parseProfitYear`/`filterShowsByYear`/D108 (filtra ANTES de agregar, `showPipeline` segue agnóstico)
++ `PeriodPicker` compartilhado (D119) + nome `funil-de-propostas-{ano}.csv` no export com ano. (b) Novo helper puro
+`compareShowPipelines(current, previous)` + `ShowPipelineComparison` + `CONVERSION_TREND_EPSILON` (=0,05 = 5 p.p.) em `src/lib/finance.ts`
+(espelho de `compareBookingLeadTime`/D187): de dois `showPipeline` já computados devolve `conversionRateDelta` (0..1, `null` sem show
+decidido em algum período) + deltas de realizados/decididos + veredito `trend` (`improved`/`worsened`/`stable`), **ancorado na taxa de
+concretização** (PLAYED/decididos) — a única métrica do funil comparável entre anos fechados (contagem/valor em aberto é snapshot do agora);
+**subir** é a melhora, direção igual ao cachê/antecedência. Card `ConversionComparisonCard` 🟢/🔴/⚪ "Concretização {ano} vs. {ano-1}" só com
+um ano específico e ambos os períodos tendo shows decididos, reusando o recorte por ano sobre os registros já carregados (**zero I/O extra**).
+Adiado (D212): comparar valor/contagem em aberto (snapshot, não ano fechado); comparativo no CSV (precedente D193/D209/D210); nudge no Painel
+(já denso). **+5 testes**. Smoke test (`next start`) → `/login` 200 e `/shows/funil?ano=2025` + `/export` 307 (auth-gated). `npm audit` sem
+novas vulnerabilidades (mesmos advisories Next/postcss da D6). Ver D212. Segue o 1187 do **comparativo ano a ano do
 resultado por show** em `/shows/rentabilidade` (Sessão 217, D210 — a tela mais central de F4 tinha o recorte por período (`?ano=`) mas,
 ao contrário das irmãs já cobertas (faixas-de-cache/D203, locais/D120, antecedência/D187, prazo-recebimento/D193, concentração/D226),
 **não** tinha um card "vs. {ano-1}", deixando sem resposta direta a pergunta central "o show típico me paga mais líquido que ano

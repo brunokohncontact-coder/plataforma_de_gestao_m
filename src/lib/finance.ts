@@ -6261,6 +6261,92 @@ export function showPipeline(shows: ShowLike[]): ShowPipeline {
   };
 }
 
+// ── Comparativo ano a ano da taxa de concretização do funil ─────────────────
+//
+// A pergunta de progressão do funil: "de tudo que negociei e teve desfecho,
+// fechei uma fração maior de shows este ano que no ano passado?". Ancora na
+// **taxa de concretização** (PLAYED / decididos) — a única métrica do funil que
+// faz sentido comparar entre dois anos fechados (contagem/valor em aberto são
+// um retrato do *agora*, não de um ano). Recorta-se por ano da `date` do show
+// antes de agregar (mesmo eixo de `filterShowsByYear`/D108), reusando o
+// snapshot `showPipeline` de cada período. Fecha o gap do padrão "vs. {ano-1}"
+// no funil, já presente nas irmãs de tendência (antecedência/D187,
+// cachê/D209, rentabilidade/D210).
+
+/**
+ * Limiar (em pontos, 0..1) abaixo do qual a variação da taxa de concretização
+ * entre dois períodos é ruído ("stable"). Cinco pontos percentuais — grande o
+ * bastante para não oscilar com um único show a mais fechado numa amostra
+ * pequena, pequeno o bastante para captar uma melhora real de fechamento.
+ * Espelha a disciplina de epsilon de `LEAD_TIME_TREND_EPSILON` (D187) no eixo
+ * de concretização.
+ */
+export const CONVERSION_TREND_EPSILON = 0.05;
+
+export interface ShowPipelineComparison {
+  /** Funil do período atual (tipicamente o ano selecionado). */
+  current: ShowPipeline;
+  /** Funil do período de comparação (tipicamente o ano anterior). */
+  previous: ShowPipeline;
+  /**
+   * Variação da taxa de concretização (atual − anterior, em pontos 0..1).
+   * `null` quando algum dos períodos não tem show decidido (taxa indefinida) —
+   * aí não há comparação possível. Positivo = fechando uma fração maior agora
+   * (melhora); negativo = perdendo mais do que negocia (piora).
+   */
+  conversionRateDelta: number | null;
+  /** Variação da contagem de shows realizados (atual − anterior). */
+  playedCountDelta: number;
+  /** Variação da contagem de shows decididos — PLAYED+CANCELLED (atual − anterior). */
+  decidedCountDelta: number;
+  /**
+   * Direção do fechamento entre os dois períodos, decidida pela variação da
+   * taxa de concretização contra `CONVERSION_TREND_EPSILON`:
+   * - "improved": taxa subiu além do limiar (fechando mais do que negocia);
+   * - "worsened": taxa caiu além do limiar (perdendo mais do que negocia);
+   * - "stable": variação dentro do limiar, ou taxa indefinida em algum período.
+   * Aqui **subir** a taxa é a melhora (direção igual ao cachê/antecedência,
+   * oposta ao DSO/cancelamento).
+   */
+  trend: "improved" | "worsened" | "stable";
+}
+
+/**
+ * Compara a **taxa de concretização** do funil entre dois períodos (atual ×
+ * anterior), espelhando `compareBookingLeadTime` (D187) no eixo de fechamento.
+ * Pura, sem I/O: recebe dois `showPipeline` já computados (cada um sobre os
+ * shows do seu período) e devolve a variação da taxa de concretização (e das
+ * contagens de realizados/decididos) + um veredito de tendência. Quando algum
+ * período não tem show decidido a taxa é indefinida: `conversionRateDelta`
+ * fica `null` e o veredito é "stable" (sem base para ler tendência). O chamador
+ * decide quando exibir (tipicamente só com um ano específico e ambos os
+ * períodos tendo shows decididos).
+ */
+export function compareShowPipelines(
+  current: ShowPipeline,
+  previous: ShowPipeline,
+): ShowPipelineComparison {
+  const conversionRateDelta =
+    current.conversionRate == null || previous.conversionRate == null
+      ? null
+      : current.conversionRate - previous.conversionRate;
+  return {
+    current,
+    previous,
+    conversionRateDelta,
+    playedCountDelta: current.playedCount - previous.playedCount,
+    decidedCountDelta: current.decidedCount - previous.decidedCount,
+    trend:
+      conversionRateDelta == null
+        ? "stable"
+        : conversionRateDelta >= CONVERSION_TREND_EPSILON
+          ? "improved"
+          : conversionRateDelta <= -CONVERSION_TREND_EPSILON
+            ? "worsened"
+            : "stable",
+  };
+}
+
 // ── Evolução do cachê (estou cobrando mais com o tempo?) ────────────────────
 //
 // Responde "meu cachê está subindo?": olha só os shows JÁ REALIZADOS (mesmo

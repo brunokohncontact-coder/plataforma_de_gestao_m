@@ -90,6 +90,8 @@ import {
   taxReserve,
   DEFAULT_TAX_RATE,
   showPipeline,
+  compareShowPipelines,
+  CONVERSION_TREND_EPSILON,
   feeTrend,
   gigCadence,
   feeDistribution,
@@ -5906,6 +5908,87 @@ describe("showPipeline", () => {
     ]);
     expect(p.total).toBe(1);
     expect(p.playedCount).toBe(1);
+  });
+});
+
+describe("compareShowPipelines", () => {
+  const sh = (id: string, status: string): ShowLike => ({ id, status, fee: 0 });
+
+  it("veredito 'improved' quando a taxa de concretização sobe além do limiar", () => {
+    // anterior: 2/4 = 50% · atual: 4/5 = 80% → +30 p.p.
+    const previous = showPipeline([
+      sh("a", "PLAYED"),
+      sh("b", "PLAYED"),
+      sh("c", "CANCELLED"),
+      sh("d", "CANCELLED"),
+    ]);
+    const current = showPipeline([
+      sh("e", "PLAYED"),
+      sh("f", "PLAYED"),
+      sh("g", "PLAYED"),
+      sh("h", "PLAYED"),
+      sh("i", "CANCELLED"),
+    ]);
+    const c = compareShowPipelines(current, previous);
+    expect(c.conversionRateDelta).toBeCloseTo(0.3, 5);
+    expect(c.playedCountDelta).toBe(2); // 4 − 2
+    expect(c.decidedCountDelta).toBe(1); // 5 − 4
+    expect(c.trend).toBe("improved");
+  });
+
+  it("veredito 'worsened' quando a taxa cai além do limiar", () => {
+    const previous = showPipeline([sh("a", "PLAYED"), sh("b", "PLAYED")]); // 100%
+    const current = showPipeline([sh("c", "PLAYED"), sh("d", "CANCELLED")]); // 50%
+    const c = compareShowPipelines(current, previous);
+    expect(c.conversionRateDelta).toBeCloseTo(-0.5, 5);
+    expect(c.trend).toBe("worsened");
+  });
+
+  it("veredito 'stable' quando a variação fica dentro do limiar", () => {
+    // 2/4 = 50% vs. 5/10 = 50% → 0 p.p. (dentro do epsilon)
+    const previous = showPipeline([
+      sh("a", "PLAYED"),
+      sh("b", "PLAYED"),
+      sh("c", "CANCELLED"),
+      sh("d", "CANCELLED"),
+    ]);
+    const current = showPipeline([
+      ...["e", "f", "g", "h", "i"].map((id) => sh(id, "PLAYED")),
+      ...["j", "k", "l", "m", "n"].map((id) => sh(id, "CANCELLED")),
+    ]);
+    const c = compareShowPipelines(current, previous);
+    expect(c.conversionRateDelta).toBeCloseTo(0, 5);
+    expect(Math.abs(c.conversionRateDelta ?? 1)).toBeLessThan(CONVERSION_TREND_EPSILON);
+    expect(c.trend).toBe("stable");
+  });
+
+  it("propostas/confirmados em aberto não movem a taxa (só decididos contam)", () => {
+    // atual tem propostas em aberto, mas a taxa olha só realizados/cancelados
+    const previous = showPipeline([sh("a", "PLAYED"), sh("b", "CANCELLED")]); // 50%
+    const current = showPipeline([
+      sh("c", "PLAYED"),
+      sh("d", "PLAYED"),
+      sh("e", "CANCELLED"),
+      sh("f", "PROPOSED"), // aberto — fora do decidido
+      sh("g", "CONFIRMED"), // aberto — fora do decidido
+    ]); // 2/3 ≈ 66,7%
+    const c = compareShowPipelines(current, previous);
+    expect(c.current.decidedCount).toBe(3);
+    expect(c.conversionRateDelta).toBeCloseTo(2 / 3 - 0.5, 5);
+    expect(c.trend).toBe("improved");
+  });
+
+  it("taxa indefinida em algum período → delta null e veredito 'stable'", () => {
+    const decided = showPipeline([sh("a", "PLAYED"), sh("b", "CANCELLED")]); // 50%
+    const openOnly = showPipeline([sh("c", "PROPOSED"), sh("d", "CONFIRMED")]); // null
+
+    const noBase = compareShowPipelines(decided, openOnly);
+    expect(noBase.conversionRateDelta).toBeNull();
+    expect(noBase.trend).toBe("stable");
+
+    const noCurrent = compareShowPipelines(openOnly, decided);
+    expect(noCurrent.conversionRateDelta).toBeNull();
+    expect(noCurrent.trend).toBe("stable");
   });
 });
 
