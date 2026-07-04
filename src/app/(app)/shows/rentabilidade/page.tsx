@@ -150,6 +150,11 @@ export default async function ShowProfitabilityPage({
               label="Resultado líquido"
               value={formatMoney(report.totalNet)}
               tone={report.totalNet >= 0 ? "brand" : "red"}
+              hint={
+                report.totalIncome > 0
+                  ? `Margem líquida ${(report.totalMargin * 100).toFixed(0)}%`
+                  : undefined
+              }
             />
           </div>
 
@@ -336,10 +341,12 @@ function Stat({
   label,
   value,
   tone = "gray",
+  hint,
 }: {
   label: string;
   value: string;
   tone?: "emerald" | "red" | "brand" | "gray";
+  hint?: string;
 }) {
   const tones: Record<string, string> = {
     emerald: "text-emerald-600",
@@ -351,6 +358,7 @@ function Stat({
     <div className="card">
       <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
       <p className={"mt-1 text-xl font-bold " + tones[tone]}>{value}</p>
+      {hint && <p className="mt-0.5 text-xs text-gray-500">{hint}</p>}
     </div>
   );
 }

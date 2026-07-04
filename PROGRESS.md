@@ -9,7 +9,22 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1187 testes** verdes após o **comparativo ano a ano do
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1192 testes** verdes após a **margem líquida agregada na
+rentabilidade por show** (Sessão 218, D211 — `/shows/rentabilidade` (`rankShowsByProfit`, F4) já mostrava a margem **por show** (coluna
+"Margem") e os totais de receita/despesa/resultado em cards, mas faltava a leitura direta "de cada real bruto do período, quanto sobrou
+líquido?" — a **margem líquida agregada** — e o CSV `showProfitToCsv` era o único ranking tabular do eixo sem uma linha **Total** (ao
+contrário de sazonalidade/faixas/dias-da-semana, D205/D206/D209). Novo campo `totalMargin` em `ShowsProfitability` (`src/lib/finance.ts`):
+margem agregada = `totalNet / totalIncome`, **ponderada pela receita bruta** (não a média das margens por show — um show grande pesa mais,
+leitura honesta), 0 sem receita bruta (convenção de `computeShowPnL`), podendo ser negativa; calculada no `sum`/`reduce` já existente do
+helper — zero agregação nova, zero I/O. A página exibe a margem como `hint` (linha secundária) sob o card "Resultado líquido" via prop
+opcional `hint` em `Stat` (sem inflar o grid de 4 cards). O CSV passa a fechar, quando há linhas, com uma linha **"Total"** (Data/Status em
+branco) somando cachê/extras/despesas/resultado + a margem agregada na coluna "Margem" (reusa `csvMargin`); com zero linhas a saída segue só
+o cabeçalho (empty state preservado). Adiado (D211): margem como média simples das margens (distorce com shows pequenos); 5º card no grid
+(quebraria `lg:grid-cols-4`; o `hint` é mais econômico); comparar a margem ano a ano no `ProfitComparisonCard`/D210 (já ancora no resultado
+médio por show); margem no Painel (já denso). **+5 testes** (`rankShowsByProfit`: margem ponderada; negativa quando despesa>receita; 0 sem
+receita; `totalMargin:0` no vazio · `showProfitToCsv`: linha Total com agregados+margem 72%; sem Total quando vazio). Smoke test (`next start`)
+→ `/login` 200 e `/shows/rentabilidade?ano=2025` + `/export` 307 (auth-gated). `npm audit` sem novas vulnerabilidades (mesmos advisories
+Next/postcss da D6). Ver D211. Segue 1187 da **comparativo ano a ano do
 resultado por show** em `/shows/rentabilidade` (Sessão 217, D210 — a tela mais central de F4 tinha o recorte por período (`?ano=`) mas,
 ao contrário das irmãs já cobertas (faixas-de-cache/D203, locais/D120, antecedência/D187, prazo-recebimento/D193, concentração/D226),
 **não** tinha um card "vs. {ano-1}", deixando sem resposta direta a pergunta central "o show típico me paga mais líquido que ano

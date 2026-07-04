@@ -481,6 +481,23 @@ describe("showProfitToCsv", () => {
     expect(lines[1]).toContain("Primeiro");
     expect(lines[2]).toContain("Segundo");
   });
+
+  it("acrescenta uma linha Total com os agregados e a margem líquida ponderada", () => {
+    const csv = showProfitToCsv([
+      // net 1400, gross 1700
+      row({ id: "a", title: "Primeiro" }),
+      // fee 3000, extra 0, despesa 1000 -> net 2000, gross 3000
+      row({ id: "b", title: "Segundo" }, { fee: 300000, extraIncome: 0, expenses: 100000, net: 200000, margin: 200000 / 300000 }),
+    ]);
+    const lines = csv.split("\r\n");
+    // totalFee 4500, totalExtra 200, totalDespesa 1300, totalNet 3400, gross 4700
+    // margem agregada = 3400 / 4700 ≈ 72%
+    expect(lines[3]).toBe("Total;;;4500,00;200,00;1300,00;3400,00;72%");
+  });
+
+  it("não acrescenta linha Total quando não há linhas", () => {
+    expect(showProfitToCsv([])).toBe(SHOW_PROFIT_CSV_HEADERS.join(";"));
+  });
 });
 
 describe("venueProfitToCsv", () => {

@@ -227,6 +227,7 @@ describe("rankShowsByProfit", () => {
     expect(r.totalIncome).toBe(0);
     expect(r.totalExpenses).toBe(0);
     expect(r.totalNet).toBe(0);
+    expect(r.totalMargin).toBe(0);
     expect(r.best).toBeNull();
     expect(r.worst).toBeNull();
   });
@@ -246,6 +247,27 @@ describe("rankShowsByProfit", () => {
     expect(r.totalExpenses).toBe(240_00);
     expect(r.totalNet).toBe(110_00);
     expect(r.count).toBe(3);
+  });
+
+  it("calcula a margem líquida AGREGADA (ponderada pela receita, não a média das margens)", () => {
+    const r = rankShowsByProfit(shows, txs);
+    // margem agregada = totalNet / totalIncome = 110 / 350 ≈ 0,3143 — pesa a
+    // receita bruta, não a média simples das margens por show.
+    expect(r.totalMargin).toBeCloseTo(110_00 / 350_00, 10);
+  });
+
+  it("aceita margem agregada negativa quando as despesas superam a receita", () => {
+    const heavy: ShowLike[] = [{ id: "z", fee: 100_00, status: "PLAYED" }];
+    const heavyTxs: TxLike[] = [tx({ type: "EXPENSE", amount: 150_00, showId: "z" })];
+    const r = rankShowsByProfit(heavy, heavyTxs);
+    // net = -50, receita = 100 -> margem = -0,5
+    expect(r.totalMargin).toBeCloseTo(-0.5, 10);
+  });
+
+  it("margem agregada é 0 quando não há receita bruta", () => {
+    const r = rankShowsByProfit([{ id: "g", fee: 0, status: "PLAYED" }], []);
+    expect(r.totalIncome).toBe(0);
+    expect(r.totalMargin).toBe(0);
   });
 
   it("soma receitas extras vinculadas na receita bruta", () => {

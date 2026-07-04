@@ -502,6 +502,28 @@ export function showProfitToCsv(
       csvMargin(pnl.fee + pnl.extraIncome, pnl.margin),
     ]);
   }
+  // Linha "Total" (só com linhas): agrega cachê/extras/despesas/resultado e a
+  // margem líquida AGREGADA do período (`totalNet / totalGross`, ponderada pela
+  // receita — não a média das margens por show), espelhando a linha Total dos
+  // CSVs irmãos (sazonalidade/faixas). A coluna Data/Status fica em branco.
+  if (rows.length > 0) {
+    const totalFee = rows.reduce((s, r) => s + r.pnl.fee, 0);
+    const totalExtra = rows.reduce((s, r) => s + r.pnl.extraIncome, 0);
+    const totalExpenses = rows.reduce((s, r) => s + r.pnl.expenses, 0);
+    const totalNet = rows.reduce((s, r) => s + r.pnl.net, 0);
+    const totalGross = totalFee + totalExtra;
+    const totalMargin = totalGross === 0 ? 0 : totalNet / totalGross;
+    out.push([
+      "Total",
+      "",
+      "",
+      centsToCsvAmount(totalFee),
+      centsToCsvAmount(totalExtra),
+      centsToCsvAmount(totalExpenses),
+      centsToCsvAmount(totalNet),
+      csvMargin(totalGross, totalMargin),
+    ]);
+  }
   return toCsv(out, delimiter);
 }
 
