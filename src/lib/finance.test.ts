@@ -106,6 +106,7 @@ import {
   weekdaySplit,
   WEEKEND_WEEKDAYS,
   gigSeasonality,
+  gigSeasonalityYears,
   gigSeasonalityHeadline,
   gigSeasonalityLull,
   STRONG_MONTH_MIN_SHOWS,
@@ -6858,6 +6859,63 @@ describe("weekdaySplit", () => {
         countShare: 0,
         feeShare: 0,
       });
+    }
+  });
+});
+
+describe("gigSeasonalityYears", () => {
+  const now = new Date("2027-06-15T12:00:00.000Z");
+
+  function gig(partial: Partial<ReceivableShowLike>): ReceivableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-03-10T20:00:00.000Z",
+      ...partial,
+    };
+  }
+
+  it("sem gigs contáveis retorna vazio", () => {
+    expect(gigSeasonalityYears([], { now })).toEqual([]);
+  });
+
+  it("anos (UTC) distintos em ordem decrescente, só dos gigs que entram", () => {
+    const years = gigSeasonalityYears(
+      [
+        gig({ id: "a", date: "2024-03-10T20:00:00.000Z" }),
+        gig({ id: "b", date: "2026-01-05T20:00:00.000Z" }),
+        gig({ id: "c", date: "2024-11-20T20:00:00.000Z" }), // mesmo ano de "a"
+        // confirmado com data passada também conta (isHappenedGig)
+        gig({ id: "d", status: "CONFIRMED", date: "2025-02-01T20:00:00.000Z" }),
+      ],
+      { now },
+    );
+    expect(years).toEqual([2026, 2025, 2024]);
+  });
+
+  it("ignora proposto, cancelado, futuro e cachê zero (mesmo critério de gigSeasonality)", () => {
+    const years = gigSeasonalityYears(
+      [
+        gig({ id: "prop", status: "PROPOSED", date: "2023-04-10T20:00:00.000Z" }),
+        gig({ id: "canc", status: "CANCELLED", date: "2022-04-10T20:00:00.000Z" }),
+        gig({ id: "fut", status: "CONFIRMED", date: "2028-04-10T20:00:00.000Z" }),
+        gig({ id: "free", fee: 0, date: "2021-04-10T20:00:00.000Z" }),
+        gig({ id: "ok", date: "2026-04-10T20:00:00.000Z" }),
+      ],
+      { now },
+    );
+    expect(years).toEqual([2026]);
+  });
+
+  it("consistente com gigSeasonality: cada ano retornado rende uma sazonalidade não-vazia", () => {
+    const shows = [
+      gig({ id: "a", date: "2024-03-10T20:00:00.000Z" }),
+      gig({ id: "b", date: "2026-01-05T20:00:00.000Z" }),
+    ];
+    for (const y of gigSeasonalityYears(shows, { now })) {
+      const filtered = shows.filter((s) => new Date(s.date).getUTCFullYear() === y);
+      expect(gigSeasonality(filtered, { now }).totalShows).toBeGreaterThan(0);
     }
   });
 });

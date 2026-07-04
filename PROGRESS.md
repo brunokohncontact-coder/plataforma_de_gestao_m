@@ -9,7 +9,11 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1201 testes** verdes após a **consolidação da margem líquida
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1205 testes** verdes após o **recorte por período
+(`?ano=`) na sazonalidade de shows** em `/shows/sazonalidade` (Sessão 221, D214 — `PeriodPicker`/`?ano=` na página e no export,
+reusando `parseProfitYear`/`filterShowsByYear` (D108); novo helper puro `gigSeasonalityYears` lista só os anos dos gigs que a
+sazonalidade conta (espelho de `cancelledShowYears`/D180); padrão segue "Todos os anos" (preserva a leitura multi-ano da D133b);
+CSV com ano no nome; **+4 testes**). Segue **1201 testes** verdes após a **consolidação da margem líquida
 agregada na rentabilidade por show (D211, PR #235) na `main`** (Sessão 220 — a linha da D211 vivia num PR paralelo aberto e desatualizado
 (`mergeable_state: dirty`); esta sessão trouxe o commit para a `main` (código auto-mesclou limpo; só PROGRESS/DECISIONS conflitavam por
 serem append-only), resolveu os docs preservando as três entradas (D211/D212/D213) e revalidou toda a DoD sobre a união — build/typecheck/
@@ -3542,8 +3546,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    🟠 "mais fraco" na célula "Mês" da tabela (reusa `best`/`worst`, mesma regra de desempate do CSV: com um único mês
    ativo "melhor mês" vence; meses sem movimento nunca recebem selo), fechando a assimetria tela↔CSV↔tela-de-shows e a
    alternativa (b) adiada na D207, ver D208.
+   **Recorte por período (`?ano=`)** entregue na Sessão 221 — `PeriodPicker`/`?ano=` em `/shows/sazonalidade` (página e
+   export) reusando `parseProfitYear`/`filterShowsByYear` (D108); novo helper puro `gigSeasonalityYears` (anos só dos gigs
+   que a sazonalidade conta, espelho de `cancelledShowYears`/D180) alimenta o seletor sem pílulas mortas; padrão segue "Todos
+   os anos" (preserva a leitura multi-ano da D133b); CSV com ano no nome; **+4 testes**, ver D214.
    Próximo possível —
-   recorte por ano (`?ano=`, adiado na D133(b) porque a sazonalidade ganha sentido somando os anos) ou um mini-gráfico
+   comparativo ano a ano da sazonalidade (adiado na D214(b): comparar 12 baldes é passo maior); o mesmo `?ano=` na
+   sazonalidade financeira (`/financas/sazonalidade`, D214(c): eixo distinto, sessão irmã); ou um mini-gráfico
    dos 12 meses embutido no Painel (adiado na D134(d): o Painel já é denso).
 2b. **Funil de propostas — evoluções** (entregue na Sessão 51, `/shows/funil` + `showPipeline`,
    ver D42; **card do funil no Painel** entregue na Sessão 52 — cachê em aberto + taxa de

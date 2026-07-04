@@ -7212,6 +7212,30 @@ export interface GigSeasonality {
  * - `months` traz sempre os 12 meses, mesmo os zerados, para o gráfico não
  *   "pular" meses e revelar as lacunas da temporada. Pura; `now` injetável.
  */
+/**
+ * Anos (UTC, decrescente) dos shows que **entram** na sazonalidade — só os gigs
+ * já acontecidos com cachê (mesmo critério de `gigSeasonality`: `isHappenedGig`
+ * + `fee > 0`). Alimenta o `PeriodPicker` de `/shows/sazonalidade` sem oferecer
+ * anos que renderiam a tela vazia (um ano só com propostos/futuros não vira
+ * pílula), espelhando a disciplina de `cancelledShowYears`/`bookingLeadTimeYears`
+ * (D180). Distinto de `showProfitYears`, que olha a `date` de todos os shows.
+ * Pura; `now` injetável.
+ */
+export function gigSeasonalityYears(
+  shows: ReceivableShowLike[],
+  opts: { now?: Date | string } = {},
+): number[] {
+  const todayMs = utcMidnight(opts.now ?? new Date());
+  const years = new Set<number>();
+  for (const s of shows) {
+    if (!isHappenedGig(s, todayMs)) continue;
+    if (s.fee <= 0) continue;
+    const d = typeof s.date === "string" ? new Date(s.date) : s.date;
+    years.add(d.getUTCFullYear());
+  }
+  return [...years].sort((a, b) => b - a);
+}
+
 export function gigSeasonality(
   shows: ReceivableShowLike[],
   opts: { now?: Date | string } = {},
