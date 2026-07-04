@@ -9,7 +9,18 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1219 testes** verdes após a **tabela de detalhe dos 12
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1227 testes** verdes após a **ação "Duplicar show"**
+(Sessão 225, D218 — o cadastro de shows não tinha atalho para eventos recorrentes: um músico com uma **residência semanal** (mesma casa,
+todo sábado) redigitava o mesmo show semana após semana. Novo helper puro `buildDuplicatedShow(show, weeksAhead=1)` + tipos
+`DuplicableShow`/`DuplicatedShowData` + const `DUPLICATE_SHOW_WEEKS_AHEAD` em `src/lib/shows.ts`: copia o conteúdo de forma do evento
+(título/local/cidade/cachê/notas), **desloca a data +1 semana inteira preservando o instante do dia** (soma múltiplos de 7 dias em ms → cai
+no mesmo dia da semana) e **reseta o status para PROPOSED**. A ação de servidor `duplicateShowAction` (botão "Duplicar" na tela de detalhe
+do show, ao lado de Editar/Excluir) cria a cópia, **copia os vínculos de contato** (o contratante/casa de uma residência costuma ser o
+mesmo) mas **não** copia transações (realizados do evento passado) nem estado de cobrança (`paymentPromisedAt`/`billingContactId`), e
+redireciona para a **edição** da cópia — padrão "duplicar → editar", que não adivinha o intervalo exato e devolve o controle ao usuário.
+Primeiro atalho operacional de redução de atrito na entrada de shows (o eixo até aqui era CRUD do zero + leitura analítica). **+8 testes**.
+Smoke test (`next start`) → `/login` 200 e `/shows/xyz` 307 (auth-gated). `npm audit` sem novas vulnerabilidades (mesmos advisories
+Next/postcss da D6). Ver D218). Segue a **tabela de detalhe dos 12
 meses no comparativo de sazonalidade de shows** em `/shows/sazonalidade` (Sessão 224, D217 — o card "Temporada {ano} vs. {ano-1}"
 (`compareGigSeasonality`, D215) destila o comparativo em dois **movers**, mas os 12 `months` já computados em `GigSeasonalityComparison`
 não eram exibidos; a D215(d)/próximos passos 2c apontaram "detalhar numa tabela de 12 linhas" como **evolução barata**. (a) Novo helper
@@ -4032,6 +4043,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    ruído para amostras pequenas); (b) export CSV do comparativo (adiado, o card de extremos entrega o sinal acionável).
    Fora dela, o eixo de exportação tabular segue **esgotado** e próximas sessões podem evoluir feature maior (calendário drag&drop,
    log de transições do funil, recuperação de senha).
+   **Duplicar show** entregue na Sessão 225 — `buildDuplicatedShow` + `duplicateShowAction` + botão "Duplicar" no detalhe do show:
+   primeiro atalho operacional de redução de atrito (residências / eventos recorrentes), ver D218. Próximo possível para esta feature:
+   (a) seletor de intervalo (semanal/quinzenal/mensal) na hora de duplicar — o `weeksAhead` do helper já é parametrizável e testado
+   (4 ≈ mensal), falta só a UI; (b) duplicar em lote (criar as N próximas semanas de uma residência de uma vez), reusando o mesmo helper
+   com `weeksAhead` 1..N; (c) botão "Duplicar" também na lista de shows (hoje só no detalhe).
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

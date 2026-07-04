@@ -16,6 +16,7 @@ import {
 } from "@/lib/domain";
 import {
   deleteShowAction,
+  duplicateShowAction,
   linkContactToShowAction,
   unlinkContactFromShowAction,
 } from "../actions";
@@ -203,10 +204,20 @@ export default async function ShowDetailPage({ params }: { params: { id: string 
         )}
       </section>
 
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-3">
         <Link href={`/shows/${show.id}/editar`} className="btn-secondary">
           Editar
         </Link>
+        <form action={duplicateShowAction}>
+          <input type="hidden" name="id" value={show.id} />
+          <button
+            type="submit"
+            className="btn-secondary"
+            title="Criar uma cópia deste show na próxima semana (para residências)"
+          >
+            Duplicar
+          </button>
+        </form>
         <DeleteButton
           action={deleteShowAction}
           id={show.id}

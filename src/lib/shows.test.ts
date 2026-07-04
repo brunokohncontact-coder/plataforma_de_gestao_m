@@ -18,6 +18,8 @@ import {
   compareBookingLeadTimeScopes,
   bookingLeadTimeHeadline,
   summarizeMonthShows,
+  buildDuplicatedShow,
+  DUPLICATE_SHOW_WEEKS_AHEAD,
   LEAD_TIME_TREND_EPSILON,
   LEAD_TIME_SHORT_DAYS,
   LEAD_TIME_CRITICAL_DAYS,
@@ -984,5 +986,74 @@ describe("summarizeMonthShows", () => {
       totalFee: 0,
       byStatus: { PROPOSED: 0, CONFIRMED: 0, PLAYED: 0, CANCELLED: 0 },
     });
+  });
+});
+
+describe("buildDuplicatedShow", () => {
+  const base = {
+    title: "Residência no Bar X",
+    date: new Date("2026-03-06T22:00:00.000Z"), // sexta
+    venue: "Bar X",
+    city: "São Paulo",
+    fee: 150_00,
+    notes: "Levar cabo reserva",
+  };
+
+  it("desloca a data uma semana à frente por padrão, preservando o horário", () => {
+    const dup = buildDuplicatedShow(base);
+    expect(dup.date.toISOString()).toBe("2026-03-13T22:00:00.000Z");
+    // mesmo dia da semana (sexta) e mesmo instante do dia
+    expect(dup.date.getUTCDay()).toBe(base.date.getUTCDay());
+  });
+
+  it("copia título, local, cidade, cachê e notas", () => {
+    const dup = buildDuplicatedShow(base);
+    expect(dup.title).toBe("Residência no Bar X");
+    expect(dup.venue).toBe("Bar X");
+    expect(dup.city).toBe("São Paulo");
+    expect(dup.fee).toBe(150_00);
+    expect(dup.notes).toBe("Levar cabo reserva");
+  });
+
+  it("reseta o status para PROPOSED qualquer que seja o original", () => {
+    for (const status of ["PLAYED", "CONFIRMED", "CANCELLED", "PROPOSED"]) {
+      const dup = buildDuplicatedShow({ ...base, status } as never);
+      expect(dup.status).toBe("PROPOSED");
+    }
+  });
+
+  it("respeita weeksAhead inteiro (ex.: mensal ≈ 4 semanas)", () => {
+    const dup = buildDuplicatedShow(base, 4);
+    expect(dup.date.toISOString()).toBe("2026-04-03T22:00:00.000Z");
+  });
+
+  it("weeksAhead inválido (0, negativo, NaN, fracionário<1) cai no padrão de 1 semana", () => {
+    for (const bad of [0, -3, NaN, 0.5]) {
+      const dup = buildDuplicatedShow(base, bad);
+      expect(dup.date.toISOString()).toBe("2026-03-13T22:00:00.000Z");
+    }
+    expect(DUPLICATE_SHOW_WEEKS_AHEAD).toBe(1);
+  });
+
+  it("weeksAhead fracionário ≥1 é truncado para inteiro", () => {
+    const dup = buildDuplicatedShow(base, 2.9);
+    expect(dup.date.toISOString()).toBe("2026-03-20T22:00:00.000Z");
+  });
+
+  it("aceita data em string e normaliza local/cidade/notas ausentes para null", () => {
+    const dup = buildDuplicatedShow({
+      title: "Show solto",
+      date: "2026-03-06T20:00:00.000Z",
+    });
+    expect(dup.venue).toBeNull();
+    expect(dup.city).toBeNull();
+    expect(dup.notes).toBeNull();
+    expect(dup.fee).toBe(0);
+    expect(dup.date.toISOString()).toBe("2026-03-13T20:00:00.000Z");
+  });
+
+  it("cachê nulo vira 0 (convenção de show sem cachê acordado)", () => {
+    const dup = buildDuplicatedShow({ ...base, fee: null });
+    expect(dup.fee).toBe(0);
   });
 });

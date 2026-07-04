@@ -10,6 +10,7 @@ import {
   resolvePromiseDate,
 } from "@/lib/finance";
 import { parseMoneyToCents, showSchema } from "@/lib/validation";
+import { buildDuplicatedShow } from "@/lib/shows";
 
 export interface FormState {
   error?: string;
@@ -251,6 +252,50 @@ export async function setBillingContactAction(formData: FormData): Promise<void>
 
   await prisma.show.update({ where: { id }, data: { billingContactId: value } });
   revalidatePath("/shows/a-receber");
+}
+
+/**
+ * Duplica um show existente — para residências / eventos recorrentes (mesma casa,
+ * toda semana), poupando redigitar o mesmo cadastro. Cria uma cópia com o mesmo
+ * conteúdo (título, local, cidade, cachê acordado, notas), data deslocada uma
+ * semana à frente (mesmo dia/horário) e status de volta a `PROPOSED` — ver a regra
+ * pura `buildDuplicatedShow`. Copia os vínculos de contato (o contratante/casa da
+ * residência costuma ser o mesmo), mas NÃO copia transações (são realizados do
+ * evento passado) nem o estado de cobrança (promessa/contato de cobrança). Só atua
+ * sobre show do próprio usuário. Ao fim, redireciona para a edição da cópia, para o
+ * usuário ajustar a data/detalhes antes de confirmar.
+ */
+export async function duplicateShowAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const id = String(formData.get("id"));
+
+  const show = await prisma.show.findFirst({
+    where: { id, userId: user.id },
+    include: { contacts: { select: { contactId: true } } },
+  });
+  if (!show) return;
+
+  const data = buildDuplicatedShow(show);
+
+  const created = await prisma.show.create({
+    data: {
+      userId: user.id,
+      title: data.title,
+      date: data.date,
+      venue: data.venue,
+      city: data.city,
+      status: data.status,
+      fee: data.fee,
+      notes: data.notes,
+      contacts: show.contacts.length
+        ? { create: show.contacts.map((c) => ({ contactId: c.contactId })) }
+        : undefined,
+    },
+  });
+
+  revalidatePath("/shows");
+  revalidatePath("/dashboard");
+  redirect(`/shows/${created.id}/editar`);
 }
 
 export async function deleteShowAction(formData: FormData): Promise<void> {

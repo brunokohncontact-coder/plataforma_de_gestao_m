@@ -817,3 +817,62 @@ export function summarizeMonthShows<T extends MonthSummaryShowLike>(
     byStatus,
   };
 }
+
+// ── Duplicar show (residências / eventos recorrentes) ───────────────────────
+
+/** Campos de um show que a duplicação lê. */
+export interface DuplicableShow {
+  title: string;
+  date: Date | string;
+  venue?: string | null;
+  city?: string | null;
+  fee?: number | null;
+  notes?: string | null;
+}
+
+/** Dados prontos para criar o show duplicado (sem `userId`). */
+export interface DuplicatedShowData {
+  title: string;
+  date: Date;
+  venue: string | null;
+  city: string | null;
+  status: ShowStatus;
+  fee: number;
+  notes: string | null;
+}
+
+/** Semanas somadas por padrão ao duplicar — uma residência semanal cai na
+ *  próxima semana, no mesmo dia e horário. */
+export const DUPLICATE_SHOW_WEEKS_AHEAD = 1;
+
+/**
+ * Deriva os dados de um show duplicado a partir de um show existente. Copia o
+ * conteúdo "de forma" do evento (título, local, cidade, cachê acordado, notas)
+ * e desloca a data em `weeksAhead` semanas inteiras — preservando o instante do
+ * dia (soma múltiplos de 7 dias em ms), de modo que a cópia caia no mesmo dia da
+ * semana. O status volta sempre a `PROPOSED` (a cópia é um evento novo, ainda não
+ * confirmado, sem cachê recebido). `weeksAhead` não-inteiro/< 1/NaN cai no padrão
+ * (1 semana). Não copia transações (são realizados do evento passado) nem estado
+ * de cobrança (promessa/contato de cobrança) — isso é responsabilidade da ação.
+ * Pura.
+ */
+export function buildDuplicatedShow(
+  show: DuplicableShow,
+  weeksAhead: number = DUPLICATE_SHOW_WEEKS_AHEAD,
+): DuplicatedShowData {
+  const base = show.date instanceof Date ? show.date : new Date(show.date);
+  const weeks =
+    Number.isFinite(weeksAhead) && weeksAhead >= 1
+      ? Math.floor(weeksAhead)
+      : DUPLICATE_SHOW_WEEKS_AHEAD;
+  const date = new Date(base.getTime() + weeks * 7 * 24 * 60 * 60 * 1000);
+  return {
+    title: show.title,
+    date,
+    venue: show.venue ?? null,
+    city: show.city ?? null,
+    status: "PROPOSED",
+    fee: show.fee ?? 0,
+    notes: show.notes ?? null,
+  };
+}
