@@ -4,11 +4,13 @@ import { prisma } from "@/lib/prisma";
 import {
   weekdayPerformance,
   weekdayPerformanceYears,
+  weekdaySplit,
   parseProfitYear,
   filterShowsByYear,
   WEEKDAY_SHORT,
   type ReceivableShowLike,
   type WeekdayStat,
+  type WeekdaySplitBucket,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { PeriodPicker } from "@/components/PeriodPicker";
@@ -51,6 +53,7 @@ export default async function WeekdayPage({
   }));
 
   const wp = weekdayPerformance(shows);
+  const split = weekdaySplit(wp);
   const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
 
   // Escala das barras: maior cachê médio entre os dias com shows.
@@ -144,6 +147,51 @@ export default async function WeekdayPage({
             />
           </div>
 
+          {/* Fim de semana × dias de semana */}
+          <section className="card">
+            <h2 className="mb-1 font-semibold">Fim de semana × dias de semana</h2>
+            <p className="mb-4 text-xs text-gray-500">
+              Sexta, sábado e domingo (as noites de casa cheia) contra segunda a
+              quinta — quanto do seu faturamento e dos seus shows vem de cada bloco,
+              e onde o cachê médio é maior.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <SplitCard
+                label="Fim de semana"
+                sub="sex · sáb · dom"
+                bucket={split.weekend}
+                tone="brand"
+              />
+              <SplitCard
+                label="Dias de semana"
+                sub="seg · ter · qua · qui"
+                bucket={split.weekday}
+                tone="gray"
+              />
+            </div>
+            {split.weekend.count > 0 && split.weekday.count > 0 && (
+              <p className="mt-3 text-xs text-gray-500">
+                {split.weekend.avgFee >= split.weekday.avgFee ? (
+                  <>
+                    O cachê médio de fim de semana está{" "}
+                    <strong className="text-brand-700">
+                      {avgGapLabel(split.weekend.avgFee, split.weekday.avgFee)}
+                    </strong>{" "}
+                    acima do de dias de semana.
+                  </>
+                ) : (
+                  <>
+                    Curiosamente, o cachê médio de dias de semana está{" "}
+                    <strong className="text-brand-700">
+                      {avgGapLabel(split.weekday.avgFee, split.weekend.avgFee)}
+                    </strong>{" "}
+                    acima do de fim de semana.
+                  </>
+                )}
+              </p>
+            )}
+          </section>
+
           {/* Cachê médio por dia da semana */}
           <section className="card overflow-x-auto">
             <h2 className="mb-1 font-semibold">Cachê médio por dia da semana</h2>
@@ -220,6 +268,56 @@ export default async function WeekdayPage({
           </p>
         </>
       )}
+    </div>
+  );
+}
+
+/** Rótulo do quanto (%) um cachê médio maior supera o menor; "—" sem base. */
+function avgGapLabel(higher: number, lower: number): string {
+  if (lower <= 0) return "—";
+  return `${Math.round((higher / lower - 1) * 100)}%`;
+}
+
+function SplitCard({
+  label,
+  sub,
+  bucket,
+  tone,
+}: {
+  label: string;
+  sub: string;
+  bucket: WeekdaySplitBucket;
+  tone: "brand" | "gray";
+}) {
+  const accent = tone === "brand" ? "text-brand-700" : "text-gray-900";
+  const barColor = tone === "brand" ? "bg-brand-400" : "bg-gray-300";
+  const share = Math.round(bucket.feeShare * 100);
+  return (
+    <div className="rounded-lg border border-gray-100 bg-gray-50/60 p-4">
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-sm font-semibold text-gray-900">{label}</p>
+        <p className="text-xs text-gray-400">{sub}</p>
+      </div>
+      <p className={"mt-1 text-2xl font-bold " + accent}>{share}%</p>
+      <p className="text-xs text-gray-500">do faturamento do período</p>
+      <div className="mt-2 h-1.5 overflow-hidden rounded bg-gray-200">
+        <div
+          className={"h-full rounded " + barColor}
+          style={{ width: `${Math.max(bucket.feeShare > 0 ? 2 : 0, share)}%` }}
+        />
+      </div>
+      <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-gray-500">
+        <dt>Shows</dt>
+        <dd className="text-right text-gray-700">
+          {bucket.count} ({pct(bucket.countShare)})
+        </dd>
+        <dt>Faturamento</dt>
+        <dd className="text-right text-gray-700">{formatMoney(bucket.totalFee)}</dd>
+        <dt>Cachê médio</dt>
+        <dd className="text-right text-gray-700">
+          {bucket.count > 0 ? formatMoney(bucket.avgFee) : "—"}
+        </dd>
+      </dl>
     </div>
   );
 }

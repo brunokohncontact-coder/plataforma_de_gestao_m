@@ -9,7 +9,18 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1192 testes** verdes após o **recorte por período (`?ano=`) +
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1196 testes** verdes após o **split "fim de semana × dias de
+semana" em `/shows/dias-semana`** (Sessão 219, D213 — a tela por dia da semana (`weekdayPerformance`) respondia "qual dia paga melhor /
+concentra faturamento" mas não a pergunta de planejamento mais grossa e distinta: "que fração dos meus shows e do meu faturamento vem das
+noites de fim de semana (sex/sáb/dom) vs. dias de semana, e o cachê médio de fim de semana é de fato maior?" — nenhuma outra leitura cobre
+isso (rentabilidade/faixas são agnósticas ao dia; "fins de semana livres"/D96–D98 é agenda futura, não faturamento realizado). Novo helper
+puro `weekdaySplit(wp)` + `WeekdaySplitBucket` + constante `WEEKEND_WEEKDAYS = [5,6,0]` (sex/sáb/dom) em `src/lib/finance.ts`, que **deriva
+direto dos 7 `wp.days` já computados** (soma dois blocos — fim de semana × seg–qui), **zero agregação nova, zero I/O**, com participações
+sobre `wp.totalShows`/`wp.totalFee` (respeitam o recorte `?ano=` automaticamente). A página ganha a seção "Fim de semana × dias de semana"
+(2 cards `SplitCard` com % do faturamento + barra + shows/faturamento/cachê médio) após os destaques + uma linha do gap de cachê médio
+entre os blocos (`avgGapLabel`). Guarda contra divisão por zero em bloco vazio. **+4 testes**. Smoke test (`next start`) → `/login` 200 e
+`/shows/dias-semana?ano=2025` 307 (auth-gated). `npm audit` sem novas vulnerabilidades (mesmos advisories Next/postcss da D6). Ver D213.
+Segue o 1192 do **recorte por período (`?ano=`) +
 comparativo ano a ano da taxa de concretização no funil de propostas** (Sessão 218, D212 — `/shows/funil` (`showPipeline`) era a última
 leitura de tendência de shows ainda sem o recorte por período (`?ano=`/`PeriodPicker`) e sem o card "vs. {ano-1}" que as irmãs já têm
 (antecedência/D187, faixas-de-cache/D203/D209, rentabilidade/D210, prazo-recebimento/D193), deixando sem resposta direta a pergunta de

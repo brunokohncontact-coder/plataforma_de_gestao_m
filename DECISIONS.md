@@ -6933,3 +6933,42 @@ contexto, decisão, justificativa e alternativas consideradas.
   HTTP 200 e `/shows/funil?ano=2025` + `/shows/funil/export?ano=2025` → 307 (auth-gated; app sobe).
   `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do
   Next 14 / postcss bundlado; ver D6); **nenhuma dependência nova**.
+
+## 2026-07-04 — D213: Split "fim de semana × dias de semana" em `/shows/dias-semana`
+- **Contexto:** `/shows/dias-semana` (`weekdayPerformance`/D-dias-semana) já respondia "qual dia
+  paga melhor / concentra faturamento" com destaques e tabela por dia, mas não a pergunta de
+  planejamento de carreira mais grossa e distinta: "que fração dos meus shows e do meu faturamento
+  vem das noites de fim de semana (sex/sáb/dom) vs. dias de semana, e o cachê médio de fim de semana
+  é de fato maior?". Nenhuma outra leitura cobre isso — rentabilidade/faixas/evolução são agnósticas
+  ao dia da semana, e o módulo de "fins de semana livres" (D96–D98/D169) é sobre agenda **futura**
+  para booking, não faturamento realizado.
+- **Decisão:** novo helper puro `weekdaySplit(wp: WeekdayPerformance): WeekdaySplit` +
+  `WeekdaySplitBucket` + constante `WEEKEND_WEEKDAYS = [5, 6, 0]` (sex, sáb, dom) em
+  `src/lib/finance.ts`. Deriva **direto dos 7 `wp.days` já computados** (soma dois blocos —
+  fim de semana × seg–qui), **zero agregação nova, zero I/O**; as participações usam
+  `wp.totalShows`/`wp.totalFee`, então respeitam automaticamente o recorte `?ano=` já aplicado antes
+  de `weekdayPerformance` (D108). Cada bloco traz `count`/`totalFee`/`avgFee`/`countShare`/`feeShare`.
+  A página ganha a seção "Fim de semana × dias de semana" (2 cards `SplitCard` com % do faturamento +
+  barra + shows/faturamento/cachê médio) logo após os destaques, com uma linha que aponta em quantos
+  % o cachê médio de um bloco supera o do outro (`avgGapLabel`, "—" sem base). UI-only fora do helper.
+- **Justificativa:** define "fim de semana" como sex/sáb/dom — as noites de casa cheia da vida do
+  músico ao vivo, não o fim de semana de calendário civil (sáb/dom) — porque a sexta é a noite de
+  show por excelência e separá-la dos dias úteis é o recorte que informa preço/prospecção. Derivar de
+  `wp.days` (em vez de re-varrer os shows) mantém a fonte única de verdade e casa por construção com
+  o recorte por ano. Guarda contra divisão por zero em bloco vazio (média 0). Pura, determinística,
+  sem dependência nova, sem consulta nova.
+- **Alternativas consideradas:** (a) fim de semana = só sáb/dom (civil) — descartada: perderia a
+  sexta, a noite de show mais forte. (b) fim de semana = qui–sáb — descartada: quinta ainda é dia
+  útil para a maioria do público; sex/sáb/dom é o recorte mais defensável e o mais comum em "live
+  music". (c) comparativo ano a ano do split ("vs. {ano-1}") — adiada: o split já é lido dentro do
+  recorte `?ano=` (basta trocar o ano no seletor), e o card comparativo seria mais um; fica como
+  próximo possível. (d) levar o split ao CSV — adiada, seguindo o precedente de que o CSV é o retrato
+  por dia (as 7 linhas já permitem somar os blocos); o split é apresentação derivada.
+- **Testes:** **+4** em `finance.test.ts` (`weekdaySplit`): a constante do fim de semana é {0,5,6};
+  separação sex/sáb/dom × seg–qui com médias/participações e a soma dos dois blocos batendo com o
+  total do período; só fim de semana → dias de semana zerados (sem divisão por zero); sem shows →
+  ambos zerados. Suíte **1196** verdes (era 1192).
+- **DoD:** build de produção verde; lint (`next lint`, 0 avisos); typecheck (`tsc --noEmit`) limpo;
+  **1196 testes**; smoke test — `next start`, `/login` → HTTP 200 e `/shows/dias-semana` +
+  `/shows/dias-semana?ano=2025` → 307 (auth-gated; app sobe). `npm audit` **inalterado** vs. baseline
+  (mesmos advisories Next 14 / postcss da D6); **nenhuma dependência nova**.
