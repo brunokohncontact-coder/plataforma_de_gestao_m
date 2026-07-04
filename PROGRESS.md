@@ -9,8 +9,25 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1182 testes** verdes após a **participação na faixa premium
-no comparativo ano a ano de `/shows/faixas-de-cache`** (Sessão 216, D209 — o card "Cachê {ano} vs. {ano-1}" (`compareFeeDistribution`,
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1187 testes** verdes após o **comparativo ano a ano do
+resultado por show** em `/shows/rentabilidade` (Sessão 217, D210 — a tela mais central de F4 tinha o recorte por período (`?ano=`) mas,
+ao contrário das irmãs já cobertas (faixas-de-cache/D203, locais/D120, antecedência/D187, prazo-recebimento/D193, concentração/D226),
+**não** tinha um card "vs. {ano-1}", deixando sem resposta direta a pergunta central "o show típico me paga mais líquido que ano
+passado?". Novo helper puro `compareShowsProfitability(current, previous)` em `src/lib/finance.ts` (recebe duas `rankShowsByProfit` já
+computadas) devolve `ShowsProfitabilityComparison` com três `MetricDelta` (`avgNet`/`totalNet`/`count`) + veredito `trend`
+(`up`/`down`/`stable`), **ancorado no resultado líquido MÉDIO por show** (`totalNet/count`, helper interno `avgNetPerShow`) — não no
+total somado (um ano com o dobro de shows do mesmo nível somaria mais sem cada gig render mais). Materialidade em **duas** condições,
+espelhando `compareFeeDistribution`/D209: relativa ≥ `SHOW_PROFIT_TREND_EPSILON` (10%) **e** absoluta ≥ `SHOW_PROFIT_TREND_FLOOR`
+(R$ 50). A página compõe o card `ProfitComparisonCard` 🟢/🔴/⚪ "Resultado por show {ano} vs. {ano-1}" só com um ano específico e ambos
+os períodos tendo shows (`report.count > 0 && previousReport.count > 0`), reusando `filterShowsByYear`/D108 sobre os registros já
+carregados (**zero I/O extra**): delta do médio (com %) + delta do total (com a contagem de shows) + nota de tendência. Aqui **subir**
+é a melhora (progressão), como no card de cachê e oposto ao de DSO/cancelamento. Adiado (D210): ancorar no total (infla com volume);
+mediana por show (a média é derivação direta de `totalNet`/`count`, zero agregação nova); comparativo no CSV/export (é apresentação,
+precedente D193/D209); nudge no Painel (já denso). **+5 testes** (`compareShowsProfitability`: `up`/`down` além do limiar; ancoragem
+na média — total triplica com 3× shows de mesmo nível → `stable`; `stable` por relativo-ok/absoluto-pequeno e vice-versa; sem base
+anterior média 0 → qualquer resultado conta, `pct` nulo). Smoke test (`next start`) → `/login` 200 e `/shows/rentabilidade?ano=2025`
+307 (auth-gated). `npm audit` sem novas vulnerabilidades (mesmos advisories Next/postcss da D6). Ver D210. Segue 1182 da **participação
+na faixa premium no comparativo ano a ano de `/shows/faixas-de-cache`** (Sessão 216, D209 — o card "Cachê {ano} vs. {ano-1}" (`compareFeeDistribution`,
 D203) comparava só a **mediana** (e a média, informativa) do cachê entre dois anos, mas dois anos podem ter a **mesma** mediana enquanto
 a cauda de cima engorda — o músico leva mais shows para a faixa alta sem mover o meio da distribuição, e a mediana esconde essa
 progressão. Exportar/comparar a participação na faixa alta foi o item explicitamente **adiado na D203**. Nova constante

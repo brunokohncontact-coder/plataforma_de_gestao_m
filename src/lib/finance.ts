@@ -119,6 +119,67 @@ export function rankShowsByProfit<S extends ShowLike>(
   };
 }
 
+/** Limiar relativo (10%) do veredito de rentabilidade por show ano a ano. */
+export const SHOW_PROFIT_TREND_EPSILON = 0.1;
+/** Piso absoluto (R$ 50) do mesmo veredito — evita oscilar em resultados pequenos. */
+export const SHOW_PROFIT_TREND_FLOOR = 5000;
+
+/** Resultado líquido MÉDIO por show (centavos, arredondado); 0 sem shows. */
+function avgNetPerShow<S extends ShowLike>(report: ShowsProfitability<S>): number {
+  return report.count > 0 ? Math.round(report.totalNet / report.count) : 0;
+}
+
+export interface ShowsProfitabilityComparison {
+  /** Variação do resultado líquido MÉDIO por show (atual − anterior). Eixo do veredito. */
+  avgNet: MetricDelta;
+  /** Variação do resultado líquido SOMADO (atual − anterior). */
+  totalNet: MetricDelta;
+  /** Variação do nº de shows analisados (atual − anterior). */
+  count: MetricDelta;
+  /**
+   * Veredito ancorado no resultado MÉDIO por show (robusto ao volume: mais shows
+   * do mesmo nível não inflam o sinal, ao contrário do total somado). Exige as
+   * duas condições — variação relativa ≥ `SHOW_PROFIT_TREND_EPSILON` **e** absoluta
+   * ≥ `SHOW_PROFIT_TREND_FLOOR` — para não oscilar num resultado pequeno (onde 10%
+   * é troco) nem num grande (onde R$ 50 é ruído). Aqui **subir** é a melhora.
+   * - "up": o show típico rendeu mais que no ano anterior (progressão);
+   * - "down": rendeu menos (atenção);
+   * - "stable": variação dentro do limiar (ruído, sem leitura de tendência).
+   */
+  trend: "up" | "down" | "stable";
+}
+
+/**
+ * Compara a rentabilidade por show entre dois períodos (atual × anterior),
+ * espelhando o comparativo ano a ano de `compareFeeDistribution`/
+ * `compareBookingLeadTime` (D209/D187) no eixo do RESULTADO por gig. Pura, sem
+ * I/O: recebe duas `rankShowsByProfit` já computadas (cada uma sobre os shows do
+ * seu período) e devolve a variação do resultado médio/somado + a contagem, com
+ * um veredito de tendência. Ancora o veredito no resultado **médio por show**
+ * (não no total: um ano com o dobro de shows de mesmo nível somaria mais sem que
+ * cada show ficasse mais rentável — a pergunta aqui é "o show típico paga mais?").
+ * O chamador decide quando exibir (tipicamente só com um ano específico e ambos
+ * os períodos tendo shows — caso contrário a média por show seria enganosa).
+ */
+export function compareShowsProfitability<S extends ShowLike>(
+  current: ShowsProfitability<S>,
+  previous: ShowsProfitability<S>,
+): ShowsProfitabilityComparison {
+  const avgNet = computeDelta(avgNetPerShow(current), avgNetPerShow(previous));
+  const absOver = Math.abs(avgNet.delta) >= SHOW_PROFIT_TREND_FLOOR;
+  const relOver =
+    avgNet.previous !== 0
+      ? Math.abs(avgNet.delta) / Math.abs(avgNet.previous) >= SHOW_PROFIT_TREND_EPSILON
+      : avgNet.delta !== 0; // sem base anterior, qualquer variação já conta
+  const material = absOver && relOver;
+  return {
+    avgNet,
+    totalNet: computeDelta(current.totalNet, previous.totalNet),
+    count: computeDelta(current.count, previous.count),
+    trend: !material ? "stable" : avgNet.delta > 0 ? "up" : "down",
+  };
+}
+
 // ── Rentabilidade por local (agrega P&L por casa/venue) ─────────────────────
 
 /** Forma mínima de show para agrupar por local. */
