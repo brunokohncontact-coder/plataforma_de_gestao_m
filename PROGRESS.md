@@ -9,7 +9,21 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1179 testes** verdes após os **selos "melhor mês" / "mais
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1182 testes** verdes após a **participação na faixa premium
+no comparativo ano a ano de `/shows/faixas-de-cache`** (Sessão 216, D209 — o card "Cachê {ano} vs. {ano-1}" (`compareFeeDistribution`,
+D203) comparava só a **mediana** (e a média, informativa) do cachê entre dois anos, mas dois anos podem ter a **mesma** mediana enquanto
+a cauda de cima engorda — o músico leva mais shows para a faixa alta sem mover o meio da distribuição, e a mediana esconde essa
+progressão. Exportar/comparar a participação na faixa alta foi o item explicitamente **adiado na D203**. Nova constante
+`PREMIUM_FEE_BAND_KEY = "gte5k"` ("Acima de R$ 5.000", a mais alta de `FEE_BANDS`) + helper puro `premiumBandShare(dist)` em
+`src/lib/finance.ts` que lê o `countShare` da faixa premium direto de `dist.bands` (**zero agregação nova**; 0 quando faixa/período
+vazio) + três campos em `FeeDistributionComparison` (`premiumShareCurrent`/`premiumSharePrevious`/`premiumShareDelta`, participação em
+nº de shows 0..1). O card de `/shows/faixas-de-cache` ganha a linha "Faixa premium (acima de R$ 5.000): X% → Y% dos shows +Z p.p."
+(formatador `pointsDelta`) sob os deltas de mediano/médio. O veredito `trend` **segue ancorado só na mediana** — a participação premium
+é informativa (mesma disciplina da média): com amostra pequena um único show premium vira um salto enorme, então não pode ditar o
+veredito. Complemento barato reusando as duas `feeDistribution` já computadas (zero I/O). Adiado (D209): `feeShare` em vez de
+`countShare` (a pergunta é migração de patamar, não faturamento — este já é o card "Onde está o faturamento"); premium como as duas
+faixas do topo (a faixa única é o premium mais inequívoco); levar a coluna ao CSV (o CSV já lista `count`/`countShare` da linha `gte5k`;
+o comparativo é apresentação, precedente D193/D203). **+3 testes**) sobre os **1179 testes** verdes após os **selos "melhor mês" / "mais
 fraco" por linha na tabela de `/financas/sazonalidade`** (Sessão 215, D208 — a página já mostrava os dois destaques (melhor mês típico /
 mês mais fraco, por resultado médio `avgNet`) só em **cards** no topo; a tabela "Média por mês do ano" listava os 12 meses sem marcar
 **quais** linhas eram esses destaques, enquanto a tela irmã `/shows/sazonalidade` já destaca as linhas com selos (D204/D211) e o CSV

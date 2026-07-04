@@ -263,6 +263,13 @@ function pctDelta(pct: number | null): string {
   return `${rounded > 0 ? "+" : "−"}${Math.abs(rounded)}%`;
 }
 
+/** Variação de participação (0..1) em pontos percentuais, com sinal (ex.: 0.15 → "+15 p.p."). */
+function pointsDelta(delta: number): string {
+  const rounded = Math.round(delta * 100);
+  if (rounded === 0) return "0 p.p.";
+  return `${rounded > 0 ? "+" : "−"}${Math.abs(rounded)} p.p.`;
+}
+
 /**
  * Card "Cachê {ano} vs. {ano-1}": compara o cachê mediano do ano selecionado com
  * o do ano anterior (espelha o comparativo ano a ano de antecedência/concentração,
@@ -281,7 +288,7 @@ function FeeComparisonCard({
 }) {
   const trend = FEE_TREND[comparison.trend];
   const { current, previous } = comparison;
-  const pct = pctDelta(comparison.medianFeePct);
+  const medianPct = pctDelta(comparison.medianFeePct);
   return (
     <div className={"card border " + trend.classes}>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -296,7 +303,9 @@ function FeeComparisonCard({
         <div>
           <p className="text-2xl font-bold">
             {moneyDelta(comparison.medianFeeDelta)}
-            {pct && <span className="ml-2 text-base font-semibold opacity-80">{pct}</span>}
+            {medianPct && (
+              <span className="ml-2 text-base font-semibold opacity-80">{medianPct}</span>
+            )}
           </p>
           <p className="text-xs opacity-80">
             mediano: {formatMoney(previous.medianFee)} ({previousYear}) →{" "}
@@ -310,6 +319,13 @@ function FeeComparisonCard({
           </p>
         </div>
       </div>
+      <p className="mt-3 flex flex-wrap items-baseline gap-x-2 text-xs opacity-80">
+        <span className="font-semibold uppercase tracking-wide">Faixa premium (acima de R$ 5.000)</span>
+        <span>
+          {pct(comparison.premiumSharePrevious)} → {pct(comparison.premiumShareCurrent)} dos shows
+        </span>
+        <span className="font-semibold">{pointsDelta(comparison.premiumShareDelta)}</span>
+      </p>
       <p className="mt-3 text-xs opacity-90">{trend.note}</p>
     </div>
   );
