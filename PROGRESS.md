@@ -9,7 +9,15 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1209 testes** verdes após o **comparativo ano a ano da
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1215 testes** verdes após a **faixa de resumo do mês no
+calendário** em `/shows/calendario` (Sessão 223, D216 — novo helper puro `summarizeMonthShows(shows, year, month)` +
+`MonthShowsSummary` em `src/lib/shows.ts`: dos shows já carregados para a grade (incluindo bordas), recorta pela data **LOCAL** ao mês
+exibido — casando o `inMonth` da grade (`calendar.ts`), não o dia UTC da rentabilidade — e devolve `total` (exceto cancelados),
+`cancelled` (à parte), `confirmedFee` (Σ fee de CONFIRMED+PLAYED), `pendingFee` (Σ fee de PROPOSED), `totalFee` e `byStatus`. A página
+passou a selecionar `fee` na **mesma** consulta da grade (**zero I/O extra**) e mostra uma faixa acima do calendário com 4 tiles
+(Shows no mês / Cachê confirmado 🟢 / A confirmar 🟠 / Cachê total) + nota de cancelados; mês vazio mostra "Nenhum show em {mês}".
+Transforma o calendário de "onde estão meus shows" em "o que este mês me rende", separando dinheiro firme de expectativa, sem sair da
+tela. **+6 testes**). Segue o **comparativo ano a ano da
 sazonalidade de shows via "movers"** em `/shows/sazonalidade` (Sessão 222, D215 — novo helper puro `compareGigSeasonality(current,
 previous)` + `GigSeasonalityComparison`/`GigSeasonalityMonthChange` em `src/lib/finance.ts`: de duas `gigSeasonality` já computadas
 devolve os 12 meses casados (`countDelta`/`feeDelta` atual − anterior) + `totalShowsDelta`/`totalFeeDelta` + os dois **movers**
@@ -3501,6 +3509,9 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    em `src/lib/csv.ts` + `/shows/fins-de-semana-livres/export?semanas=N` (De/Até/Situação/Shows/Cachê marcado + Total
    "N/M livres"), uma linha por fim de semana da janela inclusive os livres, nome `fins-de-semana-livres-{n}sem.csv`,
    botão "⬇ CSV" propagando a janela, ver D169.)
+   **Faixa de resumo do mês no calendário** entregue na Sessão 223 — `summarizeMonthShows` + `MonthShowsSummary`
+   em `src/lib/shows.ts` (recorte LOCAL ao mês exibido sobre os shows já carregados para a grade, zero I/O extra) +
+   faixa com Shows no mês / Cachê confirmado 🟢 / A confirmar 🟠 / Cachê total em `/shows/calendario`, ver D216.
    Próximo possível — um mini-calendário de salto rápido na agenda, ou estimar a receita parada por fim de
    semana livre (adiada na D96 por ser hipótese frágil).
 2d. **Antecedência de agendamento** (entregue na Sessão 192, `/shows/antecedencia` + `bookingLeadTime` em

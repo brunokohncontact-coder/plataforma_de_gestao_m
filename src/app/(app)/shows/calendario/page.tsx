@@ -13,6 +13,8 @@ import {
   WEEKDAY_LABELS,
 } from "@/lib/calendar";
 import { SHOW_STATUS_DOT, SHOW_STATUS_LABELS, type ShowStatus } from "@/lib/domain";
+import { summarizeMonthShows } from "@/lib/shows";
+import { formatMoney } from "@/lib/money";
 
 export const dynamic = "force-dynamic";
 
@@ -29,10 +31,11 @@ export default async function ShowsCalendarPage({
   const shows = await prisma.show.findMany({
     where: { userId: user.id, date: { gte: start, lt: endExclusive } },
     orderBy: { date: "asc" },
-    select: { id: true, title: true, date: true, venue: true, status: true },
+    select: { id: true, title: true, date: true, venue: true, status: true, fee: true },
   });
 
   const grid = buildMonthGrid(year, month, shows);
+  const summary = summarizeMonthShows(shows, year, month);
   const prev = shiftMonth(year, month, -1);
   const next = shiftMonth(year, month, 1);
   const isCurrentMonth =
@@ -55,6 +58,52 @@ export default async function ShowsCalendarPage({
             + Novo show
           </Link>
         </div>
+      </div>
+
+      {/* Resumo do mês exibido: quanto este mês vale, num relance. */}
+      <div className="card">
+        {summary.total === 0 && summary.cancelled === 0 ? (
+          <p className="text-sm text-gray-500">
+            Nenhum show em {formatMonthTitle(year, month)}.
+          </p>
+        ) : (
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                Shows no mês
+              </p>
+              <p className="text-xl font-bold">{summary.total}</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                Cachê confirmado
+              </p>
+              <p className="text-xl font-bold text-emerald-700">
+                {formatMoney(summary.confirmedFee)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                A confirmar
+              </p>
+              <p className="text-xl font-bold text-amber-700">
+                {formatMoney(summary.pendingFee)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                Cachê total
+              </p>
+              <p className="text-xl font-bold">{formatMoney(summary.totalFee)}</p>
+            </div>
+            {summary.cancelled > 0 && (
+              <p className="text-xs text-gray-400">
+                {summary.cancelled} cancelado{summary.cancelled > 1 ? "s" : ""} (fora
+                da soma)
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="card p-0">

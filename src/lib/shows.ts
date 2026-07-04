@@ -740,3 +740,80 @@ export function bookingLeadTimeHeadline(
     sample: report.sample,
   };
 }
+
+// ── Resumo do mês exibido no calendário ─────────────────────────────────────
+// O calendário (`/shows/calendario`) mostra a grade do mês mas não responde, num
+// relance, "quanto este mês vale?" — quantos shows tenho, quanto de cachê já está
+// confirmado (CONFIRMED+PLAYED) e quanto ainda depende de fechar proposta
+// (PROPOSED). Este helper destila os shows do mês **exibido** nesse resumo, para
+// uma faixa no topo da agenda. Pura: recebe os shows já carregados (a página os
+// busca para a grade, incluindo as bordas das semanas vizinhas) e recorta pela
+// data LOCAL ao mês em questão — a mesma convenção da grade (ver `calendar.ts`),
+// não o dia UTC das leituras de rentabilidade. Cancelados não entram na contagem
+// nem no cachê (não são compromisso), mas são contados à parte para contexto.
+
+/** Show mínimo para o resumo mensal do calendário. */
+export interface MonthSummaryShowLike {
+  date: Date | string;
+  status: string;
+  fee?: number;
+}
+
+export interface MonthShowsSummary {
+  /** Shows do mês exibido, exceto cancelados. */
+  total: number;
+  /** Shows cancelados no mês (contexto, fora de `total`/cachês). */
+  cancelled: number;
+  /** Cachê já firmado no mês: soma de `fee` de CONFIRMED+PLAYED, em centavos. */
+  confirmedFee: number;
+  /** Cachê ainda a confirmar: soma de `fee` de PROPOSED, em centavos. */
+  pendingFee: number;
+  /** `confirmedFee + pendingFee` (cachê total em jogo no mês), em centavos. */
+  totalFee: number;
+  /** Contagem por status (inclui CANCELLED), para detalhamento. */
+  byStatus: Record<ShowStatus, number>;
+}
+
+/**
+ * Resume os shows do mês do calendário (`year`, `month` 1-12) a partir de uma
+ * lista que pode conter dias de bordas de outros meses (como a grade carrega).
+ * Recorta pela data LOCAL — `getFullYear()`/`getMonth()` — casando exatamente o
+ * que a grade marca como "do mês" (`inMonth`). Status desconhecido é ignorado
+ * (não conta em `total`, `cancelled` nem nos cachês), preservando a robustez do
+ * resto do módulo a dados fora do domínio. Pura.
+ */
+export function summarizeMonthShows<T extends MonthSummaryShowLike>(
+  shows: T[],
+  year: number,
+  month: number,
+): MonthShowsSummary {
+  const byStatus: Record<ShowStatus, number> = {
+    PROPOSED: 0,
+    CONFIRMED: 0,
+    PLAYED: 0,
+    CANCELLED: 0,
+  };
+  let confirmedFee = 0;
+  let pendingFee = 0;
+
+  for (const s of shows) {
+    const d = s.date instanceof Date ? s.date : new Date(s.date);
+    if (d.getFullYear() !== year || d.getMonth() !== month - 1) continue;
+    if (!isValidShowStatus(s.status)) continue;
+    byStatus[s.status] += 1;
+    const fee = s.fee ?? 0;
+    if (s.status === "CONFIRMED" || s.status === "PLAYED") confirmedFee += fee;
+    else if (s.status === "PROPOSED") pendingFee += fee;
+  }
+
+  const cancelled = byStatus.CANCELLED;
+  const total = byStatus.PROPOSED + byStatus.CONFIRMED + byStatus.PLAYED;
+  return {
+    total,
+    cancelled,
+    confirmedFee,
+    pendingFee,
+    totalFee: confirmedFee + pendingFee,
+    byStatus,
+  };
+}
