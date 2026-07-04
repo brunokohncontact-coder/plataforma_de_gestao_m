@@ -3,10 +3,12 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   rankShowsByProfit,
+  compareShowsProfitability,
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
   type TxLike,
+  type ShowsProfitabilityComparison,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { formatDate } from "@/lib/format";
@@ -66,6 +68,20 @@ export default async function ShowProfitabilityPage({
   const report = rankShowsByProfit(periodShows, txs);
 
   const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
+
+  // Comparativo ano a ano do resultado por show (só com um ano específico e
+  // ambos os períodos tendo shows — senão o resultado médio por show do ano
+  // vazio seria 0 e a comparação enganosa). Reaproveita o mesmo recorte por ano
+  // (D108) sobre os registros já carregados, sem nova consulta.
+  let comparison: ShowsProfitabilityComparison | null = null;
+  let previousYear = 0;
+  if (yearFilter !== "all") {
+    previousYear = yearFilter - 1;
+    const previousReport = rankShowsByProfit(filterShowsByYear(shows, previousYear), txs);
+    if (report.count > 0 && previousReport.count > 0) {
+      comparison = compareShowsProfitability(report, previousReport);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -136,6 +152,14 @@ export default async function ShowProfitabilityPage({
               tone={report.totalNet >= 0 ? "brand" : "red"}
             />
           </div>
+
+          {comparison && (
+            <ProfitComparisonCard
+              comparison={comparison}
+              currentYear={yearFilter as number}
+              previousYear={previousYear}
+            />
+          )}
 
           {report.best && report.worst && report.best.show.id !== report.worst.show.id && (
             <div className="grid gap-4 sm:grid-cols-2">
@@ -211,6 +235,99 @@ export default async function ShowProfitabilityPage({
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/** Rótulo + tom do veredito do comparativo ano a ano do resultado por show. */
+const PROFIT_TREND: Record<
+  ShowsProfitabilityComparison["trend"],
+  { label: string; emoji: string; classes: string; note: string }
+> = {
+  up: {
+    label: "Mais rentável por show",
+    emoji: "🟢",
+    classes: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    note: "O show típico deu mais resultado que no ano anterior — sinal de progressão: cada gig passou a render mais líquido. Bom momento para firmar o novo patamar de preço e seleção de shows.",
+  },
+  down: {
+    label: "Menos rentável por show",
+    emoji: "🔴",
+    classes: "border-red-200 bg-red-50 text-red-800",
+    note: "O show típico deu menos resultado que no ano anterior — cada gig vem rendendo menos líquido. Vale revisar cachês, despesas vinculadas e priorizar shows que sustentam a margem.",
+  },
+  stable: {
+    label: "Estável",
+    emoji: "⚪",
+    classes: "border-gray-200 bg-gray-50 text-gray-700",
+    note: "O resultado médio por show ficou praticamente igual ao do ano anterior.",
+  },
+};
+
+/** Variação em dinheiro com sinal (ex.: 20000 → "+R$ 200,00"; -5000 → "−R$ 50,00"). */
+function moneyDelta(delta: number): string {
+  if (delta === 0) return "R$ 0,00";
+  return `${delta > 0 ? "+" : "−"}${formatMoney(Math.abs(delta))}`;
+}
+
+/** Variação relativa (0..1) com sinal (ex.: 0.2 → "+20%"); null → "". */
+function pctDelta(pct: number | null): string {
+  if (pct == null) return "";
+  const rounded = Math.round(pct * 100);
+  if (rounded === 0) return "0%";
+  return `${rounded > 0 ? "+" : "−"}${Math.abs(rounded)}%`;
+}
+
+/**
+ * Card "Resultado por show {ano} vs. {ano-1}": compara o resultado líquido médio
+ * por show do ano selecionado com o do ano anterior (espelha o comparativo ano a
+ * ano do cachê/antecedência, D209/D187, no eixo do RESULTADO por gig). Mostra a
+ * variação do resultado médio (com %) e do total somado, com um veredito de
+ * tendência. Aqui **subir** é a melhora — a leitura direta de "o show típico paga
+ * mais líquido?".
+ */
+function ProfitComparisonCard({
+  comparison,
+  currentYear,
+  previousYear,
+}: {
+  comparison: ShowsProfitabilityComparison;
+  currentYear: number;
+  previousYear: number;
+}) {
+  const trend = PROFIT_TREND[comparison.trend];
+  const { avgNet, totalNet } = comparison;
+  const avgPct = pctDelta(avgNet.pct);
+  return (
+    <div className={"card border " + trend.classes}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide opacity-80">
+          Resultado por show {currentYear} vs. {previousYear}
+        </p>
+        <span className="badge bg-white/70 font-semibold">
+          {trend.emoji} {trend.label}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+        <div>
+          <p className="text-2xl font-bold">
+            {moneyDelta(avgNet.delta)}
+            {avgPct && <span className="ml-2 text-base font-semibold opacity-80">{avgPct}</span>}
+          </p>
+          <p className="text-xs opacity-80">
+            médio por show: {formatMoney(avgNet.previous)} ({previousYear}) →{" "}
+            {formatMoney(avgNet.current)} ({currentYear})
+          </p>
+        </div>
+        <div>
+          <p className="text-2xl font-bold">{moneyDelta(totalNet.delta)}</p>
+          <p className="text-xs opacity-80">
+            total: {formatMoney(totalNet.previous)} → {formatMoney(totalNet.current)}{" "}
+            ({comparison.count.previous} → {comparison.count.current} shows)
+          </p>
+        </div>
+      </div>
+      <p className="mt-3 text-xs opacity-90">{trend.note}</p>
     </div>
   );
 }

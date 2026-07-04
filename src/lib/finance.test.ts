@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   computeShowPnL,
   rankShowsByProfit,
+  compareShowsProfitability,
   rankVenuesByProfit,
   rankCitiesByProfit,
   rankContactsByProfit,
@@ -283,6 +284,71 @@ describe("rankShowsByProfit", () => {
     const r = rankShowsByProfit([{ id: "x", fee: 70_00 }], []);
     expect(r.count).toBe(1);
     expect(r.rows[0].pnl.net).toBe(70_00);
+  });
+});
+
+describe("compareShowsProfitability", () => {
+  // Helper: monta um relatório de rentabilidade a partir de shows + txs.
+  const report = (shows: ShowLike[], txs: TxLike[] = []) => rankShowsByProfit(shows, txs);
+
+  it("veredito 'up' quando o resultado médio por show sobe além do limiar", () => {
+    // anterior: 1 show net 100 -> médio 100 ; atual: 1 show net 200 -> médio 200
+    const prev = report([{ id: "p", fee: 100_00, status: "PLAYED" }]);
+    const cur = report([{ id: "c", fee: 200_00, status: "PLAYED" }]);
+    const cmp = compareShowsProfitability(cur, prev);
+    expect(cmp.trend).toBe("up");
+    expect(cmp.avgNet.current).toBe(200_00);
+    expect(cmp.avgNet.previous).toBe(100_00);
+    expect(cmp.avgNet.delta).toBe(100_00);
+    expect(cmp.avgNet.pct).toBe(1); // +100%
+  });
+
+  it("ancora no resultado MÉDIO por show, não no total somado", () => {
+    // atual: 3 shows de net 100 (total 300, médio 100)
+    // anterior: 1 show de net 100 (total 100, médio 100)
+    const cur = report([
+      { id: "a", fee: 100_00, status: "PLAYED" },
+      { id: "b", fee: 100_00, status: "PLAYED" },
+      { id: "c", fee: 100_00, status: "PLAYED" },
+    ]);
+    const prev = report([{ id: "p", fee: 100_00, status: "PLAYED" }]);
+    const cmp = compareShowsProfitability(cur, prev);
+    // total triplicou, mas o show típico rende o mesmo -> estável
+    expect(cmp.trend).toBe("stable");
+    expect(cmp.totalNet.delta).toBe(200_00);
+    expect(cmp.count.current).toBe(3);
+    expect(cmp.count.previous).toBe(1);
+  });
+
+  it("veredito 'down' quando o resultado médio por show cai além do limiar", () => {
+    const prev = report([{ id: "p", fee: 200_00, status: "PLAYED" }]);
+    const cur = report([{ id: "c", fee: 80_00, status: "PLAYED" }]);
+    const cmp = compareShowsProfitability(cur, prev);
+    expect(cmp.trend).toBe("down");
+    expect(cmp.avgNet.delta).toBe(-120_00);
+  });
+
+  it("veredito 'stable' quando a variação fica dentro do limiar (relativo OU absoluto)", () => {
+    // variação relativa grande (+40%) mas absoluta pequena (R$ 40 < piso R$ 50) -> estável
+    const prev = report([{ id: "p", fee: 100_00, status: "PLAYED" }]);
+    const cur = report([{ id: "c", fee: 140_00, status: "PLAYED" }]);
+    const cmp = compareShowsProfitability(cur, prev);
+    expect(cmp.avgNet.delta).toBe(40_00);
+    expect(cmp.trend).toBe("stable");
+
+    // variação absoluta grande mas relativa pequena (+2%) -> estável
+    const prevBig = report([{ id: "p", fee: 10_000_00, status: "PLAYED" }]);
+    const curBig = report([{ id: "c", fee: 10_200_00, status: "PLAYED" }]);
+    expect(compareShowsProfitability(curBig, prevBig).trend).toBe("stable");
+  });
+
+  it("sem base anterior (médio 0), qualquer resultado atual conta como tendência", () => {
+    // anterior: 1 show net 0 -> médio 0 ; atual: 1 show net 100
+    const prev = report([{ id: "p", fee: 0, status: "PLAYED" }]);
+    const cur = report([{ id: "c", fee: 100_00, status: "PLAYED" }]);
+    const cmp = compareShowsProfitability(cur, prev);
+    expect(cmp.avgNet.pct).toBeNull(); // base 0 -> pct indefinido
+    expect(cmp.trend).toBe("up");
   });
 });
 

@@ -6845,3 +6845,46 @@ contexto, decisão, justificativa e alternativas consideradas.
   typecheck (`tsc --noEmit`) limpo; **1182 testes**; smoke test — `npm start`, `/login` e `/` → HTTP 200
   (app sobe). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos
   do Next 14 / postcss bundlado; ver D6); **nenhuma dependência nova**.
+
+## 2026-07-04 — D210: Comparativo ano a ano do resultado por show em `/shows/rentabilidade`
+- **Contexto:** `/shows/rentabilidade` (`rankShowsByProfit`, F4) ganhou o recorte por período (`?ano=`) mas,
+  ao contrário das irmãs que já receberam o padrão (`/shows/faixas-de-cache`/D203, `/shows/locais`/D120,
+  `/shows/antecedencia`/D187, `/shows/prazo-recebimento`/D193, concentração/D226), **não tinha** um card
+  "vs. {ano-1}". A pergunta central de F4 — "o show típico está me pagando mais líquido que ano passado?" —
+  ficava sem resposta direta: o usuário via os totais do ano isolado, sem âncora no anterior. Gap limpo do
+  padrão já consolidado no acervo.
+- **Decisão:** novo helper puro `compareShowsProfitability(current, previous)` em `src/lib/finance.ts`
+  (recebe duas `rankShowsByProfit` já computadas) devolvendo `ShowsProfitabilityComparison` com três
+  `MetricDelta` (`avgNet`, `totalNet`, `count`) + um veredito `trend` (`up`/`down`/`stable`). O veredito é
+  ancorado no **resultado líquido MÉDIO por show** (`totalNet / count`, arredondado; helper interno
+  `avgNetPerShow`), não no total somado — um ano com o dobro de shows do mesmo nível somaria mais sem que
+  cada gig ficasse mais rentável. Materialidade em **duas** condições, espelhando `compareFeeDistribution`
+  (D209): variação relativa ≥ `SHOW_PROFIT_TREND_EPSILON` (10%) **e** absoluta ≥ `SHOW_PROFIT_TREND_FLOOR`
+  (R$ 50), para não oscilar num resultado pequeno (onde 10% é troco) nem num grande (onde R$ 50 é ruído).
+  A página compõe o card só com um ano específico e ambos os períodos tendo shows (`report.count > 0 &&
+  previousReport.count > 0`), reusando `filterShowsByYear` (D108) sobre os registros já carregados — **zero
+  I/O extra**. Card `ProfitComparisonCard` 🟢/🔴/⚪ "Resultado por show {ano} vs. {ano-1}": delta do médio
+  (com %) + delta do total (com a contagem de shows) + nota de tendência. Aqui **subir** é a melhora
+  (progressão de carreira), direção igual ao card de cachê e oposta ao de DSO/cancelamento.
+- **Justificativa:** fecha o gap do padrão numa das telas mais centrais (F4, o diferencial do produto) com o
+  mesmo formato visual/semântico das irmãs (consistência de leitura). Ancorar na média por show (e não no
+  total) responde à pergunta certa e resiste ao volume; a disciplina epsilon+piso já é o precedente do
+  acervo. Pura e determinística, sem dependência nova, sem consulta nova.
+- **Alternativas consideradas:** (a) ancorar o veredito no **total** líquido — descartada: infla com o volume
+  (mais shows do mesmo nível "melhoram" o número sem o show típico render mais); o total entra só como delta
+  informativo ao lado. (b) usar a **mediana** do resultado por show em vez da média — descartada por ora:
+  `rankShowsByProfit` já expõe `totalNet`/`count` (média é derivação direta, zero agregação nova), enquanto a
+  mediana exigiria um novo cálculo; a média por show casa com os cards de destaque já na tela. Reavaliável se
+  a média se mostrar sensível a um festival fora da curva. (c) levar o comparativo ao **CSV**/export —
+  adiada: o comparativo é apresentação, seguindo o precedente da D193/D209 (o export do ano já traz os totais
+  para o leitor cruzar dois arquivos). (d) um **nudge no Painel** — adiada: o Painel já é denso e tem nudges
+  de ritmo/rentabilidade; o card na página é o lugar natural.
+- **Testes:** **+5** em `finance.test.ts` (`compareShowsProfitability`): veredito `up`/`down` além do limiar;
+  **ancoragem na média** (total triplica com 3× shows de mesmo nível → `stable`); `stable` por relativo-ok/
+  absoluto-pequeno **e** por absoluto-grande/relativo-pequeno; sem base anterior (média 0) qualquer resultado
+  atual conta (`pct` nulo). Suíte **1187** verdes (era 1182).
+- **DoD:** build de produção verde (rota `/shows/rentabilidade` compila); lint (`next lint`, 0 avisos);
+  typecheck (`tsc --noEmit`) limpo; **1187 testes**; smoke test — `npm start`, `/login` → HTTP 200 e
+  `/shows/rentabilidade?ano=2025` → 307 (auth-gated; app sobe). `npm audit` **inalterado** vs. baseline
+  (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6);
+  **nenhuma dependência nova**.
