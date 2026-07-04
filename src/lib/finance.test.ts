@@ -107,6 +107,8 @@ import {
   WEEKEND_WEEKDAYS,
   gigSeasonality,
   compareGigSeasonality,
+  classifyGigSeasonalityMonthChange,
+  type GigSeasonalityMonthChange,
   gigSeasonalityYears,
   gigSeasonalityHeadline,
   gigSeasonalityLull,
@@ -7159,6 +7161,53 @@ describe("compareGigSeasonality", () => {
     // Ambos +1 show; fevereiro (feeDelta 500) vence o ganho, abril (feeDelta 120) fica.
     expect(cmp.biggestGain?.month).toBe(1); // fevereiro
     expect(cmp.biggestGain?.feeDelta).toBe(500_00);
+  });
+});
+
+describe("classifyGigSeasonalityMonthChange", () => {
+  function change(
+    partial: Partial<GigSeasonalityMonthChange>,
+  ): GigSeasonalityMonthChange {
+    return {
+      month: 0,
+      label: "Janeiro",
+      currentCount: 0,
+      previousCount: 0,
+      countDelta: 0,
+      currentTotalFee: 0,
+      previousTotalFee: 0,
+      feeDelta: 0,
+      ...partial,
+    };
+  }
+
+  it("ancora no nº de shows: mais shows → up, menos → down", () => {
+    expect(classifyGigSeasonalityMonthChange(change({ countDelta: 2 }))).toBe("up");
+    expect(classifyGigSeasonalityMonthChange(change({ countDelta: -1 }))).toBe(
+      "down",
+    );
+  });
+
+  it("com contagem empatada, o faturamento desempata", () => {
+    expect(
+      classifyGigSeasonalityMonthChange(change({ countDelta: 0, feeDelta: 50_00 })),
+    ).toBe("up");
+    expect(
+      classifyGigSeasonalityMonthChange(change({ countDelta: 0, feeDelta: -50_00 })),
+    ).toBe("down");
+  });
+
+  it("só é flat quando os dois deltas são zero", () => {
+    expect(
+      classifyGigSeasonalityMonthChange(change({ countDelta: 0, feeDelta: 0 })),
+    ).toBe("flat");
+  });
+
+  it("a contagem tem prioridade sobre o faturamento", () => {
+    // Menos shows mas faturou mais (trocou volume por cachê): a contagem manda → down.
+    expect(
+      classifyGigSeasonalityMonthChange(change({ countDelta: -1, feeDelta: 300_00 })),
+    ).toBe("down");
   });
 });
 

@@ -7413,6 +7413,28 @@ export function compareGigSeasonality(
   };
 }
 
+/** Tendência de um mês no comparativo de sazonalidade: subiu, caiu ou estável. */
+export type GigSeasonalityMonthTrend = "up" | "down" | "flat";
+
+/**
+ * Classifica um mês do comparativo (`GigSeasonalityMonthChange`) em `up`/`down`/
+ * `flat`, para colorir a tabela de detalhe dos 12 meses de forma consistente com
+ * os **movers** de `compareGigSeasonality`: ancora no nº de shows (`countDelta`) e,
+ * com contagem empatada, usa o faturamento (`feeDelta`) como desempate — um mês que
+ * trocou um show barato por um caro conta como "subiu" mesmo sem mudar a contagem.
+ * Só é `flat` quando os dois deltas são zero. Puro, sem I/O.
+ */
+export function classifyGigSeasonalityMonthChange(
+  change: GigSeasonalityMonthChange,
+): GigSeasonalityMonthTrend {
+  if (change.countDelta > 0) return "up";
+  if (change.countDelta < 0) return "down";
+  // Contagem empatada: o faturamento desempata, na mesma disciplina dos movers.
+  if (change.feeDelta > 0) return "up";
+  if (change.feeDelta < 0) return "down";
+  return "flat";
+}
+
 /**
  * Quantos meses do calendário à frente o Painel varre em busca do próximo mês
  * forte. Inclui o mês seguinte (`monthsAhead` 1) e **exclui o mês corrente** —

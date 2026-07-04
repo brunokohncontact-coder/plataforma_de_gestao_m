@@ -5,12 +5,14 @@ import {
   gigSeasonality,
   gigSeasonalityYears,
   compareGigSeasonality,
+  classifyGigSeasonalityMonthChange,
   parseProfitYear,
   filterShowsByYear,
   GIG_MONTH_SHORT,
   type ReceivableShowLike,
   type GigMonthStat,
   type GigSeasonalityComparison,
+  type GigSeasonalityMonthTrend,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { PeriodPicker } from "@/components/PeriodPicker";
@@ -318,16 +320,110 @@ function SeasonComparison({
           ou caiu.
         </p>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <MoverCard
-            label="Mês que mais cresceu"
-            change={biggestGain}
-            tone="emerald"
+        <>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <MoverCard
+              label="Mês que mais cresceu"
+              change={biggestGain}
+              tone="emerald"
+            />
+            <MoverCard label="Mês que mais caiu" change={biggestDrop} tone="red" />
+          </div>
+          <SeasonComparisonDetail
+            comparison={comparison}
+            year={year}
+            previousYear={previousYear}
           />
-          <MoverCard label="Mês que mais caiu" change={biggestDrop} tone="red" />
-        </div>
+        </>
       )}
     </section>
+  );
+}
+
+function trendTone(trend: GigSeasonalityMonthTrend): string {
+  if (trend === "up") return "text-emerald-600";
+  if (trend === "down") return "text-red-600";
+  return "text-gray-400";
+}
+
+/**
+ * Detalhe opcional (recolhido por padrão) com os 12 meses do comparativo. Os movers
+ * acima entregam o sinal; esta tabela é para quem quiser conferir mês a mês sem sair
+ * da tela. Reusa os `months` já computados por `compareGigSeasonality` (zero I/O).
+ */
+function SeasonComparisonDetail({
+  comparison,
+  year,
+  previousYear,
+}: {
+  comparison: GigSeasonalityComparison;
+  year: number;
+  previousYear: number;
+}) {
+  return (
+    <details className="mt-4 border-t pt-3">
+      <summary className="cursor-pointer text-sm font-medium text-gray-600 hover:text-gray-900">
+        Ver os 12 meses
+      </summary>
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b text-left text-xs uppercase tracking-wide text-gray-500">
+              <th className="pb-2 pr-3 font-medium">Mês</th>
+              <th className="pb-2 px-3 text-right font-medium">Shows {previousYear}</th>
+              <th className="pb-2 px-3 text-right font-medium">Shows {year}</th>
+              <th className="pb-2 px-3 text-right font-medium">Δ shows</th>
+              <th className="pb-2 pl-3 text-right font-medium">Δ faturamento</th>
+            </tr>
+          </thead>
+          <tbody>
+            {comparison.months.map((m) => {
+              const trend = classifyGigSeasonalityMonthChange(m);
+              const empty = m.currentCount === 0 && m.previousCount === 0;
+              return (
+                <tr
+                  key={m.month}
+                  className={
+                    "border-b last:border-0 " + (empty ? "text-gray-400" : "")
+                  }
+                >
+                  <td className="py-2 pr-3 font-medium">{m.label}</td>
+                  <td className="py-2 px-3 text-right text-gray-500">
+                    {m.previousCount === 0 ? "—" : m.previousCount}
+                  </td>
+                  <td className="py-2 px-3 text-right text-gray-500">
+                    {m.currentCount === 0 ? "—" : m.currentCount}
+                  </td>
+                  <td className={"py-2 px-3 text-right font-medium " + trendTone(trend)}>
+                    {m.countDelta === 0 ? "—" : signedShows(m.countDelta)}
+                  </td>
+                  <td className={"py-2 pl-3 text-right " + trendTone(trend)}>
+                    {m.feeDelta === 0 ? "—" : signedMoney(m.feeDelta)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="border-t font-medium">
+              <td className="pt-2 pr-3">Total</td>
+              <td className="pt-2 px-3" />
+              <td className="pt-2 px-3" />
+              <td className="pt-2 px-3 text-right text-gray-600">
+                {comparison.totalShowsDelta === 0
+                  ? "—"
+                  : signedShows(comparison.totalShowsDelta)}
+              </td>
+              <td className="pt-2 pl-3 text-right text-gray-600">
+                {comparison.totalFeeDelta === 0
+                  ? "—"
+                  : signedMoney(comparison.totalFeeDelta)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </details>
   );
 }
 
