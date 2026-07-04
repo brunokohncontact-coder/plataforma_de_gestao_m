@@ -6888,3 +6888,48 @@ contexto, decisão, justificativa e alternativas consideradas.
   `/shows/rentabilidade?ano=2025` → 307 (auth-gated; app sobe). `npm audit` **inalterado** vs. baseline
   (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6);
   **nenhuma dependência nova**.
+
+## 2026-07-04 — D212: Recorte por período (`?ano=`) + comparativo ano a ano da taxa de concretização no funil de propostas
+- **Contexto:** `/shows/funil` (`showPipeline`/D-funil) era a única leitura de tendência de shows
+  que ainda mostrava só um retrato agregado de **todo** o histórico, sem o recorte por período
+  (`?ano=`/`PeriodPicker`) nem o card "vs. {ano-1}" que as irmãs já têm (antecedência/D187,
+  faixas-de-cache/D203/D209, rentabilidade/D210, prazo-recebimento/D193). Faltava a resposta direta
+  à pergunta de progressão do funil: "de tudo que negociei e teve desfecho, fechei uma fração maior
+  de shows este ano que no ano passado?". (Nº de D escolhido D212 porque a D211 está reservada por
+  uma sessão paralela em aberto — PR #235, ainda não mergeada.)
+- **Decisão:** (a) **recorte por período** em `/shows/funil` (página + export) reusando os helpers
+  da D108 (`showProfitYears`/`parseProfitYear`/`filterShowsByYear`) — filtra os shows pelo ano UTC da
+  `date` **antes** de agregar, mantendo `showPipeline` agnóstico ao recorte; `PeriodPicker`
+  compartilhado (D119) e nome de arquivo `funil-de-propostas-{ano}.csv` no export quando há ano.
+  (b) novo helper puro `compareShowPipelines(current, previous)` + `ShowPipelineComparison` +
+  `CONVERSION_TREND_EPSILON` (=0,05 = 5 p.p.) em `src/lib/finance.ts`, espelho de
+  `compareBookingLeadTime` (D187): de dois `showPipeline` já computados devolve
+  `conversionRateDelta` (0..1, `null` quando algum período não tem show decidido), os deltas de
+  realizados/decididos, e um veredito `trend` (`improved`/`worsened`/`stable`). **Ancora na taxa de
+  concretização** (PLAYED / decididos) — a única métrica do funil que faz sentido comparar entre dois
+  anos fechados (contagem/valor em aberto são um retrato do *agora*, não de um ano). Materialidade por
+  5 p.p. contra o epsilon; **subir** é a melhora (fechando mais do que negocia), direção igual ao
+  cachê/antecedência e oposta ao DSO/cancelamento. Card `ConversionComparisonCard` 🟢/🔴/⚪
+  "Concretização {ano} vs. {ano-1}" exibido só com um ano específico e ambos os períodos tendo shows
+  decididos (`decidedCount > 0`), reusando o mesmo recorte por ano sobre os registros já carregados
+  (**zero I/O extra**).
+- **Justificativa:** fecha o gap do padrão numa tela central de F2/F4 com o mesmo formato
+  visual/semântico das irmãs (consistência de leitura). Ancorar na taxa de concretização (e não na
+  contagem em aberto) responde à pergunta certa e resiste ao volume; a disciplina do epsilon já é o
+  precedente do acervo. Pura e determinística, sem dependência nova, sem consulta nova.
+- **Alternativas consideradas:** (a) comparar o **valor em aberto**/contagem em negociação entre anos
+  — descartada: são snapshot do agora, não de um ano fechado (em anos passados tudo já está decidido,
+  o "aberto" seria sempre ~0). (b) levar o comparativo ao **CSV**/export — adiada, seguindo o
+  precedente D193/D209/D210 (o comparativo é apresentação; o export por ano já entrega os totais de
+  cada período para o leitor cruzar dois arquivos). (c) um **nudge no Painel** — adiada: o Painel já é
+  denso. (d) escopo por `date` vs. por `createdAt` — usei `date` (quando o show acontece), o mesmo
+  eixo de `filterShowsByYear`, para o ano do funil casar com as demais telas por período.
+- **Testes:** **+5** em `finance.test.ts` (`compareShowPipelines`): veredito `improved`/`worsened`
+  além do limiar; `stable` dentro do epsilon; propostas/confirmados em aberto não movem a taxa (só
+  decididos contam); taxa indefinida em algum período → delta `null` e veredito `stable` (nos dois
+  sentidos). Suíte **1192** verdes (era 1187).
+- **DoD:** build de produção verde (`/shows/funil` + `/export` compilam); lint (`next lint`, 0
+  avisos); typecheck (`tsc --noEmit`) limpo; **1192 testes**; smoke test — `npm start`, `/login` →
+  HTTP 200 e `/shows/funil?ano=2025` + `/shows/funil/export?ano=2025` → 307 (auth-gated; app sobe).
+  `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do
+  Next 14 / postcss bundlado; ver D6); **nenhuma dependência nova**.
