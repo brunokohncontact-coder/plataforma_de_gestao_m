@@ -7047,6 +7047,71 @@ export function weekdayPerformanceYears(
   return [...years].sort((a, b) => b - a);
 }
 
+/**
+ * Dias que contam como "fim de semana" no contexto de shows ao vivo: as noites
+ * em que o público sai — sexta (5), sábado (6) e domingo (0). Os demais (segunda
+ * a quinta) são "dias de semana". Índice 0 = domingo .. 6 = sábado (mesma
+ * convenção de `WeekdayStat.weekday` / `getUTCDay`).
+ */
+export const WEEKEND_WEEKDAYS: readonly number[] = [5, 6, 0];
+
+/** Um lado do split fim de semana × dias de semana. */
+export interface WeekdaySplitBucket {
+  /** Nº de shows realizados neste bloco de dias. */
+  count: number;
+  /** Soma dos cachês neste bloco (centavos). */
+  totalFee: number;
+  /** Cachê médio por show do bloco = round(totalFee / count); 0 se vazio. */
+  avgFee: number;
+  /** Participação no nº total de shows do período (0..1). */
+  countShare: number;
+  /** Participação no faturamento total do período (0..1). */
+  feeShare: number;
+}
+
+export interface WeekdaySplit {
+  /** Sexta + sábado + domingo. */
+  weekend: WeekdaySplitBucket;
+  /** Segunda a quinta. */
+  weekday: WeekdaySplitBucket;
+}
+
+/**
+ * Parte o desempenho por dia da semana em dois blocos — fim de semana
+ * (sex/sáb/dom) × dias de semana (seg–qui) — respondendo "que fração dos meus
+ * shows e do meu faturamento vem das noites de fim de semana, e o cachê médio de
+ * fim de semana é maior?". Distinto dos destaques por dia (`bestByAvg` etc., que
+ * olham um único dia) e do módulo de fins de semana livres (que é sobre agenda
+ * futura, não faturamento realizado).
+ *
+ * Deriva direto dos 7 `wp.days` já computados por `weekdayPerformance` — soma os
+ * dois blocos, **zero agregação nova e zero I/O**. As participações usam os
+ * mesmos totais do período (`wp.totalShows`/`wp.totalFee`), então respeitam
+ * automaticamente qualquer recorte (`?ano=`) aplicado antes de `weekdayPerformance`.
+ * Pura.
+ */
+export function weekdaySplit(wp: WeekdayPerformance): WeekdaySplit {
+  const isWeekend = (weekday: number) => WEEKEND_WEEKDAYS.includes(weekday);
+
+  const bucketOf = (predicate: (weekday: number) => boolean): WeekdaySplitBucket => {
+    const days = wp.days.filter((d) => predicate(d.weekday));
+    const count = days.reduce((acc, d) => acc + d.count, 0);
+    const totalFee = days.reduce((acc, d) => acc + d.totalFee, 0);
+    return {
+      count,
+      totalFee,
+      avgFee: count > 0 ? Math.round(totalFee / count) : 0,
+      countShare: wp.totalShows > 0 ? count / wp.totalShows : 0,
+      feeShare: wp.totalFee > 0 ? totalFee / wp.totalFee : 0,
+    };
+  };
+
+  return {
+    weekend: bucketOf(isWeekend),
+    weekday: bucketOf((weekday) => !isWeekend(weekday)),
+  };
+}
+
 /** Rótulos longos dos meses (Janeiro..Dezembro), índice 0 = janeiro. */
 export const GIG_MONTH_LABELS: readonly string[] = [
   "Janeiro",

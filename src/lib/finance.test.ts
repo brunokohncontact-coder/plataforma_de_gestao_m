@@ -103,6 +103,8 @@ import {
   feeBandKeyFor,
   FEE_BANDS,
   weekdayPerformance,
+  weekdaySplit,
+  WEEKEND_WEEKDAYS,
   gigSeasonality,
   gigSeasonalityHeadline,
   gigSeasonalityLull,
@@ -6755,6 +6757,86 @@ describe("weekdayPerformance", () => {
     );
     // Mesma média (100), terça tem mais shows → vence o desempate.
     expect(w.bestByAvg?.weekday).toBe(2);
+  });
+});
+
+describe("weekdaySplit", () => {
+  const now = new Date("2026-06-15T12:00:00.000Z");
+
+  // Âncoras UTC em 2026: sexta = Jan 2/9 ; sábado = Jan 3/10 ; domingo = Jan 4 ;
+  // segunda = Jan 5 ; terça = Jan 6 ; quarta = Jan 7 ; quinta = Jan 1/8.
+  function gig(partial: Partial<ReceivableShowLike>): ReceivableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-01-10T20:00:00.000Z", // sábado
+      ...partial,
+    };
+  }
+
+  it("o fim de semana é sexta, sábado e domingo (5, 6, 0)", () => {
+    expect([...WEEKEND_WEEKDAYS].sort()).toEqual([0, 5, 6]);
+  });
+
+  it("separa sex/sáb/dom dos dias de semana, com médias e participações", () => {
+    const wp = weekdayPerformance(
+      [
+        gig({ id: "fri", date: "2026-01-02T20:00:00.000Z", fee: 400_00 }), // sexta
+        gig({ id: "sat", date: "2026-01-03T20:00:00.000Z", fee: 600_00 }), // sábado
+        gig({ id: "sun", date: "2026-01-04T20:00:00.000Z", fee: 500_00 }), // domingo
+        gig({ id: "mon", date: "2026-01-05T20:00:00.000Z", fee: 200_00 }), // segunda
+        gig({ id: "wed", date: "2026-01-07T20:00:00.000Z", fee: 100_00 }), // quarta
+      ],
+      { now },
+    );
+    const split = weekdaySplit(wp);
+
+    // Fim de semana: 3 shows, R$ 1.500, média 500.
+    expect(split.weekend.count).toBe(3);
+    expect(split.weekend.totalFee).toBe(1_500_00);
+    expect(split.weekend.avgFee).toBe(500_00);
+    expect(split.weekend.countShare).toBeCloseTo(3 / 5, 5);
+    expect(split.weekend.feeShare).toBeCloseTo(1_500_00 / 1_800_00, 5);
+
+    // Dias de semana: 2 shows, R$ 300, média 150.
+    expect(split.weekday.count).toBe(2);
+    expect(split.weekday.totalFee).toBe(300_00);
+    expect(split.weekday.avgFee).toBe(150_00);
+    expect(split.weekday.countShare).toBeCloseTo(2 / 5, 5);
+
+    // Os dois blocos cobrem exatamente o total do período.
+    expect(split.weekend.count + split.weekday.count).toBe(wp.totalShows);
+    expect(split.weekend.totalFee + split.weekday.totalFee).toBe(wp.totalFee);
+    expect(split.weekend.feeShare + split.weekday.feeShare).toBeCloseTo(1, 5);
+  });
+
+  it("só fim de semana → dias de semana zerados (média 0, sem divisão por zero)", () => {
+    const wp = weekdayPerformance(
+      [gig({ id: "sat", date: "2026-01-10T20:00:00.000Z", fee: 300_00 })],
+      { now },
+    );
+    const split = weekdaySplit(wp);
+    expect(split.weekend.count).toBe(1);
+    expect(split.weekend.feeShare).toBe(1);
+    expect(split.weekday.count).toBe(0);
+    expect(split.weekday.totalFee).toBe(0);
+    expect(split.weekday.avgFee).toBe(0);
+    expect(split.weekday.countShare).toBe(0);
+    expect(split.weekday.feeShare).toBe(0);
+  });
+
+  it("sem shows → ambos os blocos zerados", () => {
+    const split = weekdaySplit(weekdayPerformance([], { now }));
+    for (const bucket of [split.weekend, split.weekday]) {
+      expect(bucket).toMatchObject({
+        count: 0,
+        totalFee: 0,
+        avgFee: 0,
+        countShare: 0,
+        feeShare: 0,
+      });
+    }
   });
 });
 
