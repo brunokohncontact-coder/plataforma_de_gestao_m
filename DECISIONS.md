@@ -7166,3 +7166,42 @@ contexto, decisão, justificativa e alternativas consideradas.
   `/shows/sazonalidade?ano=2025` → 307 (auth-gated; app sobe). `npm audit` **inalterado** vs. baseline
   (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6);
   **nenhuma dependência nova**.
+
+## 2026-07-04 — D218: Duplicar show (residências / eventos recorrentes) — `buildDuplicatedShow` + `duplicateShowAction`
+- **Contexto:** o cadastro de shows não tinha atalho para eventos recorrentes. Um músico com uma
+  **residência semanal** (mesma casa, todo sábado) tinha de redigitar o mesmo show — título, local,
+  cidade, cachê, contatos — semana após semana. Toda a superfície de shows era CRUD do zero + leitura
+  analítica; faltava uma ação operacional que reduzisse o atrito de entrada de dados.
+- **Decisão:** ação de servidor `duplicateShowAction` (botão "Duplicar" na tela de detalhe do show,
+  ao lado de Editar/Excluir) que cria uma cópia do show e redireciona para a **edição** da cópia, para
+  o usuário ajustar antes de confirmar. A regra de derivação é o helper puro
+  `buildDuplicatedShow(show, weeksAhead=1)` em `src/lib/shows.ts`: copia o conteúdo de forma do evento
+  (título, local, cidade, cachê acordado, notas), **desloca a data +1 semana inteira preservando o
+  instante do dia** (soma múltiplos de 7 dias em ms → cai no mesmo dia da semana) e **reseta o status
+  para PROPOSED** (a cópia é um evento novo, ainda não confirmado, sem cachê recebido). A ação copia os
+  **vínculos de contato** (o contratante/casa de uma residência costuma ser o mesmo) mas **NÃO** copia
+  transações (são realizados do evento passado) nem o estado de cobrança (`paymentPromisedAt`/
+  `billingContactId`, que são per-evento). Só atua sobre show do próprio usuário.
+- **Justificativa:** "duplicar → editar" é o padrão consagrado para clonagem — não adivinha o intervalo
+  exato (semanal/quinzenal/mensal), deixa a data +1 semana como palpite sensato e devolve o controle na
+  tela de edição. Resetar para PROPOSED evita cópias nascerem "confirmadas"/"realizadas" por engano.
+  Deslocar por semanas inteiras (não por mês) mantém o mesmo dia da semana, que é o que define uma
+  residência. Copiar contatos mas não transações separa "quem/onde" (reaproveitável) de "quanto entrou/
+  saiu" (histórico do evento anterior). O núcleo é puro e testável; a ação fica fina (I/O + redirect).
+- **Alternativas consideradas:** (a) criar a cópia já CONFIRMED — descartada: um evento futuro recém-
+  clonado não está confirmado; PROPOSED é o estado honesto. (b) redirecionar para o detalhe em vez da
+  edição — descartada: a data +1 semana é só um palpite; a edição convida o ajuste antes de "valer". (c)
+  campo de intervalo (semanal/mensal) na hora de duplicar — adiado: `weeksAhead` já é parametrizável no
+  helper (testado com 4 = mensal), mas a UI expõe só o padrão semanal para manter a ação de um clique; se
+  surgir demanda, um seletor liga direto no parâmetro existente. (d) copiar transações — descartada:
+  poluiria a rentabilidade da cópia com despesas/receitas que não são dela.
+- **Testes:** **+8** em `shows.test.ts` (`describe("buildDuplicatedShow")`): desloca +1 semana
+  preservando horário e dia da semana; copia título/local/cidade/cachê/notas; reseta status para PROPOSED
+  a partir de qualquer origem; `weeksAhead` inteiro (4 ≈ mensal); `weeksAhead` inválido (0/negativo/NaN/
+  fracionário<1) cai no padrão de 1 semana; fracionário≥1 truncado; aceita data em string e normaliza
+  local/cidade/notas ausentes para null e cachê ausente para 0; cachê nulo → 0. Suíte **1227** verdes
+  (era 1219).
+- **DoD:** build de produção verde; lint (`next lint`, 0 avisos); typecheck (`tsc --noEmit`) limpo;
+  **1227 testes** (`vitest run`); smoke test — `next start`, `/login` → HTTP 200 e `/shows/xyz` → 307
+  (auth-gated; app sobe). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high /
+  1 critical, todos do Next 14 / postcss bundlado; ver D6); **nenhuma dependência nova**.
