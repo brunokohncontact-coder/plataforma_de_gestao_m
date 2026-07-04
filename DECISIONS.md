@@ -7051,3 +7051,46 @@ contexto, decisão, justificativa e alternativas consideradas.
   `/shows/sazonalidade` (+ `?ano=2026`) / `/shows/sazonalidade/export` (+ `?ano=2026`) → 307 (auth-gated; app sobe).
   `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
   postcss bundlado; ver D6); **nenhuma dependência nova**.
+
+## 2026-07-04 — D215: Comparativo ano a ano da sazonalidade de shows via "movers" (`compareGigSeasonality`)
+- **Contexto:** a D214 acabara de dar `?ano=`/`PeriodPicker` a `/shows/sazonalidade` e listou como "próximo
+  possível" (alternativa b) o **comparativo ano a ano** da sazonalidade, adiando-o por ser "um passo maior
+  (comparar 12 baldes mês a mês)". As telas irmãs de tendência já têm um card "vs. {ano-1}" (rentabilidade/D210,
+  funil/D212, faixas-de-cache/D209, DSO/D193, antecedência/D187), mas ancoradas num **número único**. A
+  sazonalidade é diferente: seu valor é a **forma mensal** da temporada, então um card de número único não captura
+  o insight ("em que meses a agenda mudou?"). Restava sem resposta direta a pergunta de progressão sazonal: "estou
+  agendando mais shows na alta temporada deste ano do que no ano passado — a forma da temporada mudou?".
+- **Decisão:** novo helper puro `compareGigSeasonality(current, previous)` + `GigSeasonalityComparison` +
+  `GigSeasonalityMonthChange` em `src/lib/finance.ts`: de duas `gigSeasonality` já computadas (cada uma sobre os
+  shows do seu período) devolve os 12 `months` casados por índice (jan→dez, com `countDelta`/`feeDelta` atual −
+  anterior) + `totalShowsDelta`/`totalFeeDelta` + os dois **movers** — `biggestGain` (mês que mais ganhou shows) e
+  `biggestDrop` (mês que mais perdeu). Em vez de despejar 12 baldes na tela (o "passo maior" adiado na D214b), o
+  card destila os dois extremos, no espírito do `comparePaymentLagByContact`/`PaymentLagMoversCard` (D195, "quem
+  mudou de ritmo"). Ancora no **nº de shows** (`count`, o eixo primário da página — o `busiest`), com `feeDelta`
+  como desempate (um mês que trocou show barato por caro vence empate de contagem). Card `SeasonComparison`
+  "Temporada {ano} vs. {ano-1}" 🟢/🔴 em `/shows/sazonalidade`, exibido **só com um ano específico** (`?ano=` ≠
+  "todos") **e ambos os períodos com shows realizados** (`season.totalShows > 0 && prevSeason.totalShows > 0`); o
+  ano anterior sai do **mesmo acervo já carregado** via `filterShowsByYear(rows, yearFilter - 1)` (**zero I/O
+  extra**). Aqui **crescer** o nº de shows é o lado positivo (emerald); cair é o negativo (red).
+- **Justificativa:** entrega o comparativo que a D214(b) adiou sem o custo de comparar 12 baldes na UI — os movers
+  são a leitura acionável (onde prospectei mais / onde a agenda esvaziou), e os 12 `months` ficam expostos no tipo
+  para um detalhamento futuro. Reusa o padrão de "movers" já validado (D195) e o recorte por ano da D108/D214 sobre
+  os shows já em memória. Empates desempatados de forma determinística (iterando jan→dez com `>`/`<` estrito no
+  `feeDelta`, mês mais cedo vence) — mesma disciplina do `pick` de `gigSeasonality`. `gigSeasonality` fica intocado.
+- **Alternativas consideradas:** (a) tabela de 12 linhas com o delta por mês — descartada agora: é o "passo maior"
+  que a D214(b) já ponderou; os movers entregam o sinal com a tela enxuta; os `months` no tipo deixam a tabela como
+  evolução barata se houver demanda. (b) ancorar nos movers por **faturamento** (`feeDelta`) em vez de contagem —
+  descartada: a página inteira ancora no nº de shows (`busiest`/barras), e a contagem é o eixo mais intuitivo de
+  "forma da temporada"; o `feeDelta` entra como desempate e como métrica secundária no card. (c) exigir o ano
+  anterior na lista de pílulas (`gigSeasonalityYears`) — descartada: o gate é "ambos os períodos com shows", então
+  um ano anterior sem gigs contáveis simplesmente não renderiza o card (mesma postura dos cards irmãos). (d) levar
+  o comparativo ao CSV — adiado: o card entrega o sinal; o CSV é retrato do período, precedente D193/D209/D210.
+- **Testes:** **+4** em `finance.test.ts` (`describe("compareGigSeasonality")`): 12 meses + movers corretos (março
+  +2 cresce, julho −2 cai, total 0) com `feeDelta` por linha; sem base anterior (todo mês com show é ganho, nenhum
+  é queda); períodos idênticos (sem movers, deltas zerados); empate de contagem desempatado pelo maior/menor
+  `feeDelta`. Suíte **1209** verdes (era 1205).
+- **DoD:** build de produção verde (`/shows/sazonalidade` compila); lint (`next lint`, 0 avisos); typecheck
+  (`tsc --noEmit`) limpo; **1209 testes** (`vitest run`); smoke test — `next start`, `/login` → HTTP 200 e
+  `/shows/sazonalidade?ano=2025` → 307 (auth-gated; app sobe). `npm audit` **inalterado** vs. baseline (10
+  advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6); **nenhuma
+  dependência nova**.

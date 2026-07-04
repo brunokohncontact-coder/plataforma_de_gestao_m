@@ -9,7 +9,15 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1205 testes** verdes após o **recorte por período
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1209 testes** verdes após o **comparativo ano a ano da
+sazonalidade de shows via "movers"** em `/shows/sazonalidade` (Sessão 222, D215 — novo helper puro `compareGigSeasonality(current,
+previous)` + `GigSeasonalityComparison`/`GigSeasonalityMonthChange` em `src/lib/finance.ts`: de duas `gigSeasonality` já computadas
+devolve os 12 meses casados (`countDelta`/`feeDelta` atual − anterior) + `totalShowsDelta`/`totalFeeDelta` + os dois **movers**
+(`biggestGain`/`biggestDrop`, mês que mais ganhou/perdeu shows, ancorados no nº de shows com `feeDelta` de desempate). Entrega o
+comparativo adiado na D214(b) **sem** despejar 12 baldes na tela — destila os extremos no espírito do `comparePaymentLagByContact`/
+D195. Card `SeasonComparison` "Temporada {ano} vs. {ano-1}" 🟢/🔴 exibido só com um ano específico e ambos os períodos com shows; o
+ano anterior sai do acervo já carregado via `filterShowsByYear(rows, yearFilter-1)` (**zero I/O extra**). `gigSeasonality` intocado.
+**+4 testes**). Segue o **recorte por período
 (`?ano=`) na sazonalidade de shows** em `/shows/sazonalidade` (Sessão 221, D214 — `PeriodPicker`/`?ano=` na página e no export,
 reusando `parseProfitYear`/`filterShowsByYear` (D108); novo helper puro `gigSeasonalityYears` lista só os anos dos gigs que a
 sazonalidade conta (espelho de `cancelledShowYears`/D180); padrão segue "Todos os anos" (preserva a leitura multi-ano da D133b);
@@ -3550,10 +3558,17 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    export) reusando `parseProfitYear`/`filterShowsByYear` (D108); novo helper puro `gigSeasonalityYears` (anos só dos gigs
    que a sazonalidade conta, espelho de `cancelledShowYears`/D180) alimenta o seletor sem pílulas mortas; padrão segue "Todos
    os anos" (preserva a leitura multi-ano da D133b); CSV com ano no nome; **+4 testes**, ver D214.
+   **Comparativo ano a ano via "movers"** entregue na Sessão 222 — `compareGigSeasonality` +
+   `GigSeasonalityComparison`/`GigSeasonalityMonthChange` em `src/lib/finance.ts` + card `SeasonComparison` "Temporada {ano}
+   vs. {ano-1}" em `/shows/sazonalidade` (o mês que mais cresceu / mais caiu em nº de shows, ancorado na contagem com `feeDelta`
+   de desempate; total de shows/faturamento; só com um ano específico e ambos os períodos com shows, ano anterior do acervo já
+   carregado, zero I/O extra), destilando os movers em vez de comparar 12 baldes na tela (o "passo maior" que a D214b adiou), no
+   espírito do `PaymentLagMoversCard`/D195, ver D215.
    Próximo possível —
-   comparativo ano a ano da sazonalidade (adiado na D214(b): comparar 12 baldes é passo maior); o mesmo `?ano=` na
-   sazonalidade financeira (`/financas/sazonalidade`, D214(c): eixo distinto, sessão irmã); ou um mini-gráfico
-   dos 12 meses embutido no Painel (adiado na D134(d): o Painel já é denso).
+   detalhar o comparativo numa tabela de 12 linhas (os `months` já estão no tipo `GigSeasonalityComparison`, evolução barata) ou
+   levá-lo ao CSV (adiado na D215(d): o card entrega o sinal); o mesmo `?ano=` na
+   sazonalidade financeira (`/financas/sazonalidade`, D214(c): eixo distinto, sessão irmã — porém redundante com `annualSummary`,
+   reavaliar valor); ou um mini-gráfico dos 12 meses embutido no Painel (adiado na D134(d): o Painel já é denso).
 2b. **Funil de propostas — evoluções** (entregue na Sessão 51, `/shows/funil` + `showPipeline`,
    ver D42; **card do funil no Painel** entregue na Sessão 52 — cachê em aberto + taxa de
    concretização, ver D43; **exportação CSV do funil** entregue na Sessão 167 — `pipelineToCsv` +

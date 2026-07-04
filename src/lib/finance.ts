@@ -7303,6 +7303,116 @@ export function gigSeasonality(
   };
 }
 
+export interface GigSeasonalityMonthChange {
+  /** Mês do ano: 0 = janeiro .. 11 = dezembro (UTC). */
+  month: number;
+  /** Rótulo longo ("Janeiro", "Fevereiro"…). */
+  label: string;
+  /** Nº de shows deste mês no período atual. */
+  currentCount: number;
+  /** Nº de shows deste mês no período anterior. */
+  previousCount: number;
+  /** Variação do nº de shows (atual − anterior); pode ser negativa. */
+  countDelta: number;
+  /** Faturamento deste mês no período atual (centavos). */
+  currentTotalFee: number;
+  /** Faturamento deste mês no período anterior (centavos). */
+  previousTotalFee: number;
+  /** Variação do faturamento (atual − anterior, centavos); pode ser negativa. */
+  feeDelta: number;
+}
+
+export interface GigSeasonalityComparison {
+  /** Sempre 12 meses (janeiro→dezembro), inclusive os sem mudança. */
+  months: GigSeasonalityMonthChange[];
+  /** Variação do nº total de shows (atual − anterior). */
+  totalShowsDelta: number;
+  /** Variação do faturamento total (atual − anterior, centavos). */
+  totalFeeDelta: number;
+  /**
+   * Mês que mais GANHOU shows (maior `countDelta > 0`; empate → maior `feeDelta`,
+   * depois mês mais cedo); null se nenhum mês subiu.
+   */
+  biggestGain: GigSeasonalityMonthChange | null;
+  /**
+   * Mês que mais PERDEU shows (menor `countDelta < 0`; empate → menor `feeDelta`,
+   * depois mês mais cedo); null se nenhum mês caiu.
+   */
+  biggestDrop: GigSeasonalityMonthChange | null;
+}
+
+/**
+ * Compara a **sazonalidade de shows** entre dois períodos (tipicamente um ano ×
+ * o ano anterior), mês a mês do calendário, respondendo "em que meses estou
+ * agendando mais/menos shows do que no ano passado — a temporada mudou de forma?".
+ *
+ * Distinto dos comparativos irmãos que ancoram num número único (rentabilidade/
+ * D210, concretização do funil/D212): o valor da sazonalidade é a **forma mensal**,
+ * então em vez de comparar 12 baldes na tela (adiado na D214(b) por ser passo maior)
+ * este helper destila os dois **movers** — o mês que mais cresceu e o que mais caiu
+ * em nº de shows — no espírito do card de "quem mudou de ritmo" (`comparePaymentLagByContact`/
+ * D195), mantendo a tela enxuta. Os 12 `months` ficam disponíveis para quem quiser detalhar.
+ *
+ * Ancora no **nº de shows** (`count`), o eixo primário da página (o `busiest`), com o
+ * `feeDelta` como desempate — um mês que trocou um show barato por um caro, mesmo com
+ * `countDelta` empatado, vence. Puro, sem I/O: recebe duas `gigSeasonality` já computadas
+ * (cada uma sobre os shows do seu período). O chamador decide quando exibir (tipicamente
+ * só com um ano específico e ambos os períodos com shows).
+ */
+export function compareGigSeasonality(
+  current: GigSeasonality,
+  previous: GigSeasonality,
+): GigSeasonalityComparison {
+  // Ambas as sazonalidades trazem sempre os 12 meses em ordem (jan→dez), então o
+  // índice `i` casa o mesmo mês do calendário nos dois períodos — sem lookup.
+  const months: GigSeasonalityMonthChange[] = current.months.map((cur, i) => {
+    const prev = previous.months[i];
+    return {
+      month: cur.month,
+      label: cur.label,
+      currentCount: cur.count,
+      previousCount: prev.count,
+      countDelta: cur.count - prev.count,
+      currentTotalFee: cur.totalFee,
+      previousTotalFee: prev.totalFee,
+      feeDelta: cur.totalFee - prev.totalFee,
+    };
+  });
+
+  // Iteramos jan→dez exigindo `>`/`<` estrito no desempate, então o mês mais cedo
+  // vence empates — mesma disciplina determinística do `pick` de `gigSeasonality`.
+  let biggestGain: GigSeasonalityMonthChange | null = null;
+  let biggestDrop: GigSeasonalityMonthChange | null = null;
+  for (const m of months) {
+    if (m.countDelta > 0) {
+      if (
+        biggestGain == null ||
+        m.countDelta > biggestGain.countDelta ||
+        (m.countDelta === biggestGain.countDelta && m.feeDelta > biggestGain.feeDelta)
+      ) {
+        biggestGain = m;
+      }
+    }
+    if (m.countDelta < 0) {
+      if (
+        biggestDrop == null ||
+        m.countDelta < biggestDrop.countDelta ||
+        (m.countDelta === biggestDrop.countDelta && m.feeDelta < biggestDrop.feeDelta)
+      ) {
+        biggestDrop = m;
+      }
+    }
+  }
+
+  return {
+    months,
+    totalShowsDelta: current.totalShows - previous.totalShows,
+    totalFeeDelta: current.totalFee - previous.totalFee,
+    biggestGain,
+    biggestDrop,
+  };
+}
+
 /**
  * Quantos meses do calendário à frente o Painel varre em busca do próximo mês
  * forte. Inclui o mês seguinte (`monthsAhead` 1) e **exclui o mês corrente** —
