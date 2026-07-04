@@ -7131,3 +7131,38 @@ contexto, decisão, justificativa e alternativas consideradas.
   `/shows/calendario` + `?mes=2026-03` → 307 (auth-gated; app sobe). `npm audit` **inalterado** vs. baseline
   (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6);
   **nenhuma dependência nova**.
+
+## 2026-07-04 — D217: Tabela de detalhe dos 12 meses no comparativo de sazonalidade de shows (`classifyGigSeasonalityMonthChange`)
+- **Contexto:** o card "Temporada {ano} vs. {ano-1}" (`compareGigSeasonality`, D215) em `/shows/sazonalidade`
+  destila o comparativo em dois **movers** (mês que mais cresceu / mais caiu) para manter a tela enxuta, mas
+  os 12 `months` já vinham computados no tipo `GigSeasonalityComparison` sem serem exibidos. A D215(d) e o
+  item 2c dos próximos passos apontaram "detalhar o comparativo numa tabela de 12 linhas" como **evolução
+  barata** — quem quer conferir mês a mês (não só os extremos) precisava reabrir o ano anterior por fora.
+- **Decisão:** (a) novo helper puro `classifyGigSeasonalityMonthChange(change)` + tipo
+  `GigSeasonalityMonthTrend` (`"up" | "down" | "flat"`) em `src/lib/finance.ts`: classifica um mês do
+  comparativo ancorando no **nº de shows** (`countDelta`) e, com contagem empatada, no **faturamento**
+  (`feeDelta`) como desempate — a **mesma disciplina de ancoragem dos movers** (`compareGigSeasonality`),
+  para que a cor da linha case com quem venceu o mover. Só é `flat` quando os dois deltas são zero. (b) UI:
+  disclosure `<details>` "Ver os 12 meses" (recolhido por padrão) dentro de `SeasonComparison`, abaixo dos
+  movers, com uma tabela jan→dez (Shows {ano-1} / Shows {ano} / Δ shows / Δ faturamento), cada linha colorida
+  pelo `trend`, meses sem shows nos dois anos em cinza, e linha **Total** com os deltas agregados
+  (`totalShowsDelta`/`totalFeeDelta`). Reusa os `months` já computados — **zero I/O, zero agregação nova**.
+- **Justificativa:** entrega o detalhe adiado sem poluir o card — os movers seguem sendo o sinal de relance,
+  a tabela fica escondida atrás de um clique para quem quer auditar a forma da temporada mês a mês. Colorir
+  pela mesma regra dos movers (contagem primeiro, faturamento no desempate) mantém a leitura coerente: a linha
+  que sobe é a mesma métrica que elege o "mês que mais cresceu". Sem novo I/O porque o comparativo já carrega
+  os 12 meses e o ano anterior vem do acervo já lido (D215).
+- **Alternativas consideradas:** (a) ancorar a cor só no faturamento — descartada: a página inteira ancora no
+  nº de shows (o `busiest`, os movers); trocar o eixo na tabela confundiria. (b) tabela sempre aberta —
+  descartada: os movers já resolvem o relance; abrir 12 linhas por padrão desfaz o enxugamento da D215. (c)
+  levar o detalhe ao CSV — não feito nesta sessão (o CSV da sazonalidade é single-year; comparar dois anos em
+  planilha é um eixo à parte, adiado na D215(d)). (d) reusar `signedShows`/`signedMoney` da página em vez de
+  novos formatadores — feito: já eram módulo-level, aproveitados na tabela e no Total.
+- **Testes:** **+4** em `finance.test.ts` (`describe("classifyGigSeasonalityMonthChange")`): ancora no nº de
+  shows (up/down); faturamento desempata contagem empatada (up/down); só `flat` com os dois deltas zero; a
+  contagem tem prioridade sobre o faturamento (−1 show com +faturamento → down). Suíte **1219** verdes (era 1215).
+- **DoD:** build de produção verde (`/shows/sazonalidade` compila); lint (`next lint`, 0 avisos); typecheck
+  (`tsc --noEmit`) limpo; **1219 testes** (`vitest run`); smoke test — `next start`, `/login` → HTTP 200 e
+  `/shows/sazonalidade?ano=2025` → 307 (auth-gated; app sobe). `npm audit` **inalterado** vs. baseline
+  (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6);
+  **nenhuma dependência nova**.

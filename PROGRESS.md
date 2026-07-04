@@ -9,7 +9,19 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1215 testes** verdes após a **faixa de resumo do mês no
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1219 testes** verdes após a **tabela de detalhe dos 12
+meses no comparativo de sazonalidade de shows** em `/shows/sazonalidade` (Sessão 224, D217 — o card "Temporada {ano} vs. {ano-1}"
+(`compareGigSeasonality`, D215) destila o comparativo em dois **movers**, mas os 12 `months` já computados em `GigSeasonalityComparison`
+não eram exibidos; a D215(d)/próximos passos 2c apontaram "detalhar numa tabela de 12 linhas" como **evolução barata**. (a) Novo helper
+puro `classifyGigSeasonalityMonthChange(change)` + tipo `GigSeasonalityMonthTrend` (`up`/`down`/`flat`) em `src/lib/finance.ts`: classifica
+cada mês ancorando no nº de shows (`countDelta`) com o faturamento (`feeDelta`) de desempate — a **mesma disciplina dos movers**, para a
+cor da linha casar com quem venceu o mover; só `flat` com os dois deltas zero. (b) UI: disclosure `<details>` "Ver os 12 meses" (recolhido
+por padrão) dentro de `SeasonComparison`, abaixo dos movers, com tabela jan→dez (Shows {ano-1} / Shows {ano} / Δ shows / Δ faturamento),
+cada linha colorida pelo `trend`, meses vazios nos dois anos em cinza, linha **Total** com os deltas agregados. Reusa os `months` já
+computados — **zero I/O, zero agregação nova**. Entrega o detalhe adiado sem poluir o card: os movers seguem o sinal de relance, a tabela
+fica atrás de um clique para auditar a forma da temporada mês a mês. **+4 testes** (ancora no nº de shows; faturamento desempata; só flat
+com deltas zero; contagem tem prioridade sobre faturamento). Smoke test (`next start`) → `/login` 200 e `/shows/sazonalidade?ano=2025` 307
+(auth-gated). `npm audit` sem novas vulnerabilidades (mesmos advisories Next/postcss da D6). Ver D217). Segue a **faixa de resumo do mês no
 calendário** em `/shows/calendario` (Sessão 223, D216 — novo helper puro `summarizeMonthShows(shows, year, month)` +
 `MonthShowsSummary` em `src/lib/shows.ts`: dos shows já carregados para a grade (incluindo bordas), recorta pela data **LOCAL** ao mês
 exibido — casando o `inMonth` da grade (`calendar.ts`), não o dia UTC da rentabilidade — e devolve `total` (exceto cancelados),
@@ -3575,9 +3587,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    de desempate; total de shows/faturamento; só com um ano específico e ambos os períodos com shows, ano anterior do acervo já
    carregado, zero I/O extra), destilando os movers em vez de comparar 12 baldes na tela (o "passo maior" que a D214b adiou), no
    espírito do `PaymentLagMoversCard`/D195, ver D215.
+   **Tabela de detalhe dos 12 meses** entregue na Sessão 224 — `classifyGigSeasonalityMonthChange` + tipo `GigSeasonalityMonthTrend`
+   (`up`/`down`/`flat`, ancora no nº de shows com faturamento de desempate, como os movers) em `src/lib/finance.ts` + disclosure
+   `<details>` "Ver os 12 meses" (recolhido) em `SeasonComparison` com tabela jan→dez (Shows {ano-1}/Shows {ano}/Δ shows/Δ faturamento)
+   colorida pelo trend + linha Total, reusando os `months` já computados (zero I/O), ver D217.
    Próximo possível —
-   detalhar o comparativo numa tabela de 12 linhas (os `months` já estão no tipo `GigSeasonalityComparison`, evolução barata) ou
-   levá-lo ao CSV (adiado na D215(d): o card entrega o sinal); o mesmo `?ano=` na
+   levar o comparativo ao CSV (adiado na D215(d)/D217(c): o card + a tabela entregam o sinal na tela); o mesmo `?ano=` na
    sazonalidade financeira (`/financas/sazonalidade`, D214(c): eixo distinto, sessão irmã — porém redundante com `annualSummary`,
    reavaliar valor); ou um mini-gráfico dos 12 meses embutido no Painel (adiado na D134(d): o Painel já é denso).
 2b. **Funil de propostas — evoluções** (entregue na Sessão 51, `/shows/funil` + `showPipeline`,
