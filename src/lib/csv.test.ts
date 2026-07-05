@@ -19,6 +19,7 @@ import {
   paymentLagByContactToCsv,
   paymentLagToCsv,
   gigSeasonalityToCsv,
+  gigSeasonalityComparisonToCsv,
   monthlySeasonalityToCsv,
   MONTHLY_SEASONALITY_CSV_HEADERS,
   TRANSACTION_CSV_HEADERS,
@@ -34,6 +35,7 @@ import {
   PAYMENT_LAG_BY_CONTACT_CSV_HEADERS,
   PAYMENT_LAG_CSV_HEADERS,
   GIG_SEASONALITY_CSV_HEADERS,
+  GIG_SEASONALITY_COMPARISON_CSV_HEADERS,
   weekdayPerformanceToCsv,
   WEEKDAY_PERFORMANCE_CSV_HEADERS,
   feeDistributionToCsv,
@@ -120,6 +122,7 @@ import {
   monthlySeasonality,
   quarterlySummary,
   gigSeasonality,
+  compareGigSeasonality,
   gigCadence,
   feeTrend,
   cashFlowByMonth,
@@ -1179,6 +1182,93 @@ describe("gigSeasonalityToCsv", () => {
     expect(maio[0]).toBe("Maio");
     // Único mês ativo é busiest, bestByVolume e bestByAvg — mas não "mais fraco".
     expect(maio[6]).toBe("Mês mais cheio / Mais faturamento / Melhor cachê médio");
+  });
+});
+
+describe("gigSeasonalityComparisonToCsv", () => {
+  // `now` fixo no futuro para que todos os shows forjados contem como realizados.
+  const NOW = "2026-01-01T00:00:00.000Z";
+  const gig = (
+    over: Partial<ReceivableShowLike> = {},
+  ): ReceivableShowLike => ({
+    id: "s",
+    fee: 100000,
+    status: "PLAYED",
+    date: "2025-03-10T00:00:00.000Z",
+    ...over,
+  });
+  // Constrói o comparativo entre um "ano corrente" e um "ano anterior" a partir
+  // de duas listas de shows já separadas por período.
+  const compare = (current: ReceivableShowLike[], previous: ReceivableShowLike[]) =>
+    compareGigSeasonality(
+      gigSeasonality(current, { now: new Date(NOW) }),
+      gigSeasonality(previous, { now: new Date(NOW) }),
+    );
+
+  it("sempre emite as 12 linhas de mês + a linha Total mesmo sem shows", () => {
+    const csv = gigSeasonalityComparisonToCsv(compare([], []));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(GIG_SEASONALITY_COMPARISON_CSV_HEADERS.join(";"));
+    // cabeçalho + 12 meses + Total
+    expect(lines).toHaveLength(14);
+    // Meses sem shows nos dois anos: 0/0, deltas zerados, tendência "Estável".
+    expect(lines[1]).toBe("Janeiro;0;0;0;0,00;Estável");
+    expect(lines[12]).toBe("Dezembro;0;0;0;0,00;Estável");
+    // Total: colunas de contagem em branco, deltas zerados, sem tendência.
+    expect(lines[13]).toBe("Total;;;0;0,00;");
+  });
+
+  it("serializa contagem dos dois anos, deltas e tendência 'Subiu'", () => {
+    // Março: 2 shows em 2025 (corrente) vs. 1 em 2024 (anterior) → subiu.
+    const comparison = compare(
+      [
+        gig({ date: "2025-03-01T00:00:00.000Z", fee: 100000 }),
+        gig({ date: "2025-03-20T00:00:00.000Z", fee: 200000 }),
+      ],
+      [gig({ date: "2024-03-15T00:00:00.000Z", fee: 100000 })],
+    );
+    const março = gigSeasonalityComparisonToCsv(comparison).split("\r\n")[3].split(";");
+    expect(março[0]).toBe("Março");
+    expect(março[1]).toBe("1"); // shows do ano anterior
+    expect(março[2]).toBe("2"); // shows do ano corrente
+    expect(março[3]).toBe("+1"); // Δ shows assinado (2 - 1)
+    expect(março[5]).toBe("Subiu");
+  });
+
+  it("emite o Δ shows assinado corretamente e a linha Total agregada", () => {
+    const comparison = compare(
+      [
+        gig({ date: "2025-03-01T00:00:00.000Z", fee: 300000 }),
+        gig({ date: "2025-03-20T00:00:00.000Z", fee: 300000 }),
+      ],
+      [gig({ date: "2024-03-15T00:00:00.000Z", fee: 100000 })],
+    );
+    const lines = gigSeasonalityComparisonToCsv(comparison).split("\r\n");
+    const março = lines[3].split(";");
+    expect(março[3]).toBe("+1"); // 2 - 1
+    expect(março[4]).toBe("5000,00"); // 6000 - 1000
+    const total = lines[13].split(";");
+    expect(total).toEqual(["Total", "", "", "+1", "5000,00", ""]);
+  });
+
+  it("registra deltas negativos com sinal e tendência 'Caiu'", () => {
+    // Julho caiu de 2 shows (anterior) para 1 (corrente): Δ shows -1, faturamento menor.
+    const comparison = compare(
+      [gig({ date: "2025-07-04T00:00:00.000Z", fee: 100000 })],
+      [
+        gig({ date: "2024-07-04T00:00:00.000Z", fee: 200000 }),
+        gig({ date: "2024-07-20T00:00:00.000Z", fee: 200000 }),
+      ],
+    );
+    const julho = gigSeasonalityComparisonToCsv(comparison).split("\r\n")[7].split(";");
+    expect(julho[0]).toBe("Julho");
+    expect(julho[3]).toBe("-1"); // 1 - 2
+    expect(julho[4]).toBe("-3000,00"); // 1000 - 4000
+    expect(julho[5]).toBe("Caiu");
+    // Total também negativo.
+    const total = gigSeasonalityComparisonToCsv(comparison).split("\r\n")[13].split(";");
+    expect(total[3]).toBe("-1");
+    expect(total[4]).toBe("-3000,00");
   });
 });
 

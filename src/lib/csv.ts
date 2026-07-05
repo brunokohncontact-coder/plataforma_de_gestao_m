@@ -18,6 +18,7 @@ import {
   MIN_MEDIAN_FEE_SAMPLE,
   MIN_MEDIAN_LAG_SAMPLE,
   PAYMENT_SPEED_BUCKET_LABELS,
+  classifyGigSeasonalityMonthChange,
   type AnnualSummary,
   type MonthlySeasonality,
   type QuarterlySummary,
@@ -30,6 +31,8 @@ import {
   type PaymentPromiseStatus,
   type PaymentSpeedBucketKey,
   type GigSeasonality,
+  type GigSeasonalityComparison,
+  type GigSeasonalityMonthTrend,
   type GigMonthStat,
   type GigCadence,
   type WeekdayPerformance,
@@ -1224,6 +1227,77 @@ export function gigSeasonalityToCsv(
     centsToCsvAmount(season.totalFee),
     "",
     "",
+    "",
+  ]);
+  return toCsv(out, delimiter);
+}
+
+// ── Comparativo ano a ano da sazonalidade de shows (temporada X vs. X-1) ───────
+
+export const GIG_SEASONALITY_COMPARISON_CSV_HEADERS = [
+  "Mês",
+  "Shows (ano anterior)",
+  "Shows (ano corrente)",
+  "Δ shows",
+  "Δ faturamento (R$)",
+  "Tendência",
+] as const;
+
+/** Contagem com sinal para planilha: 3 → "+3", -2 → "-2", 0 → "0". */
+function csvSignedCount(delta: number): string {
+  const rounded = Math.round(delta);
+  return `${rounded > 0 ? "+" : ""}${rounded}`;
+}
+
+/** Rótulo pt-BR da tendência de um mês no comparativo, espelhando a cor da UI. */
+const GIG_SEASONALITY_TREND_LABELS: Record<GigSeasonalityMonthTrend, string> = {
+  up: "Subiu",
+  down: "Caiu",
+  flat: "Estável",
+};
+
+/**
+ * Serializa o comparativo ano a ano da sazonalidade de shows
+ * (`compareGigSeasonality`) em CSV, pronto para download — espelha a tabela
+ * "Ver os 12 meses" do card "Temporada {ano} vs. {ano-1}" de
+ * `/shows/sazonalidade`. Uma linha por mês do calendário (sempre as 12, jan→dez,
+ * inclusive meses sem shows nos dois anos, para revelar onde a temporada mudou de
+ * forma) com o nº de shows de cada ano, a variação do nº de shows, a variação do
+ * faturamento e a tendência (Subiu / Caiu / Estável), seguida de uma linha
+ * "Total".
+ *
+ * Diferente da UI (que mostra "—" nos meses/deltas vazios), o CSV registra 0 e
+ * 0,00 para ficar legível por máquina. A coluna "Tendência" replica a cor da
+ * tabela on-screen reusando `classifyGigSeasonalityMonthChange` (ancora no nº de
+ * shows, com o faturamento de desempate), tornando a planilha auto-explicativa e
+ * filtrável por quem subiu/caiu. Os deltas saem assinados (`+`/`-`), o faturamento
+ * via `centsToCsvAmount` (que já emite o "-" nos negativos). As colunas de nº de
+ * shows do Total ficam em branco (o valor é a variação, como na UI); a tendência
+ * do Total também. Os anos concretos vão no nome do arquivo, não nos cabeçalhos
+ * (mesma convenção de `yearPaceToCsv`). Mesma convenção pt-BR dos irmãos (";" e
+ * decimal com vírgula). Pura.
+ */
+export function gigSeasonalityComparisonToCsv(
+  comparison: GigSeasonalityComparison,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(GIG_SEASONALITY_COMPARISON_CSV_HEADERS)];
+  for (const m of comparison.months) {
+    out.push([
+      m.label,
+      String(m.previousCount),
+      String(m.currentCount),
+      csvSignedCount(m.countDelta),
+      centsToCsvAmount(m.feeDelta),
+      GIG_SEASONALITY_TREND_LABELS[classifyGigSeasonalityMonthChange(m)],
+    ]);
+  }
+  out.push([
+    "Total",
+    "",
+    "",
+    csvSignedCount(comparison.totalShowsDelta),
+    centsToCsvAmount(comparison.totalFeeDelta),
     "",
   ]);
   return toCsv(out, delimiter);

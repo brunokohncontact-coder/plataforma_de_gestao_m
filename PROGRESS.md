@@ -9,7 +9,22 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1250 testes** verdes após o **atalho "Duplicar" na lista de
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1254 testes** verdes após a **exportação CSV do comparativo
+ano a ano da sazonalidade de shows** (Sessão 230, D223 — o card "Temporada {ano} vs. {ano-1}" (`compareGigSeasonality`, D215) já traz na
+tela os dois movers e a tabela recolhida "Ver os 12 meses" (D217), mas o comparativo era a **única** leitura da sazonalidade sem CSV (a
+tela-mãe já exporta a sazonalidade absoluta via `gigSeasonalityToCsv`/D205; levar o comparativo à planilha ficou adiado na D215(d)/D217(c)).
+Novo serializador puro `gigSeasonalityComparisonToCsv(comparison)` + `GIG_SEASONALITY_COMPARISON_CSV_HEADERS` (Mês / Shows (ano anterior) /
+Shows (ano corrente) / Δ shows / Δ faturamento (R$) / Tendência) em `src/lib/csv.ts` — espelha a tabela "Ver os 12 meses": uma linha por mês
+(sempre as 12, jan→dez, inclusive meses sem shows nos dois anos) + linha Total com os deltas agregados. Coluna "Tendência" (Subiu/Caiu/Estável)
+reusa `classifyGigSeasonalityMonthChange` (ancora no nº de shows, faturamento de desempate) replicando a **cor** da tabela on-screen, tornando
+a planilha filtrável — no espírito da coluna "Destaque" da D205. Diferente da UI (que mostra "—" nos vazios), o CSV registra 0/0,00/"Estável"
+para ficar legível por máquina; deltas assinados (`csvSignedCount` novo p/ contagem; `centsToCsvAmount` já emite "-" no faturamento negativo).
+Nova rota `/shows/sazonalidade/comparativo/export?ano=YYYY` (recorta ano atual + anterior do mesmo acervo, zero I/O extra) com o mesmo **gate**
+do card: só com um ano específico e ambos os períodos com shows — 404 (texto) quando o ano não bate no acervo (`parseProfitYear`→"all") ou
+falta shows num dos anos, em vez de CSV vazio; anos no **nome do arquivo** (`sazonalidade-comparativo-{ano}-vs-{ano-1}.csv`, convenção de
+`yearPaceToCsv`). Link discreto "⬇ CSV" no cabeçalho do card `SeasonComparison`. **+4 testes** (`csv.test.ts`). Smoke test (`next start`) →
+`/login` 200 e `/shows/sazonalidade/comparativo/export?ano=2025` 307 (auth-gated). `npm audit` sem novas vulnerabilidades (mesmos advisories
+Next/postcss da D6; nenhuma dependência nova). Ver D223. Antes, o **atalho "Duplicar" na lista de
 shows** (Sessão 229, D222 — a duplicação de shows (residências / eventos recorrentes) existia só no **detalhe** do show (D218–D220); os
 próximos passos apontavam levá-la também à **lista** de `/shows`, e a `duplicateShowAction` estava sem testes de integração diretos. Novo
 botão-ícone "⧉ Duplicar" por linha em `src/app/(app)/shows/page.tsx`, num `<form action={duplicateShowAction}>` **irmão** do `<Link>` da
@@ -3649,10 +3664,16 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    (`up`/`down`/`flat`, ancora no nº de shows com faturamento de desempate, como os movers) em `src/lib/finance.ts` + disclosure
    `<details>` "Ver os 12 meses" (recolhido) em `SeasonComparison` com tabela jan→dez (Shows {ano-1}/Shows {ano}/Δ shows/Δ faturamento)
    colorida pelo trend + linha Total, reusando os `months` já computados (zero I/O), ver D217.
+   **Exportação CSV do comparativo ano a ano** entregue na Sessão 230 — `gigSeasonalityComparisonToCsv` +
+   `GIG_SEASONALITY_COMPARISON_CSV_HEADERS` (Mês / Shows (ano anterior) / Shows (ano corrente) / Δ shows / Δ faturamento /
+   Tendência) em `src/lib/csv.ts` (uma linha por mês jan→dez + Total; coluna "Tendência" reusa `classifyGigSeasonalityMonthChange`,
+   deltas assinados via `csvSignedCount`/`centsToCsvAmount`) + rota `/shows/sazonalidade/comparativo/export?ano=YYYY` (mesmo gate do
+   card, 404 sem ano/sem shows nos dois anos; nome `sazonalidade-comparativo-{ano}-vs-{ano-1}.csv`) + link "⬇ CSV" no card
+   `SeasonComparison`, ver D223 (reverte a deferência D215(d)/D217(c): o valor do comparativo é a forma mês a mês dos deltas,
+   que ganha em ordenar/filtrar numa planilha).
    Próximo possível —
-   levar o comparativo ao CSV (adiado na D215(d)/D217(c): o card + a tabela entregam o sinal na tela); o mesmo `?ano=` na
-   sazonalidade financeira (`/financas/sazonalidade`, D214(c): eixo distinto, sessão irmã — porém redundante com `annualSummary`,
-   reavaliar valor); ou um mini-gráfico dos 12 meses embutido no Painel (adiado na D134(d): o Painel já é denso).
+   o mesmo `?ano=` na sazonalidade financeira (`/financas/sazonalidade`, D214(c): eixo distinto, sessão irmã — porém redundante com
+   `annualSummary`, reavaliar valor); ou um mini-gráfico dos 12 meses embutido no Painel (adiado na D134(d): o Painel já é denso).
 2b. **Funil de propostas — evoluções** (entregue na Sessão 51, `/shows/funil` + `showPipeline`,
    ver D42; **card do funil no Painel** entregue na Sessão 52 — cachê em aberto + taxa de
    concretização, ver D43; **exportação CSV do funil** entregue na Sessão 167 — `pipelineToCsv` +
