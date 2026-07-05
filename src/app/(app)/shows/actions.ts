@@ -10,7 +10,11 @@ import {
   resolvePromiseDate,
 } from "@/lib/finance";
 import { parseMoneyToCents, showSchema } from "@/lib/validation";
-import { buildDuplicatedShow, parseDuplicateInterval } from "@/lib/shows";
+import {
+  buildDuplicatedShowSeries,
+  parseDuplicateInterval,
+  parseDuplicateCount,
+} from "@/lib/shows";
 
 export interface FormState {
   error?: string;
@@ -276,27 +280,40 @@ export async function duplicateShowAction(formData: FormData): Promise<void> {
   if (!show) return;
 
   const weeksAhead = parseDuplicateInterval(formData.get("intervalo"));
-  const data = buildDuplicatedShow(show, weeksAhead);
+  const count = parseDuplicateCount(formData.get("quantidade"));
+  const series = buildDuplicatedShowSeries(show, weeksAhead, count);
+  const contacts = show.contacts.length
+    ? { create: show.contacts.map((c) => ({ contactId: c.contactId })) }
+    : undefined;
 
-  const created = await prisma.show.create({
-    data: {
-      userId: user.id,
-      title: data.title,
-      date: data.date,
-      venue: data.venue,
-      city: data.city,
-      status: data.status,
-      fee: data.fee,
-      notes: data.notes,
-      contacts: show.contacts.length
-        ? { create: show.contacts.map((c) => ({ contactId: c.contactId })) }
-        : undefined,
-    },
-  });
+  // Cria todas as cópias atomicamente — uma residência agendada em lote não deve
+  // ficar pela metade se uma inserção falhar.
+  const created = await prisma.$transaction(
+    series.map((data) =>
+      prisma.show.create({
+        data: {
+          userId: user.id,
+          title: data.title,
+          date: data.date,
+          venue: data.venue,
+          city: data.city,
+          status: data.status,
+          fee: data.fee,
+          notes: data.notes,
+          contacts,
+        },
+      }),
+    ),
+  );
 
   revalidatePath("/shows");
   revalidatePath("/dashboard");
-  redirect(`/shows/${created.id}/editar`);
+  // Uma cópia → abre a edição dela (padrão "duplicar → editar" da D218). Várias →
+  // volta à lista, já que não há uma única cópia para editar.
+  if (created.length === 1) {
+    redirect(`/shows/${created[0].id}/editar`);
+  }
+  redirect("/shows");
 }
 
 export async function deleteShowAction(formData: FormData): Promise<void> {

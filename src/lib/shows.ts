@@ -907,3 +907,53 @@ export function buildDuplicatedShow(
     notes: show.notes ?? null,
   };
 }
+
+/** Quantas cópias a duplicação cria por padrão (uma — o comportamento da D218). */
+export const DEFAULT_DUPLICATE_COUNT = 1;
+
+/** Teto de cópias criadas numa única duplicação em lote — um trimestre de uma
+ *  residência semanal (12 datas) cobre o horizonte de planejamento realista sem
+ *  poluir a agenda com dezenas de propostas de uma vez. */
+export const MAX_DUPLICATE_COUNT = 12;
+
+/** Opções de quantidade oferecidas no seletor de duplicação em lote. */
+export const DUPLICATE_COUNT_PRESETS = [1, 2, 4, 8, 12] as const;
+
+/**
+ * Converte a escolha de quantidade (string do formulário) no nº de cópias a
+ * criar. Não-numérico/ausente/< 1 cai no padrão (1); acima do teto satura em
+ * `MAX_DUPLICATE_COUNT`; fracionário é truncado. Pura.
+ */
+export function parseDuplicateCount(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n) || n < 1) return DEFAULT_DUPLICATE_COUNT;
+  return Math.min(Math.floor(n), MAX_DUPLICATE_COUNT);
+}
+
+/**
+ * Deriva uma série de shows duplicados para agendar de uma vez as próximas `count`
+ * ocorrências de uma residência. Cada cópia k (1..count) cai `weeksAhead * k`
+ * semanas à frente da data original — ou seja, espaçadas pela cadência escolhida
+ * (`weekly`/`biweekly`/`monthly`), todas no mesmo dia da semana e horário. Reusa
+ * `buildDuplicatedShow` (mesmo reset de status/cachê/vínculos de forma). `count`
+ * inválido/< 1 vira 1; acima do teto satura em `MAX_DUPLICATE_COUNT`. Pura.
+ */
+export function buildDuplicatedShowSeries(
+  show: DuplicableShow,
+  weeksAhead: number = DUPLICATE_SHOW_WEEKS_AHEAD,
+  count: number = DEFAULT_DUPLICATE_COUNT,
+): DuplicatedShowData[] {
+  const total =
+    Number.isFinite(count) && count >= 1
+      ? Math.min(Math.floor(count), MAX_DUPLICATE_COUNT)
+      : DEFAULT_DUPLICATE_COUNT;
+  const step =
+    Number.isFinite(weeksAhead) && weeksAhead >= 1
+      ? Math.floor(weeksAhead)
+      : DUPLICATE_SHOW_WEEKS_AHEAD;
+  const series: DuplicatedShowData[] = [];
+  for (let k = 1; k <= total; k++) {
+    series.push(buildDuplicatedShow(show, step * k));
+  }
+  return series;
+}
