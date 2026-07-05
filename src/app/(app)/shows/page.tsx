@@ -20,6 +20,7 @@ import { isValidDateKey } from "@/lib/finance";
 import { FILTER_RESTORED_PARAM } from "@/lib/listFilter";
 import { ShowsViewToggle } from "@/components/ShowsViewToggle";
 import { RememberedFilterNotice } from "@/components/RememberedFilterNotice";
+import { duplicateShowAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -213,10 +214,10 @@ export default async function ShowsPage({
           <div className="card overflow-hidden p-0">
             <ul className="divide-y divide-gray-100">
               {visible.map((s) => (
-                <li key={s.id}>
+                <li key={s.id} className="flex items-center">
                   <Link
                     href={`/shows/${s.id}`}
-                    className="flex items-center justify-between px-5 py-4 hover:bg-gray-50"
+                    className="flex min-w-0 flex-1 items-center justify-between py-4 pl-5 pr-3 hover:bg-gray-50"
                   >
                     <div className="min-w-0">
                       <p className="truncate font-medium">{s.title}</p>
@@ -237,6 +238,20 @@ export default async function ShowsPage({
                       </span>
                     </div>
                   </Link>
+                  {/* Atalho de duplicação direto da lista (residências / eventos
+                      recorrentes): cria UMA cópia na próxima semana e abre para
+                      editar — mesmo comportamento do detalhe com os padrões (D218). */}
+                  <form action={duplicateShowAction} className="pr-3">
+                    <input type="hidden" name="id" value={s.id} />
+                    <button
+                      type="submit"
+                      title="Duplicar este show (cria 1 cópia na próxima semana e abre para editar)"
+                      aria-label={`Duplicar ${s.title}`}
+                      className="rounded p-2 text-gray-400 hover:bg-gray-100 hover:text-brand-700"
+                    >
+                      <span aria-hidden>⧉</span>
+                    </button>
+                  </form>
                 </li>
               ))}
             </ul>
