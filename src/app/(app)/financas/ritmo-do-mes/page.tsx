@@ -3,10 +3,12 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   currentMonthPace,
+  currentMonthVsLastYear,
   parseBurnWindow,
   BURN_WINDOW_PRESETS,
   type TxLike,
   type MonthPace,
+  type MonthYoY,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { formatMonthKey } from "@/lib/format";
@@ -40,6 +42,36 @@ const VERDICT_META: Record<
     tone: "bg-gray-50 text-gray-700 ring-gray-200",
     icon: "📭",
     blurb: "Ainda não há meses anteriores com receita para servir de referência.",
+  },
+};
+
+const YOY_VERDICT_META: Record<
+  MonthYoY["verdict"],
+  { label: string; tone: string; icon: string; blurb: string }
+> = {
+  ahead: {
+    label: "Acima do ano passado",
+    tone: "bg-emerald-50 text-emerald-800 ring-emerald-200",
+    icon: "📈",
+    blurb: "A projeção do mês supera o mesmo mês do ano passado. A temporada vem mais forte.",
+  },
+  onPace: {
+    label: "Em linha com o ano passado",
+    tone: "bg-brand-50 text-brand-800 ring-brand-200",
+    icon: "🟰",
+    blurb: "O mês deve fechar perto do mesmo mês do ano passado.",
+  },
+  behind: {
+    label: "Abaixo do ano passado",
+    tone: "bg-amber-50 text-amber-900 ring-amber-200",
+    icon: "📉",
+    blurb: "A projeção fica abaixo do mesmo mês do ano passado. Vale reforçar a agenda.",
+  },
+  insufficient: {
+    label: "Sem o mesmo mês do ano passado",
+    tone: "bg-gray-50 text-gray-700 ring-gray-200",
+    icon: "🗓️",
+    blurb: "Não há receita no mesmo mês do ano passado para comparar. Volte quando houver histórico.",
   },
 };
 
@@ -82,6 +114,9 @@ export default async function MonthPacePage({
   const verdict = VERDICT_META[pace.verdict];
   const elapsedPct = Math.round(pace.elapsed * 100);
   const hasCurrentMonth = pace.income > 0 || pace.expense > 0;
+
+  const yoy = currentMonthVsLastYear(allTxs);
+  const yoyVerdict = YOY_VERDICT_META[yoy.verdict];
 
   return (
     <div className="space-y-6">
@@ -210,9 +245,63 @@ export default async function MonthPacePage({
         </table>
       </section>
 
+      {/* Comparativo sazonal: mesmo mês do ano passado */}
+      <section className="space-y-4">
+        <div>
+          <h2 className="font-semibold">Mesmo mês do ano passado</h2>
+          <p className="text-xs text-gray-500">
+            O eixo sazonal: {formatMonthKey(yoy.month)} projetado contra {formatMonthKey(yoy.lastYearMonth)},
+            que fechou.
+          </p>
+        </div>
+
+        <div className={`card ring-1 ${yoyVerdict.tone}`}>
+          <div className="flex items-center gap-3">
+            <span className="text-2xl" aria-hidden>
+              {yoyVerdict.icon}
+            </span>
+            <div>
+              <p className="font-semibold">{yoyVerdict.label}</p>
+              <p className="text-sm opacity-90">{yoyVerdict.blurb}</p>
+            </div>
+          </div>
+        </div>
+
+        {yoy.verdict !== "insufficient" && (
+          <div className="card overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs uppercase tracking-wide text-gray-500">
+                  <th className="pb-2 pr-3 font-medium"></th>
+                  <th className="pb-2 px-3 text-right font-medium">Projeção do mês</th>
+                  <th className="pb-2 px-3 text-right font-medium">{formatMonthKey(yoy.lastYearMonth)}</th>
+                  <th className="pb-2 pl-3 text-right font-medium">Variação</th>
+                </tr>
+              </thead>
+              <tbody>
+                <Row label="Receitas" delta={yoy.projectedIncomeVsLastYear} goodWhenUp />
+                <Row label="Despesas" delta={yoy.projectedExpenseVsLastYear} goodWhenUp={false} />
+                <Row label="Resultado" delta={yoy.projectedNetVsLastYear} goodWhenUp strong />
+              </tbody>
+            </table>
+            <p className="mt-4 border-t pt-3 text-xs text-gray-500">
+              Até hoje (dia {yoy.dayOfMonth}), você lançou{" "}
+              <strong className="tabular-nums">{formatMoney(yoy.income)}</strong> em receita — contra{" "}
+              <strong className="tabular-nums">{formatMoney(yoy.lastYearIncomeToDate)}</strong> até o mesmo
+              dia do ano passado (
+              <span className={deltaTone(yoy.incomeToDateVsLastYear.direction, true)}>
+                {formatPct(yoy.incomeToDateVsLastYear.pct)}
+              </span>
+              ).
+            </p>
+          </div>
+        )}
+      </section>
+
       <p className="text-xs text-gray-400">
         O mês corrente é medido por regime de competência (pela data do lançamento). O “mês típico” é
-        a média dos meses fechados com movimento dos últimos {windowMonths} meses.
+        a média dos meses fechados com movimento dos últimos {windowMonths} meses; o comparativo
+        sazonal usa o total fechado do mesmo mês no ano anterior.
       </p>
     </div>
   );

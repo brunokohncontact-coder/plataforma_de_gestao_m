@@ -5129,6 +5129,175 @@ export function currentMonthPace(
   };
 }
 
+/**
+ * Veredito do mês corrente contra o **mesmo mês do ano anterior** (eixo
+ * sazonal). Decidido pela receita: a projeção de fechamento do mês corrente vs.
+ * o total **fechado** do mesmo mês um ano atrás. `insufficient` quando aquele
+ * mês não teve receita para servir de base.
+ */
+export type MonthYoYVerdict = "ahead" | "onPace" | "behind" | "insufficient";
+
+export interface MonthYoY {
+  /** Mês corrente "YYYY-MM" (UTC). */
+  month: string;
+  /** Mesmo mês do calendário um ano atrás, "YYYY-MM" (UTC). */
+  lastYearMonth: string;
+  /** Dia de referência dentro do mês (1–31), extraído de `now` (UTC). */
+  dayOfMonth: number;
+  /** Total de dias do mês corrente. */
+  daysInMonth: number;
+  /** Fração do mês corrente já decorrida = `dayOfMonth / daysInMonth`. */
+  elapsed: number;
+  /**
+   * Receitas/despesas **lançadas** no mês corrente até `now` (regime de
+   * competência, pela `date`), em centavos.
+   */
+  income: number;
+  expense: number;
+  net: number;
+  /** Projeção linear (pro-rata) do fechamento do mês corrente = valor ÷ `elapsed`. */
+  projectedIncome: number;
+  projectedExpense: number;
+  projectedNet: number;
+  /** Total **fechado** do mesmo mês no ano anterior (competência), em centavos. */
+  lastYearIncome: number;
+  lastYearExpense: number;
+  lastYearNet: number;
+  /**
+   * O mesmo mês do ano anterior, mas só até **o mesmo dia do mês** — leitura
+   * "maçã com maçã": até esta data, eu estava à frente de onde estou agora?
+   * (Meses com menos dias truncam naturalmente: um dia inexistente não soma.)
+   */
+  lastYearIncomeToDate: number;
+  lastYearExpenseToDate: number;
+  lastYearNetToDate: number;
+  /** Projeção do mês corrente vs. o total fechado do mesmo mês no ano anterior. */
+  projectedIncomeVsLastYear: MetricDelta;
+  projectedExpenseVsLastYear: MetricDelta;
+  projectedNetVsLastYear: MetricDelta;
+  /** O lançado até agora vs. o lançado até o mesmo dia do ano anterior. */
+  incomeToDateVsLastYear: MetricDelta;
+  expenseToDateVsLastYear: MetricDelta;
+  netToDateVsLastYear: MetricDelta;
+  /** Havia algum lançamento no mesmo mês do ano anterior? */
+  hasLastYear: boolean;
+  /**
+   * Veredito, pela **receita**: a projeção do mês vs. o total do mesmo mês no
+   * ano anterior. `insufficient` quando aquele mês não teve receita.
+   */
+  verdict: MonthYoYVerdict;
+}
+
+/**
+ * Ritmo do mês corrente contra o **mesmo mês do ano anterior** — o eixo sazonal,
+ * complementar ao "mês típico" (média móvel) de `currentMonthPace`. Responde
+ * "vou fechar acima do mesmo mês do ano passado?" e "até hoje, estou à frente de
+ * onde eu estava nesta data no ano passado?".
+ *
+ * Como `currentMonthPace`: soma o lançado no mês corrente (competência, pela
+ * `date`) e projeta o fechamento por extrapolação pro-rata. A base sazonal é o
+ * total **fechado** do mesmo mês um ano atrás; o comparativo "até a data" recorta
+ * aquele mês até o mesmo dia do mês (`dayOfMonth`), tolerando meses mais curtos
+ * (fevereiro etc.) — dias inexistentes simplesmente não somam.
+ *
+ * Pura; `now` é injetável. UTC via `monthKey` (consistente com as demais
+ * agregações financeiras). Reusa `MONTH_PACE_EPSILON` (±10%) para o veredito.
+ */
+export function currentMonthVsLastYear(
+  txs: TxLike[],
+  options: { now?: Date | string } = {},
+): MonthYoY {
+  const now = typeof options.now === "string" ? new Date(options.now) : (options.now ?? new Date());
+
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  const dayOfMonth = now.getUTCDate();
+  const daysInMonth = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  const elapsed = dayOfMonth / daysInMonth;
+
+  const monthStartMs = Date.UTC(y, m, 1);
+  const monthEndMs = Date.UTC(y, m + 1, 1);
+
+  // Mês corrente até agora (regime de competência, inclui o dia de hoje inteiro).
+  let income = 0;
+  let expense = 0;
+  // Mesmo mês, um ano atrás: total fechado e o parcial até o mesmo dia do mês.
+  const lastYearStartMs = Date.UTC(y - 1, m, 1);
+  const lastYearEndMs = Date.UTC(y - 1, m + 1, 1);
+  let lastYearIncome = 0;
+  let lastYearExpense = 0;
+  let lastYearIncomeToDate = 0;
+  let lastYearExpenseToDate = 0;
+
+  for (const t of txs) {
+    const ts = txTime(t);
+    if (ts >= monthStartMs && ts < monthEndMs) {
+      if (t.type === "INCOME") income += t.amount;
+      else expense += t.amount;
+    } else if (ts >= lastYearStartMs && ts < lastYearEndMs) {
+      const d = typeof t.date === "string" ? new Date(t.date) : t.date;
+      const withinDay = d.getUTCDate() <= dayOfMonth;
+      if (t.type === "INCOME") {
+        lastYearIncome += t.amount;
+        if (withinDay) lastYearIncomeToDate += t.amount;
+      } else {
+        lastYearExpense += t.amount;
+        if (withinDay) lastYearExpenseToDate += t.amount;
+      }
+    }
+  }
+
+  const net = income - expense;
+  const projectedIncome = Math.round(income / elapsed);
+  const projectedExpense = Math.round(expense / elapsed);
+  const projectedNet = projectedIncome - projectedExpense;
+
+  const lastYearNet = lastYearIncome - lastYearExpense;
+  const lastYearNetToDate = lastYearIncomeToDate - lastYearExpenseToDate;
+  const hasLastYear = lastYearIncome > 0 || lastYearExpense > 0;
+
+  let verdict: MonthYoYVerdict;
+  if (lastYearIncome === 0) {
+    verdict = "insufficient";
+  } else {
+    const ratio = projectedIncome / lastYearIncome;
+    verdict =
+      ratio >= 1 + MONTH_PACE_EPSILON
+        ? "ahead"
+        : ratio <= 1 - MONTH_PACE_EPSILON
+          ? "behind"
+          : "onPace";
+  }
+
+  return {
+    month: monthKey(now),
+    lastYearMonth: monthKey(new Date(Date.UTC(y - 1, m, 1))),
+    dayOfMonth,
+    daysInMonth,
+    elapsed,
+    income,
+    expense,
+    net,
+    projectedIncome,
+    projectedExpense,
+    projectedNet,
+    lastYearIncome,
+    lastYearExpense,
+    lastYearNet,
+    lastYearIncomeToDate,
+    lastYearExpenseToDate,
+    lastYearNetToDate,
+    projectedIncomeVsLastYear: computeDelta(projectedIncome, lastYearIncome),
+    projectedExpenseVsLastYear: computeDelta(projectedExpense, lastYearExpense),
+    projectedNetVsLastYear: computeDelta(projectedNet, lastYearNet),
+    incomeToDateVsLastYear: computeDelta(income, lastYearIncomeToDate),
+    expenseToDateVsLastYear: computeDelta(expense, lastYearExpenseToDate),
+    netToDateVsLastYear: computeDelta(net, lastYearNetToDate),
+    hasLastYear,
+    verdict,
+  };
+}
+
 export interface CashBurnHeadline {
   /**
    * Deve aparecer no Painel? Só quando o fôlego pelo ritmo real **morde**

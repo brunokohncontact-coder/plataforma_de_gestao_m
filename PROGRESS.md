@@ -9,7 +9,14 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **970 testes** verdes após consolidar a **exportação CSV da agenda de contas a pagar/receber** em `/financas/agenda/export` (PR #180, D157 — a tela "A pagar e receber"/`buildDueAgenda` ganhou botão "⬇ CSV"; serializador puro `dueAgendaToCsv` + `DUE_AGENDA_CSV_HEADERS` em `src/lib/csv.ts`, rótulos de janela extraídos para `DUE_BUCKET_LABELS` em `@/lib/finance` (DRY com a página); **+3 testes**) sobre a Sessão 166. Segue 967 da Sessão 166
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **978 testes** verdes após adicionar o **comparativo sazonal
+"mesmo mês do ano passado"** na página Ritmo do mês (Sessão 167, D160 — novo helper puro `currentMonthVsLastYear(txs, { now? })`
+em `src/lib/finance.ts` + tipo `MonthYoY`/`MonthYoYVerdict`: projeta o mês corrente por pro-rata (competência) e compara com o
+total **fechado** do mesmo mês um ano atrás — o eixo sazonal que a média móvel do "mês típico" não captura; também expõe o mesmo
+mês do ano anterior recortado **até o mesmo dia** (`lastYearIncomeToDate`, maçã-com-maçã) e o veredito `ahead`/`onPace`/`behind`/
+`insufficient` pela receita, reusando `MONTH_PACE_EPSILON`. Nova seção "Mesmo mês do ano passado" em
+`/financas/ritmo-do-mes/page.tsx` com card de veredito, tabela projeção × ano anterior e linha "até hoje vs. mesmo dia do ano
+passado"; sem `?meses=` (a comparação é ponto a ponto). **+8 testes**). Vinha de **970** após consolidar a **exportação CSV da agenda de contas a pagar/receber** em `/financas/agenda/export` (PR #180, D157 — a tela "A pagar e receber"/`buildDueAgenda` ganhou botão "⬇ CSV"; serializador puro `dueAgendaToCsv` + `DUE_AGENDA_CSV_HEADERS` em `src/lib/csv.ts`, rótulos de janela extraídos para `DUE_BUCKET_LABELS` em `@/lib/finance` (DRY com a página); **+3 testes**) sobre a Sessão 166. Segue 967 da Sessão 166
 (**exportação CSV dos contatos para reativar** em `/contatos/reativar/export` — a tela "Contatos para reativar"
 (`findContactsToReengage`, a fila de follow-up dos dormentes: quem já tocou, está sem nada agendado e há mais de `staleDays`=60
 dias sem show) ganhou botão de exportação, fechando mais uma lacuna tabular do lado Contatos (ao lado de
@@ -3028,10 +3035,15 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
 6b. **Ritmo do mês corrente** (entregue na Sessão 165, `/financas/ritmo-do-mes` + `currentMonthPace` em
    `src/lib/finance.ts`, ver D158): "estou faturando no ritmo de um mês normal?" — projeção pro-rata do mês
    corrente (competência) vs. o mês típico recente (média dos meses completos com movimento na janela `?meses=`),
-   veredito pela receita (`ahead`/`onPace`/`behind`/`insufficient`, ±10%). Próximo possível — uma linha-nudge no
+   veredito pela receita (`ahead`/`onPace`/`behind`/`insufficient`, ±10%). **Comparativo contra o mesmo mês do ano
+   anterior (eixo sazonal)** entregue na Sessão 167 — `currentMonthVsLastYear(txs, { now? })` + tipo `MonthYoY` em
+   `src/lib/finance.ts` projeta o mês corrente (competência, pro-rata) e compara com o total **fechado** do mesmo mês
+   um ano atrás (veredito pela receita, ±`MONTH_PACE_EPSILON`), com o recorte "até o mesmo dia" (`lastYearIncomeToDate`)
+   como leitura maçã-com-maçã; nova seção "Mesmo mês do ano passado" em `/financas/ritmo-do-mes` (card de veredito +
+   tabela projeção × ano anterior + linha "até hoje"), sem `?meses=`, ver D160. Próximo possível — uma linha-nudge no
    Painel só quando `behind` e o mês já passou da metade (adiado por densidade do Painel); ponderar a projeção por
-   dia-da-semana/sazonalidade do mês (hoje é pro-rata uniforme, hipótese frágil cedo no mês); ou comparar contra o
-   mesmo mês do ano anterior (eixo sazonal) em vez da média móvel.
+   dia-da-semana/sazonalidade do mês (hoje é pro-rata uniforme, hipótese frágil cedo no mês); ou combinar os dois eixos
+   (média móvel + YoY) num único veredito ponderado.
 7. **Resiliência / fôlego de caixa** (entregue na Sessão 107, `/financas/folego-de-caixa` + `cashRunway`,
    ver D99): cruza o caixa realizado com o custo fixo mensal (D39) → por quantos meses o caixa cobre os
    custos fixos se as receitas pararem, com veredito (limiares 3/6 meses, hipótese) e data de esgotamento.

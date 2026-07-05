@@ -70,6 +70,7 @@ import {
   cashBurnRunway,
   cashBurnHeadline,
   currentMonthPace,
+  currentMonthVsLastYear,
   MONTH_PACE_EPSILON,
   cashFlowByMonth,
   cashFlowTrend,
@@ -6895,5 +6896,119 @@ describe("currentMonthPace", () => {
     expect(pace.projectedExpense).toBe(400_00); // 200 / 0.5
     expect(pace.projectedNet).toBe(pace.projectedIncome - pace.projectedExpense);
     expect(pace.net).toBe(400_00);
+  });
+});
+
+describe("currentMonthVsLastYear", () => {
+  // 15/jun/2026: metade do mês (junho tem 30 dias) → elapsed = 0.5.
+  const NOW = "2026-06-15T00:00:00.000Z";
+
+  const monthTx = (date: string, amount: number, type: TxLike["type"] = "INCOME"): TxLike =>
+    tx({ type, amount, date: `${date}T00:00:00.000Z` });
+
+  it("aponta o mês corrente e o mesmo mês do ano anterior", () => {
+    const yoy = currentMonthVsLastYear([monthTx("2026-06-05", 300_00)], { now: NOW });
+    expect(yoy.month).toBe("2026-06");
+    expect(yoy.lastYearMonth).toBe("2025-06");
+    expect(yoy.dayOfMonth).toBe(15);
+    expect(yoy.daysInMonth).toBe(30);
+    expect(yoy.elapsed).toBeCloseTo(0.5);
+  });
+
+  it("projeta o mês corrente por pro-rata e agrega o total fechado do ano anterior", () => {
+    const yoy = currentMonthVsLastYear(
+      [
+        monthTx("2026-06-10", 500_00), // mês corrente até agora
+        monthTx("2025-06-08", 400_00), // ano anterior, mesmo mês
+        monthTx("2025-06-25", 600_00), // ano anterior, depois do dia 15
+      ],
+      { now: NOW },
+    );
+    expect(yoy.income).toBe(500_00);
+    expect(yoy.projectedIncome).toBe(1000_00); // 500 / 0.5
+    expect(yoy.lastYearIncome).toBe(1000_00); // 400 + 600 (mês fechado)
+    expect(yoy.hasLastYear).toBe(true);
+  });
+
+  it("recorta o ano anterior 'até a data' pelo mesmo dia do mês (maçã com maçã)", () => {
+    const yoy = currentMonthVsLastYear(
+      [
+        monthTx("2026-06-10", 500_00),
+        monthTx("2025-06-08", 400_00), // dentro do dia 15 → entra no 'até a data'
+        monthTx("2025-06-25", 600_00), // depois do dia 15 → só no total fechado
+      ],
+      { now: NOW },
+    );
+    expect(yoy.lastYearIncomeToDate).toBe(400_00);
+    expect(yoy.incomeToDateVsLastYear.current).toBe(500_00);
+    expect(yoy.incomeToDateVsLastYear.previous).toBe(400_00);
+  });
+
+  it("ignora meses fora do mês corrente e fora do mesmo mês do ano anterior", () => {
+    const yoy = currentMonthVsLastYear(
+      [
+        monthTx("2026-06-10", 500_00),
+        monthTx("2026-05-31", 999_00), // mês anterior deste ano
+        monthTx("2025-05-10", 999_00), // maio do ano anterior (mês diferente)
+        monthTx("2025-07-10", 999_00), // julho do ano anterior (mês diferente)
+      ],
+      { now: NOW },
+    );
+    expect(yoy.income).toBe(500_00);
+    expect(yoy.lastYearIncome).toBe(0);
+    expect(yoy.hasLastYear).toBe(false);
+    expect(yoy.verdict).toBe("insufficient");
+  });
+
+  it("classifica 'ahead'/'onPace'/'behind' pela projeção vs. total do ano anterior", () => {
+    const lastYear = monthTx("2025-06-10", 1000_00); // base fechada = 1000_00
+    // onPace: 500_00 → projeção 1000_00 = base.
+    const onPace = currentMonthVsLastYear([monthTx("2026-06-10", 500_00), lastYear], { now: NOW });
+    expect(onPace.verdict).toBe("onPace");
+    // ahead: 700_00 → projeção 1400_00 (+40%).
+    const ahead = currentMonthVsLastYear([monthTx("2026-06-10", 700_00), lastYear], { now: NOW });
+    expect(ahead.verdict).toBe("ahead");
+    // behind: 300_00 → projeção 600_00 (−40%).
+    const behind = currentMonthVsLastYear([monthTx("2026-06-10", 300_00), lastYear], { now: NOW });
+    expect(behind.verdict).toBe("behind");
+  });
+
+  it("veredito 'insufficient' quando o mesmo mês do ano anterior não teve receita", () => {
+    // ano anterior só com despesa: sem base de receita para o veredito.
+    const yoy = currentMonthVsLastYear(
+      [monthTx("2026-06-10", 500_00), monthTx("2025-06-10", 300_00, "EXPENSE")],
+      { now: NOW },
+    );
+    expect(yoy.lastYearIncome).toBe(0);
+    expect(yoy.hasLastYear).toBe(true); // houve movimento (despesa), só não receita
+    expect(yoy.verdict).toBe("insufficient");
+  });
+
+  it("projeta despesas e o líquido, e compara o líquido vs. ano anterior", () => {
+    const yoy = currentMonthVsLastYear(
+      [
+        monthTx("2026-06-10", 600_00),
+        monthTx("2026-06-11", 200_00, "EXPENSE"),
+        monthTx("2025-06-10", 400_00),
+        monthTx("2025-06-12", 100_00, "EXPENSE"),
+      ],
+      { now: NOW },
+    );
+    expect(yoy.projectedExpense).toBe(400_00); // 200 / 0.5
+    expect(yoy.projectedNet).toBe(yoy.projectedIncome - yoy.projectedExpense);
+    expect(yoy.lastYearNet).toBe(300_00); // 400 − 100
+    expect(yoy.projectedNetVsLastYear.previous).toBe(300_00);
+  });
+
+  it("tolera fevereiro (mês mais curto no ano anterior) no recorte 'até a data'", () => {
+    // 30/mar/2026: dia 30. Fev/2025 tem só 28 dias — nada é perdido, o mês inteiro
+    // entra tanto no total quanto no 'até a data' (nenhuma transação passa do dia 30).
+    const yoy = currentMonthVsLastYear(
+      [monthTx("2026-03-20", 400_00), monthTx("2025-03-27", 800_00)],
+      { now: "2026-03-30T00:00:00.000Z" },
+    );
+    expect(yoy.lastYearMonth).toBe("2025-03");
+    expect(yoy.lastYearIncome).toBe(800_00);
+    expect(yoy.lastYearIncomeToDate).toBe(800_00); // dia 27 <= 30
   });
 });

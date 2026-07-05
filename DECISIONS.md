@@ -4931,3 +4931,41 @@ contexto, decisão, justificativa e alternativas consideradas.
   D6/bloqueios); **nenhuma dependência nova**.
 - **Nota de concorrência:** **D157** segue reservado à PR paralela #180 (export CSV da agenda) ainda em aberto; esta sessão usa
   **D159** (após o D158 já mergeado da Sessão 165) para evitar colisão de numeração na `main`.
+
+## D160 — Ritmo do mês vs. mesmo mês do ano passado (`currentMonthVsLastYear` em `/financas/ritmo-do-mes`) (Sessão 167)
+- **Contexto:** a página "Ritmo do mês" (D158) compara a projeção do mês corrente contra o **"mês típico"** — a média móvel dos
+  últimos meses fechados. É uma referência estável, mas **cega à sazonalidade**: para o músico, junho não se compara a fevereiro;
+  compara-se a junho do ano passado (temporada, feriados, festas juninas etc.). Faltava o **eixo sazonal**, apontado como próximo
+  passo em 6b: "comparar contra o mesmo mês do ano anterior em vez da média móvel". A pergunta é "vou fechar acima do mesmo mês do
+  ano passado?" e "até hoje, estou à frente de onde eu estava nesta data no ano passado?".
+- **Decisão:** novo helper puro `currentMonthVsLastYear(txs, { now? })` em `src/lib/finance.ts` + tipo `MonthYoY` +
+  `MonthYoYVerdict`, e uma nova **seção** na própria página `/financas/ritmo-do-mes` (não uma página nova: é a mesma pergunta, outro
+  eixo de comparação — fica ao lado do "mês típico"). Mantém a mecânica de `currentMonthPace`: soma o **lançado** no mês corrente
+  (regime de **competência**, pela `date`) e projeta o fechamento por extrapolação **pro-rata** (valor ÷ fração do mês decorrida,
+  UTC). A base sazonal é o total **fechado** do mesmo mês um ano atrás. O comparativo "até a data" recorta aquele mês até o **mesmo
+  dia do mês** (`dayOfMonth`) para uma leitura maçã-com-maçã. Veredito pela **receita** (mesmo critério de D158): `ahead`/`onPace`/
+  `behind` conforme a projeção fica ±`MONTH_PACE_EPSILON` (=10%, **reusado**) do total do ano anterior; `insufficient` quando aquele
+  mês não teve receita.
+- **Dois recortes do ano anterior (fechado × até a data):** o **fechado** (`lastYearIncome`) é a base do veredito — "vou superar o
+  que aquele mês rendeu no total?"; o **até a data** (`lastYearIncomeToDate`, só transações com `getUTCDate() <= dayOfMonth`) é o
+  comparativo justo do agora — "no dia 15, eu já tinha lançado mais/menos que no dia 15 do ano passado?". A projeção compara com o
+  fechado; a linha "até hoje" compara o lançado com o até-a-data. Meses mais curtos no ano anterior (fevereiro) **truncam
+  naturalmente**: um dia inexistente nunca soma, então o "até a data" nunca ultrapassa o próprio mês.
+- **Regime de competência (não caixa):** mesma escolha de D158 — paridade com o headline de receita do app e com a sazonalidade;
+  a pergunta é sobre o trabalho do mês, não sobre o que pingou no caixa.
+- **Reuso, sem janela:** o eixo sazonal **não** tem `?meses=` — a comparação é ponto a ponto (mês vs. mês do ano anterior), não uma
+  média de janela; a janela `?meses=` da página segue governando só o "mês típico". `computeDelta`/`MetricDelta` reusados para as
+  seis variações (receita/despesa/líquido, na projeção e no "até a data"), como nas demais telas comparativas.
+- **Alternativas consideradas:** (a) **substituir** o "mês típico" pelo YoY — descartado: são leituras complementares (a média
+  amortece o ruído; o YoY captura a sazonalidade). Manter as duas dá a foto completa. (b) comparar a projeção com o **até-a-data**
+  do ano anterior (em vez do fechado) — descartado para o veredito: subestimaria a base (o mês do ano passado tinha mais dias por
+  vir); o até-a-data entra como leitura secundária, não como base do veredito. (c) mais um nudge no Painel — descartado pela
+  densidade já registrada (D126/D138/D141); a seção vive na página dedicada, já no hub de relatórios.
+- **Testes:** **+8** em `finance.test.ts` (`describe("currentMonthVsLastYear")`): aponta mês corrente e mesmo mês do ano anterior;
+  projeção pro-rata + total fechado do ano anterior; recorte "até a data" pelo mesmo dia do mês; ignora meses fora do escopo;
+  `ahead`/`onPace`/`behind`; `insufficient` sem receita no ano anterior (mesmo com despesa lá); projeção de despesa/líquido +
+  comparativo do líquido; tolerância a fevereiro (mês mais curto no ano anterior). **978 testes** no total (eram 970).
+- **DoD:** build de produção, typecheck (`tsc --noEmit` via `next build`) e lint (`next lint`, 0 avisos) verdes; **978 testes**
+  (`vitest run`); smoke test (`next start`) → `/login` 200 e `/financas/ritmo-do-mes` 307 (auth-gated). `npm audit` **inalterado**
+  vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6/bloqueios);
+  **nenhuma dependência nova**.
