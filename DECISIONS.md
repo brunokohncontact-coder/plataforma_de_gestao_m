@@ -7556,3 +7556,46 @@ contexto, decisão, justificativa e alternativas consideradas.
   `next start`, `/login` → HTTP 200 e `/financas/composicao-despesas/comparativo/export?ano=2025` → HTTP 307
   (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical,
   Next 14 / postcss; ver D6); **nenhuma dependência nova**.
+
+## 2026-07-05 — D229: Praças para revisitar (`findCitiesToReengage` + `/shows/cidades/revisitar`)
+- **Contexto:** o CRM tem "Contatos para reativar" (`findContactsToReengage`/contacts.ts): quem já trabalhou
+  comigo, está sem nada agendado e há tempo sem tocar — o follow-up de relações dormentes. Faltava o mesmo
+  sinal no **eixo geográfico**: em quais cidades já toquei mas parei de voltar? A geografia até então só tinha
+  concentração (risco de fatia, D113) e rentabilidade por cidade (P&L, D111) — ambas sobre dinheiro, nenhuma
+  sobre a **recência** da agenda por praça. Para um músico em turnê, a praça que esfriou é oportunidade de
+  rebooking tão concreta quanto o contato dormente.
+- **Decisão:** novo helper puro `findCitiesToReengage(shows, opts)` + tipos `CityReengageShowLike`/`CityReengageRow`/
+  `CityReengageList`/`CityReengageOptions` + constante `CITY_REENGAGE_STALE_DAYS` (=90) em `src/lib/finance.ts`
+  (colocado junto aos agregadores geográficos, reusando `normalizeText`/`utcMidnight`/`DAY_MS`/`pickLabel` já
+  presentes). Análogo geográfico de `findContactsToReengage`: inclui uma cidade quando tem ≥1 show não cancelado
+  no passado, **nenhum** show não cancelado futuro (nada agendado) e o último show é há `>= staleDays` dias.
+  Agrupa por cidade normalizada (sem acento/caixa/trim, **mesma convenção** de `rankCitiesByProfit`), exibe a
+  grafia original mais frequente (`pickLabel`), e ignora shows sem cidade (chave vazia → não há praça a
+  revisitar) e cancelados (não contam como passado, futuro nem cachê). Ordena pelas mais esquecidas primeiro
+  (maior `daysSinceLastShow`), desempatando por cachê acumulado, nome pt-BR e chave — estável/determinística.
+  Nova rota server component `/shows/cidades/revisitar` (tabela Cidade / Último show / Sem tocar / Shows / Cachê
+  histórico, card de prioridade, empty-state), link "📍 Revisitar" no cabeçalho de `/shows/cidades` e entrada no
+  hub de relatórios (`REPORT_GROUPS`, subtópico "Agenda & pipeline", ícone 📍).
+- **Justificativa:** o helper de contatos não é reaproveitável direto — ele agrupa por `Contact` (relação
+  many-to-many via `ContactsOnShows`), enquanto aqui o eixo é a string `city` do próprio show; o padrão
+  (recência + sem-futuro + limiar de dias) é o mesmo, mas a fonte de agrupamento difere, então é um helper
+  paralelo (mesma decisão de D122 para `compareClientConcentration` vs. `compareGeoConcentration`). Só depende
+  de `Show` (date/city/status/fee), sem tocar transações/P&L — a consulta é enxuta. `staleDays` padrão **90**
+  (≈1 temporada), maior que os 60 dos contatos: a cadência natural de retorno a uma cidade é mais longa que a
+  de um alô a um contato — **hipótese** a validar (sinalizada nos bloqueios).
+- **Alternativas consideradas:** (a) agrupar por **local/venue** em vez de cidade — adiado: a cidade é o eixo
+  geográfico já estabelecido (concentração/rentabilidade) e o rollup mais acionável para planejar um retorno à
+  praça; venue fica como próximo passo se houver demanda. (b) reusar `findContactsToReengage` generalizando o
+  agrupador — descartado: acoplaria dois eixos com fontes de dados diferentes (contato × string de cidade) sem
+  ganho real (ver D122). (c) export CSV da lista — adiado: a tela já entrega o sinal acionável ordenado; o CSV
+  é o próximo passo natural se a lista crescer. (d) recorte por `?ano=`/`PeriodPicker` — não faz sentido aqui:
+  a leitura é "há quanto tempo não toco", intrinsecamente sobre o histórico inteiro até hoje.
+- **Testes:** **+8** em `finance.test.ts` (`describe("findCitiesToReengage")`): lista vazia; inclui só frias
+  (com passado, sem futuro, ≥ staleDays); ignora shows sem cidade; agrupa por cidade normalizada usando a
+  grafia mais frequente; ignora cancelados (passado/futuro/cachê); `daysSinceLastShow` pelo show mais recente
+  em dias UTC; ordenação por mais esquecida desempatando por cachê; `staleDays` customizado. Suíte **1284**
+  verde (era 1276).
+- **DoD:** build de produção verde (rota `/shows/cidades/revisitar` no manifesto); lint (`next lint`, 0
+  avisos); typecheck (`tsc --noEmit`) limpo; **1284 testes** (`vitest run`); smoke test — `next start`, `/login`
+  → HTTP 200 e `/shows/cidades/revisitar` → HTTP 307 (auth-gated). `npm audit` **inalterado** vs. baseline (10
+  advisories — 4 moderate / 5 high / 1 critical, Next 14 / postcss; ver D6); **nenhuma dependência nova**.

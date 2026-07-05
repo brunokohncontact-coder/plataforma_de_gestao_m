@@ -135,11 +135,14 @@ import {
   quarterlyGoalProgress,
   monthlyGoalProgress,
   type TxLike,
+  findCitiesToReengage,
+  CITY_REENGAGE_STALE_DAYS,
   type ShowLike,
   type VenueShowLike,
   type ReceivableShowLike,
   type BreakEvenShowLike,
   type PromisableShowLike,
+  type CityReengageShowLike,
 } from "./finance";
 
 const show: ShowLike = { id: "show1", fee: 100_00, status: "CONFIRMED" };
@@ -8323,5 +8326,111 @@ describe("yearToDatePaceHeadline", () => {
     expect(h.show).toBe(false);
     expect(h.critical).toBe(false);
     expect(h.pct).toBeNull();
+  });
+});
+
+describe("findCitiesToReengage", () => {
+  // NOW = 17/jun/2026. "Fria" = último show há >= staleDays (padrão 90) dias.
+  const NOW = new Date("2026-06-17T12:00:00Z");
+  function s(over: Partial<CityReengageShowLike> = {}): CityReengageShowLike {
+    return { status: "CONFIRMED", city: "São Paulo", date: "2026-01-01T20:00:00Z", fee: 100_00, ...over };
+  }
+
+  it("trata lista vazia", () => {
+    const r = findCitiesToReengage([], { now: NOW });
+    expect(r.rows).toEqual([]);
+    expect(r.count).toBe(0);
+    expect(r.staleDays).toBe(CITY_REENGAGE_STALE_DAYS);
+  });
+
+  it("inclui só praças frias: com passado, sem futuro e há >= staleDays dias", () => {
+    const r = findCitiesToReengage(
+      [
+        // fria: último show há ~5 meses, nada agendado
+        s({ city: "Curitiba", date: "2026-01-10T20:00:00Z" }),
+        // tem show futuro na cidade → excluída
+        s({ city: "Recife", date: "2026-01-10T20:00:00Z" }),
+        s({ city: "Recife", date: "2026-08-01T20:00:00Z" }),
+        // último show há poucos dias (< 90) → ainda quente
+        s({ city: "Belém", date: "2026-05-10T20:00:00Z" }),
+      ],
+      { now: NOW },
+    );
+    expect(r.rows.map((x) => x.key)).toEqual(["curitiba"]);
+    expect(r.rows[0].name).toBe("Curitiba");
+    expect(r.rows[0].pastShows).toBe(1);
+  });
+
+  it("ignora shows sem cidade (não há praça a revisitar)", () => {
+    const r = findCitiesToReengage(
+      [
+        s({ city: null, date: "2026-01-10T20:00:00Z" }),
+        s({ city: "   ", date: "2026-01-10T20:00:00Z" }),
+      ],
+      { now: NOW },
+    );
+    expect(r.rows).toEqual([]);
+  });
+
+  it("agrupa por cidade normalizada (acento/caixa) e usa a grafia mais frequente", () => {
+    const r = findCitiesToReengage(
+      [
+        s({ city: "São Paulo", date: "2026-01-01T20:00:00Z" }),
+        s({ city: "sao paulo", date: "2026-01-05T20:00:00Z" }),
+        s({ city: "São Paulo", date: "2026-01-08T20:00:00Z" }),
+      ],
+      { now: NOW },
+    );
+    expect(r.count).toBe(1);
+    expect(r.rows[0].key).toBe("sao paulo");
+    expect(r.rows[0].name).toBe("São Paulo"); // grafia mais frequente (2x)
+    expect(r.rows[0].pastShows).toBe(3);
+    expect(r.rows[0].totalFee).toBe(300_00);
+  });
+
+  it("ignora cancelados (não contam como passado, futuro nem cachê)", () => {
+    const r = findCitiesToReengage(
+      [
+        // só cancelado → sem passado real → excluída
+        s({ city: "Natal", date: "2026-01-10T20:00:00Z", status: "CANCELLED" }),
+        // futuro cancelado não bloqueia; passado real a torna fria
+        s({ city: "Salvador", date: "2026-01-10T20:00:00Z" }),
+        s({ city: "Salvador", date: "2026-09-01T20:00:00Z", status: "CANCELLED" }),
+      ],
+      { now: NOW },
+    );
+    expect(r.rows.map((x) => x.key)).toEqual(["salvador"]);
+    expect(r.rows[0].totalFee).toBe(100_00); // o cancelado não soma
+  });
+
+  it("calcula daysSinceLastShow pelo show não cancelado mais recente (dias UTC)", () => {
+    const r = findCitiesToReengage(
+      [
+        s({ city: "Fortaleza", date: "2026-02-01T20:00:00Z" }),
+        s({ city: "Fortaleza", date: "2026-01-10T23:00:00Z" }),
+      ],
+      { now: NOW },
+    );
+    // mais recente = 01/fev; de 01/fev a 17/jun = 27(fev)+31+30+31+17 = 136 dias
+    expect(r.rows[0].lastShowDate.toISOString()).toBe("2026-02-01T20:00:00.000Z");
+    expect(r.rows[0].daysSinceLastShow).toBe(136);
+  });
+
+  it("ordena pelas mais esquecidas, desempatando por cachê acumulado", () => {
+    const r = findCitiesToReengage(
+      [
+        s({ city: "A", date: "2026-03-01T20:00:00Z", fee: 100_00 }), // menos antiga
+        s({ city: "B", date: "2026-01-01T20:00:00Z", fee: 50_00 }), // mais antiga
+        s({ city: "C", date: "2026-01-01T20:00:00Z", fee: 999_00 }), // empata em dias → cachê maior
+      ],
+      { now: NOW },
+    );
+    expect(r.rows.map((x) => x.key)).toEqual(["c", "b", "a"]);
+  });
+
+  it("respeita staleDays customizado", () => {
+    const shows = [s({ city: "Manaus", date: "2026-05-20T20:00:00Z" })]; // ~28 dias
+    expect(findCitiesToReengage(shows, { now: NOW }).count).toBe(0); // < 90
+    expect(findCitiesToReengage(shows, { now: NOW, staleDays: 14 }).count).toBe(1);
   });
 });

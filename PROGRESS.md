@@ -4088,6 +4088,16 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    (contratante/local/cidade/detalhe do contato/show) importam o componente compartilhado, −180 linhas, markup
    idêntico, ver D119. Próximo possível de DRY — unificar os cards de concentração permanece **adiado** (D116 alt. a):
    os textos acionáveis divergem de verdade ("prospectar palcos" × "abrir praças" × "diversificar clientes").
+   **Praças para revisitar** entregue na Sessão 234 — `findCitiesToReengage(shows, opts)` + tipos
+   `CityReengageShowLike`/`CityReengageRow`/`CityReengageList`/`CityReengageOptions` + `CITY_REENGAGE_STALE_DAYS`(=90) em
+   `src/lib/finance.ts` (análogo geográfico de `findContactsToReengage`/contacts.ts, reusando
+   `normalizeText`/`utcMidnight`/`DAY_MS`/`pickLabel`) + rota `/shows/cidades/revisitar` (tabela Cidade/Último show/Sem
+   tocar/Shows/Cachê histórico + card de prioridade + empty-state) + link "📍 Revisitar" no cabeçalho de `/shows/cidades` +
+   entrada no hub (`REPORT_GROUPS`, "Agenda & pipeline", 📍): as cidades onde já toquei, sem nada agendado e há ≥90 dias sem
+   show — o 1º sinal **de recência** por praça (a geografia só tinha concentração/D113 e P&L/D111, ambas sobre dinheiro).
+   Ignora shows sem cidade e cancelados; ordena pelas mais esquecidas, desempatando por cachê acumulado; **+8 testes**, ver
+   D229. Próximo possível — (a) versão por local/venue; (b) export CSV da lista (adiado, a tela já entrega o sinal); o
+   `staleDays`=90 é **hipótese** (cadência de retorno a uma cidade), sinalizada nos bloqueios.
 10. **Exportação CSV das telas de Finanças — evoluções** (transações entregues na Sessão 14, `/financas/export`;
    resumo anual na Sessão 47, `/financas/anual/export`; trimestral, `/financas/trimestral/export`):
    **fontes de renda** entregue na Sessão 152 — `incomeMixToCsv` + `INCOME_MIX_CSV_HEADERS` em `src/lib/csv.ts` +
@@ -4182,5 +4192,8 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   Simples Nacional). O regime real do músico (MEI/Simples/carnê-leão) varia muito — confirmar com
   contador a alíquota e o modelo (faturamento bruto vs. lucro/progressivo) antes de virar premissa fixa.
 - Foco **português/LATAM** e faixas de preço (`business-plan.md`) são hipóteses — validar.
+- **Praças para revisitar (D229)**: o limiar padrão de 90 dias sem tocar (`CITY_REENGAGE_STALE_DAYS`) para
+  considerar uma cidade "fria" é **hipótese** — a cadência natural de retorno a uma praça varia por gênero/
+  circuito. Validar com músicos em turnê antes de virar premissa fixa.
 - **Segurança em produção**: definir `AUTH_SECRET` forte e migrar para PostgreSQL antes
   de qualquer deploy real. Revisar advisories do Next (D6) e planejar upgrade p/ Next 15+.

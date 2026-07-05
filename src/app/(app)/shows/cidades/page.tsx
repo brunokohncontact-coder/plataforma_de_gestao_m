@@ -117,6 +117,9 @@ export default async function CityProfitabilityPage({
               ⬇ CSV
             </a>
           )}
+          <Link href="/shows/cidades/revisitar" className="btn-secondary">
+            📍 Revisitar
+          </Link>
           <Link href="/shows/locais" className="btn-secondary">
             Por local
           </Link>
