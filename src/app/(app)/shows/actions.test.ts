@@ -38,6 +38,7 @@ import {
   setBillingContactAction,
   unlinkContactFromShowAction,
   updateShowAction,
+  duplicateShowAction,
 } from "./actions";
 
 /** Captura o redirect lançado por uma action de sucesso. Retorna a URL ou null. */
@@ -519,5 +520,116 @@ describe("unlinkContactFromShowAction — posse", () => {
     await unlinkContactFromShowAction(fd);
 
     expect(await prisma.contactsOnShows.count()).toBe(1); // intacto
+  });
+});
+
+describe("duplicateShowAction — cópia de residência / evento recorrente", () => {
+  it("cria UMA cópia PROPOSED na semana seguinte e redireciona para a edição dela", async () => {
+    const user = await createUser("owner@example.com");
+    const original = await createShow(user.id, {
+      title: "Sexta na Casa X",
+      date: new Date("2026-07-03T22:00:00Z"),
+      venue: "Casa X",
+      city: "São Paulo",
+      status: "PLAYED",
+      fee: 80000,
+      notes: "Levar dois microfones",
+    });
+
+    h.currentUser = user;
+    const fd = new FormData();
+    fd.set("id", original.id);
+    const url = await catchRedirect(duplicateShowAction(fd));
+
+    const copies = await prisma.show.findMany({
+      where: { userId: user.id, id: { not: original.id } },
+    });
+    expect(copies).toHaveLength(1);
+    const copy = copies[0];
+    // conteúdo "de forma" copiado
+    expect(copy.title).toBe("Sexta na Casa X");
+    expect(copy.venue).toBe("Casa X");
+    expect(copy.city).toBe("São Paulo");
+    expect(copy.fee).toBe(80000);
+    expect(copy.notes).toBe("Levar dois microfones");
+    // status volta a PROPOSED; data +1 semana, mesmo dia/horário
+    expect(copy.status).toBe("PROPOSED");
+    expect(copy.date.toISOString()).toBe("2026-07-10T22:00:00.000Z");
+    // uma cópia → abre a edição dela (padrão "duplicar → editar" da D218)
+    expect(url).toBe(`/shows/${copy.id}/editar`);
+  });
+
+  it("respeita o intervalo e a quantidade escolhidos, espaçando as cópias e voltando à lista", async () => {
+    const user = await createUser("owner@example.com");
+    const original = await createShow(user.id, {
+      date: new Date("2026-07-03T22:00:00Z"),
+      status: "CONFIRMED",
+    });
+
+    h.currentUser = user;
+    const fd = new FormData();
+    fd.set("id", original.id);
+    fd.set("intervalo", "biweekly"); // +2 semanas por passo
+    fd.set("quantidade", "3");
+    const url = await catchRedirect(duplicateShowAction(fd));
+
+    const copies = await prisma.show.findMany({
+      where: { userId: user.id, id: { not: original.id } },
+      orderBy: { date: "asc" },
+    });
+    expect(copies).toHaveLength(3);
+    // cadência quinzenal a partir da data original (2, 4 e 6 semanas à frente)
+    expect(copies.map((c) => c.date.toISOString())).toEqual([
+      "2026-07-17T22:00:00.000Z",
+      "2026-07-31T22:00:00.000Z",
+      "2026-08-14T22:00:00.000Z",
+    ]);
+    // lote (>1) → volta à lista, não há uma única cópia para editar
+    expect(url).toBe("/shows");
+  });
+
+  it("copia os vínculos de contato, mas NÃO copia transações nem estado de cobrança", async () => {
+    const user = await createUser("owner@example.com");
+    const contact = await createContact(user.id);
+    const original = await createShow(user.id, {
+      date: new Date("2026-07-03T22:00:00Z"),
+      paymentPromisedAt: new Date("2026-07-20T00:00:00Z"),
+      billingContactId: contact.id,
+    });
+    await prisma.contactsOnShows.create({
+      data: { showId: original.id, contactId: contact.id },
+    });
+    await createTransaction(user.id, { showId: original.id });
+
+    h.currentUser = user;
+    const fd = new FormData();
+    fd.set("id", original.id);
+    const url = await catchRedirect(duplicateShowAction(fd));
+    const copyId = url!.replace("/shows/", "").replace("/editar", "");
+
+    const copy = await prisma.show.findUniqueOrThrow({
+      where: { id: copyId },
+      include: { contacts: true, transactions: true },
+    });
+    expect(copy.contacts.map((c) => c.contactId)).toEqual([contact.id]); // vínculo copiado
+    expect(copy.transactions).toHaveLength(0); // transações NÃO copiadas
+    expect(copy.paymentPromisedAt).toBeNull(); // promessa NÃO copiada
+    expect(copy.billingContactId).toBeNull(); // contato de cobrança NÃO copiado
+    // a transação segue apenas no show original (não foi movida)
+    expect(await prisma.transaction.count({ where: { showId: original.id } })).toBe(1);
+  });
+
+  it("NÃO duplica o show de outro usuário (posse) e não redireciona", async () => {
+    const owner = await createUser("owner@example.com");
+    const attacker = await createUser("attacker@example.com");
+    const show = await createShow(owner.id);
+
+    h.currentUser = attacker;
+    const fd = new FormData();
+    fd.set("id", show.id);
+    const url = await catchRedirect(duplicateShowAction(fd));
+
+    expect(url).toBeNull(); // sem redirect → nada foi criado
+    expect(await prisma.show.count()).toBe(1); // só o original do dono
   });
 });

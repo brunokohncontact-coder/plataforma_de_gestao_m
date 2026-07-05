@@ -9,7 +9,16 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1246 testes** verdes após a **exportação CSV do mês do
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1250 testes** verdes após o **atalho "Duplicar" na lista de
+shows** (Sessão 229, D222 — a duplicação de shows (residências / eventos recorrentes) existia só no **detalhe** do show (D218–D220); os
+próximos passos apontavam levá-la também à **lista** de `/shows`, e a `duplicateShowAction` estava sem testes de integração diretos. Novo
+botão-ícone "⧉ Duplicar" por linha em `src/app/(app)/shows/page.tsx`, num `<form action={duplicateShowAction}>` **irmão** do `<Link>` da
+linha (não aninhado — botão dentro de `<a>` é HTML inválido); sem seletores, usa os **padrões** server-side (`parseDuplicateInterval(null)`
+→ semanal, `parseDuplicateCount(null)` → 1) e cai no fluxo "duplicar → editar" da D218 (uma cópia PROPOSED na próxima semana → abre a
+edição dela). Backfill de **+4 testes** de integração em `shows/actions.test.ts` cobrindo `duplicateShowAction` (uma cópia + redirect;
+intervalo/quantidade espaçando o lote e voltando à lista; vínculos de contato copiados mas transações/estado de cobrança **não**; posse —
+não duplica show de outro usuário). Smoke test (`next start`) → `/login` 200 (app sobe). `npm audit` sem novas vulnerabilidades (mesmos
+advisories Next/postcss da D6; nenhuma dependência nova). Ver D222. Antes, a **exportação CSV do mês do
 calendário** (Sessão 228, D221 — `/shows/calendario` ganhou a faixa de resumo do mês (D216) mas era a **única** vista analítica de shows
 sem exportação CSV (todas as irmãs — rentabilidade, faixas-de-cache, dias-da-semana, sazonalidade, antecedência, funil — já têm "⬇ CSV" +
 rota `/export`). Novo serializador puro `monthCalendarToCsv(shows, year, month)` + `MONTH_CALENDAR_CSV_HEADERS` (Data / Hora / Título /
@@ -4091,7 +4100,10 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `DUPLICATE_COUNT_PRESETS` (1/2/4/8/12) + `MAX_DUPLICATE_COUNT` (=12) em `src/lib/shows.ts` + segundo `<select>` "quantidade" no detalhe do
    show; a `duplicateShowAction` cria as N cópias (espaçadas pela cadência da D219) atomicamente via `prisma.$transaction`, redirecionando à
    edição só quando é 1 cópia (senão volta à lista), ver D220.
-   Próximo possível para esta feature: (c) botão "Duplicar" também na lista de shows (hoje só no detalhe); (d) lembrar o último intervalo/
+   **Botão "Duplicar" também na lista de shows** entregue na Sessão 229 — botão-ícone "⧉ Duplicar" por linha em `/shows`
+   (`<form action={duplicateShowAction}>` irmão do `<Link>` da linha; sem seletores, usa os padrões server-side → 1 cópia semanal →
+   abre a edição, fluxo "duplicar → editar" da D218) + backfill de +4 testes de integração de `duplicateShowAction`, ver D222 — fecha a
+   alternativa (c). Próximo possível para esta feature: (d) lembrar o último intervalo/
    quantidade escolhidos por show (adiado na D219/D220: ação de um clique com palpite sensato); (e) redirecionar o lote para o calendário em
    vez da lista, se houver demanda.
 

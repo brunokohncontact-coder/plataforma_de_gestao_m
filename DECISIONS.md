@@ -7325,3 +7325,35 @@ contexto, decisão, justificativa e alternativas consideradas.
   200 e `/shows/calendario/export?mes=2026-03` → 307 (auth-gated; app sobe). `npm audit` **inalterado** vs.
   baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6);
   **nenhuma dependência nova**.
+
+## 2026-07-05 — D222: Atalho "Duplicar" direto na lista de shows (`/shows`)
+- **Contexto:** a duplicação de shows (residências / eventos recorrentes) existia só no **detalhe** do show
+  (D218–D220: `duplicateShowAction` + seletores de intervalo/quantidade). Os "próximos passos" do PROGRESS
+  (item Duplicar, alternativa c) apontavam levar o atalho também à **lista** de shows, para não exigir abrir
+  o detalhe só para repetir uma data. `duplicateShowAction` **também não tinha testes de integração** (lacuna
+  de cobertura — as demais actions de Shows têm).
+- **Decisão:** adicionar um botão-ícone "⧉ Duplicar" por linha em `/shows`, num `<form action={duplicateShowAction}>`
+  **irmão** do `<Link>` da linha (não aninhado — botão dentro de `<a>` é HTML inválido). Sem campos de
+  intervalo/quantidade: usa os **padrões** já resolvidos server-side (`parseDuplicateInterval(null)` → semanal,
+  `parseDuplicateCount(null)` → 1 cópia), então cria **uma** cópia na próxima semana e cai no fluxo
+  "duplicar → editar" da D218 (redireciona para a edição da cópia). Backfill de **4 testes de integração** de
+  `duplicateShowAction` (a action já existia e estava sem cobertura direta).
+- **Justificativa:** a lista é onde o usuário passa o olho na agenda; um clique para repetir a data mais comum
+  (semana seguinte) reduz atrito sem poluir a linha com dois `<select>`. Reusar os padrões evita duplicar a UI
+  do detalhe e mantém uma única fonte de verdade para os limites (intervalo/quantidade continuam ricos no
+  detalhe, D219/D220). Uma cópia → abre a edição (mesmo comportamento do detalhe), então um clique acidental
+  leva a uma tela onde a data/detalhes se ajustam antes de confirmar (status volta a PROPOSED).
+- **Alternativas consideradas:** (a) replicar os dois seletores (intervalo/quantidade) por linha — descartado:
+  polui a lista e a escolha rica já vive no detalhe; a lista quer o caminho de um clique. (b) lembrar a última
+  escolha por show na lista — adiado (mesma deferência da D219/D220: palpite sensato > estado extra). (c) abrir
+  um modal de confirmação — descartado por ora: o custo de um clique acidental é baixo (cópia PROPOSED editável,
+  não destrutiva), diferente do Excluir (que já tem confirmação).
+- **Testes:** **+4** em `shows/actions.test.ts` (`describe("duplicateShowAction …")`): uma cópia PROPOSED +1
+  semana com conteúdo de forma copiado e redirect para `/shows/{id}/editar`; intervalo `biweekly`+quantidade 3
+  espaçando as cópias (2/4/6 semanas) e voltando a `/shows`; vínculos de contato copiados mas transações e
+  estado de cobrança (promessa/contato) **não**; posse — não duplica show de outro usuário e não redireciona.
+  Suíte **1250** verdes (era 1246).
+- **DoD:** build de produção verde; lint (`next lint`, 0 avisos); typecheck (`tsc --noEmit`) limpo; **1250 testes**
+  (`vitest run`); smoke test — `next start`, `/login` → HTTP 200 (app sobe). `npm audit` **inalterado** vs.
+  baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6);
+  **nenhuma dependência nova**.
