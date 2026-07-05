@@ -301,13 +301,22 @@ function SeasonComparison({
 
   return (
     <section className="card">
-      <div className="mb-1 flex items-baseline justify-between gap-2">
+      <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-semibold">
           Temporada {year} vs. {previousYear}
         </h2>
-        <span className={"text-sm font-semibold " + totalTone}>
-          {signedShows(totalShowsDelta)} · {signedMoney(totalFeeDelta)}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className={"text-sm font-semibold " + totalTone}>
+            {signedShows(totalShowsDelta)} · {signedMoney(totalFeeDelta)}
+          </span>
+          <a
+            href={`/shows/sazonalidade/comparativo/export?ano=${year}`}
+            className="text-xs text-gray-500 hover:text-gray-900 hover:underline"
+            download
+          >
+            ⬇ CSV
+          </a>
+        </div>
       </div>
       <p className="mb-4 text-xs text-gray-500">
         Em que meses você agendou mais ou menos shows do que no ano anterior — se a

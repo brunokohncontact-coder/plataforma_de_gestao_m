@@ -7357,3 +7357,43 @@ contexto, decisão, justificativa e alternativas consideradas.
   (`vitest run`); smoke test — `next start`, `/login` → HTTP 200 (app sobe). `npm audit` **inalterado** vs.
   baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6);
   **nenhuma dependência nova**.
+
+## 2026-07-05 — D223: Exportação CSV do comparativo ano a ano da sazonalidade de shows (`/shows/sazonalidade/comparativo/export`)
+- **Contexto:** o card "Temporada {ano} vs. {ano-1}" (`compareGigSeasonality`, D215) já traz na tela os dois
+  **movers** e a tabela recolhida "Ver os 12 meses" (D217), mas o comparativo era a **única** leitura da
+  sazonalidade sem exportação CSV — a tela-mãe já exporta a sazonalidade absoluta (`gigSeasonalityToCsv`, D205)
+  e todas as vistas analíticas irmãs de shows têm "⬇ CSV". Levar o comparativo à planilha foi adiado na
+  D215(d)/D217(c) ("o card + a tabela entregam o sinal na tela"), mas o valor real do comparativo é a **forma
+  mês a mês** dos deltas — algo que ganha em ordenar/filtrar numa planilha.
+- **Decisão:** novo serializador puro `gigSeasonalityComparisonToCsv(comparison)` + `GIG_SEASONALITY_COMPARISON_CSV_HEADERS`
+  (Mês / Shows (ano anterior) / Shows (ano corrente) / Δ shows / Δ faturamento (R$) / Tendência) em `src/lib/csv.ts`,
+  espelhando a tabela "Ver os 12 meses": uma linha por mês do calendário (sempre as 12, jan→dez, inclusive meses
+  sem shows nos dois anos) + linha "Total". Nova rota `/shows/sazonalidade/comparativo/export?ano=YYYY` e link
+  discreto "⬇ CSV" no cabeçalho do card `SeasonComparison` (ao lado do resumo de totais).
+- **Justificativa:** reusa a camada pura já testada (`compareGigSeasonality` + `classifyGigSeasonalityMonthChange`),
+  sem I/O novo — a rota recorta o ano atual e o anterior do mesmo acervo já carregado pela página. A coluna
+  "Tendência" (Subiu / Caiu / Estável) replica a **cor** da tabela on-screen reusando `classifyGigSeasonalityMonthChange`
+  (ancora no nº de shows, faturamento de desempate — a mesma disciplina dos movers), tornando a planilha
+  auto-explicativa e filtrável, no espírito da coluna "Destaque" da D205. Diferente da UI (que mostra "—" nos
+  meses/deltas vazios), o CSV registra 0 / 0,00 / "Estável" para ficar legível por máquina. Os deltas saem
+  assinados (`csvSignedCount` novo para contagem; `centsToCsvAmount` já emite "-" no faturamento negativo).
+- **Gate:** o comparativo só existe com um ano **específico** (`?ano=YYYY`) e ambos os períodos com shows
+  realizados — o mesmo gate que decide exibir o card na página. A rota devolve **404** com mensagem em texto
+  quando o parâmetro não bate num ano do acervo (`parseProfitYear` → "all") ou quando falta shows num dos dois
+  anos, em vez de emitir um CSV vazio. Os anos concretos vão no **nome do arquivo**
+  (`sazonalidade-comparativo-{ano}-vs-{ano-1}.csv`), não nos cabeçalhos (mesma convenção de `yearPaceToCsv`).
+- **Alternativas consideradas:** (a) embutir o comparativo no CSV da tela-mãe (`gigSeasonalityToCsv`) —
+  descartado: eixos distintos (absoluto × delta ano a ano) e o CSV-mãe herda o recorte "todos os anos" onde o
+  comparativo nem existe; rota própria mantém cada arquivo coerente. (b) emitir só as duas linhas dos movers —
+  descartado: o valor do comparativo é a forma dos 12 meses; os movers já saem de relance na tela. (c) sem linha
+  "Total" (como `yearPaceToCsv`) — mantida a linha Total com os deltas agregados (Shows em branco), espelhando a
+  tabela on-screen (D217), que tem `tfoot` com os deltas totais.
+- **Testes:** **+4** em `csv.test.ts` (`describe("gigSeasonalityComparisonToCsv …")`): sempre 12 meses + Total
+  mesmo sem shows (meses vazios → 0/0/0/0,00/"Estável", Total com contagens em branco); serializa as contagens
+  dos dois anos + Δ assinado + tendência "Subiu"; Δ shows assinado e Total agregado; deltas negativos com sinal
+  e tendência "Caiu". Suíte **1254** verdes (era 1250).
+- **DoD:** build de produção verde (rota `/shows/sazonalidade/comparativo/export` registrada); lint (`next lint`,
+  0 avisos); typecheck (`tsc --noEmit`) limpo; **1254 testes** (`vitest run`); smoke test — `next start`,
+  `/login` → HTTP 200 e `/shows/sazonalidade/comparativo/export?ano=2025` → HTTP 307 (auth-gated). `npm audit`
+  **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, Next 14 / postcss; ver D6);
+  **nenhuma dependência nova**.
