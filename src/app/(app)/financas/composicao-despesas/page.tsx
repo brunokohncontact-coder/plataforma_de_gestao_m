@@ -325,9 +325,17 @@ function ExpenseMixComparisonCard({
         <h2 className="font-semibold">
           Onde o gasto mudou · {year} vs. {previousYear}
         </h2>
-        <span className={"text-sm font-semibold " + totalTone}>
-          {signedMoney(totalDelta)} no total
-        </span>
+        <div className="flex items-baseline gap-3">
+          <span className={"text-sm font-semibold " + totalTone}>
+            {signedMoney(totalDelta)} no total
+          </span>
+          <a
+            href={`/financas/composicao-despesas/comparativo/export?ano=${year}`}
+            className="text-xs text-brand-700 hover:underline"
+          >
+            ⬇ CSV
+          </a>
+        </div>
       </div>
       <p className="mb-4 text-xs text-gray-500">
         Em que rubricas você gastou mais ou menos do que no ano anterior — onde o

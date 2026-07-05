@@ -48,6 +48,7 @@ import {
   type YearlyHistory,
   type IncomeMix,
   type ExpenseMix,
+  type ExpenseMixComparison,
   type MetricDelta,
   type FinanceSummary,
   type FinanceComparison,
@@ -1493,6 +1494,96 @@ export function expenseMixToCsv(
     ]);
   }
   out.push(["Total", "", centsToCsvAmount(mix.total), ""]);
+  return toCsv(out, delimiter);
+}
+
+export const EXPENSE_MIX_COMPARISON_CSV_HEADERS = [
+  "Categoria",
+  "Gasto (ano anterior) (R$)",
+  "Gasto (ano corrente) (R$)",
+  "Δ gasto (R$)",
+  "Participação (ano anterior)",
+  "Participação (ano corrente)",
+  "Situação",
+] as const;
+
+/** Rótulo pt-BR do rumo de uma rubrica no comparativo (só para as presentes nos
+ * dois anos): "Subiu" gastou mais, "Caiu" gastou menos, "Estável" mesmo valor. */
+function expenseChangeSituation(amountDelta: number): string {
+  if (amountDelta > 0) return "Subiu";
+  if (amountDelta < 0) return "Caiu";
+  return "Estável";
+}
+
+/**
+ * Serializa o comparativo ano a ano da composição de despesas
+ * (`compareExpenseMix`) em CSV, pronto para download — a forma completa,
+ * rubrica a rubrica, do card "Onde o gasto mudou · {ano} vs. {ano-1}" de
+ * `/financas/composicao-despesas` (que na tela só destila os dois movers). Uma
+ * linha por rubrica, em três blocos na ordem em que a tela os apresenta:
+ * primeiro as rubricas presentes nos DOIS anos (ordem de `changes`: maior
+ * aumento → maior queda), depois as "Novas" (só no ano corrente) e por fim as
+ * que "Sumiram" (só no anterior), seguidas de uma linha "Total". Cada linha traz
+ * o gasto de cada ano, a variação assinada, a participação de cada ano e a
+ * situação (Subiu / Caiu / Estável / Nova / Sumiu), tornando a planilha
+ * ordenável e filtrável por rumo — o valor que o card não cabe mostrar.
+ *
+ * Espelho de `gigSeasonalityComparisonToCsv` (D223) no eixo de despesa: o Δ sai
+ * via `centsToCsvAmount` (que já emite o "-" nos negativos, sem "+" nos
+ * positivos, mesma convenção do irmão); rubricas novas têm ano anterior 0 e
+ * participação anterior 0%, as que sumiram têm ano corrente 0 e participação
+ * corrente 0% — legível por máquina, sem os "—" da UI. As participações do Total
+ * ficam em branco (são sempre 100% por construção, como nos irmãos). O chamador
+ * garante o mesmo gate do card (um ano específico, ambos com despesa). Mesma
+ * convenção pt-BR dos demais (";" e decimal com vírgula). Pura.
+ */
+export function expenseMixComparisonToCsv(
+  comparison: ExpenseMixComparison,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(EXPENSE_MIX_COMPARISON_CSV_HEADERS)];
+  for (const c of comparison.changes) {
+    out.push([
+      c.category,
+      centsToCsvAmount(c.previousAmount),
+      centsToCsvAmount(c.currentAmount),
+      centsToCsvAmount(c.amountDelta),
+      csvShare(c.previousShare),
+      csvShare(c.currentShare),
+      expenseChangeSituation(c.amountDelta),
+    ]);
+  }
+  for (const c of comparison.newCategories) {
+    out.push([
+      c.category,
+      centsToCsvAmount(0),
+      centsToCsvAmount(c.amount),
+      centsToCsvAmount(c.amount),
+      csvShare(0),
+      csvShare(c.share),
+      "Nova",
+    ]);
+  }
+  for (const c of comparison.droppedCategories) {
+    out.push([
+      c.category,
+      centsToCsvAmount(c.amount),
+      centsToCsvAmount(0),
+      centsToCsvAmount(-c.amount),
+      csvShare(c.share),
+      csvShare(0),
+      "Sumiu",
+    ]);
+  }
+  out.push([
+    "Total",
+    centsToCsvAmount(comparison.previousTotal),
+    centsToCsvAmount(comparison.currentTotal),
+    centsToCsvAmount(comparison.totalDelta),
+    "",
+    "",
+    "",
+  ]);
   return toCsv(out, delimiter);
 }
 

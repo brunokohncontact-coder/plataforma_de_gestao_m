@@ -9,7 +9,19 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1272 testes** verdes após o **scroll-spy do sumário do hub de
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1276 testes** verdes após a **exportação CSV do comparativo
+ano a ano da composição de despesas** (Sessão 234, D228 — o card "Onde o gasto mudou · {ano} vs. {ano-1}" (`compareExpenseMix`/D224) mostra na
+tela só os dois movers; a `changes` completa (rubrica a rubrica) ficava computada mas não exportável, e a própria D224(b) adiara o CSV. Novo
+serializador puro `expenseMixComparisonToCsv(comparison)` + `EXPENSE_MIX_COMPARISON_CSV_HEADERS` (Categoria / Gasto (ano anterior) / Gasto (ano
+corrente) / Δ gasto / Participação (ano anterior) / Participação (ano corrente) / Situação) em `src/lib/csv.ts` — espelho de
+`gigSeasonalityComparisonToCsv`/D223 no eixo de despesa: uma linha por rubrica em três blocos (presentes nos dois anos, ordem `changes` maior
+aumento→maior queda; "Novas" só no corrente com ano anterior 0; "Sumiram" só no anterior com ano corrente 0) + linha "Total". Coluna "Situação"
+(Subiu / Caiu / Estável / Nova / Sumiu) torna a planilha filtrável por rumo; Δ via `centsToCsvAmount` (emite "-" nos negativos, sem "+" nos
+positivos, mesma convenção do irmão de sazonalidade). Nova rota `/financas/composicao-despesas/comparativo/export?ano=YYYY` (recorta ano atual +
+anterior do mesmo acervo, zero I/O extra) com o mesmo gate do card (só um ano específico e ambos os anos com despesa — 404 texto fora disso),
+nome `composicao-despesas-comparativo-{ano}-vs-{ano-1}.csv`; link "⬇ CSV" no cabeçalho do card `ExpenseMixComparisonCard`. **+4 testes**
+(`csv.test.ts`). Smoke test (`next start`) → `/login` 200 e `/financas/composicao-despesas/comparativo/export?ano=2025` 307 (auth-gated). `npm
+audit` sem novas vulnerabilidades (mesmos advisories Next/postcss da D6; nenhuma dependência nova). Ver D228. Antes, o **scroll-spy do sumário do hub de
 relatórios** (Sessão 233, D227 — o hub `/relatorios` já tinha o sumário de salto rápido por subtema (âncoras, D59), mas conforme o acervo
 passou de 60 relatórios o sumário perdia o "onde estou": ao rolar, nenhuma pílula indicava qual seção você está vendo. Novo helper puro
 `activeSectionAnchor(sections, scrollY, margin, atBottom)` + tipo `SectionOffset` em `src/lib/reports.ts`: recebe os offsets (topo em px) das

@@ -7514,3 +7514,45 @@ contexto, decisão, justificativa e alternativas consideradas.
   avisos); typecheck (`tsc --noEmit`) limpo; **1272 testes** (`vitest run`); smoke test — `next start`,
   `/login` → HTTP 200 e `/relatorios` → HTTP 307 (auth-gated). `npm audit` **inalterado** vs. baseline (10
   advisories — 4 moderate / 5 high / 1 critical, Next 14 / postcss; ver D6); **nenhuma dependência nova**.
+
+## 2026-07-05 — D228: Exportação CSV do comparativo ano a ano da composição de despesas (`expenseMixComparisonToCsv` + `/financas/composicao-despesas/comparativo/export`)
+- **Contexto:** o comparativo ano a ano da composição de despesas (`compareExpenseMix`/D224) mostra na tela só
+  os dois **movers** (a rubrica que mais subiu e a que mais caiu) + listas de novas/sumidas — a `changes`
+  completa, rubrica a rubrica, fica computada mas não exibida. A própria D224 adiou o CSV na alternativa (b)
+  ("sem demanda ainda; o comparativo vive na tela"), mas o comparativo de sazonalidade de shows fechou o mesmo
+  gap depois (D223), estabelecendo que **a forma completa de um comparativo ganha em ordenar/filtrar numa
+  planilha** — o card cabe o extremo, a planilha cabe o todo.
+- **Decisão:** novo serializador puro `expenseMixComparisonToCsv(comparison)` + `EXPENSE_MIX_COMPARISON_CSV_HEADERS`
+  (Categoria / Gasto (ano anterior) / Gasto (ano corrente) / Δ gasto / Participação (ano anterior) /
+  Participação (ano corrente) / Situação) em `src/lib/csv.ts`, espelho de `gigSeasonalityComparisonToCsv`/D223
+  no eixo de despesa. Uma linha por rubrica em três blocos, na ordem em que a tela os apresenta: primeiro as
+  presentes nos DOIS anos (ordem de `changes`: maior aumento → maior queda), depois as "Novas" (só no corrente,
+  ano anterior 0 / participação anterior 0%), por fim as que "Sumiram" (só no anterior, ano corrente 0 /
+  participação corrente 0%), seguidas da linha "Total". A coluna "Situação" (Subiu / Caiu / Estável / Nova /
+  Sumiu) torna a planilha auto-explicativa e filtrável por rumo. Nova rota
+  `/financas/composicao-despesas/comparativo/export?ano=YYYY` (recorta ano atual + anterior do mesmo acervo,
+  zero I/O extra) com o **mesmo gate** do card (só um ano específico e ambos os anos com despesa — 404 texto
+  quando o ano não bate no acervo (`parseProfitYear`→"all") ou falta despesa num dos anos), anos no nome do
+  arquivo (`composicao-despesas-comparativo-{ano}-vs-{ano-1}.csv`, convenção de `yearPaceToCsv`/D223). Link
+  discreto "⬇ CSV" no cabeçalho do card `ExpenseMixComparisonCard`.
+- **Justificativa:** fecha a assimetria tela↔CSV que a D223 já resolveu no eixo de shows: cada comparativo do
+  acervo com valor de planilha eventualmente ganha "⬇ CSV". Reusa a camada pura já testada (`compareExpenseMix`)
+  sem I/O novo; o serializador é puro e testável. O Δ sai via `centsToCsvAmount` (que já emite "-" nos
+  negativos, sem "+" nos positivos, **mesma convenção do irmão de sazonalidade** — consistência entre os dois
+  CSVs de comparativo pesa mais que um "+" cosmético). Diferente da UI (que mostra "—" nos vazios), o CSV
+  registra 0,00 e 0% para ficar legível por máquina, como nos irmãos.
+- **Alternativas consideradas:** (a) incluir só as rubricas em comum (`changes`), omitindo novas/sumidas —
+  descartado: a planilha completa é o valor; novas/sumidas com o ano ausente zerado são legíveis por máquina e
+  o rótulo "Situação" as distingue. (b) uma coluna Δ% (variação relativa) além do Δ absoluto — adiado: o
+  comparativo de sazonalidade não a tem, e novas/sumidas não têm base para porcentagem (viraria "novo", ruído);
+  o Δ absoluto + as duas participações já dão a leitura. (c) mesmo CSV para o comparativo de fontes de renda
+  (`compareIncomeMix`/D225) — deixado como próximo passo natural (espelho simétrico, mesmíssimo padrão).
+- **Testes:** **+4** em `csv.test.ts` (`describe("expenseMixComparisonToCsv")`): cabeçalho + Total zerado sem
+  despesa; rubricas nos dois anos ordenadas (maior aumento → maior queda) com Δ assinado e situação Subiu/Caiu;
+  "Estável" quando a rubrica não mudou; novas (ano anterior 0) e sumidas (ano corrente 0) com participações e
+  situação corretas. Suíte **1276** verdes (era 1272).
+- **DoD:** build de produção verde (rota `/financas/composicao-despesas/comparativo/export` no manifesto);
+  lint (`next lint`, 0 avisos); typecheck (`tsc --noEmit`) limpo; **1276 testes** (`vitest run`); smoke test —
+  `next start`, `/login` → HTTP 200 e `/financas/composicao-despesas/comparativo/export?ano=2025` → HTTP 307
+  (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical,
+  Next 14 / postcss; ver D6); **nenhuma dependência nova**.
