@@ -636,6 +636,145 @@ function pickLabel(
   return best?.label ?? emptyLabel;
 }
 
+// ── Praças para revisitar (reengajamento geográfico) ────────────────────────
+// Análogo geográfico de `findContactsToReengage` (contacts.ts): responde "em
+// quais cidades eu já toquei mas parei de voltar?". Parte das cidades com shows
+// não cancelados no passado, sem nada agendado adiante e há tempo sem tocar —
+// as praças "frias" para planejar um retorno / reprospecção. Distinta da
+// concentração geográfica (risco de fatia) e da rentabilidade por cidade (P&L):
+// aqui o eixo é a RECÊNCIA da agenda, não o dinheiro. Ver DECISIONS.md.
+
+/** Forma mínima de show para o reengajamento por cidade (precisa da data). */
+export interface CityReengageShowLike {
+  status?: string;
+  city?: string | null;
+  date: Date | string;
+  /** Cachê em centavos — soma o valor histórico da praça (desempate de ordenação). */
+  fee: number;
+}
+
+export interface CityReengageRow {
+  /** Chave normalizada da cidade (nunca vazia — "sem cidade" é ignorada). */
+  key: string;
+  /** Nome de exibição (grafia original mais frequente da cidade). */
+  name: string;
+  /** Show não cancelado mais recente (sempre no passado para uma linha incluída). */
+  lastShowDate: Date;
+  /** Dias inteiros (UTC) desde o último show até `now`. */
+  daysSinceLastShow: number;
+  /** Nº de shows não cancelados já realizados (passados) na cidade. */
+  pastShows: number;
+  /** Cachê somado dos shows não cancelados na cidade (centavos) — valor da praça. */
+  totalFee: number;
+}
+
+export interface CityReengageList {
+  rows: CityReengageRow[];
+  count: number;
+  /** Limite de dias sem tocar para a praça ser considerada fria. */
+  staleDays: number;
+}
+
+export interface CityReengageOptions {
+  now?: Date;
+  /** Dias sem show para a praça ser considerada fria (padrão 90). */
+  staleDays?: number;
+}
+
+/** Dias sem tocar (padrão) para considerar uma praça fria — ~1 temporada. */
+export const CITY_REENGAGE_STALE_DAYS = 90;
+
+/**
+ * Lista as **cidades dormentes** que valem um retorno. Inclui uma cidade quando:
+ * - tem ao menos um show não cancelado no passado (`date < now`);
+ * - não tem nenhum show não cancelado futuro (`date >= now`) — nada agendado;
+ * - o último show não cancelado é há `>= staleDays` dias (padrão 90).
+ *
+ * Shows sem cidade (chave normalizada vazia) são ignorados — não há praça a
+ * revisitar. Agrupa por cidade normalizada (sem acento/caixa/trim, mesma
+ * convenção de `rankCitiesByProfit`) e exibe a grafia original mais frequente.
+ * Ordena pelas mais esquecidas primeiro (maior `daysSinceLastShow`), desempatando
+ * pelo maior cachê acumulado (praças mais valiosas), depois nome (pt-BR) e chave —
+ * estável e determinística. Shows `CANCELLED` são ignorados em tudo. Pura;
+ * `now`/`staleDays` injetáveis para testes.
+ */
+export function findCitiesToReengage(
+  shows: CityReengageShowLike[],
+  opts: CityReengageOptions = {},
+): CityReengageList {
+  const now = opts.now ?? new Date();
+  const staleDays = Math.max(0, opts.staleDays ?? CITY_REENGAGE_STALE_DAYS);
+  const nowTime = now.getTime();
+  const nowMidnight = utcMidnight(now);
+
+  interface Acc {
+    key: string;
+    pastShows: number;
+    totalFee: number;
+    lastTime: number;
+    hasUpcoming: boolean;
+    labels: Map<string, { count: number; order: number }>;
+  }
+
+  const groups = new Map<string, Acc>();
+
+  for (const show of shows) {
+    if (show.status === "CANCELLED") continue;
+    const rawCity = (show.city ?? "").trim();
+    const key = normalizeText(rawCity);
+    if (key === "") continue; // sem cidade → não há praça a revisitar
+
+    let acc = groups.get(key);
+    if (!acc) {
+      acc = { key, pastShows: 0, totalFee: 0, lastTime: -Infinity, hasUpcoming: false, labels: new Map() };
+      groups.set(key, acc);
+    }
+
+    acc.totalFee += show.fee;
+    const seen = acc.labels.get(rawCity);
+    if (seen) seen.count += 1;
+    else acc.labels.set(rawCity, { count: 1, order: acc.labels.size });
+
+    const d = typeof show.date === "string" ? new Date(show.date) : show.date;
+    const t = d.getTime();
+    if (t >= nowTime) {
+      acc.hasUpcoming = true;
+    } else {
+      acc.pastShows += 1;
+      if (t > acc.lastTime) acc.lastTime = t;
+    }
+  }
+
+  const rows: CityReengageRow[] = [];
+  for (const acc of groups.values()) {
+    // Precisa de histórico passado e nada agendado adiante.
+    if (acc.hasUpcoming || acc.pastShows === 0) continue;
+    const lastShowDate = new Date(acc.lastTime);
+    const daysSinceLastShow = Math.floor((nowMidnight - utcMidnight(lastShowDate)) / DAY_MS);
+    if (daysSinceLastShow < staleDays) continue;
+    rows.push({
+      key: acc.key,
+      name: pickLabel(acc.labels, acc.key),
+      lastShowDate,
+      daysSinceLastShow,
+      pastShows: acc.pastShows,
+      totalFee: acc.totalFee,
+    });
+  }
+
+  rows.sort((a, b) => {
+    if (b.daysSinceLastShow !== a.daysSinceLastShow) {
+      return b.daysSinceLastShow - a.daysSinceLastShow;
+    }
+    if (b.totalFee !== a.totalFee) return b.totalFee - a.totalFee;
+    const byName = a.name.localeCompare(b.name, "pt-BR");
+    if (byName !== 0) return byName;
+    return a.key.localeCompare(b.key);
+  });
+
+  return { rows, count: rows.length, staleDays };
+}
+
 // ── Rentabilidade por contratante (P&L agrupado por quem paga) ──────────────
 
 /** Contratante (pagador) resolvido para um show — forma mínima do agrupamento. */

@@ -106,6 +106,14 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "⏳",
       },
       {
+        title: "Praças para revisitar",
+        href: "/shows/cidades/revisitar",
+        description:
+          "Cidades onde você já tocou mas parou de voltar — as praças frias para planejar um retorno.",
+        subtopic: "Agenda & pipeline",
+        icon: "📍",
+      },
+      {
         title: "Rentabilidade por show",
         href: "/shows/rentabilidade",
         description: "O resultado líquido (cachê − despesas) de cada show realizado, do mais ao menos rentável.",
