@@ -73,6 +73,7 @@ import type {
 import { indexClientShareChanges } from "./contacts";
 import { MONTH_NAMES_LONG } from "./calendar";
 import type { BookingLeadTime, OpenWeekendsReport, ScheduleConflicts } from "./shows";
+import { summarizeMonthShows } from "./shows";
 
 const DEFAULT_DELIMITER = ";";
 
@@ -233,6 +234,99 @@ export function showsToCsv(
     ]);
   }
   return toCsv(rows, delimiter);
+}
+
+/** Data em horário LOCAL -> "DD/MM/AAAA" (casa a grade do calendário, que recorta
+ * o mês pela data LOCAL, ver `summarizeMonthShows`/`buildMonthGrid`). */
+function csvLocalDate(date: Date | string): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = String(d.getFullYear());
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+/** Hora em horário LOCAL -> "HH:MM" (mesma convenção LOCAL de `csvLocalDate`). */
+function csvLocalTime(date: Date | string): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+/** Forma mínima de show para o CSV do mês do calendário. */
+export interface CsvCalendarShow {
+  date: Date | string;
+  title: string;
+  venue?: string | null;
+  status: string;
+  fee?: number; // centavos
+}
+
+export const MONTH_CALENDAR_CSV_HEADERS = [
+  "Data",
+  "Hora",
+  "Título",
+  "Local",
+  "Status",
+  "Cachê (R$)",
+] as const;
+
+/**
+ * Converte os shows do mês exibido no calendário (`/shows/calendario`) em CSV,
+ * espelhando a faixa de resumo do mês (ver `summarizeMonthShows`/D216). Recebe os
+ * shows que a página carrega para a grade (que inclui as bordas das semanas
+ * vizinhas) e **recorta pela data LOCAL** ao mês pedido (`year`, `month` 1-12) —
+ * exatamente o que a grade marca como "do mês" (`inMonth`) — usando data/hora
+ * LOCAL nas colunas para casar esse recorte (distinto do UTC de `csvDate`, que
+ * as leituras de rentabilidade usam). Lista uma linha por show do mês, em ordem
+ * de data, e fecha (quando há linhas) com uma linha **"Total"** que reusa
+ * `summarizeMonthShows`: contagem de shows (cancelados à parte, fora da soma) e
+ * cachê total do mês (confirmado + a confirmar). Pura.
+ */
+export function monthCalendarToCsv(
+  shows: CsvCalendarShow[],
+  year: number,
+  month: number,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const toDate = (v: Date | string) => (v instanceof Date ? v : new Date(v));
+  // Recorte LOCAL ao mês exibido — mesma convenção da grade e do resumo.
+  const inMonth = shows.filter((s) => {
+    const d = toDate(s.date);
+    return d.getFullYear() === year && d.getMonth() === month - 1;
+  });
+  // Ordena por data crescente (a grade carrega ordenado, mas as bordas
+  // descartadas podem deixar a lista do mês fora de ordem contígua).
+  const sorted = [...inMonth].sort(
+    (a, b) => toDate(a.date).getTime() - toDate(b.date).getTime(),
+  );
+
+  const out: string[][] = [Array.from(MONTH_CALENDAR_CSV_HEADERS)];
+  for (const s of sorted) {
+    out.push([
+      csvLocalDate(s.date),
+      csvLocalTime(s.date),
+      s.title,
+      s.venue ?? "",
+      showStatusLabel(s.status),
+      centsToCsvAmount(s.fee ?? 0),
+    ]);
+  }
+
+  // Linha "Total" (só com linhas): reusa o resumo do mês (exclui cancelados do
+  // total e do cachê, conta-os à parte no rótulo). Data/Hora em branco.
+  if (sorted.length > 0) {
+    const summary = summarizeMonthShows(inMonth, year, month);
+    const label =
+      `${summary.total} show${summary.total === 1 ? "" : "s"}` +
+      (summary.cancelled > 0
+        ? ` (${summary.cancelled} cancelado${summary.cancelled === 1 ? "" : "s"})`
+        : "");
+    out.push(["Total", "", label, "", "", centsToCsvAmount(summary.totalFee)]);
+  }
+
+  return toCsv(out, delimiter);
 }
 
 export const ANNUAL_SUMMARY_CSV_HEADERS = [

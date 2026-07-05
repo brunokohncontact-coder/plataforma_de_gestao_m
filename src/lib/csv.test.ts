@@ -88,6 +88,9 @@ import {
   type DueAgendaCsvTx,
   type CsvTransaction,
   type CsvShow,
+  type CsvCalendarShow,
+  monthCalendarToCsv,
+  MONTH_CALENDAR_CSV_HEADERS,
   type CsvProfitShow,
   type ContactActivityCsvRow,
   type ReceivableCsvRow,
@@ -286,6 +289,109 @@ describe("showsToCsv", () => {
     const lines = csv.split("\r\n");
     expect(lines[1]).toContain("Primeiro");
     expect(lines[2]).toContain("Segundo");
+  });
+});
+
+describe("monthCalendarToCsv", () => {
+  // Datas em horário LOCAL (mesma convenção da grade do calendário e de
+  // `summarizeMonthShows`, ver shows.test.ts).
+  const local = (y: number, m: number, d: number, hh = 20, mm = 0) =>
+    new Date(y, m - 1, d, hh, mm);
+  const show = (over: Partial<CsvCalendarShow> = {}): CsvCalendarShow => ({
+    date: local(2026, 3, 12, 21, 30),
+    title: "Show no Bar X",
+    venue: "Bar X",
+    status: "CONFIRMED",
+    fee: 150000,
+    ...over,
+  });
+
+  it("emite só o cabeçalho quando o mês não tem shows", () => {
+    const csv = monthCalendarToCsv([], 2026, 3);
+    expect(csv).toBe(MONTH_CALENDAR_CSV_HEADERS.join(";"));
+  });
+
+  it("serializa um show com data/hora LOCAL, status legível e cachê com vírgula", () => {
+    const csv = monthCalendarToCsv([show()], 2026, 3);
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe("Data;Hora;Título;Local;Status;Cachê (R$)");
+    expect(lines[1]).toBe("12/03/2026;21:30;Show no Bar X;Bar X;Confirmado;1500,00");
+  });
+
+  it("lista os shows do mês em ordem de data e fecha com a linha Total", () => {
+    const csv = monthCalendarToCsv(
+      [
+        show({ date: local(2026, 3, 20), title: "Terceiro", fee: 400_00, status: "PROPOSED" }),
+        show({ date: local(2026, 3, 5), title: "Primeiro", fee: 100_00 }),
+        show({ date: local(2026, 3, 12), title: "Segundo", fee: 250_00, status: "PLAYED" }),
+      ],
+      2026,
+      3,
+    );
+    const lines = csv.split("\r\n");
+    expect(lines[1]).toContain("Primeiro");
+    expect(lines[2]).toContain("Segundo");
+    expect(lines[3]).toContain("Terceiro");
+    // Total: 3 shows (todos entram), cachê total = 100+250+400 = 750,00.
+    expect(lines[4]).toBe("Total;;3 shows;;;750,00");
+  });
+
+  it("recorta pela data LOCAL: ignora as bordas de outros meses (como a grade)", () => {
+    const csv = monthCalendarToCsv(
+      [
+        show({ date: local(2026, 2, 28), title: "Fev", fee: 100_00 }),
+        show({ date: local(2026, 3, 1), title: "Mar-1", fee: 200_00 }),
+        show({ date: local(2026, 3, 31), title: "Mar-31", fee: 300_00, status: "PROPOSED" }),
+        show({ date: local(2026, 4, 1), title: "Abr", fee: 400_00 }),
+      ],
+      2026,
+      3,
+    );
+    const lines = csv.split("\r\n");
+    expect(csv).not.toContain("Fev");
+    expect(csv).not.toContain("Abr");
+    expect(lines[1]).toContain("Mar-1");
+    expect(lines[2]).toContain("Mar-31");
+    expect(lines[3]).toBe("Total;;2 shows;;;500,00");
+  });
+
+  it("no Total exclui cancelados da soma e do cachê, contando-os à parte", () => {
+    const csv = monthCalendarToCsv(
+      [
+        show({ date: local(2026, 3, 5), title: "Firme", fee: 100_00 }),
+        show({ date: local(2026, 3, 8), title: "Cai-1", fee: 999_00, status: "CANCELLED" }),
+        show({ date: local(2026, 3, 9), title: "Cai-2", fee: 500_00, status: "CANCELLED" }),
+      ],
+      2026,
+      3,
+    );
+    const lines = csv.split("\r\n");
+    // Os cancelados aparecem nas linhas (a grade os mostra) mas ficam fora do Total.
+    expect(csv).toContain("Cai-1");
+    expect(csv).toContain("Cancelado");
+    expect(lines[4]).toBe("Total;;1 show (2 cancelados);;;100,00");
+  });
+
+  it("usa singular no rótulo do Total com um único show/cancelado", () => {
+    const csv = monthCalendarToCsv(
+      [
+        show({ date: local(2026, 3, 5), title: "Firme", fee: 100_00 }),
+        show({ date: local(2026, 3, 8), title: "Caiu", fee: 999_00, status: "CANCELLED" }),
+      ],
+      2026,
+      3,
+    );
+    const lines = csv.split("\r\n");
+    expect(lines[3]).toBe("Total;;1 show (1 cancelado);;;100,00");
+  });
+
+  it("trata local ausente como vazio e mantém status desconhecido (defensivo)", () => {
+    const csv = monthCalendarToCsv(
+      [show({ venue: null, status: "ARQUIVADO", fee: undefined })],
+      2026,
+      3,
+    );
+    expect(csv.split("\r\n")[1]).toBe("12/03/2026;21:30;Show no Bar X;;ARQUIVADO;0,00");
   });
 });
 
