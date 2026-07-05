@@ -7599,3 +7599,36 @@ contexto, decisão, justificativa e alternativas consideradas.
   avisos); typecheck (`tsc --noEmit`) limpo; **1284 testes** (`vitest run`); smoke test — `next start`, `/login`
   → HTTP 200 e `/shows/cidades/revisitar` → HTTP 307 (auth-gated). `npm audit` **inalterado** vs. baseline (10
   advisories — 4 moderate / 5 high / 1 critical, Next 14 / postcss; ver D6); **nenhuma dependência nova**.
+
+## D221 — Ritmo do mês vs. ano passado "até o mesmo dia" (recorte maçã-com-maçã em `monthYoYPace`) (Sessão 235)
+- **Contexto:** o comparativo sazonal `monthYoYPace` (D161) mede a **projeção pro-rata** do fechamento do mês corrente contra o
+  mesmo mês do ano anterior **inteiro** (mês cheio × mês cheio). É a leitura certa para "vou fechar acima do ano passado?", mas
+  herda a fragilidade da projeção **cedo no mês**: com poucos dias decorridos, um único cachê distorce a extrapolação (a própria
+  página avisa "leia como estimativa"). Faltava a leitura que **não** depende da projeção: "sem extrapolar nada, até esta data eu
+  estava à frente de onde estou agora, no mesmo dia do ano passado?". É o mesmo eixo sazonal, mas comparando **realizado × realizado
+  parcial** em vez de **projetado × realizado cheio**.
+- **Decisão:** estender o helper puro `monthYoYPace` (sem nova função — polir o existente) com o mesmo mês do ano anterior recortado
+  **até o mesmo dia do mês** (`dayOfMonth`): novos campos `lastYearIncomeToDate`/`lastYearExpenseToDate`/`lastYearNetToDate` +
+  três `MetricDelta` (`incomeToDateVsLastYear`/`expenseToDateVsLastYear`/`netToDateVsLastYear`) comparando o **lançado até agora**
+  (mês corrente, `pace.income`/`expense`, sem projeção) com o lançado até o mesmo dia do ano anterior. O acúmulo entra no laço que
+  já varria o mês do ano anterior (custo O(0) extra), gateado por `d.getUTCDate() <= pace.dayOfMonth`. Meses mais curtos no ano
+  anterior (fevereiro) **truncam naturalmente** — um dia inexistente nunca soma, então o "até a data" nunca ultrapassa o próprio mês.
+- **Por que estender, não criar nova função/tela:** a pergunta é a mesma ("como vou frente ao mesmo mês do ano passado?"), só muda
+  a lente (parcial-realizado × projetado). Reaproveitar `monthYoYPace` mantém `now`/UTC/competência coerentes e evita uma segunda
+  varredura. O veredito (`ahead`/`onPace`/`behind`/`insufficient`) **continua** decidido pela projeção vs. mês cheio (D161) — a
+  leitura "até a data" é complemento textual, não muda a classificação (que responde ao fechamento, não ao instante).
+- **UI:** uma linha de nota abaixo da tabela "Mesmo mês no ano passado" em `/financas/ritmo-do-mes` — "Sem depender da projeção:
+  até hoje (dia N) você lançou {receita}, contra {receita do mesmo dia do ano passado} ({±%})" — só quando há movimento no mês de
+  referência (`lastYearHasMovement`). Reusa `formatMoney`/`formatPct`/`deltaTone` já na página. O CSV do ritmo (`monthPaceToCsv`/
+  D170) **não muda**: consome campos específicos, os aditivos não o afetam; adiar levar o "até a data" ao CSV (baixa demanda,
+  mantém o export enxuto de 6 linhas).
+- **Alternativas consideradas:** (a) basear o veredito no "até a data" cedo no mês (quando a projeção é frágil) — **descartado**:
+  cruzaria os sinais; o veredito deve responder "vou fechar acima?" (projeção × mês cheio), e o "até a data" é a checagem de
+  instante, complementar; (b) uma tabela inteira de 3 métricas para o "até a data" — **descartado**: adensaria a página (já com
+  duas tabelas); uma linha de receita basta para o instante (despesa/líquido ficam nos campos do helper para quem quiser).
+- **Testes:** **+3** em `finance.test.ts` (`describe("monthYoYPace")`): recorte "até o mesmo dia" isola o que passou do dia (400 de
+  3 lançamentos, não os 600 do dia 25) e compara com o lançado (500 vs 400); líquido "até a data" do ano anterior vs. líquido
+  lançado; tolerância a mês mais curto no ano anterior. **1287 testes** no total (eram 1284).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1287 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/financas/ritmo-do-mes` 307 (auth-gated). `npm audit` **inalterado** vs. baseline
+  (10 advisories — 4 moderate / 5 high / 1 critical, Next 14 / postcss; ver D6); **nenhuma dependência nova**.

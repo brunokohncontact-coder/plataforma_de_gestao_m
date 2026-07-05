@@ -263,7 +263,20 @@ export default async function MonthPacePage({
               <Row label="Resultado" delta={yoy.netVsLastYear} goodWhenUp strong />
             </tbody>
           </table>
-        ) : (
+        ) : null}
+        {yoy.lastYearHasMovement && (
+          <p className="mt-4 border-t pt-3 text-xs text-gray-500">
+            Sem depender da projeção: até hoje (dia {yoy.dayOfMonth}) você lançou{" "}
+            <strong className="tabular-nums">{formatMoney(yoy.income)}</strong> em receita, contra{" "}
+            <strong className="tabular-nums">{formatMoney(yoy.lastYearIncomeToDate)}</strong> até o
+            mesmo dia de {formatMonthKey(yoy.lastYearMonth)} (
+            <span className={deltaTone(yoy.incomeToDateVsLastYear.direction, true)}>
+              {formatPct(yoy.incomeToDateVsLastYear.pct)}
+            </span>
+            ).
+          </p>
+        )}
+        {!yoy.lastYearHasMovement && (
           <p className="text-sm text-gray-500">
             Não há lançamentos em {formatMonthKey(yoy.lastYearMonth)} para comparar. Esta leitura
             sazonal aparece assim que houver um ano de histórico no mesmo mês.
