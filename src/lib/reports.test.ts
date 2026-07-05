@@ -8,7 +8,9 @@ import {
   subgroupEntries,
   subtopicSlug,
   reportsNavIndex,
+  activeSectionAnchor,
   type ReportEntry,
+  type SectionOffset,
 } from "./reports";
 
 describe("REPORT_GROUPS", () => {
@@ -277,5 +279,61 @@ describe("filterReports / countFilteredReports", () => {
       const fromGroups = filterReports(q).reduce((n, g) => n + g.entries.length, 0);
       expect(countFilteredReports(q)).toBe(fromGroups);
     }
+  });
+});
+
+describe("activeSectionAnchor", () => {
+  const sections: SectionOffset[] = [
+    { anchor: "shows", top: 0 },
+    { anchor: "shows-agenda-pipeline", top: 200 },
+    { anchor: "financas", top: 800 },
+    { anchor: "contatos", top: 1500 },
+  ];
+
+  it("devolve a primeira seção antes de qualquer uma cruzar a linha", () => {
+    expect(activeSectionAnchor(sections, 0, 120)).toBe("shows");
+  });
+
+  it("ativa a última seção cujo topo já passou da linha de ativação", () => {
+    // linha = 300 + 120 = 420 → passou de 200 (subtema) mas não de 800.
+    expect(activeSectionAnchor(sections, 300, 120)).toBe("shows-agenda-pipeline");
+    // linha = 700 + 120 = 820 → passou de 800 (finanças).
+    expect(activeSectionAnchor(sections, 700, 120)).toBe("financas");
+  });
+
+  it("ativa a seção exatamente na linha (limite inclusivo)", () => {
+    // linha = 80 + 120 = 200 == top do subtema.
+    expect(activeSectionAnchor(sections, 80, 120)).toBe("shows-agenda-pipeline");
+  });
+
+  it("com atBottom devolve sempre a última seção mensurável", () => {
+    expect(activeSectionAnchor(sections, 0, 120, true)).toBe("contatos");
+  });
+
+  it("é robusto à ordem de entrada (ordena por top)", () => {
+    const shuffled = [sections[3], sections[0], sections[2], sections[1]];
+    expect(activeSectionAnchor(shuffled, 700, 120)).toBe("financas");
+    expect(activeSectionAnchor(shuffled, 0, 120)).toBe("shows");
+  });
+
+  it("ignora offsets não finitos (medições pendentes)", () => {
+    const partial: SectionOffset[] = [
+      { anchor: "shows", top: 0 },
+      { anchor: "financas", top: Number.NaN },
+      { anchor: "contatos", top: 1500 },
+    ];
+    // finanças é ignorada; linha = 900+120 passou de shows (0) mas não de contatos.
+    expect(activeSectionAnchor(partial, 900, 120)).toBe("shows");
+  });
+
+  it("devolve null quando não há nenhuma seção mensurável", () => {
+    expect(activeSectionAnchor([], 0, 120)).toBeNull();
+    expect(
+      activeSectionAnchor([{ anchor: "x", top: Number.POSITIVE_INFINITY }], 0, 120),
+    ).toBeNull();
+  });
+
+  it("atBottom não regride quando não há seções", () => {
+    expect(activeSectionAnchor([], 500, 120, true)).toBeNull();
   });
 });

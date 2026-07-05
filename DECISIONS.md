@@ -7474,3 +7474,43 @@ contexto, decisão, justificativa e alternativas consideradas.
 - **Nota de sessão:** a unidade originalmente escolhida nesta execução (export CSV do fluxo de caixa projetado)
   foi descoberta **já mergeada** por uma sessão paralela na `main` real; a PR duplicada (#250) foi fechada e esta
   unidade (comparativo de fontes de renda) escolhida em seu lugar, sobre a `main` atual.
+
+## 2026-07-05 — D227: Scroll-spy do sumário de salto rápido do hub de relatórios (`activeSectionAnchor` + `ReportsBrowser.tsx`)
+- **Contexto:** o hub `/relatorios` (D54) tem, desde a D59, um sumário de salto rápido ("Ir para um tema")
+  com pílulas-âncora por subtema no topo. Com o acervo já passando de 60 relatórios agrupados em três áreas
+  e ~15 subtemas, o sumário virou uma parede de pílulas: ao rolar a lista longa, nada indicava **qual** seção
+  está sendo vista, e o usuário perdia o "onde estou". A D56(a) havia **descartado por ora** um scroll-spy —
+  o acervo era pequeno demais para justificar. Cresceu o suficiente; é o "próximo possível" nº 0 do PROGRESS.
+- **Decisão:** um scroll-spy que realça a pílula do subtema atualmente visível (e o rótulo da sua área). A
+  decisão de qual seção está ativa é **lógica pura** em `src/lib/reports.ts`:
+  `activeSectionAnchor(sections: SectionOffset[], scrollY, margin, atBottom=false)` recebe os offsets (topo em
+  px, relativo ao documento) das seções medidos no cliente e devolve a âncora da **última** seção cujo topo já
+  cruzou a linha de ativação (`scrollY + margin`); antes de a primeira cruzar devolve a primeira; com
+  `atBottom` (rolagem no fim da página) devolve sempre a última — assim a última âncora, curta demais para
+  alcançar a linha, continua acessível. É robusta à ordem de entrada (ordena por `top`) e ignora offsets não
+  finitos (`NaN`/±Infinity = medições ainda não feitas). `ReportsBrowser.tsx` (client) mede os `offsetTop`
+  dos subtemas via `getBoundingClientRect().top + scrollY`, agenda com `requestAnimationFrame` em
+  `scroll`/`resize` (throttle a um quadro), só enquanto o sumário está à mostra (sem busca ativa), e aplica
+  `border-brand-400 bg-brand-50 font-medium text-brand-700` + `aria-current="location"` na pílula ativa; o
+  rótulo da área que contém o subtema ativo também acende.
+- **Justificativa:** manter a decisão de ativação como função pura (sem tocar o DOM) segue o padrão do módulo
+  (`filterReports`/`reportsNavIndex` são puras e testáveis) e permite cobrir os limites (linha inclusiva,
+  fim de página, medições pendentes, ordem embaralhada) em testes de unidade, deixando ao client apenas a
+  medição e a pintura. A margem de ativação (`ACTIVATION_MARGIN=130`px) casa com o `scroll-mt-24` (96px) das
+  seções + folga, para a pílula acender assim que a seção assenta no ponto de salto da âncora. rAF evita custo
+  por evento de scroll; desligar os listeners durante a busca evita medir uma lista recortada (o sumário some).
+- **Alternativas consideradas:** (a) `IntersectionObserver` por seção — descartado: dá "está visível" (boolean
+  por alvo), não "qual é a ativa" quando várias seções curtas cabem juntas na viewport; exigiria desempate
+  próprio, e a lógica de desempate não seria testável sem DOM. O cálculo por offset + linha de ativação é
+  determinístico e puro. (b) realçar só o rótulo da área (grão mais grosso) — descartado: as pílulas de
+  subtema são o grão que o usuário navega; o rótulo da área acende de graça por conter o subtema ativo.
+  (c) sincronizar a âncora ativa na URL (`#hash`) ao rolar — adiado: polui o histórico do navegador e não
+  agrega sobre o realce visual.
+- **Testes:** **+8** em `reports.test.ts` (`describe("activeSectionAnchor")`): primeira seção antes de qualquer
+  cruzar; última cujo topo passou da linha; limite inclusivo (topo == linha); `atBottom` → última mensurável;
+  robustez à ordem embaralhada; ignora offsets não finitos; `null` sem seções mensuráveis; `atBottom` não
+  regride com lista vazia. Suíte **1272** verdes (era 1264).
+- **DoD:** build de produção verde (bundle de `/relatorios` 4.73 kB, com o JS do spy); lint (`next lint`, 0
+  avisos); typecheck (`tsc --noEmit`) limpo; **1272 testes** (`vitest run`); smoke test — `next start`,
+  `/login` → HTTP 200 e `/relatorios` → HTTP 307 (auth-gated). `npm audit` **inalterado** vs. baseline (10
+  advisories — 4 moderate / 5 high / 1 critical, Next 14 / postcss; ver D6); **nenhuma dependência nova**.
