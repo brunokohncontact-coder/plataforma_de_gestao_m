@@ -137,6 +137,9 @@ import {
   type TxLike,
   findCitiesToReengage,
   CITY_REENGAGE_STALE_DAYS,
+  findVenuesToReengage,
+  VENUE_REENGAGE_STALE_DAYS,
+  type VenueReengageShowLike,
   type ShowLike,
   type VenueShowLike,
   type ReceivableShowLike,
@@ -8477,5 +8480,85 @@ describe("findCitiesToReengage", () => {
     const shows = [s({ city: "Manaus", date: "2026-05-20T20:00:00Z" })]; // ~28 dias
     expect(findCitiesToReengage(shows, { now: NOW }).count).toBe(0); // < 90
     expect(findCitiesToReengage(shows, { now: NOW, staleDays: 14 }).count).toBe(1);
+  });
+});
+
+describe("findVenuesToReengage", () => {
+  // Espelho de findCitiesToReengage, mas por casa/venue. NOW = 17/jun/2026.
+  const NOW = new Date("2026-06-17T12:00:00Z");
+  function s(over: Partial<VenueReengageShowLike> = {}): VenueReengageShowLike {
+    return { status: "CONFIRMED", venue: "Bar do Zé", date: "2026-01-01T20:00:00Z", fee: 100_00, ...over };
+  }
+
+  it("trata lista vazia", () => {
+    const r = findVenuesToReengage([], { now: NOW });
+    expect(r.rows).toEqual([]);
+    expect(r.count).toBe(0);
+    expect(r.staleDays).toBe(VENUE_REENGAGE_STALE_DAYS);
+  });
+
+  it("inclui só casas frias: com passado, sem futuro e há >= staleDays dias", () => {
+    const r = findVenuesToReengage(
+      [
+        // fria: último show há ~5 meses, nada agendado
+        s({ venue: "Teatro Guaíra", date: "2026-01-10T20:00:00Z" }),
+        // tem show futuro na casa → excluída
+        s({ venue: "Circo Voador", date: "2026-01-10T20:00:00Z" }),
+        s({ venue: "Circo Voador", date: "2026-08-01T20:00:00Z" }),
+        // último show há poucos dias (< 90) → ainda quente
+        s({ venue: "Blue Note", date: "2026-05-10T20:00:00Z" }),
+      ],
+      { now: NOW },
+    );
+    expect(r.rows.map((x) => x.key)).toEqual(["teatro guaira"]);
+    expect(r.rows[0].name).toBe("Teatro Guaíra");
+    expect(r.rows[0].pastShows).toBe(1);
+  });
+
+  it("ignora shows sem local (não há casa a revisitar)", () => {
+    const r = findVenuesToReengage(
+      [
+        s({ venue: null, date: "2026-01-10T20:00:00Z" }),
+        s({ venue: "   ", date: "2026-01-10T20:00:00Z" }),
+      ],
+      { now: NOW },
+    );
+    expect(r.rows).toEqual([]);
+  });
+
+  it("agrupa por casa normalizada (acento/caixa) e usa a grafia mais frequente", () => {
+    const r = findVenuesToReengage(
+      [
+        s({ venue: "Bar do Zé", date: "2026-01-01T20:00:00Z" }),
+        s({ venue: "bar do ze", date: "2026-01-05T20:00:00Z" }),
+        s({ venue: "Bar do Zé", date: "2026-01-08T20:00:00Z" }),
+      ],
+      { now: NOW },
+    );
+    expect(r.count).toBe(1);
+    expect(r.rows[0].key).toBe("bar do ze");
+    expect(r.rows[0].name).toBe("Bar do Zé"); // grafia mais frequente (2x)
+    expect(r.rows[0].pastShows).toBe(3);
+    expect(r.rows[0].totalFee).toBe(300_00);
+  });
+
+  it("ignora cancelados e ordena pelas mais esquecidas, desempatando por cachê", () => {
+    const r = findVenuesToReengage(
+      [
+        // só cancelado → sem passado real → excluída
+        s({ venue: "Studio SP", date: "2026-01-10T20:00:00Z", status: "CANCELLED" }),
+        s({ venue: "A", date: "2026-03-01T20:00:00Z", fee: 100_00 }), // menos antiga
+        s({ venue: "B", date: "2026-01-01T20:00:00Z", fee: 50_00 }), // mais antiga
+        s({ venue: "C", date: "2026-01-01T20:00:00Z", fee: 999_00 }), // empata dias → cachê maior
+      ],
+      { now: NOW },
+    );
+    expect(r.rows.map((x) => x.key)).toEqual(["c", "b", "a"]);
+  });
+
+  it("respeita staleDays customizado", () => {
+    const shows = [s({ venue: "Sesc Pompeia", date: "2026-05-20T20:00:00Z" })]; // ~28 dias
+    expect(findVenuesToReengage(shows, { now: NOW }).count).toBe(0); // < 90
+    expect(findVenuesToReengage(shows, { now: NOW, staleDays: 14 }).count).toBe(1);
   });
 });

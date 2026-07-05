@@ -66,6 +66,7 @@ import {
   type TaxReserveReport,
   type BreakEvenAnalysis,
   type CityReengageList,
+  type VenueReengageList,
 } from "./finance";
 import type {
   ClientRetention,
@@ -1997,6 +1998,48 @@ export function citiesToReengageToCsv(
   delimiter = DEFAULT_DELIMITER,
 ): string {
   const out: string[][] = [Array.from(CITIES_REENGAGE_CSV_HEADERS)];
+  let totalPastShows = 0;
+  let totalFee = 0;
+  for (const row of list.rows) {
+    totalPastShows += row.pastShows;
+    totalFee += row.totalFee;
+    out.push([
+      row.name,
+      csvDate(row.lastShowDate),
+      String(row.daysSinceLastShow),
+      String(row.pastShows),
+      centsToCsvAmount(row.totalFee),
+    ]);
+  }
+  out.push(["Total", "", "", String(totalPastShows), centsToCsvAmount(totalFee)]);
+  return toCsv(out, delimiter);
+}
+
+export const VENUES_REENGAGE_CSV_HEADERS = [
+  "Local",
+  "Último show",
+  "Dias sem tocar",
+  "Shows",
+  "Cachê histórico (R$)",
+] as const;
+
+/**
+ * Serializa a lista de casas/venues dormentes (`findVenuesToReengage`) em CSV,
+ * pronto para download — espelha a tabela de `/shows/locais/revisitar`. Irmão de
+ * `citiesToReengageToCsv` um nível abaixo na hierarquia geográfica (casa em vez
+ * de cidade): emite uma linha por casa em `list.rows` (mesma ordem da página:
+ * mais esquecidas primeiro, desempate pelo cachê histórico, depois nome pt-BR),
+ * encerrada numa linha "Total" com a soma de shows passados e do cachê histórico
+ * de toda a fila. Colunas: local, data do último show, dias sem tocar (o
+ * `daysSinceLastShow` cru, legível por máquina), nº de shows passados não
+ * cancelados e cachê histórico (por casa). Mesma convenção pt-BR dos irmãos
+ * (delimitador ";", decimal com vírgula). Pura.
+ */
+export function venuesToReengageToCsv(
+  list: VenueReengageList,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(VENUES_REENGAGE_CSV_HEADERS)];
   let totalPastShows = 0;
   let totalFee = 0;
   for (const row of list.rows) {

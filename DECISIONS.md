@@ -7661,3 +7661,42 @@ contexto, decisão, justificativa e alternativas consideradas.
 - **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1287 testes** (`vitest run`);
   smoke test (`next start`) → `/login` 200 e `/financas/ritmo-do-mes` 307 (auth-gated). `npm audit` **inalterado** vs. baseline
   (10 advisories — 4 moderate / 5 high / 1 critical, Next 14 / postcss; ver D6); **nenhuma dependência nova**.
+
+---
+
+## D231 — Casas/venues para revisitar (`findVenuesToReengage` + `/shows/locais/revisitar`) (Sessão 237)
+
+- **Contexto:** as "Praças para revisitar" (`findCitiesToReengage`/D229) — cidades onde já toquei, sem nada
+  agendado e há ≥ 90 dias sem show — nasceram no eixo **cidade**. A própria D229(a)/próximos passos apontava a
+  **versão por local/venue** como evolução natural: uma cidade quente (com show marcado em qualquer casa dela)
+  esconde um bar/palco específico onde não toco há uma temporada. A rentabilidade geográfica já tem os dois níveis
+  (`rankVenuesByProfit`/local × `rankCitiesByProfit`/cidade); a recência da agenda só tinha o nível cidade.
+- **Decisão:** entregar `findVenuesToReengage(shows, opts)` + tipos `VenueReengageShowLike`/`VenueReengageRow`/
+  `VenueReengageList`/`VenueReengageOptions` + `VENUE_REENGAGE_STALE_DAYS`(=90) em `src/lib/finance.ts`, agrupando
+  por `venue` (o palco) em vez de `city`. Regra idêntica: inclui uma casa com show passado não cancelado, nada
+  agendado adiante e último show há ≥ `staleDays` dias; ignora locais vazios e cancelados; ordena pelas mais
+  esquecidas, desempate por cachê histórico, depois nome pt-BR e chave. Página `/shows/locais/revisitar` (tabela
+  Local/Último show/Sem tocar/Shows/Cachê histórico + card de prioridade + empty-state), link "🏛 Revisitar" no
+  cabeçalho de `/shows/locais`, entrada no hub (`REPORT_GROUPS`, "Agenda & pipeline", 🏛). CSV: `venuesToReengageToCsv`
+  + `VENUES_REENGAGE_CSV_HEADERS` em `src/lib/csv.ts` + rota `/shows/locais/revisitar/export`
+  (`casas-para-revisitar.csv`, BOM UTF-8), botão "⬇ CSV" só com `list.count > 0`.
+- **Por que compartilhar o núcleo (DRY), não copiar:** a lógica de cidade e casa é **byte a byte** a mesma — só muda
+  qual campo do show identifica o lugar. Extraí o núcleo puro `collectPlacesToReengage(shows, getPlace, now, staleDays)`
+  (interno, não exportado) e reescrevi `findCitiesToReengage` para delegar a ele com `(s) => s.city`; a versão venue
+  delega com `(s) => s.venue`. Segue o precedente de `aggregateShowProfit` (compartilhado por `rankVenuesByProfit`/
+  `rankCitiesByProfit`) — ao contrário dos **cards de concentração** (D116), cujos textos acionáveis divergiam de
+  verdade e justificaram cópias. Aqui só a moldura textual (página/CSV) diverge ("casa/palco" × "praça/cidade").
+- **Sem `?ano=`:** coerente com a D229(d) — a leitura é "há quanto tempo não toco nesta casa", sobre o histórico
+  inteiro, não um recorte anual.
+- **Alternativas consideradas:** (a) manter só o eixo cidade — descartado: o palco é onde o relacionamento com o
+  contratante da casa mora, e uma cidade agregada pode mascarar casas frias; (b) generalizar também os tipos de
+  linha (`CityReengageRow`/`VenueReengageRow` são estruturalmente idênticos) num único tipo — mantidos separados
+  por auto-documentação (o JSDoc fala "cidade"/"casa"), custo zero já que o núcleo retorna a forma compartilhada.
+- **Hipótese:** `staleDays`=90 (cadência de retorno a uma casa) é a mesma hipótese herdada da D229, sinalizada nos
+  bloqueios; pode ser mais curta para casas de residência semanal.
+- **Testes:** **+6** em `finance.test.ts` (`describe("findVenuesToReengage")`) + **+3** em `csv.test.ts`
+  (`describe("venuesToReengageToCsv")`). **1299 testes** no total (eram 1290).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1299 testes**
+  (`vitest run`); smoke test (`next start`) → `/login` 200, `/shows/locais/revisitar` 307 e
+  `/shows/locais/revisitar/export` 307 (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories —
+  4 moderate / 5 high / 1 critical, Next 14 / postcss; ver D6); **nenhuma dependência nova**.
