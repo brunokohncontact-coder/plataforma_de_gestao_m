@@ -56,6 +56,8 @@ import {
   YEARLY_HISTORY_CSV_HEADERS,
   cashFlowToCsv,
   CASH_FLOW_CSV_HEADERS,
+  cashflowProjectionToCsv,
+  CASHFLOW_PROJECTION_CSV_HEADERS,
   bookedRevenueToCsv,
   BOOKED_REVENUE_CSV_HEADERS,
   dueAgendaToCsv,
@@ -78,6 +80,7 @@ import {
   gigCadence,
   feeTrend,
   cashFlowByMonth,
+  projectCashflow,
   forecastBookedRevenue,
   buildDueAgenda,
   yearlyHistory,
@@ -1646,6 +1649,82 @@ describe("cashFlowToCsv", () => {
     expect(lines[2]).toBe("2026-05;2000,00;0,00;2000,00");
     expect(lines[3]).toBe("2026-06;0,00;0,00;0,00");
     expect(lines[4]).toBe("Total;2000,00;0,00;2000,00");
+  });
+});
+
+describe("cashflowProjectionToCsv", () => {
+  // `now` fixo: o horizonte começa no mês CORRENTE (inclui-o), do mês atual em
+  // diante. Com NOW em julho e horizonte 3, os meses são jul/ago/set de 2026.
+  const NOW = "2026-07-15T00:00:00.000Z";
+  const tx = (
+    type: TxLike["type"],
+    amount: number,
+    date: string,
+    received = false,
+  ): TxLike => ({
+    type,
+    amount,
+    category: "",
+    date,
+    received,
+    showId: null,
+  });
+
+  it("só cabeçalho + todos os meses do horizonte zerados + Total zerado sem movimento", () => {
+    const csv = cashflowProjectionToCsv(projectCashflow([], { now: NOW, months: 3 }));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(CASHFLOW_PROJECTION_CSV_HEADERS.join(";"));
+    // cabeçalho + 3 meses do horizonte (jul, ago, set) + Total — horizonte cheio mesmo vazio.
+    expect(lines).toHaveLength(5);
+    expect(lines[1]).toBe("2026-07;0,00;0,00;0,00;0,00");
+    expect(lines[2]).toBe("2026-08;0,00;0,00;0,00;0,00");
+    expect(lines[3]).toBe("2026-09;0,00;0,00;0,00;0,00");
+    expect(lines[4]).toBe("Total;0,00;0,00;0,00;0,00");
+  });
+
+  it("uma linha por mês do horizonte (a receber/a pagar/variação/saldo acumulado) + Total", () => {
+    const projection = projectCashflow(
+      [
+        // Caixa realizado (received=true): entra no saldo inicial, não nas linhas.
+        tx("INCOME", 500000, "2026-06-10T00:00:00.000Z", true), // +5000
+        tx("EXPENSE", 100000, "2026-06-20T00:00:00.000Z", true), // −1000 → start 4000
+        // Pendências (received=false) pelo mês de vencimento:
+        tx("INCOME", 300000, "2026-08-05T00:00:00.000Z"), // ago: a receber 3000
+        tx("EXPENSE", 200000, "2026-09-12T00:00:00.000Z"), // set: a pagar 2000
+        // Vencida (mai, antes do mês corrente) → dobra no mês corrente (jul).
+        tx("EXPENSE", 50000, "2026-05-01T00:00:00.000Z"), // jul: a pagar 500
+      ],
+      { now: NOW, months: 3 },
+    );
+    const lines = cashflowProjectionToCsv(projection).split("\r\n");
+    expect(lines).toHaveLength(5);
+    // jul: só a vencida (500), saldo 4000 − 500 = 3500.
+    expect(lines[1]).toBe("2026-07;0,00;500,00;-500,00;3500,00");
+    // ago: recebe 3000, saldo 3500 + 3000 = 6500.
+    expect(lines[2]).toBe("2026-08;3000,00;0,00;3000,00;6500,00");
+    // set: paga 2000, saldo 6500 − 2000 = 4500.
+    expect(lines[3]).toBe("2026-09;0,00;2000,00;-2000,00;4500,00");
+    // Total: a receber 3000, a pagar 2500, variação +500; saldo final 4500 (último mês).
+    expect(lines[4]).toBe("Total;3000,00;2500,00;500,00;4500,00");
+  });
+
+  it("ignora pendências além do horizonte e mantém o saldo final = último mês", () => {
+    const projection = projectCashflow(
+      [
+        tx("INCOME", 1000000, "2026-07-01T00:00:00.000Z", true), // start 10000
+        tx("INCOME", 400000, "2026-08-10T00:00:00.000Z"), // ago: a receber 4000
+        // Dezembro está além do horizonte de 3 meses (jul–set) → ignorada.
+        tx("EXPENSE", 999900, "2026-12-01T00:00:00.000Z"),
+      ],
+      { now: NOW, months: 3 },
+    );
+    const lines = cashflowProjectionToCsv(projection).split("\r\n");
+    expect(lines).toHaveLength(5);
+    expect(lines[1]).toBe("2026-07;0,00;0,00;0,00;10000,00");
+    expect(lines[2]).toBe("2026-08;4000,00;0,00;4000,00;14000,00");
+    expect(lines[3]).toBe("2026-09;0,00;0,00;0,00;14000,00");
+    // Total: a pagar 0 (dez ignorada), variação +4000, saldo final 14000.
+    expect(lines[4]).toBe("Total;4000,00;0,00;4000,00;14000,00");
   });
 });
 

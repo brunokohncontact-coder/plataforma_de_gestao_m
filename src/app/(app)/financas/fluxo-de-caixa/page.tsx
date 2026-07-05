@@ -1,22 +1,22 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { projectCashflow, type TxLike, type CashflowMonth } from "@/lib/finance";
+import {
+  projectCashflow,
+  parseCashflowHorizon,
+  CASHFLOW_HORIZON_OPTIONS,
+  DEFAULT_CASHFLOW_HORIZON,
+  type TxLike,
+  type CashflowMonth,
+} from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { formatMonthKey } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
-/** Horizontes oferecidos no seletor (em meses). */
-const HORIZON_OPTIONS = [3, 6, 12, 24] as const;
-const DEFAULT_HORIZON = 6;
-
-/** Normaliza o `?meses=` da query para um dos horizontes oferecidos. */
-function resolveHorizon(raw: string | string[] | undefined): number {
-  const value = Array.isArray(raw) ? raw[0] : raw;
-  const n = Number(value);
-  return (HORIZON_OPTIONS as readonly number[]).includes(n) ? n : DEFAULT_HORIZON;
-}
+/** Horizontes oferecidos no seletor (em meses) — compartilhados com a exportação. */
+const HORIZON_OPTIONS = CASHFLOW_HORIZON_OPTIONS;
+const DEFAULT_HORIZON = DEFAULT_CASHFLOW_HORIZON;
 
 export default async function CashflowPage({
   searchParams,
@@ -24,7 +24,7 @@ export default async function CashflowPage({
   searchParams?: { meses?: string | string[] };
 }) {
   const user = await requireUser();
-  const horizon = resolveHorizon(searchParams?.meses);
+  const horizon = parseCashflowHorizon(searchParams?.meses);
 
   const transactions = await prisma.transaction.findMany({
     where: { userId: user.id },
@@ -69,9 +69,22 @@ export default async function CashflowPage({
             Como o seu caixa evolui mês a mês com o que está a receber e a pagar
           </p>
         </div>
-        <Link href="/financas" className="text-sm text-gray-500 hover:underline">
-          ← Finanças
-        </Link>
+        <div className="flex items-center gap-3">
+          {hasPending && (
+            <a
+              href={`/financas/fluxo-de-caixa/export${
+                horizon === DEFAULT_HORIZON ? "" : `?meses=${horizon}`
+              }`}
+              className="btn-secondary text-sm"
+              download
+            >
+              ⬇ CSV
+            </a>
+          )}
+          <Link href="/financas" className="text-sm text-gray-500 hover:underline">
+            ← Finanças
+          </Link>
+        </div>
       </div>
 
       {/* Seletor de horizonte */}

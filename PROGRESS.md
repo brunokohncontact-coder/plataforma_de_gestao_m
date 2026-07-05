@@ -9,7 +9,29 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **970 testes** verdes após consolidar a **exportação CSV da agenda de contas a pagar/receber** em `/financas/agenda/export` (PR #180, D157 — a tela "A pagar e receber"/`buildDueAgenda` ganhou botão "⬇ CSV"; serializador puro `dueAgendaToCsv` + `DUE_AGENDA_CSV_HEADERS` em `src/lib/csv.ts`, rótulos de janela extraídos para `DUE_BUCKET_LABELS` em `@/lib/finance` (DRY com a página); **+3 testes**) sobre a Sessão 166. Segue 967 da Sessão 166
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **976 testes** verdes após a Sessão 167
+(**exportação CSV do fluxo de caixa projetado** em `/financas/fluxo-de-caixa/export` — a tela "Fluxo de caixa projetado"
+(`projectCashflow`, o caixa mês a mês do horizonte: parte do caixa realizado e soma as pendências a receber/pagar pelo mês de
+vencimento, acumulando o saldo) ganhou botão de exportação, fechando mais uma lacuna tabular das Finanças — irmã do fluxo de
+caixa **realizado**/burn rate que já exportava (D155). Novo serializador puro `cashflowProjectionToCsv(projection)` +
+`CASHFLOW_PROJECTION_CSV_HEADERS` em `src/lib/csv.ts` recebe a `CashflowProjection` já computada e emite **uma linha por mês do
+horizonte** (`projection.months`, do mês atual em diante, ordem cronológica crescente), com o a receber (`income`), o a pagar
+(`expense`), a variação (`net`) e o **saldo projetado acumulado ao fim do mês** (`endBalance`, absoluto — auto-suficiente sem
+coluna de saldo inicial), encerrada numa linha "Total" com a soma do a receber/a pagar/variação do horizonte e, na coluna de
+saldo, o **saldo final projetado** (o número "Saldo em N meses" da página). Colunas Mês/A receber (R$)/A pagar (R$)/Variação
+(R$)/Saldo ao fim (R$). Como `cashFlowToCsv`, emite **todos** os meses do horizonte inclusive os zerados (um mês de variação 0
+ainda avança o saldo); "Mês" na chave ISO "YYYY-MM" (ordenável), não o "jun/26" da UI. Rota `/financas/fluxo-de-caixa/export`
+reusa a mesma consulta + o mesmo horizonte `?meses=` da página + BOM UTF-8; nome `fluxo-de-caixa-projetado-{n}m.csv`; botão
+"⬇ CSV" no cabeçalho só com `hasPending` (mesmo gate da mensagem "não há pendências"). Para a exportação bater com a página,
+o `resolveHorizon` local da página virou `parseCashflowHorizon` + `CASHFLOW_HORIZON_OPTIONS`/`DEFAULT_CASHFLOW_HORIZON` em
+`@/lib/finance` (usados por ambos); **não** reusa `parseBurnWindow` (mesma lista de valores) de propósito — este só aceita
+valores **exatos** da lista (3/6/12/24), enquanto `parseBurnWindow` faz clamp (`?meses=5`→5 vs. →default 6). **+3 testes**
+(`describe("cashflowProjectionToCsv")`) + **+3** (`describe("parseCashflowHorizon")`). Smoke test (`next start`) → `/login` 200 e
+`/financas/fluxo-de-caixa` + `/financas/fluxo-de-caixa/export` (+ `?meses=12`) 307 (auth-gated). `npm audit` sem novas
+vulnerabilidades (mesmos advisories Next/postcss da D6). Ver D160. Segue 970 da consolidação da **exportação CSV da agenda de
+contas a pagar/receber** em `/financas/agenda/export` (PR #180, D157 — a tela "A pagar e receber"/`buildDueAgenda` ganhou botão
+"⬇ CSV"; serializador puro `dueAgendaToCsv` + `DUE_AGENDA_CSV_HEADERS` em `src/lib/csv.ts`, rótulos de janela extraídos para
+`DUE_BUCKET_LABELS` em `@/lib/finance` (DRY com a página); **+3 testes**) sobre a Sessão 166. Segue 967 da Sessão 166
 (**exportação CSV dos contatos para reativar** em `/contatos/reativar/export` — a tela "Contatos para reativar"
 (`findContactsToReengage`, a fila de follow-up dos dormentes: quem já tocou, está sem nada agendado e há mais de `staleDays`=60
 dias sem show) ganhou botão de exportação, fechando mais uma lacuna tabular do lado Contatos (ao lado de

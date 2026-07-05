@@ -34,6 +34,7 @@ import {
   type FeeDistribution,
   type FeeTrend,
   type CashFlowMonth,
+  type CashflowProjection,
   type BookedRevenueForecast,
   type DueAgenda,
   type TxLike,
@@ -1446,6 +1447,68 @@ export function cashFlowToCsv(
     centsToCsvAmount(totalReceived),
     centsToCsvAmount(totalPaid),
     centsToCsvAmount(totalReceived - totalPaid),
+  ]);
+  return toCsv(out, delimiter);
+}
+
+// ── Projeção de caixa mês a mês (fluxo de caixa projetado) ───────────────────
+
+export const CASHFLOW_PROJECTION_CSV_HEADERS = [
+  "Mês",
+  "A receber (R$)",
+  "A pagar (R$)",
+  "Variação (R$)",
+  "Saldo ao fim (R$)",
+] as const;
+
+/**
+ * Serializa a projeção de caixa mês a mês (`projectCashflow`) em CSV, pronto para
+ * download — espelha a tabela "Mês a mês" de `/financas/fluxo-de-caixa`. Uma linha
+ * por mês do horizonte (`projection.months`, do mês atual em diante, ordem
+ * cronológica crescente), com o a receber pendente (`income`), o a pagar pendente
+ * (`expense`), a variação do mês (`net` = income − expense) e o **saldo projetado
+ * acumulado ao fim do mês** (`endBalance`, absoluto — já parte do caixa atual, por
+ * isso é auto-suficiente sem uma coluna de saldo inicial).
+ *
+ * Como `cashFlowToCsv` (e diferente de `gigCadenceToCsv`/`bookedRevenueToCsv`, que
+ * só emitem meses ativos), o CSV emite **todos** os meses do horizonte, inclusive
+ * os sem pendências: numa projeção de caixa um mês de variação 0 ainda avança o
+ * saldo e é informação (preserva a textura da tabela). Encerra numa linha "Total"
+ * com a soma do a receber, do a pagar e da variação do horizonte; a célula de saldo
+ * do Total traz o **saldo final projetado** (o `endBalance` do último mês, ou o
+ * `startBalance` se o horizonte estiver vazio) — o número que a página destaca como
+ * "Saldo em N meses". A coluna "Mês" usa a chave ISO "YYYY-MM" (ordenável por
+ * máquina), não o rótulo curto "jun/26" da UI. Mesma convenção pt-BR dos irmãos
+ * (delimitador ";", decimal com vírgula). Pura.
+ */
+export function cashflowProjectionToCsv(
+  projection: CashflowProjection,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(CASHFLOW_PROJECTION_CSV_HEADERS)];
+  let totalIncome = 0;
+  let totalExpense = 0;
+  for (const m of projection.months) {
+    out.push([
+      m.month,
+      centsToCsvAmount(m.income),
+      centsToCsvAmount(m.expense),
+      centsToCsvAmount(m.net),
+      centsToCsvAmount(m.endBalance),
+    ]);
+    totalIncome += m.income;
+    totalExpense += m.expense;
+  }
+  const finalBalance =
+    projection.months.length > 0
+      ? projection.months[projection.months.length - 1].endBalance
+      : projection.startBalance;
+  out.push([
+    "Total",
+    centsToCsvAmount(totalIncome),
+    centsToCsvAmount(totalExpense),
+    centsToCsvAmount(totalIncome - totalExpense),
+    centsToCsvAmount(finalBalance),
   ]);
   return toCsv(out, delimiter);
 }

@@ -4931,3 +4931,43 @@ contexto, decisão, justificativa e alternativas consideradas.
   D6/bloqueios); **nenhuma dependência nova**.
 - **Nota de concorrência:** **D157** segue reservado à PR paralela #180 (export CSV da agenda) ainda em aberto; esta sessão usa
   **D159** (após o D158 já mergeado da Sessão 165) para evitar colisão de numeração na `main`.
+
+## D160 — Exportação CSV do fluxo de caixa projetado (`/financas/fluxo-de-caixa/export`) (Sessão 167)
+- **Contexto:** a tela `/financas/fluxo-de-caixa` (`projectCashflow`) projeta o caixa mês a mês do horizonte (`?meses=` 3/6/12/24,
+  default 6): parte do caixa realizado atual e, mês a mês, soma as pendências (contas a receber/pagar, `received=false`) pelo mês
+  de vencimento, acumulando o saldo. É a tela que responde "vou ter dinheiro nos próximos meses?" — a tabela "Mês a mês" é o
+  material de planejamento por excelência, mas era uma das poucas telas tabulares das Finanças ainda **sem exportação** (ao lado
+  do fluxo de caixa **realizado**/burn rate, que já exportava via `cashFlowToCsv`/D155). Levar a projeção para a planilha permite
+  simular antecipação de recebimentos, adiamento de despesas e renegociação de prazos fora do app.
+- **Decisão:** novo serializador puro `cashflowProjectionToCsv(projection)` + `CASHFLOW_PROJECTION_CSV_HEADERS` em `src/lib/csv.ts`
+  (irmão de `cashFlowToCsv`/D155, mas sobre a **projeção futura** em vez do realizado passado) recebe a `CashflowProjection` já
+  computada por `projectCashflow` e emite **uma linha por mês do horizonte** (`projection.months`, do mês atual em diante, ordem
+  cronológica crescente), encerrada numa linha "Total". Rota `/financas/fluxo-de-caixa/export` reusa a **mesma consulta** e o
+  **mesmo horizonte** da página + BOM UTF-8; nome `fluxo-de-caixa-projetado-{n}m.csv` (carrega o horizonte, como
+  `fluxo-de-caixa-mensal-{n}m.csv`/D155); botão "⬇ CSV" no cabeçalho só com `hasPending` (o mesmo gate da mensagem "não há
+  pendências" da página — sem pendências a projeção é plana e o CSV não traria sinal).
+- **Colunas:** Mês / A receber (R$) / A pagar (R$) / Variação (R$) / Saldo ao fim (R$). A coluna "Mês" usa a chave ISO "YYYY-MM"
+  (ordenável por máquina), não o "jun/26" da UI — mesma convenção de `cashFlowToCsv`. O **"Saldo ao fim"** é o `endBalance`
+  acumulado (absoluto, já parte do caixa atual): cada linha é auto-suficiente sem uma coluna de saldo inicial. Como
+  `cashFlowToCsv` (e diferente de `gigCadenceToCsv`/`bookedRevenueToCsv`, que só emitem meses ativos), o CSV emite **todos** os
+  meses do horizonte, inclusive os sem pendências — numa projeção de caixa um mês de variação 0 ainda avança o saldo e é
+  informação. A célula de saldo do **Total** traz o **saldo final projetado** (o `endBalance` do último mês, ou o `startBalance`
+  se o horizonte for vazio) — o número que a página destaca como "Saldo em N meses".
+- **Horizonte compartilhado (`parseCashflowHorizon`):** para a exportação bater exatamente com a página, extraí o `resolveHorizon`
+  local da página para `src/lib/finance.ts` como `parseCashflowHorizon` + `CASHFLOW_HORIZON_OPTIONS` (=[3,6,12,24]) +
+  `DEFAULT_CASHFLOW_HORIZON` (=6), agora usados por **ambos** (página e rota). **Não reusei `parseBurnWindow`** (mesma lista de
+  valores) de propósito: `parseBurnWindow` faz *clamp* a um intervalo (`?meses=5` → 5), enquanto a projeção só aceita valores
+  **exatos** da lista (`?meses=5` → default 6). Reusar causaria divergência página × export em valores fora dos presets. A extração
+  é DRY e testável, sem mudar o comportamento observável da página.
+- **Testes:** **+3** em `csv.test.ts` (`describe("cashflowProjectionToCsv")`): só cabeçalho + horizonte zerado + Total zerado sem
+  movimento; uma linha por mês com a receber/a pagar/variação/saldo acumulado + vencidas dobrando no mês corrente + Total; ignora
+  pendências além do horizonte e mantém o saldo final = último mês. **+3** em `finance.test.ts` (`describe("parseCashflowHorizon")`):
+  aceita os exatos 3/6/12/24; cai no default para fora-da-lista/ausente/não-numérico (contrastando com o clamp de `parseBurnWindow`);
+  usa o primeiro valor quando repetido. **976 testes** no total (eram 970).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **976 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/financas/fluxo-de-caixa` + `/financas/fluxo-de-caixa/export` (+ `?meses=12`) 307
+  (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
+  postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Nota de ambiente:** o cliente Prisma do container efêmero vinha **stale** (referenciava uma coluna `billingContactId`
+  inexistente no schema atual da `main`), quebrando os testes de integração até um `prisma generate`. Não é regressão de código —
+  o setup do ambiente precisa regenerar o client; registrado aqui como lembrete do hook de setup.
