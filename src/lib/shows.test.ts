@@ -19,10 +19,14 @@ import {
   bookingLeadTimeHeadline,
   summarizeMonthShows,
   buildDuplicatedShow,
+  buildDuplicatedShowSeries,
   parseDuplicateInterval,
+  parseDuplicateCount,
   DUPLICATE_SHOW_WEEKS_AHEAD,
   DUPLICATE_INTERVAL_WEEKS,
   DEFAULT_DUPLICATE_INTERVAL,
+  DEFAULT_DUPLICATE_COUNT,
+  MAX_DUPLICATE_COUNT,
   LEAD_TIME_TREND_EPSILON,
   LEAD_TIME_SHORT_DAYS,
   LEAD_TIME_CRITICAL_DAYS,
@@ -1093,5 +1097,88 @@ describe("parseDuplicateInterval", () => {
     );
     expect(dup.date.toISOString()).toBe("2026-04-03T22:00:00.000Z");
     expect(dup.date.getUTCDay()).toBe(from.getUTCDay());
+  });
+});
+
+describe("parseDuplicateCount", () => {
+  it("mantém quantidades válidas dentro da faixa", () => {
+    expect(parseDuplicateCount(1)).toBe(1);
+    expect(parseDuplicateCount(4)).toBe(4);
+    expect(parseDuplicateCount("8")).toBe(8);
+    expect(parseDuplicateCount(MAX_DUPLICATE_COUNT)).toBe(MAX_DUPLICATE_COUNT);
+  });
+
+  it("não-numérico/ausente/< 1 cai no padrão (1 cópia)", () => {
+    for (const bad of ["", "abc", null, undefined, {}, NaN, 0, -3]) {
+      expect(parseDuplicateCount(bad)).toBe(DEFAULT_DUPLICATE_COUNT);
+    }
+    expect(DEFAULT_DUPLICATE_COUNT).toBe(1);
+  });
+
+  it("satura acima do teto e trunca fracionário", () => {
+    expect(parseDuplicateCount(99)).toBe(MAX_DUPLICATE_COUNT);
+    expect(parseDuplicateCount(3.9)).toBe(3);
+  });
+});
+
+describe("buildDuplicatedShowSeries", () => {
+  const base = {
+    title: "Residência no Bar X",
+    date: new Date("2026-03-06T22:00:00.000Z"), // sexta
+    venue: "Bar X",
+    city: "São Paulo",
+    fee: 150_00,
+    notes: "Levar cabo reserva",
+  };
+
+  it("cria N cópias espaçadas pela cadência, todas no mesmo dia da semana", () => {
+    const series = buildDuplicatedShowSeries(base, 1, 3);
+    expect(series.map((s) => s.date.toISOString())).toEqual([
+      "2026-03-13T22:00:00.000Z",
+      "2026-03-20T22:00:00.000Z",
+      "2026-03-27T22:00:00.000Z",
+    ]);
+    for (const s of series) {
+      expect(s.date.getUTCDay()).toBe(base.date.getUTCDay());
+      expect(s.status).toBe("PROPOSED");
+      expect(s.title).toBe("Residência no Bar X");
+    }
+  });
+
+  it("respeita o intervalo quinzenal/mensal no espaçamento", () => {
+    const quinzenal = buildDuplicatedShowSeries(base, 2, 2);
+    expect(quinzenal.map((s) => s.date.toISOString())).toEqual([
+      "2026-03-20T22:00:00.000Z",
+      "2026-04-03T22:00:00.000Z",
+    ]);
+    const mensal = buildDuplicatedShowSeries(base, 4, 2);
+    expect(mensal.map((s) => s.date.toISOString())).toEqual([
+      "2026-04-03T22:00:00.000Z",
+      "2026-05-01T22:00:00.000Z",
+    ]);
+  });
+
+  it("count padrão cria uma única cópia (equivale a buildDuplicatedShow)", () => {
+    const series = buildDuplicatedShowSeries(base, 1);
+    expect(series).toHaveLength(1);
+    expect(series[0].date.toISOString()).toBe(
+      buildDuplicatedShow(base, 1).date.toISOString(),
+    );
+  });
+
+  it("count inválido vira 1 e count acima do teto satura", () => {
+    expect(buildDuplicatedShowSeries(base, 1, 0)).toHaveLength(1);
+    expect(buildDuplicatedShowSeries(base, 1, NaN)).toHaveLength(1);
+    expect(buildDuplicatedShowSeries(base, 1, 99)).toHaveLength(
+      MAX_DUPLICATE_COUNT,
+    );
+  });
+
+  it("weeksAhead inválido cai na cadência semanal (1)", () => {
+    const series = buildDuplicatedShowSeries(base, 0, 2);
+    expect(series.map((s) => s.date.toISOString())).toEqual([
+      "2026-03-13T22:00:00.000Z",
+      "2026-03-20T22:00:00.000Z",
+    ]);
   });
 });

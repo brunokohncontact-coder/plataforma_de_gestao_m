@@ -9,7 +9,17 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1231 testes** verdes após o **seletor de intervalo na
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1239 testes** verdes após a **duplicação de shows em lote**
+(Sessão 227, D220 — a ação "Duplicar show" (D218) + seletor de intervalo (D219) criava **uma** cópia por clique; agendar o próximo trimestre
+de uma residência semanal exigia clicar "Duplicar" ~12 vezes. Novo helper puro `buildDuplicatedShowSeries(show, weeksAhead, count)` em
+`src/lib/shows.ts`: gera `count` cópias, cada uma `weeksAhead * k` semanas à frente (k = 1..count) — **espaçadas pela cadência escolhida**
+(semanal/quinzenal/mensal via D219), todas no mesmo dia da semana e horário, reusando `buildDuplicatedShow` por cópia. Nova regra pura
+`parseDuplicateCount(value)` (não-numérico/ausente/< 1 → 1; satura em `MAX_DUPLICATE_COUNT` = 12; fracionário truncado) + presets
+`DUPLICATE_COUNT_PRESETS` (1/2/4/8/12). Segundo `<select>` "quantidade" ao lado do de intervalo no detalhe do show; a `duplicateShowAction`
+lê `formData.get("quantidade")`, monta a série e cria todas as cópias **atomicamente** via `prisma.$transaction([...])`; **uma** cópia segue
+para a edição dela (padrão "duplicar → editar" da D218), **várias** voltam para `/shows`. Default = 1 preserva exatamente o comportamento
+anterior. **+8 testes** (`parseDuplicateCount` + `buildDuplicatedShowSeries`). Smoke test (`next start`) → `/login` 200 e `/shows/abc123`
+307 (auth-gated). `npm audit` sem novas vulnerabilidades (mesmos advisories Next/postcss da D6). Ver D220). Segue o **seletor de intervalo na
 duplicação de shows** (Sessão 226, D219 — a ação "Duplicar show" (D218) sempre criava a cópia **+1 semana** à frente; o intervalo real
 (semanal/quinzenal/mensal) ficava para o usuário corrigir na edição. A própria D218(c) já previa isso: `weeksAhead` era parametrizável no
 helper puro `buildDuplicatedShow` (testado com 4 ≈ mensal), mas a UI expunha só o padrão semanal. Novo helper puro
@@ -4061,9 +4071,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    (`weekly:1`/`biweekly:2`/`monthly:4`) + `DEFAULT_DUPLICATE_INTERVAL`/tipo `DuplicateInterval` em `src/lib/shows.ts` + `<select>`
    "intervalo" na tela de detalhe do show ligando direto no `weeksAhead` já testado; a action lê `formData.get("intervalo")` e repassa a
    `buildDuplicatedShow`; "mensal ≈ 4 semanas" preserva o dia da semana, default semanal preserva o comportamento da D218, ver D219.
-   Próximo possível para esta feature: (b) duplicar em lote (criar as N próximas semanas de uma residência de uma vez), reusando o mesmo
-   helper com `weeksAhead` 1..N; (c) botão "Duplicar" também na lista de shows (hoje só no detalhe); (d) lembrar o último intervalo
-   escolhido por show (adiado na D219: ação de um clique com palpite sensato).
+   **Duplicação em lote** entregue na Sessão 227 — `buildDuplicatedShowSeries(show, weeksAhead, count)` + `parseDuplicateCount` +
+   `DUPLICATE_COUNT_PRESETS` (1/2/4/8/12) + `MAX_DUPLICATE_COUNT` (=12) em `src/lib/shows.ts` + segundo `<select>` "quantidade" no detalhe do
+   show; a `duplicateShowAction` cria as N cópias (espaçadas pela cadência da D219) atomicamente via `prisma.$transaction`, redirecionando à
+   edição só quando é 1 cópia (senão volta à lista), ver D220.
+   Próximo possível para esta feature: (c) botão "Duplicar" também na lista de shows (hoje só no detalhe); (d) lembrar o último intervalo/
+   quantidade escolhidos por show (adiado na D219/D220: ação de um clique com palpite sensato); (e) redirecionar o lote para o calendário em
+   vez da lista, se houver demanda.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

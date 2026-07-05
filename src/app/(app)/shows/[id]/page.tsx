@@ -3,7 +3,11 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { computeShowPnL, type TxLike } from "@/lib/finance";
-import { DEFAULT_DUPLICATE_INTERVAL } from "@/lib/shows";
+import {
+  DEFAULT_DUPLICATE_INTERVAL,
+  DEFAULT_DUPLICATE_COUNT,
+  DUPLICATE_COUNT_PRESETS,
+} from "@/lib/shows";
 import { formatMoney } from "@/lib/money";
 import { formatDateTime, formatDate } from "@/lib/format";
 import {
@@ -209,7 +213,7 @@ export default async function ShowDetailPage({ params }: { params: { id: string 
         <Link href={`/shows/${show.id}/editar`} className="btn-secondary">
           Editar
         </Link>
-        <form action={duplicateShowAction} className="flex items-center gap-2">
+        <form action={duplicateShowAction} className="flex flex-wrap items-center gap-2">
           <input type="hidden" name="id" value={show.id} />
           <label htmlFor="dup-intervalo" className="sr-only">
             Intervalo da cópia
@@ -225,10 +229,26 @@ export default async function ShowDetailPage({ params }: { params: { id: string 
             <option value="biweekly">+2 semanas</option>
             <option value="monthly">+1 mês (4 sem.)</option>
           </select>
+          <label htmlFor="dup-quantidade" className="sr-only">
+            Quantas cópias criar
+          </label>
+          <select
+            id="dup-quantidade"
+            name="quantidade"
+            defaultValue={String(DEFAULT_DUPLICATE_COUNT)}
+            className="input max-w-[9rem]"
+            title="Quantas datas criar de uma vez (para agendar várias semanas de uma residência)"
+          >
+            {DUPLICATE_COUNT_PRESETS.map((n) => (
+              <option key={n} value={n}>
+                {n === 1 ? "1 cópia" : `${n} cópias`}
+              </option>
+            ))}
+          </select>
           <button
             type="submit"
             className="btn-secondary"
-            title="Criar uma cópia deste show à frente (para residências e eventos recorrentes)"
+            title="Criar cópias deste show à frente (para residências e eventos recorrentes)"
           >
             Duplicar
           </button>

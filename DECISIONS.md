@@ -7244,3 +7244,43 @@ contexto, decisão, justificativa e alternativas consideradas.
   **1231 testes** (`vitest run`); smoke test — `next start`, `/login` → HTTP 200 e `/shows/abc123` → 307
   (auth-gated; app sobe). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high /
   1 critical, todos do Next 14 / postcss bundlado; ver D6); **nenhuma dependência nova**.
+
+## D220 — Duplicar show em lote (`buildDuplicatedShowSeries` + seletor de quantidade) (Sessão 227)
+- **Contexto:** a ação "Duplicar show" (D218) + seletor de intervalo (D219) cria **uma** cópia por clique.
+  Para um músico com uma residência semanal, agendar o próximo trimestre ainda exige clicar "Duplicar"
+  ~12 vezes (ou duplicar → editar → duplicar de novo). O item (b) dos próximos passos da feature previa
+  "duplicar em lote reusando o mesmo helper com `weeksAhead` 1..N".
+- **Decisão:** adicionar um segundo `<select>` "quantidade" (1/2/4/8/12 cópias, `DUPLICATE_COUNT_PRESETS`)
+  ao lado do seletor de intervalo no detalhe do show. Novo helper puro `buildDuplicatedShowSeries(show,
+  weeksAhead, count)` em `src/lib/shows.ts`: gera `count` cópias, cada uma `weeksAhead * k` semanas à
+  frente (k = 1..count) — ou seja, **espaçadas pela cadência escolhida** (semanal/quinzenal/mensal),
+  todas no mesmo dia da semana e horário. Reusa `buildDuplicatedShow` por cópia (mesmo reset de status
+  para PROPOSED, mesmo trato de cachê/vínculos de forma). Nova regra pura `parseDuplicateCount(value)`
+  (não-numérico/ausente/< 1 → 1; acima do teto satura em `MAX_DUPLICATE_COUNT` = 12; fracionário
+  truncado). A `duplicateShowAction` lê `formData.get("quantidade")`, monta a série e cria todas as
+  cópias **atomicamente** via `prisma.$transaction([...])`; **uma** cópia continua redirecionando para a
+  edição dela (padrão "duplicar → editar" da D218), **várias** voltam para `/shows` (não há uma única
+  cópia para editar). Default `DEFAULT_DUPLICATE_COUNT` = 1 preserva exatamente o comportamento anterior.
+- **Justificativa:** o `weeksAhead` cumulativo (`step * k`) faz a série herdar de graça a cadência do
+  seletor de intervalo — "semanal × 12" agenda 12 sábados seguidos; "quinzenal × 4" agenda 8 semanas em 4
+  datas — sem uma segunda regra de espaçamento. O teto de 12 cobre um trimestre de uma residência semanal
+  (o horizonte de planejamento realista) e evita despejar dezenas de propostas de uma vez. A transação
+  garante que uma residência agendada em lote nunca fique pela metade se uma inserção falhar. Redirecionar
+  o lote para a lista (em vez de para a edição de uma cópia arbitrária) casa com a semântica: o usuário
+  agora tem N shows novos para revisar na agenda, não um.
+- **Alternativas consideradas:** (a) campo numérico livre — descartado: os presets cobrem os casos reais
+  (o helper segue aberto a qualquer inteiro até o teto). (b) criar sem transação, em loop — descartado:
+  risco de residência parcial em falha no meio. (c) redirecionar o lote para o calendário em vez da lista
+  — adiável: a lista já é o destino natural de "onde estão meus shows"; o calendário é um próximo passo se
+  houver demanda. (d) lembrar a última quantidade escolhida — adiado (mesmo racional da D219(d): palpite
+  sensato de um clique).
+- **Testes:** **+8** em `shows.test.ts`: `describe("parseDuplicateCount")` (mantém válidos na faixa;
+  não-numérico/ausente/< 1 → padrão; satura acima do teto e trunca fracionário) e
+  `describe("buildDuplicatedShowSeries")` (N cópias espaçadas pela cadência, mesmo dia da semana, status
+  PROPOSED; respeita quinzenal/mensal; `count` padrão = 1 equivale a `buildDuplicatedShow`; `count`
+  inválido → 1 e acima do teto satura; `weeksAhead` inválido cai na cadência semanal). Suíte **1239**
+  verdes (era 1231).
+- **DoD:** build de produção verde; lint (`next lint`, 0 avisos); typecheck (`tsc --noEmit`) limpo;
+  **1239 testes** (`vitest run`); smoke test — `next start`, `/login` → HTTP 200 e `/shows/abc123` → 307
+  (auth-gated; app sobe). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high /
+  1 critical, todos do Next 14 / postcss bundlado; ver D6); **nenhuma dependência nova**.
