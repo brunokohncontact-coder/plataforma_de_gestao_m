@@ -1967,6 +1967,140 @@ export function expenseMixYears(txs: TxLike[]): number[] {
   return [...years].sort((a, b) => b - a);
 }
 
+/**
+ * Variação do gasto de UMA rubrica (categoria) entre dois períodos (o ano
+ * selecionado × o anterior). `amountDelta` positivo = você gastou MAIS nessa
+ * rubrica; negativo = gastou menos (economizou). Espelho do
+ * `ContactPaymentLagChange`/D195 no eixo de despesa.
+ */
+export interface ExpenseCategoryChange {
+  /** Nome da rubrica (já normalizado por `expenseMix`; "Sem categoria" para vazias). */
+  category: string;
+  /** Gasto na rubrica no período atual (centavos). */
+  currentAmount: number;
+  /** Gasto na rubrica no período anterior (centavos). */
+  previousAmount: number;
+  /** Variação do gasto (atual − anterior, centavos). Positivo = gastou mais. */
+  amountDelta: number;
+  /** Participação da rubrica na despesa total do período atual (0..1). */
+  currentShare: number;
+  /** Participação da rubrica na despesa total do período anterior (0..1). */
+  previousShare: number;
+}
+
+export interface ExpenseMixComparison {
+  /**
+   * Rubricas presentes nos DOIS períodos, com a variação do gasto. Ordenadas do
+   * maior aumento à maior queda (quem mais subiu primeiro), para o "mover" de
+   * cima do card ser a rubrica que mais pesou a mais no orçamento.
+   */
+  changes: ExpenseCategoryChange[];
+  /** Despesa total do período atual (centavos). */
+  currentTotal: number;
+  /** Despesa total do período anterior (centavos). */
+  previousTotal: number;
+  /** Variação da despesa total (atual − anterior, centavos). */
+  totalDelta: number;
+  /** Rubrica que mais AUMENTOU de gasto (maior `amountDelta > 0`); null se nenhuma subiu. */
+  biggestIncrease: ExpenseCategoryChange | null;
+  /** Rubrica que mais CAIU de gasto (menor `amountDelta < 0`); null se nenhuma caiu. */
+  biggestDecrease: ExpenseCategoryChange | null;
+  /** Rubricas que só tiveram gasto no período atual (novas no orçamento). */
+  newCategories: ExpenseCategorySlice[];
+  /** Rubricas que tinham gasto no anterior mas não no atual (sumiram do orçamento). */
+  droppedCategories: ExpenseCategorySlice[];
+}
+
+/**
+ * Compara a **composição das despesas** entre dois períodos (tipicamente um ano ×
+ * o ano anterior), casando as rubricas por nome de categoria, respondendo "em que
+ * rubricas estou gastando mais/menos do que no ano passado?".
+ *
+ * No espírito do card de "quem mudou de ritmo" (`comparePaymentLagByContact`/D195) e
+ * dos movers da sazonalidade (`compareGigSeasonality`/D215): em vez de despejar todas
+ * as rubricas na tela, destila os dois **movers** — a rubrica que mais subiu e a que
+ * mais caiu de gasto — mantendo a tela enxuta. Os `changes` completos ficam disponíveis
+ * para quem quiser detalhar.
+ *
+ * Diferente do prazo de recebimento (onde descer é a melhora) ou do booking lead time
+ * (onde subir é), aqui a direção é informativa por si: gastar menos numa rubrica costuma
+ * ser bom, gastar mais merece um olhar — mas o helper só reporta o fato, sem veredito de
+ * bom/ruim (concentrar/gastar não é intrinsecamente errado, como já frisa `expenseMix`).
+ * Sem limiar de estabilidade: qualquer `amountDelta` não-nulo conta (dinheiro raramente
+ * empata em centavos), então os movers cobrem toda variação real.
+ *
+ * Puro, sem I/O: recebe dois `expenseMix` já computados (cada um sobre as transações do
+ * seu período). O chamador decide quando exibir (tipicamente só com um ano específico e
+ * ambos os períodos com despesa).
+ */
+export function compareExpenseMix(
+  current: ExpenseMix,
+  previous: ExpenseMix,
+): ExpenseMixComparison {
+  const prevByCategory = new Map<string, ExpenseCategorySlice>();
+  for (const c of previous.categories) prevByCategory.set(c.category, c);
+
+  const currentCategories = new Set<string>();
+  const changes: ExpenseCategoryChange[] = [];
+  const newCategories: ExpenseCategorySlice[] = [];
+
+  for (const cur of current.categories) {
+    currentCategories.add(cur.category);
+    const prev = prevByCategory.get(cur.category);
+    if (!prev) {
+      newCategories.push(cur);
+      continue;
+    }
+    changes.push({
+      category: cur.category,
+      currentAmount: cur.amount,
+      previousAmount: prev.amount,
+      amountDelta: cur.amount - prev.amount,
+      currentShare: cur.share,
+      previousShare: prev.share,
+    });
+  }
+
+  const droppedCategories = previous.categories.filter(
+    (c) => !currentCategories.has(c.category),
+  );
+
+  // Maior aumento no topo (variação desc); empate estável pelo nome da rubrica (pt-BR).
+  changes.sort(
+    (a, b) =>
+      b.amountDelta - a.amountDelta ||
+      a.category.localeCompare(b.category, "pt-BR"),
+  );
+
+  let biggestIncrease: ExpenseCategoryChange | null = null;
+  let biggestDecrease: ExpenseCategoryChange | null = null;
+  for (const c of changes) {
+    if (
+      c.amountDelta > 0 &&
+      (!biggestIncrease || c.amountDelta > biggestIncrease.amountDelta)
+    ) {
+      biggestIncrease = c;
+    }
+    if (
+      c.amountDelta < 0 &&
+      (!biggestDecrease || c.amountDelta < biggestDecrease.amountDelta)
+    ) {
+      biggestDecrease = c;
+    }
+  }
+
+  return {
+    changes,
+    currentTotal: current.total,
+    previousTotal: previous.total,
+    totalDelta: current.total - previous.total,
+    biggestIncrease,
+    biggestDecrease,
+    newCategories,
+    droppedCategories,
+  };
+}
+
 export interface MonthlyTotal {
   /** Chave "YYYY-MM". */
   month: string;

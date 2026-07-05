@@ -7397,3 +7397,41 @@ contexto, decisão, justificativa e alternativas consideradas.
   `/login` → HTTP 200 e `/shows/sazonalidade/comparativo/export?ano=2025` → HTTP 307 (auth-gated). `npm audit`
   **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, Next 14 / postcss; ver D6);
   **nenhuma dependência nova**.
+
+## 2026-07-05 — D224: Comparativo ano a ano da composição de despesas (`compareExpenseMix` + card em `/financas/composicao-despesas`)
+- **Contexto:** `/financas/composicao-despesas` já tinha o recorte por período (`?ano=`, `PeriodPicker`) e
+  exportação CSV, mas — ao contrário das vistas analíticas irmãs (sazonalidade de shows/D215, DSO por
+  contratante/D195, booking lead time/D187) — não respondia à pergunta de comparação: "em que rubricas estou
+  gastando mais ou menos do que no ano passado?". A composição num ano isolado mostra *onde* vai o dinheiro,
+  mas não *o que mudou*.
+- **Decisão:** novo helper puro `compareExpenseMix(current, previous)` em `src/lib/finance.ts` (+ tipos
+  `ExpenseMixComparison` / `ExpenseCategoryChange`): casa as rubricas de dois `expenseMix` já computados por
+  nome de categoria e destila os dois **movers** — a rubrica que mais subiu (`biggestIncrease`) e a que mais
+  caiu (`biggestDecrease`) de gasto — além do delta total, das rubricas novas (só no atual) e das sumidas (só
+  no anterior). Card `ExpenseMixComparisonCard` "Onde o gasto mudou · {ano} vs. {ano-1}" na página, exibido só
+  com um ano específico e ambos os períodos com despesa; o ano anterior sai do mesmo acervo já carregado via
+  `filterShowsByYear(transactions, yearFilter - 1)` (**zero I/O extra**). `expenseMix` intocado.
+- **Justificativa:** segue o padrão de "movers" consolidado (`comparePaymentLagByContact`/D195,
+  `compareGigSeasonality`/D215) em vez de despejar todas as rubricas na tela — a tela-mãe já tem a tabela
+  completa; o card destaca só os extremos. Reusa a camada pura já testada (`expenseMix`) sem I/O novo. A
+  direção é informativa por si (gastar menos costuma ser bom, gastar mais merece um olhar): o helper reporta o
+  fato sem veredito bom/ruim, coerente com `expenseMix` (que já frisa que concentrar/gastar não é
+  intrinsecamente errado). Na tela, o mover de aumento sai em rosa (atenção) e o de queda em verde (economia).
+- **Sem limiar de estabilidade:** ao contrário do `comparePaymentLagByContact` (que usa `PAYMENT_LAG_TREND_EPSILON`
+  para achatar ruído numa média de dias), aqui qualquer `amountDelta` não-nulo conta — dinheiro raramente
+  empata em centavos, então os movers cobrem toda variação real sem introduzir um número mágico. Empate de
+  `amountDelta` desempata pelo nome da rubrica (pt-BR), mantendo a ordem determinística.
+- **Alternativas consideradas:** (a) uma tabela recolhida com todas as rubricas mudadas (à la
+  `SeasonComparisonDetail`/D217) — adiada: os movers + as listas de novas/sumidas já dão o sinal; a tabela
+  completa já está na própria página, filtrável pelo `?ano=`. (b) exportar o comparativo em CSV (à la D223) —
+  adiado: sem demanda ainda; a página exporta a composição absoluta e o comparativo vive na tela. (c) um
+  veredito "você está gastando X% a mais" — descartado: o delta assinado no cabeçalho já comunica isso sem
+  editorializar.
+- **Testes:** **+5** em `finance.test.ts` (`describe("compareExpenseMix …")`): destila os dois movers + deltas
+  totais; ordena os changes do maior aumento à maior queda; separa rubricas novas/sumidas (rubrica em ambos os
+  anos vira change, não novo/sumido); sem rubricas em comum → sem movers, tudo novo/sumido; empate de delta
+  desempata pelo nome (pt-BR). Suíte **1259** verdes (era 1254).
+- **DoD:** build de produção verde; lint (`next lint`, 0 avisos); typecheck (`tsc --noEmit`) limpo; **1259
+  testes** (`vitest run`); smoke test — `next start`, `/login` → HTTP 200 e
+  `/financas/composicao-despesas?ano=2025` → HTTP 307 (auth-gated). `npm audit` **inalterado** vs. baseline
+  (10 advisories — 4 moderate / 5 high / 1 critical, Next 14 / postcss; ver D6); **nenhuma dependência nova**.

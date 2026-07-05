@@ -117,6 +117,7 @@ import {
   incomeMixYears,
   expenseMix,
   expenseMixYears,
+  compareExpenseMix,
   paymentLag,
   paymentLagYears,
   comparePaymentLag,
@@ -1966,6 +1967,91 @@ describe("expenseMix", () => {
     expect(expense.categories.map((c) => c.category)).toEqual(
       income.sources.map((s) => s.category),
     );
+  });
+});
+
+describe("compareExpenseMix", () => {
+  it("destila os movers: rubrica que mais subiu e a que mais caiu de gasto", () => {
+    const current = expenseMix([
+      tx({ type: "EXPENSE", amount: 900_00, category: "transporte" }),
+      tx({ type: "EXPENSE", amount: 100_00, category: "equipamento" }),
+    ]);
+    const previous = expenseMix([
+      tx({ type: "EXPENSE", amount: 300_00, category: "transporte" }),
+      tx({ type: "EXPENSE", amount: 500_00, category: "equipamento" }),
+    ]);
+    const cmp = compareExpenseMix(current, previous);
+    // transporte: +600; equipamento: -400.
+    expect(cmp.biggestIncrease?.category).toBe("transporte");
+    expect(cmp.biggestIncrease?.amountDelta).toBe(600_00);
+    expect(cmp.biggestDecrease?.category).toBe("equipamento");
+    expect(cmp.biggestDecrease?.amountDelta).toBe(-400_00);
+    expect(cmp.currentTotal).toBe(1000_00);
+    expect(cmp.previousTotal).toBe(800_00);
+    expect(cmp.totalDelta).toBe(200_00);
+  });
+
+  it("ordena os changes do maior aumento à maior queda", () => {
+    const current = expenseMix([
+      tx({ type: "EXPENSE", amount: 500_00, category: "a" }),
+      tx({ type: "EXPENSE", amount: 100_00, category: "b" }),
+      tx({ type: "EXPENSE", amount: 400_00, category: "c" }),
+    ]);
+    const previous = expenseMix([
+      tx({ type: "EXPENSE", amount: 100_00, category: "a" }),
+      tx({ type: "EXPENSE", amount: 100_00, category: "b" }),
+      tx({ type: "EXPENSE", amount: 900_00, category: "c" }),
+    ]);
+    const cmp = compareExpenseMix(current, previous);
+    // a: +400, b: 0, c: -500.
+    expect(cmp.changes.map((c) => c.category)).toEqual(["a", "b", "c"]);
+    expect(cmp.changes.map((c) => c.amountDelta)).toEqual([400_00, 0, -500_00]);
+  });
+
+  it("separa rubricas novas e sumidas (só num dos períodos)", () => {
+    const current = expenseMix([
+      tx({ type: "EXPENSE", amount: 200_00, category: "transporte" }),
+      tx({ type: "EXPENSE", amount: 150_00, category: "streaming" }),
+    ]);
+    const previous = expenseMix([
+      tx({ type: "EXPENSE", amount: 200_00, category: "transporte" }),
+      tx({ type: "EXPENSE", amount: 300_00, category: "estúdio" }),
+    ]);
+    const cmp = compareExpenseMix(current, previous);
+    expect(cmp.newCategories.map((c) => c.category)).toEqual(["streaming"]);
+    expect(cmp.droppedCategories.map((c) => c.category)).toEqual(["estúdio"]);
+    // transporte aparece nos dois → vira change (delta 0), não novo/sumido.
+    expect(cmp.changes.map((c) => c.category)).toEqual(["transporte"]);
+    expect(cmp.biggestIncrease).toBeNull();
+    expect(cmp.biggestDecrease).toBeNull();
+  });
+
+  it("sem rubricas em comum → sem movers, tudo novo/sumido", () => {
+    const current = expenseMix([tx({ type: "EXPENSE", amount: 100_00, category: "x" })]);
+    const previous = expenseMix([tx({ type: "EXPENSE", amount: 100_00, category: "y" })]);
+    const cmp = compareExpenseMix(current, previous);
+    expect(cmp.changes).toEqual([]);
+    expect(cmp.biggestIncrease).toBeNull();
+    expect(cmp.biggestDecrease).toBeNull();
+    expect(cmp.newCategories.map((c) => c.category)).toEqual(["x"]);
+    expect(cmp.droppedCategories.map((c) => c.category)).toEqual(["y"]);
+    expect(cmp.totalDelta).toBe(0);
+  });
+
+  it("empate de amountDelta desempata pelo nome da rubrica (pt-BR)", () => {
+    const current = expenseMix([
+      tx({ type: "EXPENSE", amount: 300_00, category: "zebra" }),
+      tx({ type: "EXPENSE", amount: 300_00, category: "abacaxi" }),
+    ]);
+    const previous = expenseMix([
+      tx({ type: "EXPENSE", amount: 100_00, category: "zebra" }),
+      tx({ type: "EXPENSE", amount: 100_00, category: "abacaxi" }),
+    ]);
+    const cmp = compareExpenseMix(current, previous);
+    // Ambos +200; ordem estável por nome.
+    expect(cmp.changes.map((c) => c.category)).toEqual(["abacaxi", "zebra"]);
+    // O mover de aumento é o primeiro encontrado com o maior delta (abacaxi).
+    expect(cmp.biggestIncrease?.category).toBe("abacaxi");
   });
 });
 

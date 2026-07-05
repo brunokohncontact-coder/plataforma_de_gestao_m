@@ -4,10 +4,13 @@ import { prisma } from "@/lib/prisma";
 import {
   expenseMix,
   expenseMixYears,
+  compareExpenseMix,
   parseProfitYear,
   filterShowsByYear,
   type TxLike,
   type DiversificationLevel,
+  type ExpenseMixComparison,
+  type ExpenseCategoryChange,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { PeriodPicker } from "@/components/PeriodPicker";
@@ -72,6 +75,29 @@ export default async function FinanceExpenseMixPage({
   }));
 
   const mix = expenseMix(allTxs);
+
+  // Comparativo ano a ano das rubricas de gasto (movers): só com um ano específico
+  // selecionado e ambos os anos com despesa. O ano anterior sai do mesmo acervo já
+  // carregado (`filterShowsByYear` sobre as transações cruas), zero I/O extra —
+  // espelho do card de sazonalidade de shows (D215).
+  let comparison: ExpenseMixComparison | null = null;
+  if (yearFilter !== "all") {
+    const prevTxs: TxLike[] = filterShowsByYear(transactions, yearFilter - 1).map(
+      (t) => ({
+        type: t.type as TxLike["type"],
+        amount: t.amount,
+        category: t.category,
+        date: t.date,
+        received: t.received,
+        showId: t.showId,
+      }),
+    );
+    const prevMix = expenseMix(prevTxs);
+    if (mix.categoryCount > 0 && prevMix.categoryCount > 0) {
+      comparison = compareExpenseMix(mix, prevMix);
+    }
+  }
+
   const exportHref =
     "/financas/composicao-despesas/export" +
     (yearFilter === "all" ? "" : `?ano=${yearFilter}`);
@@ -155,6 +181,15 @@ export default async function FinanceExpenseMixPage({
               )}
             </p>
           </div>
+
+          {/* Comparativo ano a ano (movers) — só com um ano específico */}
+          {comparison && yearFilter !== "all" && (
+            <ExpenseMixComparisonCard
+              comparison={comparison}
+              year={yearFilter}
+              previousYear={yearFilter - 1}
+            />
+          )}
 
           {/* Destaques */}
           <div className="grid gap-4 sm:grid-cols-3">
@@ -256,6 +291,126 @@ function Stat({
       <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
       <p className="mt-1 text-xl font-bold text-gray-900">{value}</p>
       {hint && <p className="mt-1 text-xs text-gray-400">{hint}</p>}
+    </div>
+  );
+}
+
+/** Variação de gasto assinada: "+R$ X" (gastou mais) / "−R$ X" (gastou menos). */
+function signedMoney(delta: number): string {
+  const sign = delta > 0 ? "+" : delta < 0 ? "−" : "";
+  return `${sign}${formatMoney(Math.abs(delta))}`;
+}
+
+function ExpenseMixComparisonCard({
+  comparison,
+  year,
+  previousYear,
+}: {
+  comparison: ExpenseMixComparison;
+  year: number;
+  previousYear: number;
+}) {
+  const { biggestIncrease, biggestDecrease, totalDelta } = comparison;
+  // Gastar mais no total merece atenção (rosa); gastar menos é economia (verde).
+  const totalTone =
+    totalDelta > 0
+      ? "text-rose-600"
+      : totalDelta < 0
+        ? "text-emerald-600"
+        : "text-gray-500";
+
+  return (
+    <section className="card">
+      <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="font-semibold">
+          Onde o gasto mudou · {year} vs. {previousYear}
+        </h2>
+        <span className={"text-sm font-semibold " + totalTone}>
+          {signedMoney(totalDelta)} no total
+        </span>
+      </div>
+      <p className="mb-4 text-xs text-gray-500">
+        Em que rubricas você gastou mais ou menos do que no ano anterior — onde o
+        orçamento pesou a mais e onde você cortou.
+      </p>
+
+      {!biggestIncrease && !biggestDecrease ? (
+        <p className="text-sm text-gray-500">
+          Nenhuma rubrica presente nos dois anos mudou de valor.
+        </p>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <MoverCard
+            label="Rubrica que mais subiu"
+            change={biggestIncrease}
+            direction="up"
+          />
+          <MoverCard
+            label="Rubrica que mais caiu"
+            change={biggestDecrease}
+            direction="down"
+          />
+        </div>
+      )}
+
+      {(comparison.newCategories.length > 0 ||
+        comparison.droppedCategories.length > 0) && (
+        <div className="mt-4 grid gap-2 text-xs text-gray-500 sm:grid-cols-2">
+          {comparison.newCategories.length > 0 && (
+            <p>
+              <span className="font-medium text-gray-700">
+                Novas em {year}:
+              </span>{" "}
+              {comparison.newCategories.map((c) => c.category).join(", ")}
+            </p>
+          )}
+          {comparison.droppedCategories.length > 0 && (
+            <p>
+              <span className="font-medium text-gray-700">
+                Sumiram desde {previousYear}:
+              </span>{" "}
+              {comparison.droppedCategories.map((c) => c.category).join(", ")}
+            </p>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function MoverCard({
+  label,
+  change,
+  direction,
+}: {
+  label: string;
+  change: ExpenseCategoryChange | null;
+  direction: "up" | "down";
+}) {
+  // Subir o gasto = rosa (atenção); cair = verde (economia).
+  const valueTone = direction === "up" ? "text-rose-600" : "text-emerald-600";
+  return (
+    <div className="rounded-lg border border-gray-100 p-3">
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+        {label}
+      </p>
+      {change ? (
+        <>
+          <p className="mt-1 truncate text-lg font-bold text-gray-900">
+            {change.category}
+          </p>
+          <p className={"mt-0.5 text-sm font-semibold " + valueTone}>
+            {signedMoney(change.amountDelta)}
+            <span className="ml-1 font-normal text-gray-400">
+              ({formatMoney(change.previousAmount)} → {formatMoney(change.currentAmount)})
+            </span>
+          </p>
+        </>
+      ) : (
+        <p className="mt-1 text-sm text-gray-400">
+          Nenhuma rubrica {direction === "up" ? "subiu" : "caiu"}.
+        </p>
+      )}
     </div>
   );
 }

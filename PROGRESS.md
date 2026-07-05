@@ -9,8 +9,19 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1254 testes** verdes após a **exportação CSV do comparativo
-ano a ano da sazonalidade de shows** (Sessão 230, D223 — o card "Temporada {ano} vs. {ano-1}" (`compareGigSeasonality`, D215) já traz na
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1259 testes** verdes após o **comparativo ano a ano da composição
+de despesas** (Sessão 231, D224 — `/financas/composicao-despesas` já tinha recorte por período (`?ano=`) e CSV, mas — ao contrário das vistas
+analíticas irmãs (sazonalidade de shows/D215, DSO por contratante/D195) — não respondia "em que rubricas gastei mais/menos que no ano passado?".
+Novo helper puro `compareExpenseMix(current, previous)` + tipos `ExpenseMixComparison`/`ExpenseCategoryChange` em `src/lib/finance.ts`: casa as
+rubricas de dois `expenseMix` já computados por nome de categoria e destila os dois **movers** — a rubrica que mais subiu (`biggestIncrease`) e a
+que mais caiu (`biggestDecrease`) de gasto — + delta total + rubricas novas (só no atual) / sumidas (só no anterior). Card
+`ExpenseMixComparisonCard` "Onde o gasto mudou · {ano} vs. {ano-1}" (mover de aumento em rosa/atenção, de queda em verde/economia), exibido só
+com um ano específico e ambos os períodos com despesa; o ano anterior sai do mesmo acervo já carregado via `filterShowsByYear(txs, ano-1)`
+(**zero I/O extra**). Segue o padrão de "movers" de `comparePaymentLagByContact`/D195 (não despeja todas as rubricas — a tela-mãe já tem a
+tabela completa). Sem limiar de estabilidade: qualquer `amountDelta` não-nulo conta (dinheiro raramente empata em centavos); empate desempata
+pelo nome (pt-BR). **+5 testes** (`finance.test.ts`). Smoke test (`next start`) → `/login` 200 e `/financas/composicao-despesas?ano=2025` 307
+(auth-gated). `npm audit` sem novas vulnerabilidades (mesmos advisories Next/postcss da D6; nenhuma dependência nova). Ver D224. Antes, a
+**exportação CSV do comparativo ano a ano da sazonalidade de shows** (Sessão 230, D223 — o card "Temporada {ano} vs. {ano-1}" (`compareGigSeasonality`, D215) já traz na
 tela os dois movers e a tabela recolhida "Ver os 12 meses" (D217), mas o comparativo era a **única** leitura da sazonalidade sem CSV (a
 tela-mãe já exporta a sazonalidade absoluta via `gigSeasonalityToCsv`/D205; levar o comparativo à planilha ficou adiado na D215(d)/D217(c)).
 Novo serializador puro `gigSeasonalityComparisonToCsv(comparison)` + `GIG_SEASONALITY_COMPARISON_CSV_HEADERS` (Mês / Shows (ano anterior) /
