@@ -2101,6 +2101,139 @@ export function compareExpenseMix(
   };
 }
 
+/**
+ * Variação da receita de UMA fonte (categoria) entre dois períodos (o ano
+ * selecionado × o anterior). `amountDelta` positivo = essa fonte rendeu MAIS;
+ * negativo = rendeu menos (encolheu). Espelho de `ExpenseCategoryChange`/D224 no
+ * eixo de receita.
+ */
+export interface IncomeSourceChange {
+  /** Nome da fonte (já normalizado por `incomeMix`; "Sem categoria" para vazias). */
+  category: string;
+  /** Receita da fonte no período atual (centavos). */
+  currentAmount: number;
+  /** Receita da fonte no período anterior (centavos). */
+  previousAmount: number;
+  /** Variação da receita (atual − anterior, centavos). Positivo = rendeu mais. */
+  amountDelta: number;
+  /** Participação da fonte na receita total do período atual (0..1). */
+  currentShare: number;
+  /** Participação da fonte na receita total do período anterior (0..1). */
+  previousShare: number;
+}
+
+export interface IncomeMixComparison {
+  /**
+   * Fontes presentes nos DOIS períodos, com a variação da receita. Ordenadas do
+   * maior crescimento à maior queda (quem mais subiu primeiro), para o "mover" de
+   * cima do card ser a fonte que mais engordou o faturamento.
+   */
+  changes: IncomeSourceChange[];
+  /** Receita total do período atual (centavos). */
+  currentTotal: number;
+  /** Receita total do período anterior (centavos). */
+  previousTotal: number;
+  /** Variação da receita total (atual − anterior, centavos). */
+  totalDelta: number;
+  /** Fonte que mais CRESCEU de receita (maior `amountDelta > 0`); null se nenhuma subiu. */
+  biggestIncrease: IncomeSourceChange | null;
+  /** Fonte que mais CAIU de receita (menor `amountDelta < 0`); null se nenhuma caiu. */
+  biggestDecrease: IncomeSourceChange | null;
+  /** Fontes que só tiveram receita no período atual (novas no faturamento). */
+  newSources: IncomeSourceSlice[];
+  /** Fontes que tinham receita no anterior mas não no atual (sumiram do faturamento). */
+  droppedSources: IncomeSourceSlice[];
+}
+
+/**
+ * Compara o **mix de receitas** (fontes de renda) entre dois períodos (tipicamente
+ * um ano × o ano anterior), casando as fontes por nome de categoria, respondendo
+ * "que fontes de renda cresceram/encolheram frente ao ano passado?".
+ *
+ * Espelho simétrico de `compareExpenseMix`/D224 no eixo de receita, no mesmo
+ * espírito de "movers" (`comparePaymentLagByContact`/D195, `compareGigSeasonality`/
+ * D215): em vez de despejar todas as fontes na tela, destila os dois **movers** — a
+ * fonte que mais cresceu e a que mais caiu — mantendo a tela enxuta. Os `changes`
+ * completos ficam disponíveis para quem quiser detalhar.
+ *
+ * Diferente da despesa (onde gastar menos costuma ser bom), aqui crescer uma fonte é
+ * geralmente positivo e uma fonte encolher merece um olhar — mas, como
+ * `compareExpenseMix`, o helper só reporta o fato, sem veredito de bom/ruim (a leitura
+ * de risco fica com o HHI/veredito de `incomeMix`). Sem limiar de estabilidade: qualquer
+ * `amountDelta` não-nulo conta, então os movers cobrem toda variação real.
+ *
+ * Puro, sem I/O: recebe dois `incomeMix` já computados (cada um sobre as transações do
+ * seu período). O chamador decide quando exibir (tipicamente só com um ano específico e
+ * ambos os períodos com receita).
+ */
+export function compareIncomeMix(
+  current: IncomeMix,
+  previous: IncomeMix,
+): IncomeMixComparison {
+  const prevByCategory = new Map<string, IncomeSourceSlice>();
+  for (const s of previous.sources) prevByCategory.set(s.category, s);
+
+  const currentCategories = new Set<string>();
+  const changes: IncomeSourceChange[] = [];
+  const newSources: IncomeSourceSlice[] = [];
+
+  for (const cur of current.sources) {
+    currentCategories.add(cur.category);
+    const prev = prevByCategory.get(cur.category);
+    if (!prev) {
+      newSources.push(cur);
+      continue;
+    }
+    changes.push({
+      category: cur.category,
+      currentAmount: cur.amount,
+      previousAmount: prev.amount,
+      amountDelta: cur.amount - prev.amount,
+      currentShare: cur.share,
+      previousShare: prev.share,
+    });
+  }
+
+  const droppedSources = previous.sources.filter(
+    (s) => !currentCategories.has(s.category),
+  );
+
+  // Maior crescimento no topo (variação desc); empate estável pelo nome da fonte (pt-BR).
+  changes.sort(
+    (a, b) =>
+      b.amountDelta - a.amountDelta ||
+      a.category.localeCompare(b.category, "pt-BR"),
+  );
+
+  let biggestIncrease: IncomeSourceChange | null = null;
+  let biggestDecrease: IncomeSourceChange | null = null;
+  for (const c of changes) {
+    if (
+      c.amountDelta > 0 &&
+      (!biggestIncrease || c.amountDelta > biggestIncrease.amountDelta)
+    ) {
+      biggestIncrease = c;
+    }
+    if (
+      c.amountDelta < 0 &&
+      (!biggestDecrease || c.amountDelta < biggestDecrease.amountDelta)
+    ) {
+      biggestDecrease = c;
+    }
+  }
+
+  return {
+    changes,
+    currentTotal: current.total,
+    previousTotal: previous.total,
+    totalDelta: current.total - previous.total,
+    biggestIncrease,
+    biggestDecrease,
+    newSources,
+    droppedSources,
+  };
+}
+
 export interface MonthlyTotal {
   /** Chave "YYYY-MM". */
   month: string;

@@ -7435,3 +7435,42 @@ contexto, decisão, justificativa e alternativas consideradas.
   testes** (`vitest run`); smoke test — `next start`, `/login` → HTTP 200 e
   `/financas/composicao-despesas?ano=2025` → HTTP 307 (auth-gated). `npm audit` **inalterado** vs. baseline
   (10 advisories — 4 moderate / 5 high / 1 critical, Next 14 / postcss; ver D6); **nenhuma dependência nova**.
+
+## 2026-07-05 — D225: Comparativo ano a ano das fontes de renda (`compareIncomeMix` + card em `/financas/fontes-de-renda`)
+- **Contexto:** o comparativo ano a ano da composição de despesas (`compareExpenseMix`/D224) fechou o eixo de
+  gasto, mas a tela irmã **`/financas/fontes-de-renda`** (mix de receitas por fonte, `incomeMix`) — que já tinha
+  `?ano=` (`PeriodPicker`) e CSV — seguia sem a leitura de comparação: "que fontes de renda cresceram ou
+  encolheram frente ao ano passado?". A composição num ano isolado mostra *de onde* vem o dinheiro, não *o que
+  mudou*. É a assimetria natural a fechar (o mesmo que motivou a D224 no eixo de despesa).
+- **Decisão:** novo helper puro `compareIncomeMix(current, previous)` em `src/lib/finance.ts` (+ tipos
+  `IncomeMixComparison` / `IncomeSourceChange`), **espelho simétrico exato** de `compareExpenseMix`/D224 no eixo
+  de receita: casa as fontes de dois `incomeMix` já computados por nome de categoria (via `.sources`) e destila
+  os dois **movers** — a fonte que mais cresceu (`biggestIncrease`) e a que mais caiu (`biggestDecrease`) de
+  receita — além do delta total, das fontes novas (só no atual, `newSources`) e das sumidas (só no anterior,
+  `droppedSources`). Card `IncomeMixComparisonCard` "De onde veio a mudança · {ano} vs. {ano-1}" na página,
+  exibido só com um ano específico e ambos os períodos com receita; o ano anterior sai do mesmo acervo já
+  carregado via `filterShowsByYear(transactions, yearFilter - 1)` (**zero I/O extra**). `incomeMix` intocado.
+- **Justificativa:** reusa o padrão de "movers" já consolidado (D195/D215/D224) — a tela-mãe já tem a tabela
+  completa por fonte; o card destaca só os extremos. Reusa a camada pura já testada (`incomeMix`) sem I/O novo.
+  **Direção de cor invertida em relação à despesa:** aqui crescer uma fonte é bom (verde/emerald) e encolher
+  merece atenção (rosa); no total, faturar mais é verde e faturar menos é rosa — o oposto do card de despesa
+  (onde gastar mais é rosa). O helper, como `compareExpenseMix`, só reporta o fato sem veredito bom/ruim (a
+  leitura de risco de concentração fica com o HHI/veredito de `incomeMix`).
+- **Sem limiar de estabilidade:** como na D224, qualquer `amountDelta` não-nulo conta (dinheiro raramente empata
+  em centavos); empate de delta desempata pelo nome da fonte (pt-BR), ordem determinística.
+- **Alternativas consideradas:** (a) unificar `compareExpenseMix`/`compareIncomeMix` num só helper genérico sobre
+  `CategoryMixSlice` — adiado: as duas telas usam campos distintos (`.categories`/`ExpenseCategorySlice` vs.
+  `.sources`/`IncomeSourceSlice`) e a duplicação é rasa e legível; um genérico exigiria adaptar os dois tipos
+  públicos sem ganho claro. (b) exportar o comparativo em CSV — adiado (mesma deferência da D224(b): sem demanda;
+  a página já exporta o mix absoluto). (c) levar o mover ao Painel — descartado: o Painel já é denso.
+- **Testes:** **+5** em `finance.test.ts` (`describe("compareIncomeMix")`, espelho dos da D224): destila os dois
+  movers + deltas totais; ordena os changes do maior crescimento à maior queda; separa fontes novas/sumidas
+  (fonte em ambos os anos vira change, não nova/sumida); sem fontes em comum → sem movers, tudo novo/sumido;
+  empate de delta desempata pelo nome (pt-BR). Suíte **1264** verdes (era 1259).
+- **DoD:** build de produção verde; lint (`next lint`, 0 avisos); typecheck (`tsc --noEmit`) limpo; **1264
+  testes** (`vitest run`); smoke test — `next start`, `/login` → HTTP 200 e `/financas/fontes-de-renda?ano=2025`
+  → HTTP 307 (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1
+  critical, Next 14 / postcss; ver D6); **nenhuma dependência nova**.
+- **Nota de sessão:** a unidade originalmente escolhida nesta execução (export CSV do fluxo de caixa projetado)
+  foi descoberta **já mergeada** por uma sessão paralela na `main` real; a PR duplicada (#250) foi fechada e esta
+  unidade (comparativo de fontes de renda) escolhida em seu lugar, sobre a `main` atual.

@@ -115,6 +115,7 @@ import {
   STRONG_MONTH_MIN_SHOWS,
   incomeMix,
   incomeMixYears,
+  compareIncomeMix,
   expenseMix,
   expenseMixYears,
   compareExpenseMix,
@@ -2051,6 +2052,90 @@ describe("compareExpenseMix", () => {
     // Ambos +200; ordem estável por nome.
     expect(cmp.changes.map((c) => c.category)).toEqual(["abacaxi", "zebra"]);
     // O mover de aumento é o primeiro encontrado com o maior delta (abacaxi).
+    expect(cmp.biggestIncrease?.category).toBe("abacaxi");
+  });
+});
+
+describe("compareIncomeMix", () => {
+  it("destila os movers: fonte que mais cresceu e a que mais caiu de receita", () => {
+    const current = incomeMix([
+      tx({ type: "INCOME", amount: 900_00, category: "shows" }),
+      tx({ type: "INCOME", amount: 100_00, category: "aulas" }),
+    ]);
+    const previous = incomeMix([
+      tx({ type: "INCOME", amount: 300_00, category: "shows" }),
+      tx({ type: "INCOME", amount: 500_00, category: "aulas" }),
+    ]);
+    const cmp = compareIncomeMix(current, previous);
+    // shows: +600; aulas: -400.
+    expect(cmp.biggestIncrease?.category).toBe("shows");
+    expect(cmp.biggestIncrease?.amountDelta).toBe(600_00);
+    expect(cmp.biggestDecrease?.category).toBe("aulas");
+    expect(cmp.biggestDecrease?.amountDelta).toBe(-400_00);
+    expect(cmp.currentTotal).toBe(1000_00);
+    expect(cmp.previousTotal).toBe(800_00);
+    expect(cmp.totalDelta).toBe(200_00);
+  });
+
+  it("ordena os changes do maior crescimento à maior queda", () => {
+    const current = incomeMix([
+      tx({ type: "INCOME", amount: 500_00, category: "a" }),
+      tx({ type: "INCOME", amount: 100_00, category: "b" }),
+      tx({ type: "INCOME", amount: 400_00, category: "c" }),
+    ]);
+    const previous = incomeMix([
+      tx({ type: "INCOME", amount: 100_00, category: "a" }),
+      tx({ type: "INCOME", amount: 100_00, category: "b" }),
+      tx({ type: "INCOME", amount: 900_00, category: "c" }),
+    ]);
+    const cmp = compareIncomeMix(current, previous);
+    // a: +400, b: 0, c: -500.
+    expect(cmp.changes.map((c) => c.category)).toEqual(["a", "b", "c"]);
+    expect(cmp.changes.map((c) => c.amountDelta)).toEqual([400_00, 0, -500_00]);
+  });
+
+  it("separa fontes novas e sumidas (só num dos períodos)", () => {
+    const current = incomeMix([
+      tx({ type: "INCOME", amount: 200_00, category: "shows" }),
+      tx({ type: "INCOME", amount: 150_00, category: "royalties" }),
+    ]);
+    const previous = incomeMix([
+      tx({ type: "INCOME", amount: 200_00, category: "shows" }),
+      tx({ type: "INCOME", amount: 300_00, category: "produção" }),
+    ]);
+    const cmp = compareIncomeMix(current, previous);
+    expect(cmp.newSources.map((s) => s.category)).toEqual(["royalties"]);
+    expect(cmp.droppedSources.map((s) => s.category)).toEqual(["produção"]);
+    // shows aparece nos dois → vira change (delta 0), não novo/sumido.
+    expect(cmp.changes.map((c) => c.category)).toEqual(["shows"]);
+    expect(cmp.biggestIncrease).toBeNull();
+    expect(cmp.biggestDecrease).toBeNull();
+  });
+
+  it("sem fontes em comum → sem movers, tudo novo/sumido", () => {
+    const current = incomeMix([tx({ type: "INCOME", amount: 100_00, category: "x" })]);
+    const previous = incomeMix([tx({ type: "INCOME", amount: 100_00, category: "y" })]);
+    const cmp = compareIncomeMix(current, previous);
+    expect(cmp.changes).toEqual([]);
+    expect(cmp.biggestIncrease).toBeNull();
+    expect(cmp.biggestDecrease).toBeNull();
+    expect(cmp.newSources.map((s) => s.category)).toEqual(["x"]);
+    expect(cmp.droppedSources.map((s) => s.category)).toEqual(["y"]);
+    expect(cmp.totalDelta).toBe(0);
+  });
+
+  it("empate de amountDelta desempata pelo nome da fonte (pt-BR)", () => {
+    const current = incomeMix([
+      tx({ type: "INCOME", amount: 300_00, category: "zebra" }),
+      tx({ type: "INCOME", amount: 300_00, category: "abacaxi" }),
+    ]);
+    const previous = incomeMix([
+      tx({ type: "INCOME", amount: 100_00, category: "zebra" }),
+      tx({ type: "INCOME", amount: 100_00, category: "abacaxi" }),
+    ]);
+    const cmp = compareIncomeMix(current, previous);
+    // Ambos +200; ordem estável por nome.
+    expect(cmp.changes.map((c) => c.category)).toEqual(["abacaxi", "zebra"]);
     expect(cmp.biggestIncrease?.category).toBe("abacaxi");
   });
 });

@@ -9,8 +9,18 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1259 testes** verdes após o **comparativo ano a ano da composição
-de despesas** (Sessão 231, D224 — `/financas/composicao-despesas` já tinha recorte por período (`?ano=`) e CSV, mas — ao contrário das vistas
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1264 testes** verdes após o **comparativo ano a ano das fontes de
+renda** (Sessão 232, D225 — espelho simétrico da composição de despesas/D224 no eixo de receita: `/financas/fontes-de-renda` (mix de receitas
+por fonte, `incomeMix`) já tinha `?ano=` e CSV, mas não respondia "que fontes de renda cresceram/encolheram frente ao ano passado?". Novo helper
+puro `compareIncomeMix(current, previous)` + tipos `IncomeMixComparison`/`IncomeSourceChange` em `src/lib/finance.ts` casa as fontes de dois
+`incomeMix` por nome de categoria (via `.sources`) e destila os dois **movers** — a fonte que mais cresceu (`biggestIncrease`) e a que mais caiu
+(`biggestDecrease`) — + delta total + fontes novas/sumidas. Card `IncomeMixComparisonCard` "De onde veio a mudança · {ano} vs. {ano-1}" na
+página (mover de crescimento em verde/bom, de queda em rosa/atenção — **cor invertida** frente ao card de despesa), exibido só com um ano
+específico e ambos os períodos com receita; o ano anterior sai do mesmo acervo já carregado via `filterShowsByYear(txs, ano-1)` (**zero I/O
+extra**). Sem limiar de estabilidade (como D224): qualquer `amountDelta` não-nulo conta; empate pelo nome (pt-BR). **+5 testes**
+(`finance.test.ts`, espelho dos da D224). Smoke test (`next start`) → `/login` 200 e `/financas/fontes-de-renda?ano=2025` 307 (auth-gated). `npm
+audit` sem novas vulnerabilidades (mesmos advisories Next/postcss da D6; nenhuma dependência nova). Ver D225. Antes, o **comparativo ano a ano
+da composição de despesas** (Sessão 231, D224 — `/financas/composicao-despesas` já tinha recorte por período (`?ano=`) e CSV, mas — ao contrário das vistas
 analíticas irmãs (sazonalidade de shows/D215, DSO por contratante/D195) — não respondia "em que rubricas gastei mais/menos que no ano passado?".
 Novo helper puro `compareExpenseMix(current, previous)` + tipos `ExpenseMixComparison`/`ExpenseCategoryChange` em `src/lib/finance.ts`: casa as
 rubricas de dois `expenseMix` já computados por nome de categoria e destila os dois **movers** — a rubrica que mais subiu (`biggestIncrease`) e a
