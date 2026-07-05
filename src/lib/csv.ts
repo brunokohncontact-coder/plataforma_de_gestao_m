@@ -65,6 +65,7 @@ import {
   type RecurringExpensesReport,
   type TaxReserveReport,
   type BreakEvenAnalysis,
+  type CityReengageList,
 } from "./finance";
 import type {
   ClientRetention,
@@ -1966,6 +1967,50 @@ export function reengageToCsv<C extends ContactRankLike & { role: string }>(
     ]);
   }
   out.push(["Total", "", "", "", String(totalPastShows), centsToCsvAmount(totalFee)]);
+  return toCsv(out, delimiter);
+}
+
+// ── Praças para revisitar (cidades dormentes com histórico e nada agendado) ───
+
+export const CITIES_REENGAGE_CSV_HEADERS = [
+  "Cidade",
+  "Último show",
+  "Dias sem tocar",
+  "Shows",
+  "Cachê histórico (R$)",
+] as const;
+
+/**
+ * Serializa a lista de cidades dormentes (`findCitiesToReengage`) em CSV, pronto
+ * para download — espelha a tabela de `/shows/cidades/revisitar`. Irmão de
+ * `reengageToCsv` no eixo geográfico (cidade em vez de contato/papel): emite uma
+ * linha por praça em `list.rows` (mesma ordem da página: mais esquecidas
+ * primeiro, desempate pelo cachê histórico, depois nome pt-BR), encerrada numa
+ * linha "Total" com a soma de shows passados e do cachê histórico de toda a
+ * fila. Colunas: cidade, data do último show, dias sem tocar (o
+ * `daysSinceLastShow` cru, legível por máquina — não o "há 2 meses" da UI), nº
+ * de shows passados não cancelados e cachê histórico (por cidade). Mesma
+ * convenção pt-BR dos irmãos (delimitador ";", decimal com vírgula). Pura.
+ */
+export function citiesToReengageToCsv(
+  list: CityReengageList,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(CITIES_REENGAGE_CSV_HEADERS)];
+  let totalPastShows = 0;
+  let totalFee = 0;
+  for (const row of list.rows) {
+    totalPastShows += row.pastShows;
+    totalFee += row.totalFee;
+    out.push([
+      row.name,
+      csvDate(row.lastShowDate),
+      String(row.daysSinceLastShow),
+      String(row.pastShows),
+      centsToCsvAmount(row.totalFee),
+    ]);
+  }
+  out.push(["Total", "", "", String(totalPastShows), centsToCsvAmount(totalFee)]);
   return toCsv(out, delimiter);
 }
 

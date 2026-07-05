@@ -7600,6 +7600,35 @@ contexto, decisão, justificativa e alternativas consideradas.
   → HTTP 200 e `/shows/cidades/revisitar` → HTTP 307 (auth-gated). `npm audit` **inalterado** vs. baseline (10
   advisories — 4 moderate / 5 high / 1 critical, Next 14 / postcss; ver D6); **nenhuma dependência nova**.
 
+## 2026-07-05 — D230: Exportação CSV das praças para revisitar (`citiesToReengageToCsv` + `/shows/cidades/revisitar/export`)
+- **Contexto:** as "Praças para revisitar" (`findCitiesToReengage`/D229) entregaram o sinal geográfico de rebooking — cidades
+  onde já toquei, sem nada agendado e há > 90 dias sem show —, mas nasceram sem exportação CSV; a própria D229(c) adiou o CSV
+  ("o próximo passo natural se a lista crescer"). Era a **única** vista analítica de shows/contatos recém-nascida sem "⬇ CSV":
+  todas as irmãs (rentabilidade, faixas-de-cache, sazonalidade, cancelamentos, contatos-para-reativar) já exportam. Para
+  planejar uma campanha de retorno a várias praças, a planilha (ordenável/filtrável, colável num roteiro de turnê) é o formato.
+- **Decisão:** novo serializador puro `citiesToReengageToCsv(list)` + `CITIES_REENGAGE_CSV_HEADERS` (Cidade / Último show / Dias
+  sem tocar / Shows / Cachê histórico (R$)) em `src/lib/csv.ts` — **irmão geográfico** de `reengageToCsv`/D127 (o mesmo layout,
+  sem as colunas Contato/Papel, com Cidade na 1ª): uma linha por praça em `list.rows` (mesma ordem da página — mais esquecidas
+  primeiro, desempate por cachê histórico, depois nome pt-BR), encerrada numa linha "Total" com a soma de shows passados e do
+  cachê histórico da fila. "Dias sem tocar" é o `daysSinceLastShow` cru (legível por máquina, não o "há 2 meses" da UI); cachê
+  via `centsToCsvAmount`, data via `csvDate`. Nova rota `/shows/cidades/revisitar/export` (mesma consulta enxuta da página —
+  status/city/date/fee —, zero I/O extra; a regra de dormência mora na lógica pura testada), BOM UTF-8, nome
+  `pracas-para-revisitar.csv`; link "⬇ CSV" no cabeçalho da página só com `list.count > 0`.
+- **Justificativa:** reusa integralmente a disciplina serializador-puro + route fino do acervo (D125/D127/D132…). Sem `?ano=`
+  no export — coerente com a D229(d): a leitura é "há quanto tempo não toco", intrinsecamente sobre o histórico inteiro até hoje;
+  não há eixo de período a recortar. Sem promover a lista a colunas extras (o card de prioridade da página não precisa ir ao CSV
+  — é derivável da 1ª linha).
+- **Alternativas consideradas:** (a) uma coluna "há N meses" formatada (espelho do texto da UI) — descartado: o CSV prioriza o
+  número cru máquina-legível (mesma convenção de `reengageToCsv`, que exporta os dias, não o rótulo humano). (b) gate por ano —
+  não se aplica (ver acima).
+- **Testes:** **+3** em `csv.test.ts` (`describe("citiesToReengageToCsv")`): só cabeçalho + Total zerado sem praças; uma linha
+  por praça (mais esquecida primeiro) + Total com os somatórios; ignora cidade com show futuro / só-cancelada / recente
+  (< staleDays) / sem cidade. Suíte **1290** verde (era 1287).
+- **DoD:** build de produção verde (rota `/shows/cidades/revisitar/export` no manifesto); lint (`next lint`, 0 avisos);
+  typecheck (`tsc --noEmit`) limpo; **1290 testes** (`vitest run`); smoke test — `next start`, `/login` → HTTP 200 e
+  `/shows/cidades/revisitar/export` → HTTP 307 (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate
+  / 5 high / 1 critical, Next 14 / postcss; ver D6); **nenhuma dependência nova**.
+
 ## D221 — Ritmo do mês vs. ano passado "até o mesmo dia" (recorte maçã-com-maçã em `monthYoYPace`) (Sessão 235)
 - **Contexto:** o comparativo sazonal `monthYoYPace` (D161) mede a **projeção pro-rata** do fechamento do mês corrente contra o
   mesmo mês do ano anterior **inteiro** (mês cheio × mês cheio). É a leitura certa para "vou fechar acima do ano passado?", mas

@@ -41,6 +41,11 @@ export default async function CidadesRevisitarPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {list.count > 0 && (
+            <a href="/shows/cidades/revisitar/export" className="btn-secondary">
+              ⬇ CSV
+            </a>
+          )}
           <Link href="/shows/cidades" className="btn-secondary">
             ← Atuação por cidade
           </Link>

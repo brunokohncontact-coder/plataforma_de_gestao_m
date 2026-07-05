@@ -9,7 +9,18 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1287 testes** verdes após estender o **comparativo
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1290 testes** verdes após a **exportação CSV das praças
+para revisitar** (Sessão 236, D230 — as "Praças para revisitar" (`findCitiesToReengage`/D229) — cidades onde já toquei, sem nada
+agendado e há > 90 dias sem show — nasceram sem CSV (a própria D229(c) adiou); eram a única vista analítica recém-nascida sem "⬇
+CSV". Novo serializador puro `citiesToReengageToCsv(list)` + `CITIES_REENGAGE_CSV_HEADERS` (Cidade / Último show / Dias sem tocar /
+Shows / Cachê histórico (R$)) em `src/lib/csv.ts` — irmão geográfico de `reengageToCsv`/D127 (mesmo layout, sem Contato/Papel, com
+Cidade na 1ª): uma linha por praça na ordem da página (mais esquecidas primeiro, desempate por cachê, depois nome pt-BR) + linha
+"Total" (soma de shows passados e cachê histórico); "Dias sem tocar" é o `daysSinceLastShow` cru (máquina-legível). Nova rota
+`/shows/cidades/revisitar/export` (mesma consulta enxuta da página, zero I/O extra), BOM UTF-8, nome `pracas-para-revisitar.csv`;
+link "⬇ CSV" no cabeçalho só com `list.count > 0`. Sem `?ano=` — coerente com a D229(d): a leitura é "há quanto tempo não toco",
+sobre o histórico inteiro. **+3 testes** (`csv.test.ts`). Smoke test (`next start`) → `/login` 200 e
+`/shows/cidades/revisitar/export` 307 (auth-gated). `npm audit` sem novas vulnerabilidades (mesmos advisories Next/postcss da D6;
+nenhuma dependência nova). Ver D230. Antes, o **comparativo
 sazonal do ritmo do mês com o recorte "até o mesmo dia do ano passado"** (Sessão 235, D221 — `monthYoYPace` ganhou os campos
 `lastYear*ToDate` + `*ToDateVsLastYear`: além da projeção pro-rata × mês cheio do ano anterior (D161), agora compara o **lançado
 até agora** com o lançado até o mesmo dia do mês no ano anterior — leitura maçã-com-maçã que não depende da projeção frágil cedo
@@ -4104,8 +4115,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    entrada no hub (`REPORT_GROUPS`, "Agenda & pipeline", 📍): as cidades onde já toquei, sem nada agendado e há ≥90 dias sem
    show — o 1º sinal **de recência** por praça (a geografia só tinha concentração/D113 e P&L/D111, ambas sobre dinheiro).
    Ignora shows sem cidade e cancelados; ordena pelas mais esquecidas, desempatando por cachê acumulado; **+8 testes**, ver
-   D229. Próximo possível — (a) versão por local/venue; (b) export CSV da lista (adiado, a tela já entrega o sinal); o
-   `staleDays`=90 é **hipótese** (cadência de retorno a uma cidade), sinalizada nos bloqueios.
+   D229. **Exportação CSV** entregue na Sessão 236 — `citiesToReengageToCsv` + `CITIES_REENGAGE_CSV_HEADERS` (Cidade / Último
+   show / Dias sem tocar / Shows / Cachê histórico) em `src/lib/csv.ts` (irmão geográfico de `reengageToCsv`/D127: uma linha
+   por praça na ordem da página + Total) + rota `/shows/cidades/revisitar/export` + botão "⬇ CSV" só com `list.count > 0`, sem
+   `?ano=` (a leitura é sobre o histórico inteiro, D229(d)); **+3 testes**, ver D230. Próximo possível — (a) versão por
+   local/venue (D229(a)); o `staleDays`=90 é **hipótese** (cadência de retorno a uma cidade), sinalizada nos bloqueios.
 10. **Exportação CSV das telas de Finanças — evoluções** (transações entregues na Sessão 14, `/financas/export`;
    resumo anual na Sessão 47, `/financas/anual/export`; trimestral, `/financas/trimestral/export`):
    **fontes de renda** entregue na Sessão 152 — `incomeMixToCsv` + `INCOME_MIX_CSV_HEADERS` em `src/lib/csv.ts` +
