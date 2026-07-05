@@ -7284,3 +7284,44 @@ contexto, decisão, justificativa e alternativas consideradas.
   **1239 testes** (`vitest run`); smoke test — `next start`, `/login` → HTTP 200 e `/shows/abc123` → 307
   (auth-gated; app sobe). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high /
   1 critical, todos do Next 14 / postcss bundlado; ver D6); **nenhuma dependência nova**.
+
+## 2026-07-05 — D221: Exportação CSV do mês do calendário (`monthCalendarToCsv`)
+- **Contexto:** `/shows/calendario` ganhou uma faixa de resumo do mês (D216 — total de shows, cachê
+  confirmado × a confirmar, cachê total), mas era a **única** vista analítica de shows sem uma
+  exportação CSV (todas as irmãs — rentabilidade, faixas-de-cache, dias-da-semana, sazonalidade,
+  antecedência, funil — já têm o botão "⬇ CSV" + rota `/export`). Quem quisesse a lista dos shows de um
+  mês num arquivo (para uma planilha de fechamento, uma prestação de contas, ou só arquivar) não tinha
+  saída.
+- **Decisão:** novo serializador puro `monthCalendarToCsv(shows, year, month)` + `MONTH_CALENDAR_CSV_HEADERS`
+  (Data / Hora / Título / Local / Status / Cachê (R$)) em `src/lib/csv.ts` + rota
+  `/shows/calendario/export?mes=YYYY-MM` + link "⬇ CSV" no cabeçalho da página (ao lado do "Exportar .ics"),
+  propagando o mês exibido (`?mes=`). O serializador recebe os **mesmos** shows que a página carrega para a
+  grade (a janela `monthGridRange`, que inclui as bordas das semanas vizinhas), **recorta pela data LOCAL**
+  ao mês pedido — exatamente o que a grade marca como "do mês" (`inMonth`) e o que `summarizeMonthShows`
+  (D216) soma — lista uma linha por show em ordem de data, e fecha (quando há linhas) com uma linha
+  **"Total"** que reusa `summarizeMonthShows`: `N show(s)` (cancelados contados à parte no rótulo, fora da
+  soma) + o cachê total do mês (confirmado + a confirmar). Novos helpers `csvLocalDate`/`csvLocalTime`
+  formatam data/hora em horário **LOCAL** (distinto do UTC de `csvDate`/`csvTime` das leituras de
+  rentabilidade), para casar o recorte LOCAL da grade/resumo.
+- **Justificativa:** fecha a assimetria "toda vista de shows exporta, menos o calendário", com o mesmo
+  padrão das irmãs (rota fina + camada pura testada + BOM UTF-8 na resposta HTTP). Reusar
+  `summarizeMonthShows` mantém a linha Total **idêntica** à faixa de resumo na tela (mesma regra de
+  cancelados fora da soma) — uma única fonte de verdade para "quanto vale este mês". Formatar em LOCAL (não
+  UTC) é o que preserva a coerência: um show em 31/03 23:00 LOCAL aparece sob março tanto na grade quanto no
+  CSV, mesmo que seja 01/04 em UTC.
+- **Alternativas consideradas:** (a) reusar `showsToCsv` (D-transações/shows) — descartado: ele usa data/hora
+  **UTC** e não recorta por mês nem emite linha Total; casaria mal com o recorte LOCAL da grade. (b) exportar
+  o ano inteiro numa planilha — fora de escopo: a vista é mensal; o export por ano já existe em outras telas
+  (rentabilidade/sazonalidade). (c) incluir Cidade/Observações nas colunas — descartado por ora: a grade do
+  calendário mostra título/local/status/cachê; manter o CSV alinhado ao que a vista destaca (a lista geral de
+  shows com todas as colunas já é o `showsToCsv`). (d) formatar em UTC como as demais exportações — descartado:
+  introduziria discrepância de mês na borda vs. o que a grade e o resumo mostram.
+- **Testes:** **+7** em `csv.test.ts` (`describe("monthCalendarToCsv")`): só cabeçalho sem shows no mês; uma
+  linha com data/hora LOCAL + status legível + cachê com vírgula; lista em ordem de data + linha Total; recorte
+  LOCAL ignorando bordas de fev/abr; Total exclui cancelados da soma mas os conta no rótulo; singular/plural no
+  rótulo; local ausente → vazio e status desconhecido preservado. Suíte **1246** verdes (era 1239).
+- **DoD:** build de produção verde (rota `/shows/calendario/export` registrada); lint (`next lint`, 0 avisos);
+  typecheck (`tsc --noEmit`) limpo; **1246 testes** (`vitest run`); smoke test — `next start`, `/login` → HTTP
+  200 e `/shows/calendario/export?mes=2026-03` → 307 (auth-gated; app sobe). `npm audit` **inalterado** vs.
+  baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss bundlado; ver D6);
+  **nenhuma dependência nova**.

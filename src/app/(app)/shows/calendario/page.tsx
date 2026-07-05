@@ -48,6 +48,13 @@ export default async function ShowsCalendarPage({
         <div className="flex items-center gap-3">
           <ShowsViewToggle active="calendario" />
           <a
+            href={`/shows/calendario/export?mes=${monthKey(year, month)}`}
+            className="text-sm text-brand-700 hover:underline"
+            title={`Baixar os shows de ${formatMonthTitle(year, month)} em CSV`}
+          >
+            ⬇ CSV
+          </a>
+          <a
             href="/shows/agenda.ics"
             className="text-sm text-brand-700 hover:underline"
             title="Baixar a agenda para Google/Apple Calendar"

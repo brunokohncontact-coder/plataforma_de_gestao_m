@@ -9,7 +9,19 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1239 testes** verdes após a **duplicação de shows em lote**
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1246 testes** verdes após a **exportação CSV do mês do
+calendário** (Sessão 228, D221 — `/shows/calendario` ganhou a faixa de resumo do mês (D216) mas era a **única** vista analítica de shows
+sem exportação CSV (todas as irmãs — rentabilidade, faixas-de-cache, dias-da-semana, sazonalidade, antecedência, funil — já têm "⬇ CSV" +
+rota `/export`). Novo serializador puro `monthCalendarToCsv(shows, year, month)` + `MONTH_CALENDAR_CSV_HEADERS` (Data / Hora / Título /
+Local / Status / Cachê (R$)) em `src/lib/csv.ts` + rota `/shows/calendario/export?mes=YYYY-MM` + link "⬇ CSV" no cabeçalho da página (ao
+lado do "Exportar .ics"), propagando o mês exibido. O serializador recebe os **mesmos** shows que a página carrega para a grade (janela
+`monthGridRange`, com bordas das semanas vizinhas), **recorta pela data LOCAL** ao mês pedido — o que a grade marca como "do mês"
+(`inMonth`) e o que `summarizeMonthShows`/D216 soma — lista uma linha por show em ordem de data e fecha (com linhas) numa linha **"Total"**
+que reusa `summarizeMonthShows`: `N show(s)` (cancelados à parte no rótulo, fora da soma) + cachê total do mês (confirmado + a confirmar).
+Novos helpers `csvLocalDate`/`csvLocalTime` formatam data/hora em horário **LOCAL** (distinto do UTC de `csvDate`/`csvTime`) para casar o
+recorte da grade/resumo — um show em 31/03 23:00 LOCAL aparece sob março no CSV como na grade. **+7 testes**. Smoke test (`next start`) →
+`/login` 200 e `/shows/calendario/export?mes=2026-03` 307 (auth-gated). `npm audit` sem novas vulnerabilidades (mesmos advisories
+Next/postcss da D6). Ver D221. Segue a **duplicação de shows em lote**
 (Sessão 227, D220 — a ação "Duplicar show" (D218) + seletor de intervalo (D219) criava **uma** cópia por clique; agendar o próximo trimestre
 de uma residência semanal exigia clicar "Duplicar" ~12 vezes. Novo helper puro `buildDuplicatedShowSeries(show, weeksAhead, count)` em
 `src/lib/shows.ts`: gera `count` cópias, cada uma `weeksAhead * k` semanas à frente (k = 1..count) — **espaçadas pela cadência escolhida**
@@ -3557,6 +3569,10 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    **Faixa de resumo do mês no calendário** entregue na Sessão 223 — `summarizeMonthShows` + `MonthShowsSummary`
    em `src/lib/shows.ts` (recorte LOCAL ao mês exibido sobre os shows já carregados para a grade, zero I/O extra) +
    faixa com Shows no mês / Cachê confirmado 🟢 / A confirmar 🟠 / Cachê total em `/shows/calendario`, ver D216.
+   **Exportação CSV do mês do calendário** entregue na Sessão 228 — `monthCalendarToCsv` + `MONTH_CALENDAR_CSV_HEADERS`
+   em `src/lib/csv.ts` (recorte LOCAL ao mês, uma linha por show + linha Total reusando `summarizeMonthShows`;
+   `csvLocalDate`/`csvLocalTime` em horário LOCAL) + rota `/shows/calendario/export?mes=YYYY-MM` + botão "⬇ CSV"
+   propagando o mês, ver D221.
    Próximo possível — um mini-calendário de salto rápido na agenda, ou estimar a receita parada por fim de
    semana livre (adiada na D96 por ser hipótese frágil).
 2d. **Antecedência de agendamento** (entregue na Sessão 192, `/shows/antecedencia` + `bookingLeadTime` em
