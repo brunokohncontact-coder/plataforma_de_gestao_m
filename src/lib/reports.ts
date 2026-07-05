@@ -465,6 +465,53 @@ export function reportsNavIndex(): ReportNavArea[] {
   }));
 }
 
+// ── Scroll-spy do sumário de salto rápido ───────────────────────────────────
+// Conforme o acervo cresce, o sumário de âncoras no topo do hub ganha um
+// destaque "onde estou" que acompanha a rolagem: a pílula do subtema visível
+// fica realçada. A decisão de qual seção está ativa é lógica pura (recebe as
+// medições de offset feitas no cliente), para ser testável sem DOM.
+
+/** Offset (topo, em px, relativo ao documento) de uma seção-âncora do hub. */
+export interface SectionOffset {
+  /** Id da âncora — igual ao `id` da seção no hub e ao `anchor` do índice. */
+  anchor: string;
+  /** `offsetTop` medido no cliente; `NaN`/±Infinity = ainda não medido. */
+  top: number;
+}
+
+/**
+ * Dada a lista de offsets das seções, a posição de rolagem atual e uma margem
+ * (a linha de ativação fica em `scrollY + margin`, logo abaixo do topo da
+ * viewport), devolve a âncora da seção **ativa**: a última cujo topo já cruzou a
+ * linha de ativação. Antes de a primeira cruzar, devolve a primeira seção; sem
+ * seções mensuráveis, `null`. Quando `atBottom` é `true` (rolagem no fim da
+ * página), devolve sempre a última seção — assim a última âncora, curta demais
+ * para alcançar a linha de ativação, ainda fica acessível.
+ *
+ * Pura: não lê o DOM. Robusta à ordem de entrada (ordena por `top`) e ignora
+ * offsets não finitos (medições pendentes).
+ */
+export function activeSectionAnchor(
+  sections: readonly SectionOffset[],
+  scrollY: number,
+  margin: number,
+  atBottom = false,
+): string | null {
+  const valid = sections
+    .filter((s) => Number.isFinite(s.top))
+    .sort((a, b) => a.top - b.top);
+  if (valid.length === 0) return null;
+  if (atBottom) return valid[valid.length - 1].anchor;
+
+  const line = scrollY + margin;
+  let active = valid[0].anchor;
+  for (const section of valid) {
+    if (section.top <= line) active = section.anchor;
+    else break;
+  }
+  return active;
+}
+
 // Busca textual sobre o acervo: conforme o catálogo cresce (já passou de duas
 // dezenas), o hub ganha um campo que filtra os relatórios pelo texto digitado.
 // Lógica pura (sem React) para ser testável e reutilizável no client component.

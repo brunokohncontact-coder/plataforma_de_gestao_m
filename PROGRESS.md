@@ -9,7 +9,18 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1264 testes** verdes após o **comparativo ano a ano das fontes de
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1272 testes** verdes após o **scroll-spy do sumário do hub de
+relatórios** (Sessão 233, D227 — o hub `/relatorios` já tinha o sumário de salto rápido por subtema (âncoras, D59), mas conforme o acervo
+passou de 60 relatórios o sumário perdia o "onde estou": ao rolar, nenhuma pílula indicava qual seção você está vendo. Novo helper puro
+`activeSectionAnchor(sections, scrollY, margin, atBottom)` + tipo `SectionOffset` em `src/lib/reports.ts`: recebe os offsets (topo em px) das
+seções medidos no cliente e devolve a âncora da seção **ativa** — a última cujo topo cruzou a linha de ativação (`scrollY + margin`); antes da
+primeira cruzar devolve a primeira, com `atBottom` devolve a última (torna a última âncora, curta demais para alcançar a linha, ainda
+acessível); robusto à ordem de entrada (ordena por `top`) e ignora offsets não finitos (medições pendentes). `ReportsBrowser.tsx` mede os
+offsets dos subtemas (rAF-throttled em scroll/resize, só com o sumário à mostra — sem busca ativa) e realça a pílula do subtema visível
+(`border-brand-400 bg-brand-50`, `aria-current="location"`) + o rótulo da sua área. Reverte a deferência da D56(a) ("scroll-spy descartado por
+ora"): o acervo cresceu o suficiente para justificar. **+8 testes** (`reports.test.ts`). Smoke test (`next start`) → `/login` 200 e
+`/relatorios` 307 (auth-gated); build OK (bundle da rota 4.73 kB). `npm audit` sem novas vulnerabilidades (mesmos advisories Next/postcss da D6;
+nenhuma dependência nova). Ver D227. Antes, o **comparativo ano a ano das fontes de
 renda** (Sessão 232, D225 — espelho simétrico da composição de despesas/D224 no eixo de receita: `/financas/fontes-de-renda` (mix de receitas
 por fonte, `incomeMix`) já tinha `?ano=` e CSV, mas não respondia "que fontes de renda cresceram/encolheram frente ao ano passado?". Novo helper
 puro `compareIncomeMix(current, previous)` + tipos `IncomeMixComparison`/`IncomeSourceChange` em `src/lib/finance.ts` casa as fontes de dois
@@ -3589,11 +3600,14 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    **agrupamento por subtema** dentro de cada área entregue na Sessão 66 — `subtopic` +
    `subgroupEntries` em `reports.ts` + subcabeçalhos `<h3>` em `ReportsBrowser.tsx`, ver D58;
    **sumário de salto rápido por subtema** entregue na Sessão 67 — `subtopicSlug` + `reportsNavIndex`
-   em `reports.ts` + `<nav>` "Ir para um tema" com pílulas-âncora em `ReportsBrowser.tsx`, ver D59):
-   catálogo central dos relatórios na navbar, com busca ao vivo, cards agrupados por subtema e
-   índice de salto rápido no topo. Ao criar um relatório novo, **registrá-lo em `REPORT_GROUPS`**
-   (com `subtopic`) para aparecer no hub, na busca e no índice automaticamente. Próximo possível —
-   destacar a área/subtema visível ao rolar (scroll-spy) ou um contador de "novos" relatórios.
+   em `reports.ts` + `<nav>` "Ir para um tema" com pílulas-âncora em `ReportsBrowser.tsx`, ver D59;
+   **scroll-spy do sumário** entregue na Sessão 233 — `activeSectionAnchor` + tipo `SectionOffset` em
+   `reports.ts` (lógica pura) + medição rAF-throttled em `ReportsBrowser.tsx` que realça a pílula do
+   subtema visível (`aria-current="location"`) + o rótulo da sua área, ver D227):
+   catálogo central dos relatórios na navbar, com busca ao vivo, cards agrupados por subtema,
+   índice de salto rápido no topo e destaque "onde estou" ao rolar. Ao criar um relatório novo,
+   **registrá-lo em `REPORT_GROUPS`** (com `subtopic`) para aparecer no hub, na busca e no índice
+   automaticamente. Próximo possível — um contador de "novos" relatórios (badge por entrada recém-adicionada).
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)
 2. **Calendário / agenda — evoluções**: arrastar/soltar para remarcar; mini-calendário de salto rápido.
