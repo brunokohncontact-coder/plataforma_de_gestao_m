@@ -8175,6 +8175,51 @@ describe("monthYoYPace", () => {
     expect(pace.netVsLastYear.current).toBe(pace.projectedNet);
     expect(pace.netVsLastYear.previous).toBe(700_00);
   });
+
+  it("recorta o ano anterior 'até o mesmo dia do mês' (maçã-com-maçã, sem projeção)", () => {
+    const pace = monthYoYPace(
+      [
+        monthTx("2026-06-10", 500_00), // lançado até agora (dia 15)
+        monthTx("2025-06-08", 400_00), // dia 8 <= 15 → entra no 'até a data'
+        monthTx("2025-06-25", 600_00), // dia 25 > 15 → só no total fechado
+      ],
+      { now: NOW },
+    );
+    expect(pace.lastYearIncome).toBe(1000_00); // mês inteiro
+    expect(pace.lastYearIncomeToDate).toBe(400_00); // só até o dia 15
+    // comparação até-a-data usa o LANÇADO (não a projeção): 500 vs 400.
+    expect(pace.incomeToDateVsLastYear.current).toBe(500_00);
+    expect(pace.incomeToDateVsLastYear.previous).toBe(400_00);
+  });
+
+  it("computa o líquido 'até a data' do ano anterior e o compara ao lançado", () => {
+    const pace = monthYoYPace(
+      [
+        monthTx("2026-06-10", 600_00),
+        monthTx("2026-06-11", 200_00, "EXPENSE"), // líquido lançado = 400_00
+        monthTx("2025-06-08", 500_00),
+        monthTx("2025-06-09", 100_00, "EXPENSE"),
+        monthTx("2025-06-28", 900_00), // depois do dia 15 → fora do 'até a data'
+      ],
+      { now: NOW },
+    );
+    expect(pace.lastYearIncomeToDate).toBe(500_00); // 900 do dia 28 fica de fora
+    expect(pace.lastYearExpenseToDate).toBe(100_00);
+    expect(pace.lastYearNetToDate).toBe(400_00); // 500 − 100
+    expect(pace.netToDateVsLastYear.current).toBe(400_00); // 600 − 200 lançado
+    expect(pace.netToDateVsLastYear.previous).toBe(400_00);
+  });
+
+  it("tolera fevereiro (mês mais curto no ano anterior) no recorte 'até a data'", () => {
+    // 30/mar/2026 (dia 30). Mar/2025 tem 31 dias; nenhuma transação passa do dia 30.
+    const pace = monthYoYPace(
+      [monthTx("2026-03-20", 400_00), monthTx("2025-03-27", 800_00)],
+      { now: "2026-03-30T00:00:00.000Z" },
+    );
+    expect(pace.lastYearMonth).toBe("2025-03");
+    expect(pace.lastYearIncome).toBe(800_00);
+    expect(pace.lastYearIncomeToDate).toBe(800_00); // dia 27 <= 30
+  });
 });
 
 describe("yearToDatePace", () => {

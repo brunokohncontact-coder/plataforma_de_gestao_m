@@ -6011,12 +6011,30 @@ export interface MonthYoYPace {
   lastYearExpense: number;
   /** `lastYearIncome − lastYearExpense`. */
   lastYearNet: number;
+  /**
+   * Mesmo mês do ano anterior, mas só **até o mesmo dia do mês** (`dayOfMonth`),
+   * em centavos. Leitura maçã-com-maçã que não depende da projeção: "até esta
+   * data, eu estava à frente de onde estou agora?". Meses mais curtos no ano
+   * anterior (fevereiro) truncam naturalmente — um dia inexistente nunca soma.
+   */
+  lastYearIncomeToDate: number;
+  lastYearExpenseToDate: number;
+  /** `lastYearIncomeToDate − lastYearExpenseToDate`. */
+  lastYearNetToDate: number;
   /** Houve qualquer movimento no mesmo mês do ano anterior? */
   lastYearHasMovement: boolean;
   /** Comparação da projeção do mês vs. o mesmo mês do ano anterior. */
   incomeVsLastYear: MetricDelta;
   expenseVsLastYear: MetricDelta;
   netVsLastYear: MetricDelta;
+  /**
+   * Comparação do **lançado até agora** (mês corrente) vs. o lançado **até o
+   * mesmo dia** do mesmo mês no ano anterior — sem projeção de permeio, útil cedo
+   * no mês quando a extrapolação pro-rata ainda é frágil.
+   */
+  incomeToDateVsLastYear: MetricDelta;
+  expenseToDateVsLastYear: MetricDelta;
+  netToDateVsLastYear: MetricDelta;
   /**
    * Veredito do ritmo pela **receita** (sinal mais limpo). `insufficient` quando o
    * mesmo mês do ano anterior não teve receita (sem âncora sazonal).
@@ -6034,6 +6052,10 @@ export interface MonthYoYPace {
  * cheio — útil quando o negócio é sazonal (dezembro contra dezembro, não contra a
  * média dos últimos meses). `insufficient` sem receita no mês de referência.
  *
+ * Também expõe o mesmo mês do ano anterior recortado **até o mesmo dia do mês**
+ * (`lastYear*ToDate`): uma leitura que não depende da projeção pro-rata (frágil
+ * cedo no mês) — "até esta data, eu estava à frente de onde estou agora?".
+ *
  * Pura; `now` é injetável. UTC via `monthKey`, consistente com as demais agregações.
  */
 export function monthYoYPace(
@@ -6050,13 +6072,24 @@ export function monthYoYPace(
   const lyEndMs = Date.UTC(y - 1, mo + 1, 1);
   let lastYearIncome = 0;
   let lastYearExpense = 0;
+  // Mesmo mês do ano anterior, só até o mesmo dia do mês (maçã-com-maçã).
+  let lastYearIncomeToDate = 0;
+  let lastYearExpenseToDate = 0;
   for (const t of txs) {
     const ts = txTime(t);
     if (ts < lyStartMs || ts >= lyEndMs) continue;
-    if (t.type === "INCOME") lastYearIncome += t.amount;
-    else lastYearExpense += t.amount;
+    const d = typeof t.date === "string" ? new Date(t.date) : t.date;
+    const withinDay = d.getUTCDate() <= pace.dayOfMonth;
+    if (t.type === "INCOME") {
+      lastYearIncome += t.amount;
+      if (withinDay) lastYearIncomeToDate += t.amount;
+    } else {
+      lastYearExpense += t.amount;
+      if (withinDay) lastYearExpenseToDate += t.amount;
+    }
   }
   const lastYearNet = lastYearIncome - lastYearExpense;
+  const lastYearNetToDate = lastYearIncomeToDate - lastYearExpenseToDate;
   const lastYearHasMovement = lastYearIncome > 0 || lastYearExpense > 0;
 
   let verdict: MonthYoYVerdict;
@@ -6086,10 +6119,16 @@ export function monthYoYPace(
     lastYearIncome,
     lastYearExpense,
     lastYearNet,
+    lastYearIncomeToDate,
+    lastYearExpenseToDate,
+    lastYearNetToDate,
     lastYearHasMovement,
     incomeVsLastYear: computeDelta(pace.projectedIncome, lastYearIncome),
     expenseVsLastYear: computeDelta(pace.projectedExpense, lastYearExpense),
     netVsLastYear: computeDelta(pace.projectedNet, lastYearNet),
+    incomeToDateVsLastYear: computeDelta(pace.income, lastYearIncomeToDate),
+    expenseToDateVsLastYear: computeDelta(pace.expense, lastYearExpenseToDate),
+    netToDateVsLastYear: computeDelta(pace.income - pace.expense, lastYearNetToDate),
     verdict,
   };
 }

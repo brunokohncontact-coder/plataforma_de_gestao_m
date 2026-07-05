@@ -9,7 +9,12 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1276 testes** verdes após a **exportação CSV do comparativo
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1287 testes** verdes após estender o **comparativo
+sazonal do ritmo do mês com o recorte "até o mesmo dia do ano passado"** (Sessão 235, D221 — `monthYoYPace` ganhou os campos
+`lastYear*ToDate` + `*ToDateVsLastYear`: além da projeção pro-rata × mês cheio do ano anterior (D161), agora compara o **lançado
+até agora** com o lançado até o mesmo dia do mês no ano anterior — leitura maçã-com-maçã que não depende da projeção frágil cedo
+no mês; nova linha-nota "Sem depender da projeção: até hoje…" abaixo da tabela "Mesmo mês no ano passado" em
+`/financas/ritmo-do-mes`; **+3 testes**). Vinha de **1284** (Sessão 234) e **1276** após a **exportação CSV do comparativo
 ano a ano da composição de despesas** (Sessão 234, D228 — o card "Onde o gasto mudou · {ano} vs. {ano-1}" (`compareExpenseMix`/D224) mostra na
 tela só os dois movers; a `changes` completa (rubrica a rubrica) ficava computada mas não exportável, e a própria D224(b) adiara o CSV. Novo
 serializador puro `expenseMixComparisonToCsv(comparison)` + `EXPENSE_MIX_COMPARISON_CSV_HEADERS` (Categoria / Gasto (ano anterior) / Gasto (ano
@@ -3909,7 +3914,10 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    achata os dois eixos de comparação numa única tabela (coluna "Base de comparação": Mês típico × Mesmo mês do ano anterior; uma
    linha por métrica em cada eixo, Base/Métrica/Projeção do mês/Comparação/Variação), reusa `csvSignedPct`, sem linha Total (como
    `yearPaceToCsv`), eixo do ano anterior sempre emitido (0,00 + variação em branco sem âncora sazonal), nome
-   `ritmo-do-mes-{YYYY-MM}-{n}m.csv`, botão "⬇ CSV" só com `hasData`, ver D170.
+   `ritmo-do-mes-{YYYY-MM}-{n}m.csv`, botão "⬇ CSV" só com `hasData`, ver D170. **Recorte "até o mesmo dia do ano passado"** entregue
+   na Sessão 235 — `monthYoYPace` ganhou `lastYear*ToDate` + `*ToDateVsLastYear`: compara o **lançado até agora** com o lançado até
+   o mesmo dia do mês no ano anterior (maçã-com-maçã, sem projeção — resposta ao "cedo no mês a projeção é frágil"); linha-nota
+   "Sem depender da projeção: até hoje…" abaixo da tabela "Mesmo mês no ano passado", ver D221.
    Próximo possível —
    ponderar a projeção do mês por dia-da-semana/sazonalidade (hoje é pro-rata uniforme, hipótese frágil cedo no mês); ou um
    seletor que alterne o card de `/financas/ritmo-do-mes` entre o eixo "mês típico" (média móvel) e o eixo sazonal (ano anterior).
