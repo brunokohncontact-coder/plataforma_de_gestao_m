@@ -34,7 +34,11 @@ import {
   MIN_LEAD_TIME_SAMPLE,
   buildStatusTimeline,
   funnelStageDurations,
+  findStaleProposals,
+  STALE_PROPOSAL_DAYS,
+  STALE_PROPOSAL_IMMINENT_DAYS,
   type ConflictShowLike,
+  type StaleProposalShowLike,
   type LeadTimeShowLike,
   type ShowLike,
   type StatusEventLike,
@@ -1382,5 +1386,152 @@ describe("funnelStageDurations", () => {
       },
     ]);
     expect(r.stages.map((s) => s.status)).toEqual(["PROPOSED", "CONFIRMED"]);
+  });
+});
+
+describe("findStaleProposals", () => {
+  const NOW = new Date("2026-06-01T00:00:00.000Z");
+  const daysBefore = (n: number) =>
+    new Date(NOW.getTime() - n * 86400000).toISOString();
+  const daysAfter = (n: number) =>
+    new Date(NOW.getTime() + n * 86400000).toISOString();
+
+  function prop(partial: Partial<StaleProposalShowLike>): StaleProposalShowLike {
+    return {
+      id: "s1",
+      title: "Show",
+      date: daysAfter(60),
+      venue: null,
+      city: null,
+      fee: 100_00,
+      status: "PROPOSED",
+      createdAt: daysBefore(30),
+      ...partial,
+    };
+  }
+
+  it("sem shows devolve relatório zerado", () => {
+    const r = findStaleProposals([], { now: NOW });
+    expect(r).toMatchObject({ count: 0, totalFee: 0, overdueCount: 0, imminentCount: 0, coldCount: 0 });
+    expect(r.proposals).toEqual([]);
+  });
+
+  it("só considera shows em PROPOSED (ignora confirmados/realizados/cancelados)", () => {
+    const r = findStaleProposals(
+      [
+        prop({ id: "a", status: "CONFIRMED", createdAt: daysBefore(90) }),
+        prop({ id: "b", status: "PLAYED", createdAt: daysBefore(90) }),
+        prop({ id: "c", status: "CANCELLED", createdAt: daysBefore(90) }),
+      ],
+      { now: NOW },
+    );
+    expect(r.count).toBe(0);
+  });
+
+  it("não sinaliza proposta recente (dentro do limiar e sem data vencida)", () => {
+    const r = findStaleProposals(
+      [prop({ createdAt: daysBefore(5), date: daysAfter(60) })],
+      { now: NOW },
+    );
+    expect(r.count).toBe(0);
+  });
+
+  it("sinaliza proposta parada há mais do que o limiar como 'cold' (data distante)", () => {
+    const r = findStaleProposals(
+      [prop({ createdAt: daysBefore(30), date: daysAfter(60) })],
+      { now: NOW },
+    );
+    expect(r.count).toBe(1);
+    expect(r.coldCount).toBe(1);
+    expect(r.proposals[0]).toMatchObject({ urgency: "cold", daysInStatus: 30, daysUntilShow: 60 });
+    expect(r.totalFee).toBe(100_00);
+  });
+
+  it("classifica como 'imminent' quando a data cai dentro da janela iminente", () => {
+    const r = findStaleProposals(
+      [prop({ createdAt: daysBefore(30), date: daysAfter(10) })],
+      { now: NOW },
+    );
+    expect(r.proposals[0]).toMatchObject({ urgency: "imminent", daysUntilShow: 10 });
+    expect(r.imminentCount).toBe(1);
+  });
+
+  it("marca 'overdue' quando a data já passou, mesmo com pouco tempo no status", () => {
+    // criado ontem (daysInStatus < limiar) mas a data já passou → entra por vencida
+    const r = findStaleProposals(
+      [prop({ createdAt: daysBefore(1), date: daysBefore(3) })],
+      { now: NOW },
+    );
+    expect(r.count).toBe(1);
+    expect(r.proposals[0]).toMatchObject({ urgency: "overdue", daysUntilShow: -3 });
+    expect(r.overdueCount).toBe(1);
+  });
+
+  it("usa o último evento de status para medir o tempo no status atual", () => {
+    // criado há 90 dias, mas voltou a PROPOSED há 5 dias → não parado ainda
+    const r = findStaleProposals(
+      [
+        prop({
+          createdAt: daysBefore(90),
+          date: daysAfter(60),
+          statusEvents: [
+            { fromStatus: null, toStatus: "PROPOSED", createdAt: daysBefore(90) },
+            { fromStatus: "PROPOSED", toStatus: "CONFIRMED", createdAt: daysBefore(40) },
+            { fromStatus: "CONFIRMED", toStatus: "PROPOSED", createdAt: daysBefore(5) },
+          ],
+        }),
+      ],
+      { now: NOW },
+    );
+    expect(r.count).toBe(0); // 5 dias no status atual < limiar
+  });
+
+  it("ordena por urgência: overdue, depois imminent, depois cold", () => {
+    const r = findStaleProposals(
+      [
+        prop({ id: "cold", createdAt: daysBefore(40), date: daysAfter(80) }),
+        prop({ id: "overdue", createdAt: daysBefore(40), date: daysBefore(2) }),
+        prop({ id: "imminent", createdAt: daysBefore(40), date: daysAfter(7) }),
+      ],
+      { now: NOW },
+    );
+    expect(r.proposals.map((p) => p.id)).toEqual(["overdue", "imminent", "cold"]);
+  });
+
+  it("dentro de overdue/imminent ordena pela data (mais próxima/vencida primeiro); cold pelo maior tempo parado", () => {
+    const r = findStaleProposals(
+      [
+        prop({ id: "imm-late", createdAt: daysBefore(40), date: daysAfter(12) }),
+        prop({ id: "imm-soon", createdAt: daysBefore(40), date: daysAfter(2) }),
+        prop({ id: "cold-old", createdAt: daysBefore(60), date: daysAfter(90) }),
+        prop({ id: "cold-new", createdAt: daysBefore(25), date: daysAfter(90) }),
+      ],
+      { now: NOW },
+    );
+    expect(r.proposals.map((p) => p.id)).toEqual(["imm-soon", "imm-late", "cold-old", "cold-new"]);
+  });
+
+  it("respeita limiares customizados de staleDays e imminentDays", () => {
+    const shows = [prop({ createdAt: daysBefore(10), date: daysAfter(5) })];
+    // limiar default 21 → nada; com staleDays=7 vira parada
+    expect(findStaleProposals(shows, { now: NOW }).count).toBe(0);
+    const r = findStaleProposals(shows, { now: NOW, staleDays: 7, imminentDays: 14 });
+    expect(r.count).toBe(1);
+    expect(r.proposals[0].urgency).toBe("imminent");
+  });
+
+  it("cai para createdAt quando não há histórico de eventos (shows antigos)", () => {
+    const r = findStaleProposals(
+      [prop({ createdAt: daysBefore(STALE_PROPOSAL_DAYS + 1), date: daysAfter(90), statusEvents: [] })],
+      { now: NOW },
+    );
+    expect(r.count).toBe(1);
+    expect(r.proposals[0].daysInStatus).toBe(STALE_PROPOSAL_DAYS + 1);
+  });
+
+  it("expõe constantes de limiar sensatas", () => {
+    expect(STALE_PROPOSAL_DAYS).toBeGreaterThan(0);
+    expect(STALE_PROPOSAL_IMMINENT_DAYS).toBeGreaterThan(0);
+    expect(STALE_PROPOSAL_IMMINENT_DAYS).toBeLessThan(STALE_PROPOSAL_DAYS);
   });
 });

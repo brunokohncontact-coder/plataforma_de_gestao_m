@@ -118,14 +118,18 @@ import {
   TAX_RESERVE_CSV_HEADERS,
   bookingLeadTimeToCsv,
   BOOKING_LEAD_TIME_CSV_HEADERS,
+  staleProposalsToCsv,
+  STALE_PROPOSALS_CSV_HEADERS,
 } from "./csv";
 import {
   findOpenWeekends,
   findScheduleConflicts,
   bookingLeadTime,
   funnelStageDurations,
+  findStaleProposals,
   type ConflictShowLike,
   type LeadTimeShowLike,
+  type StaleProposalShowLike,
 } from "./shows";
 import {
   annualSummary,
@@ -2832,6 +2836,61 @@ describe("stageDurationsToCsv", () => {
     // mediana [2,4,9]=4, média 5, mín 2, máx 9
     expect(lines[1]).toBe("Proposto;3;4;5;2;9");
     expect(lines[2]).toBe("Total;3;;;;");
+  });
+});
+
+describe("staleProposalsToCsv", () => {
+  const NOW = new Date("2026-06-01T00:00:00.000Z");
+  const daysBefore = (n: number) => new Date(NOW.getTime() - n * 86400000).toISOString();
+  const daysAfter = (n: number) => new Date(NOW.getTime() + n * 86400000).toISOString();
+  const prop = (partial: Partial<StaleProposalShowLike>): StaleProposalShowLike => ({
+    id: "s1",
+    title: "Show",
+    date: daysAfter(60),
+    venue: null,
+    city: null,
+    fee: 100_00,
+    status: "PROPOSED",
+    createdAt: daysBefore(30),
+    ...partial,
+  });
+
+  it("sem propostas paradas: só o cabeçalho", () => {
+    const lines = staleProposalsToCsv(findStaleProposals([], { now: NOW })).split("\r\n");
+    expect(lines[0]).toBe(STALE_PROPOSALS_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(1);
+  });
+
+  it("uma linha por proposta na ordem da fila + Total com cachê em risco", () => {
+    const report = findStaleProposals(
+      [
+        prop({ id: "cold", title: "Bar Cold", createdAt: daysBefore(40), date: daysAfter(80), fee: 200_00, city: "SP" }),
+        prop({ id: "overdue", title: "Bar Over", createdAt: daysBefore(40), date: daysBefore(3), fee: 150_00, venue: "Casa X" }),
+      ],
+      { now: NOW },
+    );
+    const lines = staleProposalsToCsv(report).split("\r\n");
+    // cabeçalho + 2 propostas + Total
+    expect(lines).toHaveLength(4);
+    // overdue vem antes de cold
+    expect(lines[1].startsWith("Vencida;Bar Over;")).toBe(true);
+    expect(lines[2].startsWith("Sem resposta;Bar Cold;")).toBe(true);
+    // dias até o show crus (negativo = vencida)
+    expect(lines[1]).toContain(";-3;");
+    // Total: contagem + cachê somado (350,00), coluna dias-até em branco
+    expect(lines[3]).toBe("Total;2 propostas paradas;;;;;;350,00");
+  });
+
+  it("rotula a urgência iminente e emite cidade/local", () => {
+    const report = findStaleProposals(
+      [prop({ id: "imm", title: "Show Imm", createdAt: daysBefore(30), date: daysAfter(5), venue: "Casa Y", city: "RJ" })],
+      { now: NOW },
+    );
+    const lines = staleProposalsToCsv(report).split("\r\n");
+    const cols = lines[1].split(";");
+    expect(cols[0]).toBe("Iminente");
+    expect(cols[3]).toBe("Casa Y");
+    expect(cols[4]).toBe("RJ");
   });
 });
 

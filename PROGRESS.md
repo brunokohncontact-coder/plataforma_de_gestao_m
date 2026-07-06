@@ -9,7 +9,7 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1347 testes** verdes após a **exportação CSV da agenda semanal** em `/shows/semana/export` (Sessão 245, D239 — a agenda semanal `/shows/semana` ganhou botão "⬇ CSV", irmã do export do mês do calendário (D221): serializador puro `weekShowsToCsv` em `src/lib/csv.ts` (mesmas colunas `MONTH_CALENDAR_CSV_HEADERS`, data/hora LOCAL, uma linha por show + Total) + novo helper puro `summarizeWeekShows` em `src/lib/shows.ts` (resumo de uma lista já recortada à janela, sem filtro de data; reusa o shape `MonthShowsSummary`); rota reusa a janela `weekRange` da página, nome `semana-{início}.csv`; botão só com shows na semana; **+9 testes**). Segue 1338 da Sessão 244 (**coluna "vs. {ano-1}"
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1362 testes** verdes após **propostas paradas (follow-up de deals esquecidos)** em `/shows/funil/paradas` (Sessão 246, D240 — primeiro relatório operacional do funil: aponta QUAIS propostas específicas pedem decisão agora, complementando os agregados de conversão. Novo helper puro `findStaleProposals(shows, opts?)` + tipos `StaleProposal`/`StaleProposalsReport`/`StaleProposalUrgency` + constantes `STALE_PROPOSAL_DAYS`(=21)/`STALE_PROPOSAL_IMMINENT_DAYS`(=14) em `src/lib/shows.ts`: considera só shows em PROPOSED (etapa aberta) e marca "parada" a que está há ≥21 dias sem movimento OU com a data já vencida; classifica urgência overdue/imminent/cold e ordena a fila; tempo no status via último evento de status (D234), caindo para `createdAt` sem histórico; dias UTC inteiros; `now`/limiares injetáveis. Página com 4 stats + tabela com selo de urgência + link ao show + cross-link "⏳ Propostas paradas" no funil + entrada no hub; CSV `staleProposalsToCsv`/`STALE_PROPOSALS_CSV_HEADERS` + rota `/shows/funil/paradas/export` (`propostas-paradas.csv`). **+17 testes** (14 shows + 3 csv)). Segue 1347 da Sessão 245 (**exportação CSV da agenda semanal** em `/shows/semana/export` — D239: a agenda semanal `/shows/semana` ganhou botão "⬇ CSV", irmã do export do mês do calendário (D221): serializador puro `weekShowsToCsv` em `src/lib/csv.ts` (mesmas colunas `MONTH_CALENDAR_CSV_HEADERS`, data/hora LOCAL, uma linha por show + Total) + novo helper puro `summarizeWeekShows` em `src/lib/shows.ts` (resumo de uma lista já recortada à janela, sem filtro de data; reusa o shape `MonthShowsSummary`); rota reusa a janela `weekRange` da página, nome `semana-{início}.csv`; botão só com shows na semana; **+9 testes**). Segue 1338 da Sessão 244 (**coluna "vs. {ano-1}"
 por linha na tabela do funil por contratante** — a tela `/contatos/funil`, com o card agregado de "movers"
 da D236, ganhou o detalhe por-linha: ao lado de cada contratante, quanto sua taxa de concretização mudou frente ao ano
 anterior. Novo helper puro `indexContactPipelineChanges(comparison)` + tipo `ContactPipelineRowStatus` em `src/lib/contacts.ts`
@@ -3883,6 +3883,16 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `ContactPipelineComparison` da D236 num lookup por `contact.id` (O(1), zero I/O) e a página ganha a célula `PipelineRowDelta`
    ("changed" com a variação da taxa / "new" / "—"), só quando há comparativo; **+4 testes**, ver D238 — o polimento barato que
    o card de movers da D236 abriu.
+   **Propostas paradas (follow-up de deals esquecidos)** entregue na Sessão 246 — helper puro `findStaleProposals(shows, opts?)`
+   + tipos `StaleProposal`/`StaleProposalsReport`/`StaleProposalUrgency` + `STALE_PROPOSAL_DAYS`(=21)/`STALE_PROPOSAL_IMMINENT_DAYS`(=14)
+   em `src/lib/shows.ts`: 1º relatório **operacional** do funil (QUAIS propostas específicas agir, não o agregado). Só shows em
+   PROPOSED; "parada" = ≥21 dias sem movimento no status OU data já vencida; urgência overdue/imminent/cold + fila ordenada; tempo
+   no status via último `ShowStatusEvent` (D234), fallback `createdAt` sem histórico; dias UTC inteiros; `now`/limiares injetáveis.
+   Página `/shows/funil/paradas` (4 stats + tabela com selo de urgência/link ao show + empty-state) + cross-link "⏳ Propostas
+   paradas" no funil + entrada no hub; CSV `staleProposalsToCsv`/`STALE_PROPOSALS_CSV_HEADERS` + `/shows/funil/paradas/export`
+   (`propostas-paradas.csv`); **+17 testes** (14 shows + 3 csv), ver D240. Próximo possível para esta feature: (a) incluir CONFIRMED
+   com data vencida sem virar PLAYED como higiene de dados (adiado, sinal distinto); (b) nudge no Painel da proposta mais urgente
+   (adiado, Painel já saturado de nudges).
    Próximo possível — a **outra** métrica que
    os eventos destravam: taxa de conversão proposta→realizado **de verdade** por período (quantos % dos PROPOSED chegaram a
    PLAYED, distinta da taxa de estado atual do `showPipeline`); quando a amostra de tempo-em-etapa amadurecer, `?ano=`
@@ -4359,5 +4369,9 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   considerar uma cidade "fria" é **hipótese** — a cadência natural de retorno a uma praça varia por gênero/
   circuito. Validar com músicos em turnê antes de virar premissa fixa. O `minPastShows`=2 do nudge do Painel
   (`REENGAGE_HEADLINE_MIN_PAST_SHOWS`/D232) — lastro mínimo p/ empurrar uma praça — também é heurística a validar.
+- **Propostas paradas (D240)**: os limiares `STALE_PROPOSAL_DAYS`=21 (dias sem movimento em PROPOSED para
+  virar "parada") e `STALE_PROPOSAL_IMMINENT_DAYS`=14 (janela de decisão iminente) são **hipóteses** — a
+  cadência natural de fechamento de uma proposta varia por circuito/gênero. Validar com músicos antes de
+  virar premissa fixa.
 - **Segurança em produção**: definir `AUTH_SECRET` forte e migrar para PostgreSQL antes
   de qualquer deploy real. Revisar advisories do Next (D6) e planejar upgrade p/ Next 15+.

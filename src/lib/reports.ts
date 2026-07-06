@@ -63,6 +63,14 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "⏱",
       },
       {
+        title: "Propostas paradas",
+        href: "/shows/funil/paradas",
+        description:
+          "Quais propostas pedem follow-up agora — sem movimento há semanas ou com a data do show já vencida.",
+        subtopic: "Agenda & pipeline",
+        icon: "⏳",
+      },
+      {
         title: "Por dia da semana",
         href: "/shows/dias-semana",
         description: "Quais dias da semana rendem mais shows e mais dinheiro.",
