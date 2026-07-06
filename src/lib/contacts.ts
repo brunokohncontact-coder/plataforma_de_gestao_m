@@ -1434,3 +1434,43 @@ export function compareContactPipelines<C extends ContactRankLike>(
     droppedContacts,
   };
 }
+
+/**
+ * Status de uma linha da tabela do funil por contratante (período atual) frente
+ * ao período anterior, para a coluna "vs. {ano-1}":
+ * - "changed": o contratante tinha pipeline aberto nos dois períodos — traz a
+ *   variação da taxa de concretização (`conversionRateDelta` pode ser `null`
+ *   quando algum período não tem show decidido);
+ * - "new": só apareceu no período atual (pipeline aberto agora);
+ * - "none": não é comparável (não está na carteira atual).
+ */
+export type ContactPipelineRowStatus<C extends ContactRankLike> =
+  | { kind: "changed"; change: ContactPipelineChange<C> }
+  | { kind: "new" }
+  | { kind: "none" };
+
+/**
+ * Casa cada linha da tabela do funil por contratante (período atual) com sua
+ * situação no comparativo `compareContactPipelines`, indexando por `contact.id`
+ * para o consumidor resolver a coluna "vs. {ano-1}" em O(1) — sem repetir a
+ * varredura na apresentação. Puro: recebe o comparativo já computado e devolve
+ * uma função de lookup. Um contratante presente nos dois períodos vira "changed";
+ * um que só está no atual (em `newContacts`) vira "new"; qualquer outro id vira
+ * "none". Espelha `indexContactPaymentLagChanges` (D196) e `indexClientShareChanges`.
+ */
+export function indexContactPipelineChanges<C extends ContactRankLike>(
+  comparison: ContactPipelineComparison<C>,
+): (contactId: string | null | undefined) => ContactPipelineRowStatus<C> {
+  const changedById = new Map<string, ContactPipelineChange<C>>();
+  for (const c of comparison.changes) changedById.set(c.contact.id, c);
+  const newIds = new Set<string>();
+  for (const r of comparison.newContacts) newIds.add(r.contact.id);
+
+  return (contactId) => {
+    if (!contactId) return { kind: "none" };
+    const change = changedById.get(contactId);
+    if (change) return { kind: "changed", change };
+    if (newIds.has(contactId)) return { kind: "new" };
+    return { kind: "none" };
+  };
+}

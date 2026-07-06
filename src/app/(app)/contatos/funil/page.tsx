@@ -4,9 +4,11 @@ import { prisma } from "@/lib/prisma";
 import {
   pipelineByContact,
   compareContactPipelines,
+  indexContactPipelineChanges,
   type ContactRankLike,
   type ContactPipelineChange,
   type ContactPipelineComparison,
+  type ContactPipelineRowStatus,
 } from "@/lib/contacts";
 import {
   showProfitYears,
@@ -94,6 +96,11 @@ export default async function ContatosFunilPage({
       if (cmp.changes.length > 0) comparison = cmp;
     }
   }
+
+  // Lookup por `contact.id` para a coluna "vs. {ano-1}" da tabela: casa cada linha
+  // (período atual) com a variação da taxa de concretização, ou marca "novo"/"—"
+  // (D195). Reusa o comparativo já computado — zero I/O extra.
+  const rowStatus = comparison ? indexContactPipelineChanges(comparison) : null;
 
   const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
   const exportHref =
@@ -206,6 +213,11 @@ export default async function ContatosFunilPage({
                   <th className="px-4 py-3 text-right font-medium">Em negociação</th>
                   <th className="px-4 py-3 text-right font-medium">Confirmado</th>
                   <th className="px-4 py-3 text-right font-medium">Concretização</th>
+                  {rowStatus && (
+                    <th className="px-4 py-3 text-right font-medium">
+                      vs. {previousYear}
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -263,6 +275,14 @@ export default async function ContatosFunilPage({
                         </>
                       )}
                     </td>
+                    {rowStatus && (
+                      <td className="px-4 py-3 text-right">
+                        <PipelineRowDelta
+                          status={rowStatus(r.contact.id)}
+                          year={previousYear}
+                        />
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -278,6 +298,16 @@ export default async function ContatosFunilPage({
             cancelados) — e &quot;—&quot; quando o contratante ainda não teve
             nenhum show decidido. Como o funil geral, é um retrato do estado
             atual, não um histórico de transições.
+            {rowStatus && (
+              <>
+                {" "}
+                A coluna <strong>vs. {previousYear}</strong> mostra a variação da
+                taxa de concretização deste contratante frente ao ano anterior:{" "}
+                <span className="text-emerald-600">verde</span> fechou uma fração
+                maior, <span className="text-red-600">vermelho</span> fechou menos,
+                &quot;novo&quot; só teve pipeline aberto neste ano.
+              </>
+            )}
           </p>
         </>
       )}
@@ -317,6 +347,54 @@ function pctDelta(delta: number): string {
   const points = Math.round(delta * 100);
   const sign = points > 0 ? "+" : "";
   return `${sign}${points} pts`;
+}
+
+/**
+ * Célula da coluna "vs. {ano-1}" na tabela por contratante: a variação da taxa de
+ * concretização deste contratante frente ao ano anterior (`indexContactPipelineChanges`).
+ * Subir a taxa é melhora (verde, fecha uma fração maior do que negocia); descer é
+ * piora (vermelho); dentro do limiar é estável (cinza). Quem só teve pipeline neste
+ * ano vira "novo"; quem não é comparável (ou sem base — taxa indefinida em algum
+ * período) fica em "—".
+ */
+function PipelineRowDelta({
+  status,
+  year,
+}: {
+  status: ContactPipelineRowStatus<PipelineContact>;
+  year: number;
+}) {
+  if (status.kind === "new") {
+    return (
+      <span
+        className="text-xs text-gray-400"
+        title={`Só teve pipeline aberto depois de ${year}`}
+      >
+        novo
+      </span>
+    );
+  }
+  if (status.kind === "none") {
+    return <span className="text-gray-300">—</span>;
+  }
+  const { conversionRateDelta, trend } = status.change;
+  if (conversionRateDelta == null) {
+    return (
+      <span
+        className="text-gray-300"
+        title="Sem show decidido em algum dos anos — sem base para comparar."
+      >
+        —
+      </span>
+    );
+  }
+  const tone =
+    trend === "improved"
+      ? "text-emerald-600"
+      : trend === "worsened"
+        ? "text-red-600"
+        : "text-gray-500";
+  return <span className={"font-medium " + tone}>{pctDelta(conversionRateDelta)}</span>;
 }
 
 /**

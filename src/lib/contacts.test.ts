@@ -111,6 +111,7 @@ import {
   pipelineByContact,
   pipelineByContactHeadline,
   compareContactPipelines,
+  indexContactPipelineChanges,
   PIPELINE_CONCENTRATION_HIGH_SHARE,
   PIPELINE_CONCENTRATION_CRITICAL_SHARE,
   CANCELLATION_TREND_EPSILON,
@@ -1424,6 +1425,62 @@ describe("compareContactPipelines", () => {
     ]);
     const c = compareContactPipelines(current, previous);
     expect(c.changes[0].openValueDelta).toBe(300_00);
+  });
+});
+
+describe("indexContactPipelineChanges", () => {
+  function s(over: Partial<ContactRankShowLike> = {}): ContactRankShowLike {
+    return { status: "PLAYED", date: "2026-05-01T20:00:00Z", fee: 100_00, ...over };
+  }
+  function item(id: string, shows: ContactRankShowLike[]): ContactWithShows<ContactRankLike> {
+    return { contact: { id, name: id }, shows };
+  }
+  function contact(id: string, played: number, cancelled: number) {
+    const shows: ContactRankShowLike[] = [s({ status: "PROPOSED" })];
+    for (let i = 0; i < played; i++) shows.push(s({ status: "PLAYED" }));
+    for (let i = 0; i < cancelled; i++) shows.push(s({ status: "CANCELLED" }));
+    return item(id, shows);
+  }
+
+  it("id nulo/ausente → none", () => {
+    const cmp = compareContactPipelines(pipelineByContact([]), pipelineByContact([]));
+    const at = indexContactPipelineChanges(cmp);
+    expect(at(null).kind).toBe("none");
+    expect(at(undefined).kind).toBe("none");
+    expect(at("qualquer").kind).toBe("none");
+  });
+
+  it("contratante nos dois períodos → changed com a variação da taxa", () => {
+    // 1/2 (50%) → 3/4 (75%) = +0.25 melhora
+    const current = pipelineByContact([contact("a", 3, 1)]);
+    const previous = pipelineByContact([contact("a", 1, 1)]);
+    const at = indexContactPipelineChanges(compareContactPipelines(current, previous));
+    const st = at("a");
+    expect(st.kind).toBe("changed");
+    if (st.kind === "changed") {
+      expect(st.change.conversionRateDelta).toBeCloseTo(0.25);
+      expect(st.change.trend).toBe("improved");
+    }
+  });
+
+  it("só no período atual → new; só no anterior → none", () => {
+    const current = pipelineByContact([contact("fica", 1, 1), contact("novo", 1, 1)]);
+    const previous = pipelineByContact([contact("fica", 1, 1), contact("sumiu", 1, 1)]);
+    const at = indexContactPipelineChanges(compareContactPipelines(current, previous));
+    expect(at("fica").kind).toBe("changed");
+    expect(at("novo").kind).toBe("new");
+    expect(at("sumiu").kind).toBe("none");
+  });
+
+  it("taxa indefinida em algum período → changed com delta null", () => {
+    const current = pipelineByContact([
+      item("x", [s({ status: "PROPOSED" }), s({ status: "PLAYED" })]),
+    ]);
+    const previous = pipelineByContact([item("x", [s({ status: "PROPOSED" })])]);
+    const at = indexContactPipelineChanges(compareContactPipelines(current, previous));
+    const st = at("x");
+    expect(st.kind).toBe("changed");
+    if (st.kind === "changed") expect(st.change.conversionRateDelta).toBeNull();
   });
 });
 
