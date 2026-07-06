@@ -1,7 +1,12 @@
 // Lógica de negócio do CRM de contatos (pura, sem dependência de banco/UI).
 // Testada em contacts.test.ts. Valores monetários em CENTAVOS (inteiros).
 
-import { normalizeText, computeShowPnL, type TxLike } from "./finance";
+import {
+  normalizeText,
+  computeShowPnL,
+  CONVERSION_TREND_EPSILON,
+  type TxLike,
+} from "./finance";
 import { CONTACT_ROLES, SHOW_STATUSES, type ContactRole, type ShowStatus } from "./domain";
 
 /** Forma mínima de show exigida pela agregação por contato. */
@@ -1269,5 +1274,163 @@ export function pipelineByContactHeadline<C extends ContactRankLike>(
     topShare,
     totalOpenValue: report.totalOpenValue,
     contactCount: report.contactCount,
+  };
+}
+
+// ── Comparativo ano a ano do funil por contratante (quem passou a fechar mais) ─
+//
+// Espelho por contratante do comparativo do funil geral (`compareShowPipelines`/
+// D209): casa os contratantes de dois `pipelineByContact` (ano atual × anterior)
+// por `contact.id` e destila os dois "movers" — quem mais melhorou e quem mais
+// piorou a **taxa de concretização** (PLAYED / decididos) de um ano para o outro.
+// Como no funil geral, **subir** a taxa é a melhora (fecha uma fração maior do que
+// negocia), direção oposta ao DSO/cancelamento. Ancora na taxa (não no cachê em
+// aberto): "passar a fechar mais" é sobre converter, não sobre ter mais na mesa.
+// Reusa `CONVERSION_TREND_EPSILON` (=0.05) como limiar, o mesmo do funil geral.
+//
+// Pura, sem I/O: recebe dois `pipelineByContact` já computados (cada um sobre os
+// shows do seu período). Só entram em `changes` os contratantes com pipeline
+// aberto nos DOIS períodos (é a lente da página); os demais viram
+// `newContacts`/`droppedContacts`. A taxa por contratante fica `null` num período
+// sem shows decididos — aí `conversionRateDelta` é `null` e o veredito "stable"
+// (sem base para ler tendência), como no funil geral.
+
+export interface ContactPipelineChange<C extends ContactRankLike> {
+  /** Contratante comparado (presente nos dois períodos). */
+  contact: C;
+  /** Linha do contratante no período atual. */
+  current: ContactPipelineRow<C>;
+  /** Linha do contratante no período anterior. */
+  previous: ContactPipelineRow<C>;
+  /**
+   * Variação da taxa de concretização (atual − anterior, em pontos 0..1).
+   * `null` quando algum período não tem show decidido (taxa indefinida) — sem
+   * base para comparar. Positivo = fechando uma fração maior agora (melhora);
+   * negativo = perdendo mais do que negocia (piora).
+   */
+  conversionRateDelta: number | null;
+  /** Variação do cachê em aberto (atual − anterior, centavos) — só informativo. */
+  openValueDelta: number;
+  /** Variação da contagem de shows realizados (atual − anterior). */
+  playedCountDelta: number;
+  /**
+   * Direção do fechamento entre os dois períodos, pela variação da taxa de
+   * concretização contra `CONVERSION_TREND_EPSILON`:
+   * - "improved": a taxa subiu além do limiar (fechando mais do que negocia);
+   * - "worsened": a taxa caiu além do limiar (perdendo mais do que negocia);
+   * - "stable": variação dentro do limiar, ou taxa indefinida em algum período.
+   * Aqui **subir** a taxa é a melhora (igual ao funil geral, oposto ao DSO).
+   */
+  trend: "improved" | "worsened" | "stable";
+}
+
+export interface ContactPipelineComparison<C extends ContactRankLike> {
+  /**
+   * Contratantes com pipeline aberto nos DOIS períodos, com a variação da taxa.
+   * Ordenados da maior piora à maior melhora (quem passou a fechar menos primeiro),
+   * para o "mover" de cima do card ser o que mais merece atenção; taxa indefinida
+   * em algum período vai ao fim.
+   */
+  changes: ContactPipelineChange<C>[];
+  /** Quem mais melhorou a concretização (maior variação positiva entre os "improved"). */
+  biggestImprovement: ContactPipelineChange<C> | null;
+  /** Quem mais piorou a concretização (variação mais negativa entre os "worsened"). */
+  biggestWorsening: ContactPipelineChange<C> | null;
+  /** Contratantes com pipeline aberto só no período atual (novos na mesa). */
+  newContacts: ContactPipelineRow<C>[];
+  /** Contratantes com pipeline aberto no anterior mas não no atual (saíram da mesa). */
+  droppedContacts: ContactPipelineRow<C>[];
+}
+
+/**
+ * Compara o **funil por contratante** entre dois períodos (atual × anterior),
+ * casando os contratantes por `contact.id`. Para cada um com pipeline aberto nos
+ * dois períodos devolve a variação da taxa de concretização (quem passou a fechar
+ * mais / menos); os que só têm pipeline aberto num período viram `newContacts`/
+ * `droppedContacts`. Pura, sem I/O: recebe dois `pipelineByContact` já computados.
+ * O chamador decide quando exibir (tipicamente só com um ano específico e ambos os
+ * períodos com pipeline).
+ */
+export function compareContactPipelines<C extends ContactRankLike>(
+  current: ContactPipeline<C>,
+  previous: ContactPipeline<C>,
+): ContactPipelineComparison<C> {
+  const prevById = new Map<string, ContactPipelineRow<C>>();
+  for (const r of previous.rows) prevById.set(r.contact.id, r);
+
+  const currentIds = new Set<string>();
+  const changes: ContactPipelineChange<C>[] = [];
+  const newContacts: ContactPipelineRow<C>[] = [];
+
+  for (const cur of current.rows) {
+    currentIds.add(cur.contact.id);
+    const prev = prevById.get(cur.contact.id);
+    if (!prev) {
+      newContacts.push(cur);
+      continue;
+    }
+    const conversionRateDelta =
+      cur.conversionRate == null || prev.conversionRate == null
+        ? null
+        : cur.conversionRate - prev.conversionRate;
+    changes.push({
+      contact: cur.contact,
+      current: cur,
+      previous: prev,
+      conversionRateDelta,
+      openValueDelta: cur.openValue - prev.openValue,
+      playedCountDelta: cur.playedCount - prev.playedCount,
+      trend:
+        conversionRateDelta == null
+          ? "stable"
+          : conversionRateDelta >= CONVERSION_TREND_EPSILON
+            ? "improved"
+            : conversionRateDelta <= -CONVERSION_TREND_EPSILON
+              ? "worsened"
+              : "stable",
+    });
+  }
+
+  const droppedContacts = previous.rows.filter(
+    (r) => !currentIds.has(r.contact.id),
+  );
+
+  // Maior piora no topo: variação da taxa asc (mais negativa primeiro). Taxa
+  // indefinida (delta null) vai ao fim; empate estável pelo id.
+  changes.sort((a, b) => {
+    const av = a.conversionRateDelta;
+    const bv = b.conversionRateDelta;
+    if (av == null && bv == null) return a.contact.id.localeCompare(b.contact.id);
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    return av - bv || a.contact.id.localeCompare(b.contact.id);
+  });
+
+  let biggestImprovement: ContactPipelineChange<C> | null = null;
+  let biggestWorsening: ContactPipelineChange<C> | null = null;
+  for (const c of changes) {
+    if (c.conversionRateDelta == null) continue;
+    if (
+      c.trend === "improved" &&
+      (!biggestImprovement ||
+        c.conversionRateDelta > biggestImprovement.conversionRateDelta!)
+    ) {
+      biggestImprovement = c;
+    }
+    if (
+      c.trend === "worsened" &&
+      (!biggestWorsening ||
+        c.conversionRateDelta < biggestWorsening.conversionRateDelta!)
+    ) {
+      biggestWorsening = c;
+    }
+  }
+
+  return {
+    changes,
+    biggestImprovement,
+    biggestWorsening,
+    newContacts,
+    droppedContacts,
   };
 }

@@ -110,6 +110,7 @@ import {
   compareCancellationRate,
   pipelineByContact,
   pipelineByContactHeadline,
+  compareContactPipelines,
   PIPELINE_CONCENTRATION_HIGH_SHARE,
   PIPELINE_CONCENTRATION_CRITICAL_SHARE,
   CANCELLATION_TREND_EPSILON,
@@ -1310,6 +1311,119 @@ describe("pipelineByContactHeadline", () => {
     expect(PIPELINE_CONCENTRATION_HIGH_SHARE).toBeLessThan(
       PIPELINE_CONCENTRATION_CRITICAL_SHARE,
     );
+  });
+});
+
+describe("compareContactPipelines", () => {
+  function s(over: Partial<ContactRankShowLike> = {}): ContactRankShowLike {
+    return { status: "PLAYED", date: "2026-05-01T20:00:00Z", fee: 100_00, ...over };
+  }
+  function item(
+    id: string,
+    name: string,
+    shows: ContactRankShowLike[],
+  ): ContactWithShows<ContactRankLike> {
+    return { contact: { id, name }, shows };
+  }
+  // Contratante com pipeline aberto (1 PROPOSED) + N PLAYED + M CANCELLED, para
+  // controlar a taxa de concretização mantendo-o na lista (openCount >= 1).
+  function contact(id: string, played: number, cancelled: number) {
+    const shows: ContactRankShowLike[] = [s({ status: "PROPOSED" })];
+    for (let i = 0; i < played; i++) shows.push(s({ status: "PLAYED" }));
+    for (let i = 0; i < cancelled; i++) shows.push(s({ status: "CANCELLED" }));
+    return item(id, id, shows);
+  }
+
+  it("dois períodos vazios → sem movers", () => {
+    const c = compareContactPipelines(pipelineByContact([]), pipelineByContact([]));
+    expect(c.changes).toEqual([]);
+    expect(c.biggestImprovement).toBeNull();
+    expect(c.biggestWorsening).toBeNull();
+    expect(c.newContacts).toEqual([]);
+    expect(c.droppedContacts).toEqual([]);
+  });
+
+  it("casa contratantes dos dois períodos e mede a variação da concretização", () => {
+    // A: 1/2 (50%) → 3/4 (75%) = +0.25 melhora; B: 3/4 (75%) → 1/2 (50%) = -0.25 piora
+    const current = pipelineByContact([contact("a", 3, 1), contact("b", 1, 1)]);
+    const previous = pipelineByContact([contact("a", 1, 1), contact("b", 3, 1)]);
+    const c = compareContactPipelines(current, previous);
+    expect(c.changes.length).toBe(2);
+    const a = c.changes.find((x) => x.contact.id === "a")!;
+    const b = c.changes.find((x) => x.contact.id === "b")!;
+    expect(a.conversionRateDelta).toBeCloseTo(0.25);
+    expect(a.trend).toBe("improved");
+    expect(b.conversionRateDelta).toBeCloseTo(-0.25);
+    expect(b.trend).toBe("worsened");
+    expect(c.biggestImprovement?.contact.id).toBe("a");
+    expect(c.biggestWorsening?.contact.id).toBe("b");
+    // "subir a taxa é melhora" → o playedCountDelta acompanha
+    expect(a.playedCountDelta).toBe(2);
+  });
+
+  it("ordena as changes da maior piora à maior melhora", () => {
+    // pior: -0.5; leve piora: -0.25; melhora: +0.5
+    const current = pipelineByContact([
+      contact("pior", 0, 1), // 0/1 = 0%
+      contact("leve", 1, 3), // 1/4 = 25%
+      contact("melhor", 3, 1), // 3/4 = 75%
+    ]);
+    const previous = pipelineByContact([
+      contact("pior", 1, 1), // 1/2 = 50%
+      contact("leve", 1, 1), // 1/2 = 50%
+      contact("melhor", 1, 3), // 1/4 = 25%
+    ]);
+    const c = compareContactPipelines(current, previous);
+    expect(c.changes.map((x) => x.contact.id)).toEqual(["pior", "leve", "melhor"]);
+  });
+
+  it("variação dentro do limiar → estável, fora dos movers", () => {
+    // 1/2 (50%) → 2/4 (50%) = 0 → estável (< CONVERSION_TREND_EPSILON)
+    const current = pipelineByContact([contact("x", 2, 2)]);
+    const previous = pipelineByContact([contact("x", 1, 1)]);
+    const c = compareContactPipelines(current, previous);
+    expect(c.changes[0].conversionRateDelta).toBeCloseTo(0);
+    expect(c.changes[0].trend).toBe("stable");
+    expect(c.biggestImprovement).toBeNull();
+    expect(c.biggestWorsening).toBeNull();
+  });
+
+  it("taxa indefinida em algum período → delta null, estável e ao fim da ordem", () => {
+    // "novo": sem decididos no anterior (só PROPOSED) → taxa null no previous
+    const current = pipelineByContact([
+      item("novo", "novo", [s({ status: "PROPOSED" }), s({ status: "PLAYED" })]),
+      contact("real", 0, 1), // 50% → 0% (piora clara)
+    ]);
+    const previous = pipelineByContact([
+      item("novo", "novo", [s({ status: "PROPOSED" })]),
+      contact("real", 1, 1),
+    ]);
+    const c = compareContactPipelines(current, previous);
+    const novo = c.changes.find((x) => x.contact.id === "novo")!;
+    expect(novo.conversionRateDelta).toBeNull();
+    expect(novo.trend).toBe("stable");
+    // delta null vai ao fim; a piora real vem antes
+    expect(c.changes[c.changes.length - 1].contact.id).toBe("novo");
+  });
+
+  it("separa novos (só no atual) e sumidos (só no anterior)", () => {
+    const current = pipelineByContact([contact("fica", 1, 1), contact("novo", 1, 1)]);
+    const previous = pipelineByContact([contact("fica", 1, 1), contact("sumiu", 1, 1)]);
+    const c = compareContactPipelines(current, previous);
+    expect(c.changes.map((x) => x.contact.id)).toEqual(["fica"]);
+    expect(c.newContacts.map((x) => x.contact.id)).toEqual(["novo"]);
+    expect(c.droppedContacts.map((x) => x.contact.id)).toEqual(["sumiu"]);
+  });
+
+  it("registra a variação do cachê em aberto (informativa)", () => {
+    const current = pipelineByContact([
+      item("a", "a", [s({ status: "PROPOSED", fee: 500_00 }), s({ status: "PLAYED" })]),
+    ]);
+    const previous = pipelineByContact([
+      item("a", "a", [s({ status: "PROPOSED", fee: 200_00 }), s({ status: "PLAYED" })]),
+    ]);
+    const c = compareContactPipelines(current, previous);
+    expect(c.changes[0].openValueDelta).toBe(300_00);
   });
 });
 

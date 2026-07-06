@@ -1,7 +1,13 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { pipelineByContact, type ContactRankLike } from "@/lib/contacts";
+import {
+  pipelineByContact,
+  compareContactPipelines,
+  type ContactRankLike,
+  type ContactPipelineChange,
+  type ContactPipelineComparison,
+} from "@/lib/contacts";
 import {
   showProfitYears,
   parseProfitYear,
@@ -63,6 +69,32 @@ export default async function ContatosFunilPage({
 
   const report = pipelineByContact(items);
   const hasData = report.contactCount > 0;
+
+  // Comparativo por contratante {ano} × {ano-1}: quem passou a fechar mais / menos
+  // (a outra metade da D233 / funil geral D209). Só com um ano específico e ambos
+  // os períodos com pipeline aberto — senão "fechando mais/menos" enganaria.
+  // Reusa os mesmos shows já carregados (recorte por `date`, D108), sem nova
+  // consulta; o veredito ancora na taxa de concretização, como o funil geral.
+  let comparison: ContactPipelineComparison<PipelineContact> | null = null;
+  let previousYear = 0;
+  if (yearFilter !== "all" && hasData) {
+    previousYear = yearFilter - 1;
+    const previousReport = pipelineByContact(
+      contacts.map((c) => ({
+        contact: { id: c.id, name: c.name, role: c.role } as PipelineContact,
+        shows: filterShowsByYear(
+          c.shows.map((cs) => cs.show),
+          previousYear,
+        ),
+      })),
+    );
+    if (previousReport.contactCount > 0) {
+      const cmp = compareContactPipelines(report, previousReport);
+      // Só vale exibir se há de fato algum contratante nos dois períodos.
+      if (cmp.changes.length > 0) comparison = cmp;
+    }
+  }
+
   const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
   const exportHref =
     yearFilter === "all"
@@ -154,6 +186,15 @@ export default async function ContatosFunilPage({
               tone="gray"
             />
           </div>
+
+          {/* Comparativo ano a ano: quem passou a fechar mais / menos */}
+          {comparison && (
+            <PipelineMoversCard
+              comparison={comparison}
+              currentYear={yearFilter as number}
+              previousYear={previousYear}
+            />
+          )}
 
           {/* Lista por contratante */}
           <section className="card overflow-x-auto p-0">
@@ -267,6 +308,109 @@ function Stat({
       <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
       <p className={"mt-1 text-xl font-bold " + tones[tone]}>{value}</p>
       {hint && <p className="mt-1 text-xs text-gray-400">{hint}</p>}
+    </div>
+  );
+}
+
+/** Variação da taxa de concretização em pontos percentuais, com sinal. */
+function pctDelta(delta: number): string {
+  const points = Math.round(delta * 100);
+  const sign = points > 0 ? "+" : "";
+  return `${sign}${points} pts`;
+}
+
+/**
+ * Card "Quem passou a fechar mais/menos · {ano} vs. {ano-1}": destaca o
+ * contratante que mais melhorou e o que mais piorou a taxa de concretização em
+ * relação ao ano anterior (`compareContactPipelines`). Espelho por contratante do
+ * comparativo do funil geral: **subir** a taxa é a melhora (fecha uma fração maior
+ * do que negocia). Fecha o rodapé com quem entrou / saiu da mesa neste ano.
+ */
+function PipelineMoversCard({
+  comparison,
+  currentYear,
+  previousYear,
+}: {
+  comparison: ContactPipelineComparison<PipelineContact>;
+  currentYear: number;
+  previousYear: number;
+}) {
+  const { biggestImprovement, biggestWorsening, changes, newContacts, droppedContacts } =
+    comparison;
+  return (
+    <section className="card space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+          Quem passou a fechar mais/menos · {currentYear} vs. {previousYear}
+        </p>
+        <span className="text-xs text-gray-400">
+          {changes.length}{" "}
+          {changes.length === 1 ? "contratante comparável" : "contratantes comparáveis"}
+        </span>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <MoverBlock title="Fechando mais" change={biggestImprovement} tone="improved" />
+        <MoverBlock title="Fechando menos" change={biggestWorsening} tone="worsened" />
+      </div>
+      {(newContacts.length > 0 || droppedContacts.length > 0) && (
+        <p className="text-xs text-gray-400">
+          {newContacts.length > 0 && (
+            <>
+              {newContacts.length}{" "}
+              {newContacts.length === 1
+                ? "contratante entrou na mesa"
+                : "contratantes entraram na mesa"}{" "}
+              em {currentYear}
+            </>
+          )}
+          {newContacts.length > 0 && droppedContacts.length > 0 && " · "}
+          {droppedContacts.length > 0 && (
+            <>
+              {droppedContacts.length}{" "}
+              {droppedContacts.length === 1
+                ? "tinha pipeline"
+                : "tinham pipeline"}{" "}
+              em {previousYear} mas não em {currentYear}
+            </>
+          )}
+          .
+        </p>
+      )}
+    </section>
+  );
+}
+
+/** Um lado do card de "movers": quem passou a fechar mais ou menos. */
+function MoverBlock({
+  title,
+  change,
+  tone,
+}: {
+  title: string;
+  change: ContactPipelineChange<PipelineContact> | null;
+  tone: "improved" | "worsened";
+}) {
+  const valueClass = tone === "improved" ? "text-emerald-600" : "text-red-600";
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{title}</p>
+      {change && change.conversionRateDelta != null ? (
+        <>
+          <p className="mt-1 truncate font-medium text-gray-900">{change.contact.name}</p>
+          <p className={"mt-1 text-lg font-bold " + valueClass}>
+            {pctDelta(change.conversionRateDelta)}
+          </p>
+          <p className="text-xs text-gray-400">
+            {pct(change.previous.conversionRate ?? 0)} →{" "}
+            {pct(change.current.conversionRate ?? 0)}
+          </p>
+        </>
+      ) : (
+        <p className="mt-1 text-sm text-gray-400">
+          Nenhum contratante passou a fechar{" "}
+          {tone === "improved" ? "mais" : "menos"} de forma relevante
+        </p>
+      )}
     </div>
   );
 }
