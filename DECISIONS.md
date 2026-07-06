@@ -4931,3 +4931,40 @@ contexto, decisão, justificativa e alternativas consideradas.
   D6/bloqueios); **nenhuma dependência nova**.
 - **Nota de concorrência:** **D157** segue reservado à PR paralela #180 (export CSV da agenda) ainda em aberto; esta sessão usa
   **D159** (após o D158 já mergeado da Sessão 165) para evitar colisão de numeração na `main`.
+
+## D160 — Exportação CSV dos custos fixos / despesas recorrentes (`/financas/custos-fixos/export`) (Sessão 167)
+- **Contexto:** a tela `/financas/custos-fixos` (`recurringExpenses`) identifica as despesas que se repetem mês a mês (aluguel de
+  sala, streaming, telefone, software…) e estima o **piso mensal** (`estimatedMonthlyFixedCost`) que o músico precisa faturar só
+  para se manter. É uma tabela genuína (categoria, conta típica/mês, meses, regularidade, situação, total), mas era uma das
+  últimas telas tabulares das Finanças ainda **sem exportação** — enquanto sazonalidade, composição, fontes de renda,
+  crescimento, fluxo de caixa etc. já exportavam. Levar a lista para a planilha permite montar um orçamento anual de custos fixos
+  e cruzá-la com o planejamento de receita.
+- **Decisão:** novo serializador puro `recurringExpensesToCsv(report)` + `RECURRING_EXPENSES_CSV_HEADERS` em `src/lib/csv.ts`
+  (mesma família de `incomeMixToCsv`/`expenseMixToCsv`: usa `centsToCsvAmount`/`csvShare`) recebe o `RecurringExpensesReport` já
+  computado por `recurringExpenses` e emite uma linha por categoria recorrente, na **mesma ordem da página** (conta típica
+  decrescente), encerrada numa linha "Total". Rota `/financas/custos-fixos/export` reusa a **mesma consulta** da página (só
+  despesas, `type: "EXPENSE"`) + BOM UTF-8; nome fixo `custos-fixos.csv`; botão "⬇ CSV" no cabeçalho só com
+  `categories.length > 0`.
+- **Colunas:** Categoria / Conta típica/mês (R$) / Meses ativos / Meses na janela / Regularidade / Última ocorrência / Situação /
+  Total histórico (R$). "Regularidade" é a fração da janela em que a despesa apareceu (`csvShare`, "100%"); "Última ocorrência"
+  usa a chave ISO "YYYY-MM" (ordenável), não o "jun/26" da UI — mesma filosofia das séries temporais (D131 etc.); "Situação"
+  espelha o selo da página ("Ativa"/"Encerrada"). O CSV **inclui as categorias encerradas** (como a tabela da tela), para a
+  planilha abrir auto-suficiente.
+- **Linha Total:** a coluna "Conta típica/mês" do Total traz `estimatedMonthlyFixedCost` — a soma da conta típica **só das
+  categorias ainda ativas**, que é o número do card "Custo fixo mensal estimado". Por isso pode ser **menor** que a soma
+  linha-a-linha da coluna (que inclui encerradas): é intencional e documentado no serializador. "Situação" do Total traz
+  "{ativas}/{total} ativas"; "Total histórico" soma os totais de todas as categorias.
+- **Sem recorte por `?ano=`:** a detecção de recorrência precisa de janela plurianual (uma categoria vira "fixa" ao aparecer em
+  ≥3 meses distintos); recortar por ano descaracterizaria o conceito. Segue a página, que também não tem recorte.
+- **Testes:** **+3** em `csv.test.ts` (`describe("recurringExpensesToCsv")`): só cabeçalho + Total zerado sem despesa recorrente;
+  uma linha por categoria recorrente (conta típica desc), situação Ativa/Encerrada, última em ISO + Total com
+  `estimatedMonthlyFixedCost` e "1/2 ativas"; categoria de mês único não vira recorrente e some do relatório. **972 testes** no
+  total (eram 969).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **972 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/financas/custos-fixos` + `/financas/custos-fixos/export` 307 (auth-gated).
+  `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss
+  bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Nota de infra:** no início da sessão os testes de integração das server actions falhavam (`column billingContactId does not
+  exist`) porque o **client Prisma em `node_modules` estava dessincronizado** do `schema.prisma` da `main` (a `main` sofreu
+  *forced update* após o setup do container). Resolvido com `npx prisma generate` (regenera o client a partir do schema atual);
+  é ruído de ambiente efêmero, não quebra da `main` — em CI o `prisma generate` roda do zero. Sem alteração de código por isso.

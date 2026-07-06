@@ -60,6 +60,8 @@ import {
   BOOKED_REVENUE_CSV_HEADERS,
   dueAgendaToCsv,
   DUE_AGENDA_CSV_HEADERS,
+  recurringExpensesToCsv,
+  RECURRING_EXPENSES_CSV_HEADERS,
   type DueAgendaCsvTx,
   type CsvTransaction,
   type CsvShow,
@@ -80,6 +82,7 @@ import {
   cashFlowByMonth,
   forecastBookedRevenue,
   buildDueAgenda,
+  recurringExpenses,
   yearlyHistory,
   weekdayPerformance,
   feeDistribution,
@@ -1762,5 +1765,67 @@ describe("dueAgendaToCsv", () => {
     expect(lines[1]).toBe("10/06/2026;;Transporte;Vencidas;A pagar;-19;;0,00;50,00");
     expect(lines[2]).toBe("25/06/2026;Cachê atrasado;Cachê;Vencidas;A receber;-4;;80,00;0,00");
     expect(lines[3]).toBe("Total;;;;;;;80,00;50,00");
+  });
+});
+
+describe("recurringExpensesToCsv", () => {
+  const exp = (over: Partial<TxLike> = {}): TxLike => ({
+    type: "EXPENSE",
+    amount: 100000,
+    category: "Aluguel",
+    date: "2024-06-10T00:00:00.000Z",
+    received: false,
+    ...over,
+  });
+
+  it("emite só o cabeçalho + a linha Total (zerada) quando não há despesa recorrente", () => {
+    const csv = recurringExpensesToCsv(recurringExpenses([]));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(RECURRING_EXPENSES_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe("Total;0,00;;;;;0/0 ativas;0,00");
+  });
+
+  it("serializa uma linha por categoria recorrente (conta típica desc), situação e Total", () => {
+    const now = "2024-06-15T00:00:00.000Z";
+    const txs: TxLike[] = [
+      // Aluguel: 4 meses seguidos, ainda ativo (última em jun, now jun).
+      exp({ category: "Aluguel", amount: 100000, date: "2024-03-10T00:00:00.000Z" }),
+      exp({ category: "Aluguel", amount: 100000, date: "2024-04-10T00:00:00.000Z" }),
+      exp({ category: "Aluguel", amount: 100000, date: "2024-05-10T00:00:00.000Z" }),
+      exp({ category: "Aluguel", amount: 100000, date: "2024-06-10T00:00:00.000Z" }),
+      // Streaming: 3 meses, encerrado antes da janela ativa (última mar, now jun).
+      exp({ category: "Streaming", amount: 5000, date: "2024-01-10T00:00:00.000Z" }),
+      exp({ category: "Streaming", amount: 5000, date: "2024-02-10T00:00:00.000Z" }),
+      exp({ category: "Streaming", amount: 5000, date: "2024-03-10T00:00:00.000Z" }),
+      // Equipamento: 1 mês só → não recorrente, some do relatório.
+      exp({ category: "Equipamento", amount: 999900, date: "2024-06-01T00:00:00.000Z" }),
+    ];
+    const csv = recurringExpensesToCsv(recurringExpenses(txs, { now }));
+    const lines = csv.split("\r\n");
+    expect(lines).toHaveLength(4); // cabeçalho + 2 recorrentes + Total
+
+    // Aluguel primeiro (conta típica maior), ativo.
+    const aluguel = lines[1].split(";");
+    expect(aluguel[0]).toBe("Aluguel");
+    expect(aluguel[1]).toBe("1000,00"); // 4000 / 4 meses
+    expect(aluguel[2]).toBe("4"); // meses ativos
+    expect(aluguel[3]).toBe("4"); // meses na janela
+    expect(aluguel[4]).toBe("100%"); // regularidade
+    expect(aluguel[5]).toBe("2024-06"); // última ocorrência (ISO)
+    expect(aluguel[6]).toBe("Ativa");
+    expect(aluguel[7]).toBe("4000,00"); // total histórico
+
+    // Streaming depois, encerrado.
+    const streaming = lines[2].split(";");
+    expect(streaming[0]).toBe("Streaming");
+    expect(streaming[1]).toBe("50,00");
+    expect(streaming[5]).toBe("2024-03");
+    expect(streaming[6]).toBe("Encerrada");
+    expect(streaming[7]).toBe("150,00");
+
+    // Total: conta típica = só ativas (estimatedMonthlyFixedCost = 1000);
+    // situação = "1/2 ativas"; total histórico = 4000 + 150.
+    expect(lines[3]).toBe("Total;1000,00;;;;;1/2 ativas;4150,00");
   });
 });
