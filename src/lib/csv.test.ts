@@ -100,6 +100,7 @@ import {
   type CsvShow,
   type CsvCalendarShow,
   monthCalendarToCsv,
+  weekShowsToCsv,
   MONTH_CALENDAR_CSV_HEADERS,
   type CsvProfitShow,
   type ContactActivityCsvRow,
@@ -407,6 +408,64 @@ describe("monthCalendarToCsv", () => {
       3,
     );
     expect(csv.split("\r\n")[1]).toBe("12/03/2026;21:30;Show no Bar X;;ARQUIVADO;0,00");
+  });
+});
+
+describe("weekShowsToCsv", () => {
+  // Datas LOCAIS (a agenda semanal recorta pela data local, como a grade do mês).
+  const local = (y: number, m: number, d: number, hh = 20, mm = 0) =>
+    new Date(y, m - 1, d, hh, mm);
+  const show = (over: Partial<CsvCalendarShow> = {}): CsvCalendarShow => ({
+    date: local(2026, 3, 3, 21, 30),
+    title: "Show no Bar X",
+    venue: "Bar X",
+    status: "CONFIRMED",
+    fee: 150000,
+    ...over,
+  });
+
+  it("emite só o cabeçalho quando a semana não tem shows", () => {
+    expect(weekShowsToCsv([])).toBe(MONTH_CALENDAR_CSV_HEADERS.join(";"));
+  });
+
+  it("serializa um show com data/hora LOCAL, status legível e cachê com vírgula", () => {
+    const lines = weekShowsToCsv([show()]).split("\r\n");
+    expect(lines[0]).toBe("Data;Hora;Título;Local;Status;Cachê (R$)");
+    expect(lines[1]).toBe("03/03/2026;21:30;Show no Bar X;Bar X;Confirmado;1500,00");
+  });
+
+  it("lista os shows da semana em ordem de data e fecha com a linha Total", () => {
+    const lines = weekShowsToCsv([
+      show({ date: local(2026, 3, 6), title: "Sexta", fee: 400_00, status: "PROPOSED" }),
+      show({ date: local(2026, 3, 2), title: "Segunda", fee: 100_00 }),
+      show({ date: local(2026, 3, 4), title: "Quarta", fee: 250_00, status: "PLAYED" }),
+    ]).split("\r\n");
+    expect(lines[1]).toContain("Segunda");
+    expect(lines[2]).toContain("Quarta");
+    expect(lines[3]).toContain("Sexta");
+    // Total: 3 shows, cachê total = 100+250+400 = 750,00.
+    expect(lines[4]).toBe("Total;;3 shows;;;750,00");
+  });
+
+  it("no Total exclui cancelados da soma e do cachê, contando-os à parte", () => {
+    const lines = weekShowsToCsv([
+      show({ date: local(2026, 3, 2), title: "Firme", fee: 100_00 }),
+      show({ date: local(2026, 3, 3), title: "Cai-1", fee: 999_00, status: "CANCELLED" }),
+      show({ date: local(2026, 3, 5), title: "Cai-2", fee: 500_00, status: "CANCELLED" }),
+    ]).split("\r\n");
+    expect(lines).toContain("03/03/2026;20:00;Cai-1;Bar X;Cancelado;999,00");
+    expect(lines[4]).toBe("Total;;1 show (2 cancelados);;;100,00");
+  });
+
+  it("não recorta por data: soma toda a lista recebida (a janela já veio filtrada)", () => {
+    // Diferente do mês, não há filtro por year/month — o chamador (weekRange) já recortou.
+    const lines = weekShowsToCsv([
+      show({ date: local(2026, 2, 28), title: "Sáb", fee: 100_00 }),
+      show({ date: local(2026, 3, 1), title: "Dom", fee: 200_00, status: "PROPOSED" }),
+    ]).split("\r\n");
+    expect(lines[1]).toContain("Sáb");
+    expect(lines[2]).toContain("Dom");
+    expect(lines[3]).toBe("Total;;2 shows;;;300,00");
   });
 });
 

@@ -818,6 +818,47 @@ export function summarizeMonthShows<T extends MonthSummaryShowLike>(
   };
 }
 
+/**
+ * Resume uma lista de shows JÁ recortada a um período contíguo — o chamador
+ * passa exatamente os shows da janela (p.ex. a semana exibida em `/shows/semana`,
+ * carregada por `weekRange`). Ao contrário de `summarizeMonthShows`, **não**
+ * recorta por data (a janela já veio filtrada da consulta), então serve qualquer
+ * período. Mesma semântica: cancelados ficam fora de `total` e dos cachês (não
+ * são compromisso), mas são contados à parte; status desconhecido é ignorado.
+ * Devolve o mesmo shape (`MonthShowsSummary`) usado no calendário. Pura.
+ */
+export function summarizeWeekShows<T extends MonthSummaryShowLike>(
+  shows: T[],
+): MonthShowsSummary {
+  const byStatus: Record<ShowStatus, number> = {
+    PROPOSED: 0,
+    CONFIRMED: 0,
+    PLAYED: 0,
+    CANCELLED: 0,
+  };
+  let confirmedFee = 0;
+  let pendingFee = 0;
+
+  for (const s of shows) {
+    if (!isValidShowStatus(s.status)) continue;
+    byStatus[s.status] += 1;
+    const fee = s.fee ?? 0;
+    if (s.status === "CONFIRMED" || s.status === "PLAYED") confirmedFee += fee;
+    else if (s.status === "PROPOSED") pendingFee += fee;
+  }
+
+  const cancelled = byStatus.CANCELLED;
+  const total = byStatus.PROPOSED + byStatus.CONFIRMED + byStatus.PLAYED;
+  return {
+    total,
+    cancelled,
+    confirmedFee,
+    pendingFee,
+    totalFee: confirmedFee + pendingFee,
+    byStatus,
+  };
+}
+
 // ── Duplicar show (residências / eventos recorrentes) ───────────────────────
 
 /** Campos de um show que a duplicação lê. */

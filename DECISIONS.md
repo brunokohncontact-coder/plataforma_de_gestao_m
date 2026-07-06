@@ -7968,3 +7968,33 @@ contexto, decisão, justificativa e alternativas consideradas.
   (10 advisories — 4 moderate / 5 high / 1 critical, Next 14 / postcss; ver D6); **nenhuma dependência nova**.
 - **Nota de concorrência:** número **D238** escolhido como o próximo livre após o D237 já mergeado (Sessão 243). Se uma PR
   paralela reivindicar o mesmo número, renumerar na consolidação.
+
+## D239 — Exportação CSV da agenda semanal (`/shows/semana/export`) (Sessão 245)
+- **Contexto:** a agenda semanal `/shows/semana` (lista os shows da semana exibida, janela de `weekRange`) era uma das poucas
+  telas de shows ainda sem exportação — enquanto a irmã mensal (`/shows/calendario`) já exportava o mês (D221) e mostrava uma
+  faixa de resumo (D216). Levar a semana para a planilha permite montar rider/roteiro da semana, compartilhar com banda/produção
+  ou conferir cachês do período fora do app.
+- **Decisão:** novo serializador puro `weekShowsToCsv(shows)` em `src/lib/csv.ts`, **irmã** de `monthCalendarToCsv` no eixo
+  semanal — reusa as mesmas colunas (`MONTH_CALENDAR_CSV_HEADERS`: Data/Hora/Título/Local/Status/Cachê) e a mesma convenção de
+  **data/hora LOCAL** (`csvLocalDate`/`csvLocalTime`), porque a agenda recorta pela data local como a grade do mês. Uma linha por
+  show (ordenada por data), encerrada — quando há linhas — numa linha "Total" que reusa o novo `summarizeWeekShows`. Sem linhas →
+  só o cabeçalho (mesmo comportamento da irmã do mês). Rota `/shows/semana/export?semana=YYYY-MM-DD` reusa a **mesma janela**
+  (`weekRange`) e a mesma consulta da página + BOM UTF-8; nome ancorado no início da semana (segunda) via
+  `semana-{toDayParam(startOfWeek(ref))}.csv`, estável para qualquer dia de referência dentro dela; botão "⬇ CSV" no cabeçalho da
+  página só com shows na semana (`total > 0`), propagando o `?semana=` ativo.
+- **Novo helper `summarizeWeekShows(shows)`** em `src/lib/shows.ts` (irmão de `summarizeMonthShows`/D216): ao contrário do mensal,
+  **não recorta por data** — o chamador já passou exatamente a janela da semana (a consulta filtra por `weekRange`), então serve
+  qualquer período contíguo. Mesma semântica: cancelados ficam fora de `total` e dos cachês (contados à parte), status desconhecido
+  ignorado. Devolve o mesmo shape `MonthShowsSummary` (reaproveitado como resumo de período; evita um tipo paralelo idêntico). O
+  resumo virou helper em `shows.ts` (com testes próprios) em vez de inline no serializer, mantendo a lógica de negócio DRY e testável.
+- **Colunas/Total:** idênticos à tela do mês — o Total traz "N show(s) (M cancelado(s))" na coluna Título e o cachê total
+  (confirmado + a confirmar) na coluna Cachê; Data/Hora em branco no Total.
+- **Testes:** **+9** — **+5** em `csv.test.ts` (`describe("weekShowsToCsv")`: só cabeçalho sem shows; um show com data/hora LOCAL;
+  ordena por data + Total; exclui cancelados do Total contando-os à parte; **não** recorta por data — soma toda a lista recebida) e
+  **+4** em `shows.test.ts` (`describe("summarizeWeekShows")`: soma confirmado+pendente sem filtro de data; exclui cancelados à
+  parte; ignora status desconhecido / fee ausente; lista vazia zera tudo). **1347 testes** no total (eram 1338).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1347 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/shows/semana` + `/shows/semana/export` 307 (auth-gated). `npm audit` **inalterado**
+  vs. baseline (mesmos advisories Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Nota de concorrência:** número **D239** escolhido como o próximo livre após o D238 (Sessão 244). Se uma PR paralela reivindicar
+  o mesmo número, renumerar na consolidação.
