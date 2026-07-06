@@ -32,6 +32,7 @@ import {
   LEAD_TIME_CRITICAL_DAYS,
   MIN_LEAD_TIME_SAMPLE,
   buildStatusTimeline,
+  funnelStageDurations,
   type ConflictShowLike,
   type LeadTimeShowLike,
   type ShowLike,
@@ -1230,5 +1231,103 @@ describe("buildStatusTimeline", () => {
       { fromStatus: "PROPOSED", toStatus: "CANCELLED", createdAt: new Date("2026-03-01T00:00:00.000Z") },
     ]);
     expect(t[1].daysInPrevious).toBe(0);
+  });
+});
+
+describe("funnelStageDurations", () => {
+  const ev = (
+    fromStatus: string | null,
+    toStatus: string,
+    createdAt: string,
+  ): StatusEventLike => ({ fromStatus, toStatus, createdAt });
+
+  it("sem shows devolve vazio", () => {
+    const r = funnelStageDurations([]);
+    expect(r.stages).toEqual([]);
+    expect(r.totalSamples).toBe(0);
+    expect(r.showCount).toBe(0);
+  });
+
+  it("shows só com o evento de criação não geram amostra (nada a cronometrar)", () => {
+    const r = funnelStageDurations([
+      { statusEvents: [ev(null, "PROPOSED", "2026-01-01T00:00:00.000Z")] },
+    ]);
+    expect(r.stages).toEqual([]);
+    expect(r.totalSamples).toBe(0);
+    expect(r.showCount).toBe(0);
+  });
+
+  it("credita cada transição à etapa de origem (fromStatus)", () => {
+    const r = funnelStageDurations([
+      {
+        statusEvents: [
+          ev(null, "PROPOSED", "2026-01-01T00:00:00.000Z"),
+          ev("PROPOSED", "CONFIRMED", "2026-01-05T00:00:00.000Z"), // 4 dias em PROPOSED
+          ev("CONFIRMED", "PLAYED", "2026-01-11T00:00:00.000Z"), // 6 dias em CONFIRMED
+        ],
+      },
+    ]);
+    expect(r.stages.map((s) => s.status)).toEqual(["PROPOSED", "CONFIRMED"]);
+    const proposed = r.stages.find((s) => s.status === "PROPOSED")!;
+    const confirmed = r.stages.find((s) => s.status === "CONFIRMED")!;
+    expect(proposed).toMatchObject({ count: 1, medianDays: 4, averageDays: 4, shortestDays: 4, longestDays: 4 });
+    expect(confirmed).toMatchObject({ count: 1, medianDays: 6, averageDays: 6 });
+    expect(r.totalSamples).toBe(2);
+    expect(r.showCount).toBe(1);
+  });
+
+  it("agrega a mesma etapa entre vários shows (mediana, média, mín, máx)", () => {
+    const mkProposed = (days: number, id: string) => ({
+      statusEvents: [
+        ev(null, "PROPOSED", `2026-02-0${id}T00:00:00.000Z`),
+        ev("PROPOSED", "CONFIRMED", new Date(Date.parse(`2026-02-0${id}T00:00:00.000Z`) + days * 86400000).toISOString()),
+      ],
+    });
+    const r = funnelStageDurations([
+      mkProposed(2, "1"),
+      mkProposed(4, "2"),
+      mkProposed(9, "3"),
+    ]);
+    const proposed = r.stages.find((s) => s.status === "PROPOSED")!;
+    expect(proposed.count).toBe(3);
+    expect(proposed.medianDays).toBe(4); // mediana de [2,4,9]
+    expect(proposed.averageDays).toBe(5); // média 5
+    expect(proposed.shortestDays).toBe(2);
+    expect(proposed.longestDays).toBe(9);
+    expect(r.showCount).toBe(3);
+  });
+
+  it("conta tanto saídas por avanço quanto por cancelamento (residência honesta)", () => {
+    const r = funnelStageDurations([
+      {
+        statusEvents: [
+          ev(null, "PROPOSED", "2026-03-01T00:00:00.000Z"),
+          ev("PROPOSED", "CANCELLED", "2026-03-04T00:00:00.000Z"), // 3 dias em PROPOSED, cancelou
+        ],
+      },
+      {
+        statusEvents: [
+          ev(null, "PROPOSED", "2026-03-01T00:00:00.000Z"),
+          ev("PROPOSED", "CONFIRMED", "2026-03-08T00:00:00.000Z"), // 7 dias em PROPOSED, avançou
+        ],
+      },
+    ]);
+    const proposed = r.stages.find((s) => s.status === "PROPOSED")!;
+    expect(proposed.count).toBe(2);
+    expect(proposed.medianDays).toBe(5); // mediana de [3,7]
+  });
+
+  it("devolve as etapas na ordem canônica do funil", () => {
+    // eventos fora de ordem canônica na entrada; a saída deve ser PROPOSED antes de CONFIRMED
+    const r = funnelStageDurations([
+      {
+        statusEvents: [
+          ev(null, "PROPOSED", "2026-04-01T00:00:00.000Z"),
+          ev("PROPOSED", "CONFIRMED", "2026-04-03T00:00:00.000Z"),
+          ev("CONFIRMED", "CANCELLED", "2026-04-10T00:00:00.000Z"),
+        ],
+      },
+    ]);
+    expect(r.stages.map((s) => s.status)).toEqual(["PROPOSED", "CONFIRMED"]);
   });
 });

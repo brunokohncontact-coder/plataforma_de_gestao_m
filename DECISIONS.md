@@ -7813,3 +7813,43 @@ contexto, decisão, justificativa e alternativas consideradas.
   **nenhuma dependência nova**.
 - **Nota de concorrência:** número **D234** escolhido como o próximo livre após o D233 já mergeado (Sessão 239). Se uma
   PR paralela reivindicar o mesmo número, renumerar na consolidação.
+
+## D235 — Tempo médio em cada etapa do funil (residence time) (Sessão 241)
+- **Contexto:** a D234 (Sessão 240) plantou o `ShowStatusEvent` + `buildStatusTimeline` na tela de detalhe do show, e
+  registrou explicitamente na sua alternativa (a) que a **métrica agregada de tempo-em-etapa** era "a próxima fatia
+  natural" — adiada só porque dependia de acumular eventos primeiro. O item 2b dos próximos passos aponta há muitas
+  sessões esse "tempo médio em cada etapa" como o valor que a linha do tempo destrava. Enquanto `showPipeline` fotografa
+  **onde** os shows estão hoje, ninguém media a **velocidade** com que atravessam o funil.
+- **Decisão:** novo helper puro `funnelStageDurations(shows)` + tipos `StageDurationShowLike`/`StageDurationStat`/
+  `FunnelStageDurations` em `src/lib/shows.ts`. Para cada show monta `buildStatusTimeline` (reuso, zero lógica de
+  ordenação nova) e credita cada transição com `daysInPrevious` à **etapa de origem** (`fromStatus`) — o tempo que o show
+  passou ali antes de sair. Agrega por etapa: `count`, `medianDays` (reusa `leadMedian`, mediana inteira arredondada, a
+  leitura principal), `averageDays`, `shortestDays`, `longestDays`. Devolve as etapas na ordem canônica do funil
+  (`SHOW_STATUSES`; qualquer status fora do canônico cai ao fim, alfabético, sem sumir) + `totalSamples` + `showCount`.
+  Página `/shows/funil/tempo-em-etapa` (barras da mediana por etapa + tabela de detalhe + empty-state), link "⏱ Tempo em
+  etapa" no cabeçalho de `/shows/funil` e entrada no hub de relatórios (`REPORT_GROUPS`, "Agenda & pipeline", ⏱).
+- **Residência honesta (avanço + cancelamento juntos):** uma etapa acumula tanto as saídas por avanço (PROPOSED→CONFIRMED)
+  quanto por cancelamento (PROPOSED→CANCELLED). A pergunta é "quanto tempo isto costuma ficar parado nesta etapa", e ambas
+  as saídas cronometram exatamente isso. Separar por destino (funil de conversão por caminho) é um passo maior, adiado.
+- **Etapa atual (em aberto) fica de fora:** coerente com `buildStatusTimeline`, que não depende de "agora". Só transições
+  já ocorridas entram — a permanência na etapa corrente, ainda não encerrada, não é cronometrada. Torna o helper puro e
+  determinístico (testável sem injetar relógio); a leitura é "quanto tempo os shows **levaram** para sair de cada etapa".
+- **Sem `?ano=` nesta fatia:** a amostra ainda é pequena (só eventos pós-D234, sem backfill/D234) — recortar por ano a
+  fragmentaria a ponto de não dizer nada. Quando o histórico crescer, o `PeriodPicker`/`filterShowsByYear` (D108) encaixa
+  aqui como nas vistas irmãs. **Sem CSV** nesta fatia pelo mesmo motivo (a tela já é a leitura completa); é o candidato
+  natural quando a amostra amadurecer.
+- **Alternativas consideradas:** (a) chavear por transição (`fromStatus→toStatus`) em vez de por etapa de origem —
+  **descartado** para v1: multiplica os baldes e dilui a amostra já escassa; a leitura "tempo na etapa X" é a mais direta
+  e é o que o item 2b pede. (b) computar a conversão real por período (quantos % dos PROPOSED viraram PLAYED) na mesma
+  sessão — **adiada**: é outra fatia da mesma fundação, merece a sua própria unidade; tempo-em-etapa já fecha funcional e
+  mergeável. (c) incluir a permanência na etapa atual usando "agora" — **descartado**: quebraria a pureza/determinismo do
+  helper e mistura duração encerrada com duração em curso.
+- **Testes:** **+6** em `shows.test.ts` (`describe("funnelStageDurations")`: vazio; show só com criação não gera amostra;
+  crédito à etapa de origem; agregação multi-show com mediana/média/mín/máx; avanço + cancelamento somados; ordem canônica
+  das etapas). **1324 testes** no total (eram 1318).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1324 testes**
+  (`vitest run`); smoke test (`next start`) → `/login` 200, `/shows/funil` e `/shows/funil/tempo-em-etapa` 307 (auth-gated).
+  `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, Next 14 / postcss; ver D6);
+  **nenhuma dependência nova**.
+- **Nota de concorrência:** número **D235** escolhido como o próximo livre após o D234 já mergeado (Sessão 240). Se uma
+  PR paralela reivindicar o mesmo número, renumerar na consolidação.

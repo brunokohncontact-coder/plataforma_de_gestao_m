@@ -9,7 +9,20 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1318 testes** verdes após o **histórico de status
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1324 testes** verdes após o **tempo médio em cada
+etapa do funil** (Sessão 241, D235 — primeiro agregado que a linha do tempo da D234 destrava: helper puro
+`funnelStageDurations(shows)` + tipos `StageDurationShowLike`/`StageDurationStat`/`FunnelStageDurations` em
+`src/lib/shows.ts` — para cada show monta `buildStatusTimeline` (reuso) e credita cada transição (`daysInPrevious`) à
+**etapa de origem** (`fromStatus`), o tempo que o show ficou ali antes de sair; agrega por etapa `count`/`medianDays`
+(reusa `leadMedian`, leitura principal)/`averageDays`/`shortestDays`/`longestDays`, na ordem canônica do funil
+(`SHOW_STATUSES`) + `totalSamples` + `showCount`. Uma etapa soma tanto saídas por avanço quanto por cancelamento
+(residência honesta); a etapa atual em aberto fica de fora (puro/determinístico, coerente com `buildStatusTimeline`).
+Enquanto `showPipeline` fotografa ONDE os shows estão, isto mede a VELOCIDADE de atravessar o funil. Página
+`/shows/funil/tempo-em-etapa` (barras da mediana + tabela de detalhe + empty-state), link "⏱ Tempo em etapa" no cabeçalho
+de `/shows/funil` e entrada no hub (`REPORT_GROUPS`, "Agenda & pipeline", ⏱). Sem `?ano=`/CSV nesta fatia (amostra ainda
+pequena, sem backfill; candidatos naturais quando amadurecer). **+6 testes** (`shows.test.ts`). Smoke → `/login` 200,
+`/shows/funil` e `/shows/funil/tempo-em-etapa` 307 (auth-gated); `npm audit` sem novas vulnerabilidades (mesmos advisories
+Next/postcss da D6; nenhuma dependência nova). Ver D235. Antes, **1318 testes** verdes após o **histórico de status
 do show / linha do tempo do funil** (Sessão 240, D234 — novo modelo `ShowStatusEvent` (Prisma) + relação `statusEvents` no
 `Show`; as server actions `createShowAction`/`updateShowAction`/`duplicateShowAction` gravam cada mudança de status
 (null → inicial na criação, `from → to` só quando o status muda de fato, uma cópia nasce PROPOSED); helper puro
@@ -3798,11 +3811,18 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    relação `statusEvents` no `Show`; `createShowAction`/`updateShowAction`/`duplicateShowAction` gravam cada mudança de
    status (aditivo, não altera estado/retornos); helper puro `buildStatusTimeline` em `src/lib/shows.ts` (ordena +
    `daysInPrevious`) + card "Histórico de status" em `/shows/[id]`; **+10 testes**; sem backfill dos shows antigos, ver
-   D234. Próximo possível — agora que os eventos são capturados, a **métrica agregada** que o item pedia: taxa de
-   conversão proposta→realizado **de verdade** (por período) e **tempo médio em cada etapa** (a partir de
-   `buildStatusTimeline`/`ShowStatusEvent`, quando houver histórico acumulado); ou o **comparativo ano a ano** do funil por
-   contratante (movers "quem passou a fechar mais/menos", novo `compareContactPipelines`, espelho do funil geral) — a outra
-   metade da D233.
+   D234.
+   **Tempo médio em cada etapa** entregue na Sessão 241 — helper puro `funnelStageDurations(shows)` +
+   `StageDurationShowLike`/`StageDurationStat`/`FunnelStageDurations` em `src/lib/shows.ts` (para cada show monta
+   `buildStatusTimeline` e credita cada transição `daysInPrevious` à etapa de origem `fromStatus`; agrega
+   `count`/`medianDays`(reusa `leadMedian`)/`averageDays`/`shortestDays`/`longestDays` na ordem canônica do funil +
+   `totalSamples`/`showCount`; avanço + cancelamento somados; etapa atual em aberto fora, puro/determinístico) + página
+   `/shows/funil/tempo-em-etapa` (barras da mediana + tabela + empty-state) + link "⏱ Tempo em etapa" no funil + entrada no
+   hub; sem `?ano=`/CSV (amostra jovem, sem backfill); **+6 testes**, ver D235. Próximo possível — a **outra** métrica que
+   os eventos destravam: taxa de conversão proposta→realizado **de verdade** por período (quantos % dos PROPOSED chegaram a
+   PLAYED, distinta da taxa de estado atual do `showPipeline`); quando a amostra de tempo-em-etapa amadurecer, `?ano=`/CSV
+   nela; ou o **comparativo ano a ano** do funil por contratante (movers "quem passou a fechar mais/menos", novo
+   `compareContactPipelines`, espelho do funil geral) — a outra metade da D233.
 3. **Filtros — evoluções**: persistência do último filtro entregue para Finanças (Sessão 32),
    Shows e Contatos (Sessão 33) — módulo genérico `src/lib/listFilter.ts` + middleware (ver D23/D24);
    **indicador visual de "filtro lembrado"** entregue na Sessão 79 — marcador `?lembrado=1` na
