@@ -9,7 +9,16 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1308 testes** verdes após o **recorte por período
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1318 testes** verdes após o **histórico de status
+do show / linha do tempo do funil** (Sessão 240, D234 — novo modelo `ShowStatusEvent` (Prisma) + relação `statusEvents` no
+`Show`; as server actions `createShowAction`/`updateShowAction`/`duplicateShowAction` gravam cada mudança de status
+(null → inicial na criação, `from → to` só quando o status muda de fato, uma cópia nasce PROPOSED); helper puro
+`buildStatusTimeline(events)` em `src/lib/shows.ts` (ordena + calcula `daysInPrevious`, dias na etapa anterior) + card
+"Histórico de status" em `/shows/[id]`. Gravação **aditiva** (não altera estado/retornos das actions → não quebra testes
+existentes); sem backfill (shows antigos não mostram o card). É a primeira fatia do "log de transições do funil" (item 2b),
+base para tempo-em-etapa/conversão real futuras. **+10 testes** (5 puros em `shows.test.ts` + 5 de integração em
+`shows/actions.test.ts`). Smoke → `/login` 200, `/shows` e `/shows/[id]` 307; `npm audit` sem novas vulnerabilidades). Antes,
+**1308 testes** verdes após o **recorte por período
 (`?ano=`) no funil por contratante** (Sessão 239, D233 — `/contatos/funil` + export ganharam `PeriodPicker`/`?ano=`
 reaproveitando `showProfitYears`/`parseProfitYear`/`filterShowsByYear` (D108): filtra a carteira de cada contato antes de
 `pipelineByContact`, então a lógica pura segue agnóstica ao recorte; export herda `?ano=` no nome
@@ -3784,12 +3793,16 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    **Recorte por período (`?ano=`) no funil por contratante** entregue na Sessão 239 — `PeriodPicker`/`?ano=` em
    `/contatos/funil` (página e export) reaproveitando `showProfitYears`/`parseProfitYear`/`filterShowsByYear` (D108):
    filtra a carteira de cada contato antes de `pipelineByContact` (agnóstico ao recorte, como a D194), export com ano no
-   nome `funil-por-contratante-{ano}.csv`; **+3 testes**, ver D233. Próximo
-   possível — registrar **transições de status** (log) para uma taxa de
-   conversão proposta→realizado de verdade e tempo médio em cada etapa (segue sendo o maior passo em aberto
-   do funil, precisa de um modelo de eventos no schema); ou o **comparativo ano a ano** do funil por contratante
-   (movers "quem passou a fechar mais/menos", novo `compareContactPipelines`, espelho do funil geral) — a outra
-   metade do item, adiada na D233.
+   nome `funil-por-contratante-{ano}.csv`; **+3 testes**, ver D233.
+   **Log de transições de status — 1ª fatia** entregue na Sessão 240 — modelo `ShowStatusEvent` no schema (Prisma) +
+   relação `statusEvents` no `Show`; `createShowAction`/`updateShowAction`/`duplicateShowAction` gravam cada mudança de
+   status (aditivo, não altera estado/retornos); helper puro `buildStatusTimeline` em `src/lib/shows.ts` (ordena +
+   `daysInPrevious`) + card "Histórico de status" em `/shows/[id]`; **+10 testes**; sem backfill dos shows antigos, ver
+   D234. Próximo possível — agora que os eventos são capturados, a **métrica agregada** que o item pedia: taxa de
+   conversão proposta→realizado **de verdade** (por período) e **tempo médio em cada etapa** (a partir de
+   `buildStatusTimeline`/`ShowStatusEvent`, quando houver histórico acumulado); ou o **comparativo ano a ano** do funil por
+   contratante (movers "quem passou a fechar mais/menos", novo `compareContactPipelines`, espelho do funil geral) — a outra
+   metade da D233.
 3. **Filtros — evoluções**: persistência do último filtro entregue para Finanças (Sessão 32),
    Shows e Contatos (Sessão 33) — módulo genérico `src/lib/listFilter.ts` + middleware (ver D23/D24);
    **indicador visual de "filtro lembrado"** entregue na Sessão 79 — marcador `?lembrado=1` na

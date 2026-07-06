@@ -31,9 +31,11 @@ import {
   LEAD_TIME_SHORT_DAYS,
   LEAD_TIME_CRITICAL_DAYS,
   MIN_LEAD_TIME_SAMPLE,
+  buildStatusTimeline,
   type ConflictShowLike,
   type LeadTimeShowLike,
   type ShowLike,
+  type StatusEventLike,
 } from "./shows";
 
 function show(partial: Partial<ShowLike>): ShowLike {
@@ -1180,5 +1182,53 @@ describe("buildDuplicatedShowSeries", () => {
       "2026-03-13T22:00:00.000Z",
       "2026-03-20T22:00:00.000Z",
     ]);
+  });
+});
+
+describe("buildStatusTimeline", () => {
+  const ev = (fromStatus: string | null, toStatus: string, createdAt: string): StatusEventLike => ({
+    fromStatus,
+    toStatus,
+    createdAt,
+  });
+
+  it("devolve lista vazia sem eventos", () => {
+    expect(buildStatusTimeline([])).toEqual([]);
+  });
+
+  it("no primeiro evento (criação) daysInPrevious é null", () => {
+    const t = buildStatusTimeline([ev(null, "PROPOSED", "2026-01-10T12:00:00.000Z")]);
+    expect(t).toHaveLength(1);
+    expect(t[0].fromStatus).toBeNull();
+    expect(t[0].toStatus).toBe("PROPOSED");
+    expect(t[0].daysInPrevious).toBeNull();
+    expect(t[0].at.toISOString()).toBe("2026-01-10T12:00:00.000Z");
+  });
+
+  it("calcula os dias inteiros que o show ficou na etapa anterior", () => {
+    const t = buildStatusTimeline([
+      ev(null, "PROPOSED", "2026-01-01T00:00:00.000Z"),
+      ev("PROPOSED", "CONFIRMED", "2026-01-06T00:00:00.000Z"), // +5 dias
+      ev("CONFIRMED", "PLAYED", "2026-01-06T10:00:00.000Z"), // +10h → 0 dias inteiros
+    ]);
+    expect(t.map((e) => e.daysInPrevious)).toEqual([null, 5, 0]);
+    expect(t.map((e) => e.toStatus)).toEqual(["PROPOSED", "CONFIRMED", "PLAYED"]);
+  });
+
+  it("ordena cronologicamente eventos fora de ordem antes de cronometrar", () => {
+    const t = buildStatusTimeline([
+      ev("PROPOSED", "CONFIRMED", "2026-02-10T00:00:00.000Z"),
+      ev(null, "PROPOSED", "2026-02-01T00:00:00.000Z"),
+    ]);
+    expect(t.map((e) => e.toStatus)).toEqual(["PROPOSED", "CONFIRMED"]);
+    expect(t.map((e) => e.daysInPrevious)).toEqual([null, 9]);
+  });
+
+  it("nunca devolve permanência negativa (piso em 0) e aceita Date", () => {
+    const t = buildStatusTimeline([
+      { fromStatus: null, toStatus: "PROPOSED", createdAt: new Date("2026-03-01T00:00:00.000Z") },
+      { fromStatus: "PROPOSED", toStatus: "CANCELLED", createdAt: new Date("2026-03-01T00:00:00.000Z") },
+    ]);
+    expect(t[1].daysInPrevious).toBe(0);
   });
 });
