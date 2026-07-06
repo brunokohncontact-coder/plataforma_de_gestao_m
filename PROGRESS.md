@@ -9,7 +9,13 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1305 testes** verdes após o **nudge do Painel "praça
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1308 testes** verdes após o **recorte por período
+(`?ano=`) no funil por contratante** (Sessão 239, D233 — `/contatos/funil` + export ganharam `PeriodPicker`/`?ano=`
+reaproveitando `showProfitYears`/`parseProfitYear`/`filterShowsByYear` (D108): filtra a carteira de cada contato antes de
+`pipelineByContact`, então a lógica pura segue agnóstica ao recorte; export herda `?ano=` no nome
+`funil-por-contratante-{ano}.csv`; **+3 testes** em `contacts.test.ts`. Fecha metade do item 2b (o comparativo ano a ano por
+contratante fica para depois). Smoke test (`next start`) → `/login` 200, `/contatos/funil`, `?ano=2026` e o export 307
+(auth-gated); `npm audit` sem novas vulnerabilidades). Antes, **1305 testes** verdes após o **nudge do Painel "praça
 para revisitar"** (Sessão 238, D232 — as "Praças para revisitar" (`findCitiesToReengage`/D229) só existiam se o músico abrisse a
 sub-rota; ao contrário de sazonalidade/concentração/antecedência, não tinham manchete que as empurrasse ao Painel — e rebooking
 geográfico é oportunidade de receita. Novo `citiesToReengageHeadline(list, minPastShows?)` + tipo `CitiesToReengageHeadline` +
@@ -3774,11 +3780,16 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    aberto na ordem da página, sem `?ano=`, nome `funil-por-contratante.csv`, botão "⬇ CSV" gated por `hasData`,
    ver D184. **Nudge no Painel** entregue na Sessão 195 — `pipelineByContactHeadline` + banner 🟠/🔴 em
    `dashboard/page.tsx` quando o maior contratante concentra ≥ metade do pipeline aberto (crítico se único/≥2/3),
-   reaproveitando o pivô show×contato do nudge de cancelamentos, linkando `/contatos/funil`, ver D188. Próximo
+   reaproveitando o pivô show×contato do nudge de cancelamentos, linkando `/contatos/funil`, ver D188.
+   **Recorte por período (`?ano=`) no funil por contratante** entregue na Sessão 239 — `PeriodPicker`/`?ano=` em
+   `/contatos/funil` (página e export) reaproveitando `showProfitYears`/`parseProfitYear`/`filterShowsByYear` (D108):
+   filtra a carteira de cada contato antes de `pipelineByContact` (agnóstico ao recorte, como a D194), export com ano no
+   nome `funil-por-contratante-{ano}.csv`; **+3 testes**, ver D233. Próximo
    possível — registrar **transições de status** (log) para uma taxa de
    conversão proposta→realizado de verdade e tempo médio em cada etapa (segue sendo o maior passo em aberto
-   do funil, precisa de um modelo de eventos no schema); ou recorte por `?ano=`/comparativo ano a ano do funil
-   por contratante.
+   do funil, precisa de um modelo de eventos no schema); ou o **comparativo ano a ano** do funil por contratante
+   (movers "quem passou a fechar mais/menos", novo `compareContactPipelines`, espelho do funil geral) — a outra
+   metade do item, adiada na D233.
 3. **Filtros — evoluções**: persistência do último filtro entregue para Finanças (Sessão 32),
    Shows e Contatos (Sessão 33) — módulo genérico `src/lib/listFilter.ts` + middleware (ver D23/D24);
    **indicador visual de "filtro lembrado"** entregue na Sessão 79 — marcador `?lembrado=1` na

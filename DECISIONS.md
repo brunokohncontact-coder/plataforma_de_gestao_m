@@ -7735,3 +7735,35 @@ contexto, decisão, justificativa e alternativas consideradas.
   (`vitest run`); smoke test (`next start`) → `/login` 200, `/dashboard` 307 e `/shows/cidades/revisitar` 307
   (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical,
   Next 14 / postcss; ver D6); **nenhuma dependência nova**.
+
+## D233 — Recorte por período (`?ano=`) no funil por contratante (`/contatos/funil`) (Sessão 239)
+
+- **Contexto:** o funil geral (`/shows/funil`) já recortava por ano (`?ano=` + comparativo de concretização,
+  D108-based) desde sessões anteriores, mas o **funil por contratante** (`/contatos/funil` + export, D183/D184)
+  seguia sem seletor de período — o único retrato do pipeline aberto travado em "todos os anos". Item 2b dos
+  próximos passos apontava "recorte por `?ano=`/comparativo ano a ano do funil por contratante".
+- **Decisão:** entregar só a metade do `?ano=` (o comparativo ano a ano fica para uma sessão futura, ver
+  alternativas). `PeriodPicker` em `/contatos/funil` (`basePath="/contatos/funil"`), reaproveitando
+  `showProfitYears`/`parseProfitYear`/`filterShowsByYear` (D108). Os anos do seletor vêm de **todos** os shows
+  vinculados a qualquer contato (`allShows` achatado); filtra-se a carteira de cada contato **antes** de
+  `pipelineByContact`, então a lógica pura segue **agnóstica ao recorte** (não olha `date`) — mesmo padrão da
+  D194 (`cancellationByContact` por ano) e do próprio funil geral. Export (`/contatos/funil/export`) herda o
+  `?ano=` via `request.nextUrl.searchParams`, nome `funil-por-contratante-{ano}.csv` (sem sufixo em "todos").
+  Empty state e nota de rodapé passam a citar o recorte ativo.
+- **Por que filtrar antes de agregar:** preserva a regra "contagem por relação" e a assimetria lista×carteira
+  (`totalOpen*`/`overallConversionRate` somam todos os contatos com shows no ano; só viram linha os com pipeline
+  aberto) sem tocar em `pipelineByContact` — reaproveitamento puro, zero lógica nova na camada testada.
+- **Semântica da concretização sob recorte:** com `?ano=YYYY` a taxa passa a ser a dos shows **decididos naquele
+  ano**, não a histórica global — coerente com o funil geral (que já recortava a concretização por ano) e com a
+  leitura "como foi o fechamento de {ano} com este contratante".
+- **Alternativas consideradas:** (a) entregar já o comparativo ano a ano por contratante (movers "quem passou a
+  fechar mais/menos") — adiado: é um passo maior (novo `compareContactPipelines`), e o `?ano=` sozinho já é uma
+  unidade funcional e mergeável; (b) não recortar (manter só "todos os anos") — descartado: deixa o funil por
+  contratante como a única vista de pipeline sem período, contra o padrão do acervo.
+- **Testes:** **+3** em `contacts.test.ts` (`describe("pipelineByContact — recorte por período (ano)")`, compondo
+  `filterShowsByYear` + `pipelineByContact` como a página): recorta o pipeline aberto ao ano; ano diferente muda
+  quem aparece; "all" preserva a carteira inteira. **1308 testes** no total.
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1308 testes**
+  (`vitest run`); smoke test (`next start`) → `/login` 200, `/contatos/funil`, `/contatos/funil?ano=2026` e
+  `/contatos/funil/export?ano=2026` 307 (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories —
+  4 moderate / 5 high / 1 critical, Next 14 / postcss; ver D6); **nenhuma dependência nova**.
