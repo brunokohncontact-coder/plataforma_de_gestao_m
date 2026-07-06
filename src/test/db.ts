@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 /** Apaga todos os registros, respeitando a ordem das chaves estrangeiras. */
 export async function resetDb(): Promise<void> {
   await prisma.contactsOnShows.deleteMany();
+  await prisma.showStatusEvent.deleteMany();
   await prisma.transaction.deleteMany();
   await prisma.contact.deleteMany();
   await prisma.show.deleteMany();

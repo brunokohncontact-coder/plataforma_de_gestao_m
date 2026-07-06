@@ -7767,3 +7767,49 @@ contexto, decisão, justificativa e alternativas consideradas.
   (`vitest run`); smoke test (`next start`) → `/login` 200, `/contatos/funil`, `/contatos/funil?ano=2026` e
   `/contatos/funil/export?ano=2026` 307 (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories —
   4 moderate / 5 high / 1 critical, Next 14 / postcss; ver D6); **nenhuma dependência nova**.
+
+## D234 — Histórico de status do show (linha do tempo do funil) (Sessão 240)
+- **Contexto:** o funil (`showPipeline`, `pipelineByContact`) e todas as métricas de concretização/cancelamento olham
+  apenas o **estado atual** de cada show (quantos PROPOSED/CONFIRMED/PLAYED/CANCELLED existem agora). Ninguém guardava a
+  **trajetória**: quando o show entrou na agenda, quando virou confirmado, quanto tempo ficou negociando. O item 2b dos
+  próximos passos aponta há muitas sessões o "log de transições de status" como o passo que destrava uma taxa de
+  conversão de verdade e o tempo médio em cada etapa — e o eixo de análise/exportação tabular sobre o estado atual foi
+  dado como **esgotado** (D174/D195). Esta é a primeira fatia dessa fundação: registrar as mudanças e já entregar valor
+  imediato na tela de detalhe do show.
+- **Decisão:** novo modelo `ShowStatusEvent` no Prisma (`id`, `showId` → `Show` com `onDelete: Cascade`, `userId`,
+  `fromStatus String?` — null na criação —, `toStatus`, `createdAt`; índices `[showId, createdAt]` e `[userId]`) +
+  relação `statusEvents` no `Show`. As server actions passam a gravar um evento: `createShowAction` (null → status
+  inicial), `updateShowAction` **só quando o status muda de fato** (`d.status !== existing.status`), e
+  `duplicateShowAction` (cada cópia nasce com o evento null → PROPOSED, dentro do mesmo `$transaction` atômico do lote).
+  Helper puro `buildStatusTimeline(events)` em `src/lib/shows.ts` ordena cronologicamente e calcula `daysInPrevious`
+  (dias inteiros que o show ficou na etapa anterior, piso em 0, `null` no primeiro evento). Card "Histórico de status"
+  na tela `/shows/[id]` exibindo a linha do tempo (mais recente primeiro) com rótulos de status e o tempo de permanência.
+- **Regime aditivo (baixo risco):** a gravação de eventos é puramente **adicional** — não altera o estado do show, nem os
+  retornos/redirects das actions, nem nenhuma leitura existente. Por isso não quebra os testes de integração já verdes; a
+  cobertura nova só **soma** asserções sobre a nova tabela. `resetDb` (testes) passou a limpar `showStatusEvent` antes de
+  `show` (o cascade já removeria, mas a ordem explícita é mais clara).
+- **Sem backfill:** shows criados **antes** desta sessão não têm eventos e simplesmente não mostram o card (a condição é
+  `timeline.length > 0`). Backfillar um evento sintético de criação a partir de `createdAt` é possível, mas seria um
+  palpite (não sabemos as transições passadas) — preferi não inventar histórico. A linha do tempo cresce a partir de agora.
+- **`updateShowAction` não usa transação para o par update+evento:** o update do show e a criação do evento são duas
+  escritas sequenciais, não atômicas. Aceito para v1: se a segunda falhar, perde-se um evento de auditoria (degradação
+  suave), não há inconsistência de dados de negócio. Envolver num `$transaction` é refinamento barato se a auditoria
+  virar crítica.
+- **Alternativas consideradas:** (a) já entregar a métrica agregada de tempo-em-etapa / conversão real por período —
+  **adiada**: é a próxima fatia natural, mas depende de acumular eventos primeiro; entregar a captura + a visão por show
+  já é uma unidade funcional e mergeável, e sem dados históricos a agregação não teria o que mostrar. (b) derivar a
+  trajetória de `updatedAt`/`createdAt` sem tabela nova — **descartado**: `updatedAt` guarda só a última mudança e mistura
+  edições de qualquer campo; sem um log dedicado não há como reconstruir as transições. (c) um evento genérico de
+  auditoria para todos os campos — **descartado** por ora: o valor de produto pedido é especificamente o funil de status;
+  um audit-log geral é escopo bem maior.
+- **Testes:** **+5** em `shows.test.ts` (`describe("buildStatusTimeline")`: vazio; criação com `daysInPrevious` null;
+  cálculo dos dias na etapa anterior; ordenação de eventos fora de ordem; piso em 0 e aceitação de `Date`) e **+5** de
+  integração em `shows/actions.test.ts` (`describe("histórico de status …")`: criação registra o evento inicial; update
+  registra a transição só quando o status muda; update sem mudança de status não gera evento; edição de show de outro
+  usuário não gera evento; duplicação em lote cria o evento de criação de cada cópia). **1318 testes** no total (eram 1308).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1318 testes**
+  (`vitest run`); smoke test (`next start`) → `/login` 200, `/shows` e `/shows/[id]` 307 (auth-gated). `npm audit`
+  **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, Next 14 / postcss; ver D6);
+  **nenhuma dependência nova**.
+- **Nota de concorrência:** número **D234** escolhido como o próximo livre após o D233 já mergeado (Sessão 239). Se uma
+  PR paralela reivindicar o mesmo número, renumerar na consolidação.

@@ -957,3 +957,59 @@ export function buildDuplicatedShowSeries(
   }
   return series;
 }
+
+// ── Histórico de status (linha do tempo do funil) ─────────────────────────────
+// Cada mudança de status de um show (criação, PROPOSED → CONFIRMED → PLAYED, …)
+// vira um `ShowStatusEvent`. Estes helpers puros montam a linha do tempo para a
+// tela de detalhe do show — inclusive quanto tempo o show ficou em cada etapa —
+// e são a base para futuras métricas de conversão/tempo-em-etapa. Ver D234.
+
+/** Evento de mudança de status como o helper precisa vê-lo (subset do modelo). */
+export interface StatusEventLike {
+  /** Status anterior; `null` no evento de criação do show. */
+  fromStatus: string | null;
+  /** Status para o qual o show mudou. */
+  toStatus: string;
+  /** Momento da mudança. */
+  createdAt: Date | string;
+}
+
+/** Uma entrada da linha do tempo, já ordenada e com o tempo de permanência. */
+export interface StatusTimelineEntry {
+  fromStatus: string | null;
+  toStatus: string;
+  at: Date;
+  /**
+   * Dias inteiros decorridos desde o evento anterior — quanto tempo o show ficou
+   * no status `fromStatus` antes desta mudança. `null` no primeiro evento (não há
+   * etapa anterior a cronometrar). Nunca negativo (piso em 0).
+   */
+  daysInPrevious: number | null;
+}
+
+/**
+ * Monta a linha do tempo de status de um show a partir dos seus eventos. Ordena
+ * cronologicamente (mais antigo primeiro, desempate estável preservando a ordem
+ * de entrada) e calcula, para cada evento a partir do segundo, quantos dias
+ * inteiros o show passou no status anterior (`daysInPrevious`). Pura e
+ * determinística; não depende de "agora" (a permanência no status atual, ainda em
+ * aberto, é responsabilidade da apresentação, se quiser exibi-la).
+ */
+export function buildStatusTimeline(events: StatusEventLike[]): StatusTimelineEntry[] {
+  const sorted = events
+    .map((e, i) => ({ e, i, ms: new Date(e.createdAt).getTime() }))
+    .sort((a, b) => a.ms - b.ms || a.i - b.i);
+
+  const out: StatusTimelineEntry[] = [];
+  let prevMs: number | null = null;
+  for (const { e, ms } of sorted) {
+    out.push({
+      fromStatus: e.fromStatus,
+      toStatus: e.toStatus,
+      at: new Date(ms),
+      daysInPrevious: prevMs === null ? null : Math.max(0, Math.floor((ms - prevMs) / DAY_MS)),
+    });
+    prevMs = ms;
+  }
+  return out;
+}

@@ -633,3 +633,77 @@ describe("duplicateShowAction — cópia de residência / evento recorrente", ()
     expect(await prisma.show.count()).toBe(1); // só o original do dono
   });
 });
+
+describe("histórico de status (linha do tempo do funil) — D234", () => {
+  it("createShowAction registra o evento de criação (from null → status inicial)", async () => {
+    const user = await createUser("a@example.com");
+    h.currentUser = user;
+
+    await catchRedirect(createShowAction({}, showForm({ status: "PROPOSED" })));
+
+    const show = (await prisma.show.findFirst())!;
+    const events = await prisma.showStatusEvent.findMany({ where: { showId: show.id } });
+    expect(events).toHaveLength(1);
+    expect(events[0].fromStatus).toBeNull();
+    expect(events[0].toStatus).toBe("PROPOSED");
+    expect(events[0].userId).toBe(user.id);
+  });
+
+  it("updateShowAction registra a transição quando o status muda", async () => {
+    const owner = await createUser("owner@example.com");
+    const show = await createShow(owner.id, { status: "PROPOSED" });
+    h.currentUser = owner;
+
+    await catchRedirect(updateShowAction(show.id, {}, showForm({ status: "CONFIRMED" })));
+
+    const events = await prisma.showStatusEvent.findMany({
+      where: { showId: show.id },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0].fromStatus).toBe("PROPOSED");
+    expect(events[0].toStatus).toBe("CONFIRMED");
+  });
+
+  it("updateShowAction NÃO registra evento quando o status não muda", async () => {
+    const owner = await createUser("owner@example.com");
+    const show = await createShow(owner.id, { status: "CONFIRMED" });
+    h.currentUser = owner;
+
+    // showForm() usa status CONFIRMED por padrão — só muda o título
+    await catchRedirect(updateShowAction(show.id, {}, showForm({ title: "Novo título" })));
+
+    expect(await prisma.showStatusEvent.count({ where: { showId: show.id } })).toBe(0);
+  });
+
+  it("não registra evento ao tentar editar o show de outro usuário", async () => {
+    const owner = await createUser("owner@example.com");
+    const attacker = await createUser("attacker@example.com");
+    const show = await createShow(owner.id, { status: "PROPOSED" });
+
+    h.currentUser = attacker;
+    await updateShowAction(show.id, {}, showForm({ status: "PLAYED" }));
+
+    expect(await prisma.showStatusEvent.count()).toBe(0);
+  });
+
+  it("duplicateShowAction cria o evento de criação de cada cópia", async () => {
+    const owner = await createUser("owner@example.com");
+    const original = await createShow(owner.id, { status: "PLAYED" });
+    h.currentUser = owner;
+
+    const fd = new FormData();
+    fd.set("id", original.id);
+    fd.set("quantidade", "2");
+    await catchRedirect(duplicateShowAction(fd));
+
+    const copies = await prisma.show.findMany({ where: { id: { not: original.id } } });
+    expect(copies).toHaveLength(2);
+    for (const copy of copies) {
+      const events = await prisma.showStatusEvent.findMany({ where: { showId: copy.id } });
+      expect(events).toHaveLength(1);
+      expect(events[0].fromStatus).toBeNull();
+      expect(events[0].toStatus).toBe("PROPOSED"); // cópia sempre nasce PROPOSED (D218)
+    }
+  });
+});

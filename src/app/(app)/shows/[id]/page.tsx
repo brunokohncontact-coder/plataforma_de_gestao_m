@@ -7,6 +7,7 @@ import {
   DEFAULT_DUPLICATE_INTERVAL,
   DEFAULT_DUPLICATE_COUNT,
   DUPLICATE_COUNT_PRESETS,
+  buildStatusTimeline,
 } from "@/lib/shows";
 import { formatMoney } from "@/lib/money";
 import { formatDateTime, formatDate } from "@/lib/format";
@@ -38,6 +39,7 @@ export default async function ShowDetailPage({ params }: { params: { id: string 
       include: {
         transactions: { orderBy: { date: "desc" } },
         contacts: { include: { contact: true } },
+        statusEvents: { orderBy: { createdAt: "asc" } },
       },
     }),
     prisma.contact.findMany({
@@ -62,6 +64,9 @@ export default async function ShowDetailPage({ params }: { params: { id: string 
   }));
 
   const pnl = computeShowPnL({ id: show.id, fee: show.fee }, txs);
+
+  // Linha do tempo do funil (mais recente primeiro na exibição). Ver D234.
+  const timeline = buildStatusTimeline(show.statusEvents).reverse();
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -107,6 +112,62 @@ export default async function ShowDetailPage({ params }: { params: { id: string 
         <section className="card">
           <h2 className="mb-2 font-semibold">Notas</h2>
           <p className="whitespace-pre-wrap text-sm text-gray-700">{show.notes}</p>
+        </section>
+      )}
+
+      {/* Histórico de status — linha do tempo do funil (ver D234) */}
+      {timeline.length > 0 && (
+        <section className="card">
+          <h2 className="mb-1 font-semibold">Histórico de status</h2>
+          <p className="mb-3 text-xs text-gray-500">
+            A trajetória deste show no funil — quando entrou na agenda e quanto tempo ficou em
+            cada etapa.
+          </p>
+          <ol className="space-y-3">
+            {timeline.map((entry, i) => (
+              <li key={i} className="flex items-start gap-3">
+                <span
+                  className={
+                    "mt-0.5 badge " + SHOW_STATUS_COLORS[entry.toStatus as ShowStatus]
+                  }
+                >
+                  {SHOW_STATUS_LABELS[entry.toStatus as ShowStatus] ?? entry.toStatus}
+                </span>
+                <div className="text-sm">
+                  <p className="text-gray-700">
+                    {entry.fromStatus === null ? (
+                      "Cadastrado na agenda"
+                    ) : (
+                      <>
+                        De{" "}
+                        <span className="text-gray-500">
+                          {SHOW_STATUS_LABELS[entry.fromStatus as ShowStatus] ??
+                            entry.fromStatus}
+                        </span>{" "}
+                        para{" "}
+                        <span className="font-medium">
+                          {SHOW_STATUS_LABELS[entry.toStatus as ShowStatus] ?? entry.toStatus}
+                        </span>
+                      </>
+                    )}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {formatDateTime(entry.at)}
+                    {entry.daysInPrevious !== null && (
+                      <>
+                        {" · "}
+                        {entry.daysInPrevious === 0
+                          ? "no mesmo dia da etapa anterior"
+                          : `${entry.daysInPrevious} ${
+                              entry.daysInPrevious === 1 ? "dia" : "dias"
+                            } na etapa anterior`}
+                      </>
+                    )}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
         </section>
       )}
 

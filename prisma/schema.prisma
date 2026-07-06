@@ -90,8 +90,27 @@ model Show {
 
   transactions Transaction[] // despesas/receitas vinculadas (F4)
   contacts     ContactsOnShows[]
+  statusEvents ShowStatusEvent[] // histórico de mudanças de status (funil)
 
   @@index([userId, date])
+}
+
+// Histórico de mudanças de status de um show (linha do tempo do funil): cada vez
+// que o show é criado ou muda de status (PROPOSED → CONFIRMED → PLAYED, etc.) um
+// evento é registrado. Base para a leitura de "quanto tempo ficou em cada etapa"
+// e para uma taxa de conversão de verdade no futuro. `fromStatus` é null no evento
+// de criação. Ver DECISIONS.md D234.
+model ShowStatusEvent {
+  id         String   @id @default(cuid())
+  showId     String
+  show       Show     @relation(fields: [showId], references: [id], onDelete: Cascade)
+  userId     String
+  fromStatus String? // null = criação do show
+  toStatus   String
+  createdAt  DateTime @default(now())
+
+  @@index([showId, createdAt])
+  @@index([userId])
 }
 
 // ── F3: Finanças ────────────────────────────────────────────────────────────

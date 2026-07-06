@@ -38,7 +38,7 @@ export async function createShowAction(_prev: FormState, formData: FormData): Pr
   if (!parsed.success) return { error: parsed.error.errors[0]?.message ?? "Dados inválidos" };
 
   const d = parsed.data;
-  await prisma.show.create({
+  const created = await prisma.show.create({
     data: {
       userId: user.id,
       title: d.title,
@@ -49,6 +49,11 @@ export async function createShowAction(_prev: FormState, formData: FormData): Pr
       fee: d.fee,
       notes: d.notes || null,
     },
+  });
+
+  // Registra o primeiro evento da linha do tempo do funil (criação). Ver D234.
+  await prisma.showStatusEvent.create({
+    data: { showId: created.id, userId: user.id, fromStatus: null, toStatus: d.status },
   });
 
   revalidatePath("/shows");
@@ -82,6 +87,14 @@ export async function updateShowAction(
       notes: d.notes || null,
     },
   });
+
+  // Registra a transição na linha do tempo do funil só quando o status muda de
+  // fato (uma edição de título/cachê não é evento de status). Ver D234.
+  if (d.status !== existing.status) {
+    await prisma.showStatusEvent.create({
+      data: { showId: id, userId: user.id, fromStatus: existing.status, toStatus: d.status },
+    });
+  }
 
   revalidatePath("/shows");
   revalidatePath(`/shows/${id}`);
@@ -287,7 +300,8 @@ export async function duplicateShowAction(formData: FormData): Promise<void> {
     : undefined;
 
   // Cria todas as cópias atomicamente — uma residência agendada em lote não deve
-  // ficar pela metade se uma inserção falhar.
+  // ficar pela metade se uma inserção falhar. Cada cópia nasce com o evento de
+  // criação na linha do tempo do funil (from null → status inicial). Ver D234.
   const created = await prisma.$transaction(
     series.map((data) =>
       prisma.show.create({
@@ -301,6 +315,9 @@ export async function duplicateShowAction(formData: FormData): Promise<void> {
           fee: data.fee,
           notes: data.notes,
           contacts,
+          statusEvents: {
+            create: { userId: user.id, fromStatus: null, toStatus: data.status },
+          },
         },
       }),
     ),
