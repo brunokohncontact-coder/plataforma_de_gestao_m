@@ -7998,3 +7998,49 @@ contexto, decisão, justificativa e alternativas consideradas.
   vs. baseline (mesmos advisories Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
 - **Nota de concorrência:** número **D239** escolhido como o próximo livre após o D238 (Sessão 244). Se uma PR paralela reivindicar
   o mesmo número, renumerar na consolidação.
+
+## D240 — Propostas paradas (follow-up de deals esquecidos) (`findStaleProposals` + `/shows/funil/paradas`) (Sessão 246)
+- **Contexto:** o funil já tinha a foto de ONDE os shows estão (`showPipeline`/D51) e, desde a linha do tempo de status (D234),
+  o tempo TÍPICO de travessia por etapa (`funnelStageDurations`/D235). Faltava a leitura **operacional**: QUAIS propostas
+  específicas estão paradas e pedem uma decisão agora. Uma proposta (status PROPOSED) que fica semanas sem resposta — ou cuja
+  data do show já passou sem virar confirmada — é receita em risco e ruído no funil. É o primeiro relatório que aponta o show
+  individual a agir (cobrar/confirmar/descartar), complementar aos agregados de conversão.
+- **Decisão:** novo helper puro `findStaleProposals(shows, opts?)` em `src/lib/shows.ts`. Considera **só** shows em `PROPOSED`
+  (a etapa aberta e acionável; CONFIRMED já é booking fechado, só esperando a data — não é "parada"). Marca como parada a
+  proposta que OU está há `staleDays` dias (default `STALE_PROPOSAL_DAYS=21`) sem movimento no status atual OU tem a data já
+  vencida (`date < now`). Classifica a urgência: `overdue` (data passou), `imminent` (data dentro de `STALE_PROPOSAL_IMMINENT_DAYS=14`),
+  `cold` (parada por inatividade, sem pressão de data). Ordena por urgência (overdue → imminent → cold); dentro de overdue/imminent
+  pela data (mais vencida/próxima primeiro), dentro de cold pelo maior tempo parado; desempate estável por título/id. Devolve
+  `proposals` + `count`/`totalFee` (cachê em risco) + contagens por urgência.
+- **Tempo no status:** medido a partir do **último evento de status** (`enteredStatusAt`, quando entrou no status atual), caindo
+  para `createdAt` nos shows sem histórico (anteriores ao registro de eventos da D234) — robusto ao raro caso de um show que
+  voltou de CONFIRMED a PROPOSED. Datas por dia inteiro UTC (`leadUtcMidnight`/`DAY_MS`, mesma convenção dos helpers de recência,
+  ex.: reengajamento D229). Pura; `now`/limiares injetáveis para testes determinísticos.
+- **Disciplina anti-ruído:** uma proposta iminente mas **recém-criada** (dentro do limiar, data futura) **não** é sinalizada —
+  esperar resposta por poucos dias é normal. A urgência `imminent` só qualifica propostas que já cruzaram `staleDays` E têm a
+  data próxima ("propus há 3 semanas, o show é daqui a 10 dias, ainda sem confirmar" → decida agora). Coerente com o gating por
+  amostra/limiar do resto da plataforma.
+- **UI/CSV:** página `/shows/funil/paradas` (4 stats: paradas/vencidas/iminentes/cachê em risco + tabela com selo de urgência,
+  link ao show, data + "venceu há N dias / daqui a N dias", dias parado, cachê) com empty-state "🎉 nenhuma parada"; cross-link
+  "⏳ Propostas paradas" no cabeçalho de `/shows/funil` e entrada no hub (`REPORT_GROUPS`, Shows/"Agenda & pipeline", ⏳). CSV
+  `staleProposalsToCsv` + `STALE_PROPOSALS_CSV_HEADERS` (Urgência/Show/Data/Local/Cidade/Dias parado/Dias até o show/Cachê +
+  linha Total com contagem e cachê somado) em `src/lib/csv.ts` + rota `/shows/funil/paradas/export` (mesma consulta/detecção,
+  BOM UTF-8, nome `propostas-paradas.csv`, botão só com `count > 0`). Data em UTC (`csvDate`, coerente com o dia inteiro do
+  detector); dias até o show crus/assinados (ordenáveis por máquina, convenção de `bookingLeadTimeToCsv`).
+- **Testes:** **+17** — **+14** em `shows.test.ts` (`describe("findStaleProposals")`: só PROPOSED; recente não sinaliza; cold/
+  imminent/overdue; último evento define o tempo no status; ordenação por urgência e dentro de cada grupo; limiares customizados;
+  fallback a createdAt sem histórico; sanidade das constantes) e **+3** em `csv.test.ts` (`describe("staleProposalsToCsv")`: só
+  cabeçalho sem paradas; ordem da fila + Total com cachê em risco; rótulo iminente + cidade/local). **1362 testes** no total
+  (eram 1347).
+- **Alternativas consideradas:** (a) incluir CONFIRMED cuja data passou sem virar PLAYED (higiene de dados) — **adiado**: é um
+  sinal distinto ("marque como realizado"), não um follow-up de negociação; misturaria dois eixos. (b) nudge no Painel para a
+  proposta mais urgente — **adiado**: o Painel já carrega ~10 nudges (D110/D114/D134/D189/D232…); adicionar outro seria ruído.
+  (c) recorte por `?ano=` — dispensado: a leitura é sobre o estado ATUAL das propostas em aberto, não um histórico.
+- **Hipótese sinalizada:** os limiares `STALE_PROPOSAL_DAYS=21` (semanas sem resposta) e `STALE_PROPOSAL_IMMINENT_DAYS=14`
+  (janela de decisão) são heurísticas — a cadência natural de fechamento varia por circuito/gênero. Validar com músicos antes de
+  virar premissa fixa (anotado nos bloqueios do PROGRESS).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1362 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/shows/funil/paradas` + `/shows/funil/paradas/export` 307 (auth-gated). `npm audit`
+  **inalterado** vs. baseline (mesmos advisories Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Nota de concorrência:** número **D240** escolhido como o próximo livre após o D239 (Sessão 245). Se uma PR paralela reivindicar
+  o mesmo número, renumerar na consolidação.

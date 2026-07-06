@@ -83,6 +83,8 @@ import type {
   OpenWeekendsReport,
   ScheduleConflicts,
   FunnelStageDurations,
+  StaleProposalsReport,
+  StaleProposalUrgency,
 } from "./shows";
 import { summarizeMonthShows, summarizeWeekShows } from "./shows";
 
@@ -2409,6 +2411,70 @@ export function stageDurationsToCsv(
     ]);
   }
   out.push(["Total", String(durations.totalSamples), "", "", "", ""]);
+  return toCsv(out, delimiter);
+}
+
+// ── Propostas paradas (follow-up de deals esquecidos) ────────────────────────
+
+export const STALE_PROPOSALS_CSV_HEADERS = [
+  "Urgência",
+  "Show",
+  "Data",
+  "Local",
+  "Cidade",
+  "Dias parado",
+  "Dias até o show",
+  "Cachê (R$)",
+] as const;
+
+/** Rótulo pt-BR da urgência de uma proposta parada. */
+const STALE_URGENCY_LABELS: Record<StaleProposalUrgency, string> = {
+  overdue: "Vencida",
+  imminent: "Iminente",
+  cold: "Sem resposta",
+};
+
+/**
+ * Serializa as propostas paradas (`findStaleProposals`) em CSV, pronto para
+ * download — espelha a fila de `/shows/funil/paradas`. Uma linha por proposta na
+ * ordem da página (urgência → data / tempo parado), com a urgência rotulada, os
+ * dados do show, dias parado no status, dias até a data (negativo = vencida, cru
+ * para ser ordenável por máquina) e o cachê acordado. Fecha (quando há linhas)
+ * numa linha "Total" com a contagem e o cachê em risco somado; a coluna "Dias até
+ * o show" do Total fica em branco (não há agregado honesto). Sem propostas → só o
+ * cabeçalho. Data em UTC (`csvDate`, coerente com o dia inteiro UTC do detector).
+ * Mesma convenção pt-BR dos irmãos (delimitador ";"). Pura.
+ */
+export function staleProposalsToCsv(
+  report: StaleProposalsReport,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(STALE_PROPOSALS_CSV_HEADERS)];
+  for (const p of report.proposals) {
+    out.push([
+      STALE_URGENCY_LABELS[p.urgency],
+      p.title,
+      csvDate(p.date),
+      p.venue ?? "",
+      p.city ?? "",
+      String(p.daysInStatus),
+      String(p.daysUntilShow),
+      centsToCsvAmount(p.fee),
+    ]);
+  }
+  if (report.count > 0) {
+    const label = `${report.count} proposta${report.count === 1 ? "" : "s"} parada${report.count === 1 ? "" : "s"}`;
+    out.push([
+      "Total",
+      label,
+      "",
+      "",
+      "",
+      "",
+      "",
+      centsToCsvAmount(report.totalFee),
+    ]);
+  }
   return toCsv(out, delimiter);
 }
 

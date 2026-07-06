@@ -82,6 +82,9 @@ export default async function ShowFunnelPage({
               ⬇ CSV
             </a>
           )}
+          <Link href="/shows/funil/paradas" className="btn-secondary text-sm">
+            ⏳ Propostas paradas
+          </Link>
           <Link href="/shows/funil/tempo-em-etapa" className="btn-secondary text-sm">
             ⏱ Tempo em etapa
           </Link>

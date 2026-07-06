@@ -1150,3 +1150,182 @@ export function funnelStageDurations(
 
   return { stages, totalSamples, showCount };
 }
+
+// ── Propostas paradas (follow-up de deals esquecidos) ─────────────────────────
+// Enquanto o funil (`showPipeline`) fotografa ONDE os shows estão e o tempo em
+// etapa (`funnelStageDurations`/D235) mede a VELOCIDADE típica de travessia, esta
+// leitura é operacional: QUAIS propostas específicas estão paradas e pedem uma
+// decisão agora — cobrar resposta, confirmar ou descartar. Olha só os shows ainda
+// em PROPOSED (a etapa aberta e acionável; CONFIRMED já é booking fechado, só
+// esperando a data). Ver D240.
+
+/** Status aberto/acionável cujas propostas podem "esfriar" sem resposta. */
+export const STALE_PROPOSAL_STATUS = "PROPOSED";
+/** Dias sem movimento em PROPOSED para uma proposta virar "parada" (heurística). */
+export const STALE_PROPOSAL_DAYS = 21;
+/** Dias até a data do show para classificá-lo como decisão iminente. */
+export const STALE_PROPOSAL_IMMINENT_DAYS = 14;
+
+/** Urgência de uma proposta parada, da mais para a menos crítica. */
+export type StaleProposalUrgency = "overdue" | "imminent" | "cold";
+
+/** Show como o detector de propostas paradas precisa vê-lo. */
+export interface StaleProposalShowLike {
+  id: string;
+  title: string;
+  date: Date | string;
+  venue?: string | null;
+  city?: string | null;
+  fee: number;
+  status: string;
+  createdAt: Date | string;
+  /** Histórico de status; usado só para achar quando entrou no status atual. */
+  statusEvents?: StatusEventLike[];
+}
+
+/** Uma proposta parada, já classificada. */
+export interface StaleProposal {
+  id: string;
+  title: string;
+  date: Date;
+  venue: string | null;
+  city: string | null;
+  fee: number;
+  /** Dias inteiros (UTC) parado no status atual (desde que entrou em PROPOSED). */
+  daysInStatus: number;
+  /** Dias inteiros (UTC) até a data do show; negativo = a data já passou. */
+  daysUntilShow: number;
+  urgency: StaleProposalUrgency;
+}
+
+/** Resultado de `findStaleProposals`. */
+export interface StaleProposalsReport {
+  /** Propostas paradas, da mais urgente para a menos (ver ordenação). */
+  proposals: StaleProposal[];
+  count: number;
+  /** Cachê acordado somado das propostas paradas (centavos) — receita em risco. */
+  totalFee: number;
+  overdueCount: number;
+  imminentCount: number;
+  coldCount: number;
+}
+
+/** Opções de `findStaleProposals` (todas injetáveis para testes determinísticos). */
+export interface StaleProposalsOptions {
+  /** "Agora" de referência; default `new Date()`. */
+  now?: Date;
+  /** Dias sem movimento para virar "parada"; default `STALE_PROPOSAL_DAYS`. */
+  staleDays?: number;
+  /** Dias até a data para classificar como "iminente"; default `STALE_PROPOSAL_IMMINENT_DAYS`. */
+  imminentDays?: number;
+}
+
+/** Momento (ms) em que o show entrou no status atual: último evento, ou a criação. */
+function enteredStatusAt(show: StaleProposalShowLike): number {
+  let latest: number | null = null;
+  for (const e of show.statusEvents ?? []) {
+    const ms = new Date(e.createdAt).getTime();
+    if (latest === null || ms > latest) latest = ms;
+  }
+  return latest ?? new Date(show.createdAt).getTime();
+}
+
+const URGENCY_RANK: Record<StaleProposalUrgency, number> = {
+  overdue: 0,
+  imminent: 1,
+  cold: 2,
+};
+
+/**
+ * Propostas paradas que pedem follow-up. Considera só os shows em PROPOSED (a
+ * etapa aberta) e marca como "parada" a proposta que OU está há `staleDays` dias
+ * sem movimento no status OU tem a data do show já vencida (`date < now`) — uma
+ * proposta para um dia que passou está, por definição, sem resolução.
+ *
+ * A urgência classifica a fila:
+ * - `overdue`  — a data do show já passou (nunca virou confirmado/realizado/cancelado);
+ * - `imminent` — a data cai dentro dos próximos `imminentDays` dias (decisão logo);
+ * - `cold`     — nenhuma pressão de data, mas parada por inatividade.
+ *
+ * Ordena por urgência (overdue → imminent → cold); dentro de overdue/imminent pela
+ * data (mais vencida / mais próxima primeiro), dentro de cold pelo maior tempo
+ * parado; desempate estável por título e id. O tempo no status usa o último evento
+ * de status (quando entrou no status atual), caindo para `createdAt` nos shows sem
+ * histórico (anteriores ao registro de eventos, D234). Datas por dia inteiro UTC,
+ * coerente com os demais helpers de recência. Pura; `now`/limiares injetáveis.
+ */
+export function findStaleProposals(
+  shows: StaleProposalShowLike[],
+  opts: StaleProposalsOptions = {},
+): StaleProposalsReport {
+  const now = opts.now ?? new Date();
+  const staleDays = opts.staleDays ?? STALE_PROPOSAL_DAYS;
+  const imminentDays = opts.imminentDays ?? STALE_PROPOSAL_IMMINENT_DAYS;
+  const nowMidnight = leadUtcMidnight(now);
+
+  const proposals: StaleProposal[] = [];
+  for (const show of shows) {
+    if (show.status !== STALE_PROPOSAL_STATUS) continue;
+
+    const daysInStatus = Math.max(
+      0,
+      Math.floor((nowMidnight - leadUtcMidnight(new Date(enteredStatusAt(show)))) / DAY_MS),
+    );
+    const daysUntilShow = Math.floor((leadUtcMidnight(show.date) - nowMidnight) / DAY_MS);
+    const overdue = daysUntilShow < 0;
+
+    // "Parada" = sem movimento há tempo demais OU já com a data vencida.
+    if (daysInStatus < staleDays && !overdue) continue;
+
+    const urgency: StaleProposalUrgency = overdue
+      ? "overdue"
+      : daysUntilShow <= imminentDays
+        ? "imminent"
+        : "cold";
+
+    proposals.push({
+      id: show.id,
+      title: show.title,
+      date: new Date(show.date),
+      venue: show.venue ?? null,
+      city: show.city ?? null,
+      fee: show.fee,
+      daysInStatus,
+      daysUntilShow,
+      urgency,
+    });
+  }
+
+  proposals.sort((a, b) => {
+    const rank = URGENCY_RANK[a.urgency] - URGENCY_RANK[b.urgency];
+    if (rank !== 0) return rank;
+    // overdue/imminent: pela data (mais vencida / mais próxima primeiro).
+    // cold: pelo maior tempo parado primeiro.
+    if (a.urgency === "cold") {
+      if (b.daysInStatus !== a.daysInStatus) return b.daysInStatus - a.daysInStatus;
+    } else if (a.daysUntilShow !== b.daysUntilShow) {
+      return a.daysUntilShow - b.daysUntilShow;
+    }
+    return a.title.localeCompare(b.title) || a.id.localeCompare(b.id);
+  });
+
+  let totalFee = 0;
+  let overdueCount = 0;
+  let imminentCount = 0;
+  let coldCount = 0;
+  for (const p of proposals) {
+    totalFee += p.fee;
+    if (p.urgency === "overdue") overdueCount += 1;
+    else if (p.urgency === "imminent") imminentCount += 1;
+    else coldCount += 1;
+  }
+
+  return {
+    proposals,
+    count: proposals.length,
+    totalFee,
+    overdueCount,
+    imminentCount,
+    coldCount,
+  };
+}
