@@ -1155,6 +1155,70 @@ describe("pipelineByContact", () => {
   });
 });
 
+describe("pipelineByContact — recorte por período (ano)", () => {
+  // Compõe filterShowsByYear (finance) + pipelineByContact (contacts), como a
+  // página /contatos/funil: filtrar os shows por ano ANTES de agregar recorta o
+  // pipeline aberto (e a concretização) àquele ano, sem tocar a lógica pura. Os
+  // shows usam `date: Date` concreto (como o Prisma entrega na página) para
+  // satisfazer o `{ date: Date }` de filterShowsByYear.
+  interface DatedShow {
+    status: string;
+    date: Date;
+    fee: number;
+  }
+  function s(over: Partial<DatedShow> = {}): DatedShow {
+    return { status: "CONFIRMED", date: new Date("2026-05-01T20:00:00Z"), fee: 100_00, ...over };
+  }
+
+  const items = [
+    {
+      contact: { id: "a", name: "A" },
+      shows: [
+        // 2025: só decidido → nada em aberto naquele ano
+        s({ status: "PLAYED", date: new Date("2025-04-01T00:00:00Z") }),
+        // 2026: proposta em aberto
+        s({ status: "PROPOSED", fee: 300_00, date: new Date("2026-04-01T00:00:00Z") }),
+      ],
+    },
+    {
+      contact: { id: "b", name: "B" },
+      shows: [
+        // só 2025 em aberto
+        s({ status: "CONFIRMED", fee: 500_00, date: new Date("2025-07-01T00:00:00Z") }),
+      ],
+    },
+  ];
+
+  function scoped(year: 2025 | 2026 | "all") {
+    return pipelineByContact(
+      items.map((it) => ({ contact: it.contact, shows: filterShowsByYear(it.shows, year) })),
+    );
+  }
+
+  it("recorta o pipeline aberto ao ano selecionado", () => {
+    const r = scoped(2026);
+    // só "A" tem pipeline aberto em 2026 (a proposta de 300); "B" some
+    expect(r.rows.map((x) => x.contact.id)).toEqual(["a"]);
+    expect(r.rows[0].openValue).toBe(300_00);
+    expect(r.totalOpenValue).toBe(300_00);
+    expect(r.totalOpenCount).toBe(1);
+  });
+
+  it("um ano diferente muda quem aparece", () => {
+    const r = scoped(2025);
+    // em 2025 só "B" tem cachê em aberto (o show de "A" naquele ano é PLAYED)
+    expect(r.rows.map((x) => x.contact.id)).toEqual(["b"]);
+    expect(r.totalOpenValue).toBe(500_00);
+  });
+
+  it('"all" preserva a carteira inteira (comportamento histórico)', () => {
+    const r = scoped("all");
+    expect(r.rows.map((x) => x.contact.id).sort()).toEqual(["a", "b"]);
+    expect(r.totalOpenValue).toBe(800_00);
+    expect(r.totalOpenCount).toBe(2);
+  });
+});
+
 describe("pipelineByContactHeadline", () => {
   function s(over: Partial<ContactRankShowLike> = {}): ContactRankShowLike {
     return { status: "PROPOSED", date: "2026-05-01T20:00:00Z", fee: 100_00, ...over };

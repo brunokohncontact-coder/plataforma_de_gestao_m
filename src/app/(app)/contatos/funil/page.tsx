@@ -2,10 +2,18 @@ import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { pipelineByContact, type ContactRankLike } from "@/lib/contacts";
+import {
+  showProfitYears,
+  parseProfitYear,
+  filterShowsByYear,
+} from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { CONTACT_ROLE_LABELS, type ContactRole } from "@/lib/domain";
+import { PeriodPicker } from "@/components/PeriodPicker";
 
 export const dynamic = "force-dynamic";
+
+type SearchParams = { [key: string]: string | string[] | undefined };
 
 interface PipelineContact extends ContactRankLike {
   role: string;
@@ -15,7 +23,11 @@ function pct(rate: number): string {
   return `${Math.round(rate * 100)}%`;
 }
 
-export default async function ContatosFunilPage() {
+export default async function ContatosFunilPage({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
   const user = await requireUser();
 
   const contacts = await prisma.contact.findMany({
@@ -33,13 +45,29 @@ export default async function ContatosFunilPage() {
     },
   });
 
+  // Recorte por período (ano da `date` do show), reaproveitando os helpers da
+  // D108 como no funil geral (`/shows/funil`). Os anos do seletor vêm de TODOS os
+  // shows vinculados; filtra-se cada carteira ANTES de agregar, então
+  // `pipelineByContact` segue agnóstico ao recorte (não olha `date`).
+  const allShows = contacts.flatMap((c) => c.shows.map((cs) => cs.show));
+  const availableYears = showProfitYears(allShows.map((s) => s.date));
+  const yearFilter = parseProfitYear(searchParams?.ano, availableYears);
+
   const items = contacts.map((c) => ({
     contact: { id: c.id, name: c.name, role: c.role } as PipelineContact,
-    shows: c.shows.map((cs) => cs.show),
+    shows: filterShowsByYear(
+      c.shows.map((cs) => cs.show),
+      yearFilter,
+    ),
   }));
 
   const report = pipelineByContact(items);
   const hasData = report.contactCount > 0;
+  const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
+  const exportHref =
+    yearFilter === "all"
+      ? "/contatos/funil/export"
+      : `/contatos/funil/export?ano=${yearFilter}`;
 
   return (
     <div className="space-y-6">
@@ -54,7 +82,7 @@ export default async function ContatosFunilPage() {
         </div>
         <div className="flex items-center gap-2">
           {hasData && (
-            <a href="/contatos/funil/export" className="btn-secondary" download>
+            <a href={exportHref} className="btn-secondary" download>
               ⬇ CSV
             </a>
           )}
@@ -67,9 +95,20 @@ export default async function ContatosFunilPage() {
         </div>
       </div>
 
+      {availableYears.length > 0 && (
+        <PeriodPicker
+          years={availableYears}
+          active={yearFilter}
+          basePath="/contatos/funil"
+        />
+      )}
+
       {!hasData ? (
         <div className="card text-center text-gray-500">
-          <p>Nenhum cachê em aberto vinculado a um contratante.</p>
+          <p>
+            Nenhum cachê em aberto vinculado a um contratante
+            {yearFilter === "all" ? "" : ` em ${yearFilter}`}.
+          </p>
           <p className="mt-1 text-sm">
             Assim que você marcar shows propostos ou confirmados com um contato,
             o pipeline aberto por contratante aparece aqui.
@@ -190,8 +229,9 @@ export default async function ContatosFunilPage() {
           </section>
 
           <p className="text-xs text-gray-400">
-            A contagem é por contato: um show com vários contatos conta para cada
-            um. &quot;Em aberto&quot; soma o cachê dos shows propostos e
+            Recorte: {periodLabel}. A contagem é por contato: um show com vários
+            contatos conta para cada um. &quot;Em aberto&quot; soma o cachê dos
+            shows propostos e
             confirmados (dinheiro ainda não realizado). A concretização é
             histórica — realizados sobre os shows já decididos (realizados +
             cancelados) — e &quot;—&quot; quando o contratante ainda não teve
