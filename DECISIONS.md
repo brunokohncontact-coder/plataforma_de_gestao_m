@@ -7897,3 +7897,40 @@ contexto, decisão, justificativa e alternativas consideradas.
   dependência nova**.
 - **Nota de concorrência:** número **D236** escolhido como o próximo livre após o D235 já mergeado (Sessão 241). Se uma PR
   paralela reivindicar o mesmo número, renumerar na consolidação.
+
+## D237 — Exportação CSV do tempo em cada etapa do funil (`/shows/funil/tempo-em-etapa/export`) (Sessão 243)
+- **Contexto:** a D235 (Sessão 241) entregou a tela `/shows/funil/tempo-em-etapa` (residence time por etapa do funil:
+  mediana/média/mín/máx de dias) e registrou explicitamente que o **CSV** era "o candidato natural quando a amostra
+  amadurecer". A tela é irmã de dezenas de outras que já exportam (funil geral/D160, sazonalidade, DSO…); era a única
+  vista de funil sem botão de download. Mesmo com amostra pequena, o CSV não introduz risco e fecha a assimetria
+  tela↔planilha — abre a leitura em ordenável/filtrável e serve de base para quando o histórico crescer.
+- **Decisão:** novo serializador puro `stageDurationsToCsv(durations)` + `STAGE_DURATIONS_CSV_HEADERS`
+  (Etapa / Transições / Mediana (dias) / Média (dias) / Mín (dias) / Máx (dias)) em `src/lib/csv.ts`. Recebe a
+  `FunnelStageDurations` já computada (`funnelStageDurations`, de `@/lib/shows`) e emite **uma linha por etapa com
+  amostra** (`durations.stages`, na ordem canônica do funil que o helper já devolve), encerrada numa linha "Total" com o
+  total de transições cronometradas (`totalSamples`). Rótulo de etapa via o `showStatusLabel` já existente (defensivo com
+  status fora do canônico). Rota `/shows/funil/tempo-em-etapa/export` reusa a mesma consulta (só `statusEvents` de cada
+  show) e o mesmo `funnelStageDurations` da página + BOM UTF-8; nome fixo `tempo-em-etapa.csv`; botão "⬇ CSV" no cabeçalho
+  da página só com `durations.totalSamples > 0`.
+- **Dias crus (inteiro), não "N dias" da UI:** o CSV emite o inteiro de dias legível por máquina/ordenável (mesma
+  convenção de `bookingLeadTimeToCsv`), enquanto a tela escreve "4 dias". As colunas mediana/média/mín/máx do "Total"
+  ficam **em branco**: não há agregado honesto entre etapas (a mediana do conjunto não se recompõe das medianas por
+  etapa), espelhando a participação em branco do "Total" de `pipelineToCsv`/`incomeMixToCsv`. Só o total de transições é
+  somável e vira número.
+- **Sem `?ano=` nesta fatia:** herda a decisão da D235 — a amostra é pequena (só eventos pós-D234, sem backfill), recortar
+  por ano a fragmentaria; a página também não tem seletor. Quando o histórico crescer, o `PeriodPicker`/`filterShowsByYear`
+  (D108) encaixa na página e no export juntos.
+- **Alternativas consideradas:** (a) somar mín/máx globais no "Total" (menor mín de todas as etapas, maior máx) —
+  **descartado**: mistura etapas distintas num número que não responde pergunta nenhuma; o branco é mais honesto. (b)
+  esperar a amostra "amadurecer" antes de exportar (a letra da D235) — **revisto**: o CSV é barato, sem risco e fecha a
+  assimetria já; a maturidade da amostra é ortogonal a poder baixá-la. (c) coluna extra de destaque/"gargalo" (a etapa mais
+  lenta) — **adiada**: é análise, não tabulação; a mediana por linha já deixa o gargalo ordenável na planilha.
+- **Testes:** **+3** em `csv.test.ts` (`describe("stageDurationsToCsv")`: sem amostra → só cabeçalho + Total zerado com
+  colunas de dias em branco; uma linha por etapa na ordem canônica com dias crus + Total somando as transições; agregação
+  multi-show com mediana/média/mín/máx). **1334 testes** no total (eram 1331).
+- **DoD:** build de produção (rota `/shows/funil/tempo-em-etapa/export` registrada), typecheck (`tsc --noEmit`) e lint
+  (`next lint`, 0 avisos) verdes; **1334 testes** (`vitest run`); smoke test (`next start`) → `/login` 200,
+  `/shows/funil/tempo-em-etapa` e `/shows/funil/tempo-em-etapa/export` 307 (auth-gated). `npm audit` **inalterado** vs.
+  baseline (10 advisories — 4 moderate / 5 high / 1 critical, Next 14 / postcss; ver D6); **nenhuma dependência nova**.
+- **Nota de concorrência:** número **D237** escolhido como o próximo livre após o D236 já mergeado (Sessão 242). Se uma PR
+  paralela reivindicar o mesmo número, renumerar na consolidação.

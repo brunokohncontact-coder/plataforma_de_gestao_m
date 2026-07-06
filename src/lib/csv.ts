@@ -78,7 +78,12 @@ import type {
 } from "./contacts";
 import { indexClientShareChanges } from "./contacts";
 import { MONTH_NAMES_LONG } from "./calendar";
-import type { BookingLeadTime, OpenWeekendsReport, ScheduleConflicts } from "./shows";
+import type {
+  BookingLeadTime,
+  OpenWeekendsReport,
+  ScheduleConflicts,
+  FunnelStageDurations,
+} from "./shows";
 import { summarizeMonthShows } from "./shows";
 
 const DEFAULT_DELIMITER = ";";
@@ -2314,6 +2319,50 @@ export function pipelineToCsv(
     ]);
   }
   out.push(["Total", String(pipeline.total), "", centsToCsvAmount(feeTotal)]);
+  return toCsv(out, delimiter);
+}
+
+export const STAGE_DURATIONS_CSV_HEADERS = [
+  "Etapa",
+  "Transições",
+  "Mediana (dias)",
+  "Média (dias)",
+  "Mín (dias)",
+  "Máx (dias)",
+] as const;
+
+/**
+ * Serializa o tempo de permanência por etapa do funil (`funnelStageDurations`)
+ * em CSV, pronto para download — espelha a tabela "Detalhe" de
+ * `/shows/funil/tempo-em-etapa`. Uma linha por etapa com amostra, na mesma ordem
+ * da página (`durations.stages`, isto é, a ordem canônica do funil), com o nº de
+ * transições cronometradas que saíram da etapa e mediana/média/mín/máx de dias,
+ * encerrada numa linha "Total" com o total de transições (`totalSamples`).
+ *
+ * Diferente da tela (que escreve "N dias"), o CSV emite o inteiro de dias cru
+ * (legível por máquina/ordenável), mesma convenção de `bookingLeadTimeToCsv`. As
+ * colunas mediana/média/mín/máx do "Total" ficam em branco: não há agregado
+ * honesto entre etapas (a mediana do conjunto não se recompõe das medianas por
+ * etapa), como a participação em branco de `pipelineToCsv`. Sem amostra
+ * (`totalSamples === 0`) sai só cabeçalho + Total zerado. Mesma convenção pt-BR
+ * dos irmãos (delimitador ";"). Pura.
+ */
+export function stageDurationsToCsv(
+  durations: FunnelStageDurations,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(STAGE_DURATIONS_CSV_HEADERS)];
+  for (const stage of durations.stages) {
+    out.push([
+      showStatusLabel(stage.status),
+      String(stage.count),
+      String(stage.medianDays),
+      String(stage.averageDays),
+      String(stage.shortestDays),
+      String(stage.longestDays),
+    ]);
+  }
+  out.push(["Total", String(durations.totalSamples), "", "", "", ""]);
   return toCsv(out, delimiter);
 }
 
