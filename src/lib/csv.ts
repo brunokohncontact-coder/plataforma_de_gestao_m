@@ -36,6 +36,7 @@ import {
   type CashFlowMonth,
   type BookedRevenueForecast,
   type DueAgenda,
+  type TaxReserveReport,
   type TxLike,
   DUE_BUCKET_LABELS,
   type YearlyHistory,
@@ -228,6 +229,55 @@ export function annualSummaryToCsv(
     centsToCsvAmount(summary.totalIncome),
     centsToCsvAmount(summary.totalExpense),
     centsToCsvAmount(summary.net),
+  ]);
+  return toCsv(rows, delimiter);
+}
+
+export const TAX_RESERVE_CSV_HEADERS = [
+  "Mês",
+  "Recebido (R$)",
+  "Reserva sugerida (R$)",
+] as const;
+
+/** Alíquota (0..1) -> texto pt-BR sem casa desnecessária: 0,06 → "6", 0,275 → "27,5". */
+function taxRateToPct(rate: number): string {
+  const pct = Math.round(rate * 1000) / 10; // 1 casa decimal
+  return String(pct).replace(".", ",");
+}
+
+/**
+ * Serializa a reserva para impostos (`taxReserve`) em CSV, pronto para download.
+ * Espelha a tabela "Mês a mês" da página `/financas/reserva-impostos`: sempre as
+ * 12 linhas de mês (janeiro→dezembro do ano de referência, inclusive meses sem
+ * receita — zeros preservam a textura do ano), com a receita **efetivamente
+ * recebida** (caixa de entrada) e a reserva sugerida do mês, seguida de uma linha
+ * "Total". Diferente da UI (que mostra "—" nos meses vazios), o CSV registra 0,00
+ * para ficar legível por máquina.
+ *
+ * A alíquota aplicada não vira coluna (é constante em todas as linhas): entra no
+ * rótulo do "Total" (ex.: "Total 2026 (alíquota 6%)"), de modo que a planilha abra
+ * auto-suficiente para levar ao contador. Os meses trazem o ano no rótulo (como
+ * `annualSummaryToCsv`), já que a reserva é sempre de um único ano.
+ *
+ * Mesma convenção pt-BR de `transactionsToCsv` (delimitador ";", decimal com
+ * vírgula). Pura.
+ */
+export function taxReserveToCsv(
+  report: TaxReserveReport,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const rows: string[][] = [Array.from(TAX_RESERVE_CSV_HEADERS)];
+  for (const m of report.months) {
+    rows.push([
+      `${MONTH_NAMES_LONG[m.monthIndex - 1]} ${report.year}`,
+      centsToCsvAmount(m.receivedIncome),
+      centsToCsvAmount(m.reserve),
+    ]);
+  }
+  rows.push([
+    `Total ${report.year} (alíquota ${taxRateToPct(report.rate)}%)`,
+    centsToCsvAmount(report.totalReceivedIncome),
+    centsToCsvAmount(report.totalReserve),
   ]);
   return toCsv(rows, delimiter);
 }

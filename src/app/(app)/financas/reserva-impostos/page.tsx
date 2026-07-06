@@ -84,9 +84,19 @@ export default async function TaxReservePage({
             Quanto guardar do que entra para não ser pego de surpresa no imposto · {year}
           </p>
         </div>
-        <Link href="/financas" className="text-sm text-gray-500 hover:underline">
-          ← Finanças
-        </Link>
+        <div className="flex items-center gap-3">
+          {hasActivity && (
+            <a
+              href={`/financas/reserva-impostos/export?ano=${year}&aliquota=${ratePct}`}
+              className="btn-secondary text-sm"
+            >
+              ⬇ CSV
+            </a>
+          )}
+          <Link href="/financas" className="text-sm text-gray-500 hover:underline">
+            ← Finanças
+          </Link>
+        </div>
       </div>
 
       {/* Navegação por ano */}

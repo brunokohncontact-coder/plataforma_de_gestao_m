@@ -9,7 +9,16 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **970 testes** verdes após consolidar a **exportação CSV da agenda de contas a pagar/receber** em `/financas/agenda/export` (PR #180, D157 — a tela "A pagar e receber"/`buildDueAgenda` ganhou botão "⬇ CSV"; serializador puro `dueAgendaToCsv` + `DUE_AGENDA_CSV_HEADERS` em `src/lib/csv.ts`, rótulos de janela extraídos para `DUE_BUCKET_LABELS` em `@/lib/finance` (DRY com a página); **+3 testes**) sobre a Sessão 166. Segue 967 da Sessão 166
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **973 testes** verdes após a **exportação CSV da reserva
+para impostos** em `/financas/reserva-impostos/export` (Sessão 167, D160 — a tela "Reserva para impostos"/`taxReserve` ganhou
+botão "⬇ CSV"; serializador puro `taxReserveToCsv` + `TAX_RESERVE_CSV_HEADERS` em `src/lib/csv.ts`: sempre 12 meses + "Total",
+recebido e reserva sugerida por mês, alíquota no rótulo do Total, respeitando `?ano=`/`?aliquota=` da página; **+3 testes**;
+o nome do arquivo carrega ano+alíquota — `reserva-impostos-{ano}-{pct}pct.csv`). Nota de ambiente: o Prisma Client vinha
+defasado no container (esperava `billingContactId` inexistente no schema) — `npx prisma generate` (ou `npm run build`, que já o
+faz) resolve; ver D160. Segue 970 após consolidar a **exportação CSV da agenda de contas a pagar/receber** em
+`/financas/agenda/export` (PR #180, D157 — a tela "A pagar e receber"/`buildDueAgenda` ganhou botão "⬇ CSV"; serializador puro
+`dueAgendaToCsv` + `DUE_AGENDA_CSV_HEADERS` em `src/lib/csv.ts`, rótulos de janela extraídos para `DUE_BUCKET_LABELS` em
+`@/lib/finance` (DRY com a página); **+3 testes**) sobre a Sessão 166. Segue 967 da Sessão 166
 (**exportação CSV dos contatos para reativar** em `/contatos/reativar/export` — a tela "Contatos para reativar"
 (`findContactsToReengage`, a fila de follow-up dos dormentes: quem já tocou, está sem nada agendado e há mais de `staleDays`=60
 dias sem show) ganhou botão de exportação, fechando mais uma lacuna tabular do lado Contatos (ao lado de

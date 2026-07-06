@@ -4931,3 +4931,36 @@ contexto, decisão, justificativa e alternativas consideradas.
   D6/bloqueios); **nenhuma dependência nova**.
 - **Nota de concorrência:** **D157** segue reservado à PR paralela #180 (export CSV da agenda) ainda em aberto; esta sessão usa
   **D159** (após o D158 já mergeado da Sessão 165) para evitar colisão de numeração na `main`.
+
+## D160 — Exportação CSV da reserva para impostos (`/financas/reserva-impostos/export`) (Sessão 167)
+- **Contexto:** a tela `/financas/reserva-impostos` (`taxReserve`) sugere quanto guardar de cada cachê para o imposto — mês a mês
+  + total do ano —, aplicando uma alíquota (`?aliquota=`) sobre as receitas **efetivamente recebidas** (caixa de entrada) de um
+  ano (`?ano=`). É uma das telas tabulares das Finanças ainda sem exportação, e justamente a que mais pede planilha: o número
+  serve para **levar ao contador** ou reconciliar com a apuração do Simples/carnê-leão. Fecha mais uma lacuna do tema recorrente
+  "levar o botão ⬇ CSV às demais telas tabulares" (irmã de anual/trimestral/sazonalidade/crescimento/composição/fontes).
+- **Decisão:** novo serializador puro `taxReserveToCsv(report)` + `TAX_RESERVE_CSV_HEADERS` em `src/lib/csv.ts` recebe o
+  `TaxReserveReport` já computado por `taxReserve` (de `@/lib/finance`) e emite **sempre as 12 linhas** de mês (janeiro→dezembro
+  do ano de referência, inclusive meses sem receita — zeros preservam a textura do ano, como `annualSummaryToCsv`/
+  `monthlySeasonalityToCsv`), com o recebido e a reserva sugerida do mês, encerrada numa linha "Total". Rota
+  `/financas/reserva-impostos/export` reusa a **mesma consulta** da página (só `INCOME`) e os **mesmos parâmetros** (`?ano=`,
+  `?aliquota=`, parsers espelhados da página) + BOM UTF-8; nome do arquivo carrega ano e alíquota
+  (`reserva-impostos-{ano}-{pct}pct.csv`, ex.: `reserva-impostos-2026-6pct.csv`); botão "⬇ CSV" no cabeçalho só com
+  `hasActivity` (receita recebida no ano > 0), propagando ano+alíquota ativos.
+- **Colunas:** Mês / Recebido (R$) / Reserva sugerida (R$). Os meses trazem o ano no rótulo ("Janeiro 2026", como
+  `annualSummaryToCsv`), já que a reserva é sempre de um único ano. **A alíquota não vira coluna** (é constante em todas as
+  linhas): entra no **rótulo do "Total"** (ex.: "Total 2026 (alíquota 6%)"), de modo que a planilha abra auto-suficiente sem
+  desperdiçar uma coluna repetida — mesma economia de rótulo do "Total do ano (2026)". Diferente da UI (que mostra "—" nos meses
+  vazios), o CSV registra 0,00 para ficar legível por máquina.
+- **Alternativas:** (a) alíquota como coluna repetida — descartada (redundante, constante). (b) linha de metadados no topo —
+  descartada (quebra o retângulo tabular que Excel/Sheets esperam). (c) recorte agregando vários anos — fora de escopo: a reserva
+  é intrinsecamente anual (imposto se apura por ano-calendário).
+- **Testes:** **+3** em `csv.test.ts` (`describe("taxReserveToCsv")`): só cabeçalho + 12 meses + Total zerados sem receita (14
+  linhas, alíquota no rótulo do Total); reserva só sobre receita **recebida** no mês certo (ignora a-receber) + total do ano;
+  formatação da alíquota com casa decimal (27,5%) e recorte por ano no rótulo do Total. **973 testes** no total (eram 970).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **973 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/financas/reserva-impostos` + `/financas/reserva-impostos/export?ano=2026&aliquota=6`
+  307 (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
+  postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Nota de ambiente:** o Prisma Client gerado no container vinha **defasado** (esperava uma coluna `billingContactId` inexistente
+  no schema atual), quebrando os testes de integração das server actions até rodar `npx prisma generate`. `npm run build` já
+  regenera o client (script `build`); registrado aqui como lembrete para sessões futuras que rodem `vitest` antes de um build.

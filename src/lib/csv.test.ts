@@ -8,6 +8,8 @@ import {
   transactionsToCsv,
   showsToCsv,
   annualSummaryToCsv,
+  taxReserveToCsv,
+  TAX_RESERVE_CSV_HEADERS,
   quarterlySummaryToCsv,
   showProfitToCsv,
   venueProfitToCsv,
@@ -72,6 +74,7 @@ import {
 } from "./csv";
 import {
   annualSummary,
+  taxReserve,
   monthlySeasonality,
   quarterlySummary,
   gigSeasonality,
@@ -325,6 +328,50 @@ describe("annualSummaryToCsv", () => {
     ];
     const csv = annualSummaryToCsv(annualSummary(txs, 2026));
     expect(csv.split("\r\n")[13]).toBe("Total do ano (2026);0,00;0,00;0,00");
+  });
+});
+
+describe("taxReserveToCsv", () => {
+  it("emite cabeçalho + 12 meses + linha de total (14 linhas), zerados sem receita", () => {
+    const csv = taxReserveToCsv(taxReserve([], { year: 2026, rate: 0.06 }));
+    const lines = csv.split("\r\n");
+    expect(lines).toHaveLength(14);
+    expect(lines[0]).toBe(TAX_RESERVE_CSV_HEADERS.join(";"));
+    expect(lines[1]).toBe("Janeiro 2026;0,00;0,00");
+    expect(lines[12]).toBe("Dezembro 2026;0,00;0,00");
+    // A alíquota entra no rótulo do Total, não numa coluna.
+    expect(lines[13]).toBe("Total 2026 (alíquota 6%);0,00;0,00");
+  });
+
+  it("reserva só sobre receita recebida no mês certo e totaliza o ano", () => {
+    const txs = [
+      // Recebida em março: entra na base.
+      { type: "INCOME" as const, amount: 200000, category: "Cachê", date: "2026-03-10T12:00:00Z", received: true, showId: null },
+      // A receber (não recebida): fora da base, mesmo sendo receita.
+      { type: "INCOME" as const, amount: 100000, category: "Cachê", date: "2026-03-20T12:00:00Z", received: false, showId: null },
+      // Recebida em julho.
+      { type: "INCOME" as const, amount: 100000, category: "Aula", date: "2026-07-01T12:00:00Z", received: true, showId: null },
+    ];
+    const csv = taxReserveToCsv(taxReserve(txs, { year: 2026, rate: 0.06 }));
+    const lines = csv.split("\r\n");
+    // Março (linha 3): 2000 recebido → 120 de reserva (6%).
+    expect(lines[3]).toBe("Março 2026;2000,00;120,00");
+    // Julho (linha 7): 1000 recebido → 60 de reserva.
+    expect(lines[7]).toBe("Julho 2026;1000,00;60,00");
+    // Total: 3000 recebido → 180 de reserva.
+    expect(lines[13]).toBe("Total 2026 (alíquota 6%);3000,00;180,00");
+  });
+
+  it("formata alíquota com casa decimal (27,5%) e outro ano no rótulo do Total", () => {
+    const txs = [
+      { type: "INCOME" as const, amount: 100000, category: "Cachê", date: "2025-05-05T12:00:00Z", received: true, showId: null },
+      // Ano diferente: ignorado.
+      { type: "INCOME" as const, amount: 500000, category: "Cachê", date: "2026-05-05T12:00:00Z", received: true, showId: null },
+    ];
+    const csv = taxReserveToCsv(taxReserve(txs, { year: 2025, rate: 0.275 }));
+    const lines = csv.split("\r\n");
+    expect(lines[5]).toBe("Maio 2025;1000,00;275,00");
+    expect(lines[13]).toBe("Total 2025 (alíquota 27,5%);1000,00;275,00");
   });
 });
 
