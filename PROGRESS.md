@@ -9,7 +9,20 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1324 testes** verdes após o **tempo médio em cada
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1331 testes** verdes após o **comparativo ano a ano
+do funil por contratante** (Sessão 242, D236 — a outra metade da D233: novo helper puro `compareContactPipelines(current,
+previous)` + tipos `ContactPipelineChange`/`ContactPipelineComparison` em `src/lib/contacts.ts` casa os contratantes de dois
+`pipelineByContact` (ano atual × anterior) por `contact.id` e destila os dois **movers** — quem mais melhorou (`biggestImprovement`)
+e quem mais piorou (`biggestWorsening`) a **taxa de concretização** (PLAYED / decididos) de um ano para o outro — + `newContacts`/
+`droppedContacts` (entrou/saiu da mesa). Ancora na taxa (não no cachê em aberto): "passar a fechar mais" é converter, espelho do
+funil geral (`compareShowPipelines`/D209, **subir** = melhora), reusando `CONVERSION_TREND_EPSILON`(=0.05) importado de `finance.ts`.
+Compara só quem tem pipeline aberto nos dois anos (a lente da página); taxa indefinida num período → delta `null`, "stable", ao fim
+da ordem. Card `PipelineMoversCard` "Quem passou a fechar mais/menos · {ano} vs. {ano-1}" em `/contatos/funil` (blocos "Fechando
+mais" 🟢 / "Fechando menos" 🔴 + rodapé de entradas/saídas), exibido só com um ano específico e ambos os períodos com pipeline; o
+ano anterior sai do mesmo acervo já carregado via `filterShowsByYear(txs, ano-1)` (**zero I/O extra**). Sem CSV nesta fatia (a
+tabela-mãe já tem export/D184; o card destila dois movers). **+8 testes** (`contacts.test.ts`). Smoke → `/login` 200, `/contatos/funil`
+e `?ano=2026` 307 (auth-gated); `npm audit` sem novas vulnerabilidades (mesmos advisories Next/postcss da D6; nenhuma dependência
+nova). Ver D236. Antes, **1324 testes** verdes após o **tempo médio em cada
 etapa do funil** (Sessão 241, D235 — primeiro agregado que a linha do tempo da D234 destrava: helper puro
 `funnelStageDurations(shows)` + tipos `StageDurationShowLike`/`StageDurationStat`/`FunnelStageDurations` em
 `src/lib/shows.ts` — para cada show monta `buildStatusTimeline` (reuso) e credita cada transição (`daysInPrevious`) à
@@ -3818,11 +3831,18 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `count`/`medianDays`(reusa `leadMedian`)/`averageDays`/`shortestDays`/`longestDays` na ordem canônica do funil +
    `totalSamples`/`showCount`; avanço + cancelamento somados; etapa atual em aberto fora, puro/determinístico) + página
    `/shows/funil/tempo-em-etapa` (barras da mediana + tabela + empty-state) + link "⏱ Tempo em etapa" no funil + entrada no
-   hub; sem `?ano=`/CSV (amostra jovem, sem backfill); **+6 testes**, ver D235. Próximo possível — a **outra** métrica que
+   hub; sem `?ano=`/CSV (amostra jovem, sem backfill); **+6 testes**, ver D235.
+   **Comparativo ano a ano do funil por contratante** entregue na Sessão 242 — `compareContactPipelines(current, previous)` +
+   tipos `ContactPipelineChange`/`ContactPipelineComparison` em `src/lib/contacts.ts` casa os contratantes de dois
+   `pipelineByContact` por `contact.id` e destila os movers da **taxa de concretização** (quem passou a fechar mais/menos) +
+   entradas/saídas da mesa; card `PipelineMoversCard` "Quem passou a fechar mais/menos · {ano} vs. {ano-1}" em `/contatos/funil`,
+   só com um ano específico e ambos os períodos com pipeline, ano anterior do acervo já carregado (zero I/O), reusando
+   `CONVERSION_TREND_EPSILON`; **+8 testes**, ver D236 — fecha a outra metade da D233.
+   Próximo possível — a **outra** métrica que
    os eventos destravam: taxa de conversão proposta→realizado **de verdade** por período (quantos % dos PROPOSED chegaram a
    PLAYED, distinta da taxa de estado atual do `showPipeline`); quando a amostra de tempo-em-etapa amadurecer, `?ano=`/CSV
-   nela; ou o **comparativo ano a ano** do funil por contratante (movers "quem passou a fechar mais/menos", novo
-   `compareContactPipelines`, espelho do funil geral) — a outra metade da D233.
+   nela; ou uma coluna "vs. {ano-1}" por linha na tabela do funil por contratante (como no DSO/D195, via um
+   `indexContactPipelineChanges`) — o polimento barato que o card de movers da D236 abre.
 3. **Filtros — evoluções**: persistência do último filtro entregue para Finanças (Sessão 32),
    Shows e Contatos (Sessão 33) — módulo genérico `src/lib/listFilter.ts` + middleware (ver D23/D24);
    **indicador visual de "filtro lembrado"** entregue na Sessão 79 — marcador `?lembrado=1` na

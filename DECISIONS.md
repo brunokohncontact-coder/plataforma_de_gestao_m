@@ -7853,3 +7853,47 @@ contexto, decisão, justificativa e alternativas consideradas.
   **nenhuma dependência nova**.
 - **Nota de concorrência:** número **D235** escolhido como o próximo livre após o D234 já mergeado (Sessão 240). Se uma
   PR paralela reivindicar o mesmo número, renumerar na consolidação.
+
+## D236 — Comparativo ano a ano do funil por contratante (quem passou a fechar mais/menos) (Sessão 242)
+- **Contexto:** a D233 (Sessão 239) deu ao `/contatos/funil` o recorte por período (`?ano=`), mas registrou explicitamente
+  que "o comparativo ano a ano por contratante fica para depois" — **metade** do item 2b. O funil geral (`/shows/funil`) já
+  compara sua taxa de concretização ano a ano (`compareShowPipelines`/D209), e o prazo de recebimento por contratante já tem
+  seu card de "movers" por pagador (`comparePaymentLagByContact`/D195). Faltava a versão por contratante do funil: **quem
+  passou a fechar mais/menos** de um ano para o outro. Ao contrário da conversão real por evento (o outro candidato do 2b),
+  este comparativo roda sobre o histórico inteiro de shows (não depende do `ShowStatusEvent` jovem/sem backfill da D234).
+- **Decisão:** novo helper puro `compareContactPipelines(current, previous)` + tipos `ContactPipelineChange`/
+  `ContactPipelineComparison` em `src/lib/contacts.ts`. Casa os contratantes de dois `pipelineByContact` (ano atual ×
+  anterior) por `contact.id` e, para cada um com pipeline aberto nos **dois** períodos, mede a variação da **taxa de
+  concretização** (`conversionRateDelta`, em pontos 0..1) + a variação do cachê em aberto (`openValueDelta`, informativa) +
+  `playedCountDelta`. Destila os dois movers — `biggestImprovement`/`biggestWorsening` — e lista `newContacts`/
+  `droppedContacts` (entrou / saiu da mesa). Card `PipelineMoversCard` "Quem passou a fechar mais/menos · {ano} vs. {ano-1}"
+  em `/contatos/funil` (blocos "Fechando mais" 🟢 / "Fechando menos" 🔴 + rodapé de entradas/saídas), exibido só com um ano
+  específico e ambos os períodos com pipeline (o ano anterior sai do mesmo acervo já carregado via `filterShowsByYear(txs,
+  ano-1)` — **zero I/O extra**).
+- **Ancorar na taxa de concretização, não no cachê em aberto:** "passar a fechar mais" é sobre **converter** (PLAYED /
+  decididos), não sobre ter mais na mesa. Espelha o veredito do funil geral (`compareShowPipelines`), onde **subir** a taxa
+  é a melhora (direção oposta ao DSO/cancelamento). Reusa `CONVERSION_TREND_EPSILON` (=0.05) como limiar, importado de
+  `finance.ts` — o mesmo do funil geral, evitando um segundo número mágico.
+- **Comparar só quem tem pipeline aberto nos dois anos:** `pipelineByContact.rows` já filtra por `openCount >= 1` (é a lente
+  da página). Um contratante sem pipeline aberto num ano não é linha naquele ano, então vira `new`/`dropped` — coerente com
+  `comparePaymentLagByContact` (que compara os `rows` de quem recebeu). Taxa indefinida (`null`) num período → delta `null`,
+  veredito "stable", e a linha vai ao **fim** da ordenação (sem base para ler tendência).
+- **Sem CSV nesta fatia:** o card destila dois movers para a tela; a tabela-mãe do funil já tem seu próprio export (D184). O
+  CSV do comparativo (rubrica a rubrica) é o candidato natural quando/se ganhar tabela de detalhe, como no de sazonalidade
+  (D223).
+- **Alternativas consideradas:** (a) ancorar nos movers de **cachê em aberto** (quem trouxe mais/menos para fechar) —
+  **descartado**: mede volume de mesa, não fechamento; "fechar" é conversão, e é o eixo que o item 2b pede. (b) computar a
+  conversão real proposta→realizado por evento (`ShowStatusEvent`/D234) — **adiada**: é a outra fatia do 2b, depende da
+  amostra de eventos amadurecer (sem backfill), e merece unidade própria. (c) coluna "vs. {ano-1}" por linha na tabela (como
+  no DSO/D195, via `indexContactPaymentLagChanges`) — **adiada**: o card de movers já entrega a leitura; a coluna por linha é
+  um polimento barato para uma próxima sessão.
+- **Testes:** **+8** em `contacts.test.ts` (`describe("compareContactPipelines")`: dois períodos vazios; casa contratantes e
+  mede a variação; ordena da maior piora à maior melhora; variação sub-limiar → estável fora dos movers; taxa indefinida →
+  delta null/estável/ao fim; separa novos e sumidos; registra `openValueDelta`). **1331 testes** no total (eram 1324; o
+  contador subiu 7 porque a suíte partia de 1323 na `main` sincronizada, não de 1324 — 1323 + 8 = 1331).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1331 testes**
+  (`vitest run`); smoke test (`next start`) → `/login` 200, `/contatos/funil` e `?ano=2026` 307 (auth-gated). `npm audit`
+  **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, Next 14 / postcss; ver D6); **nenhuma
+  dependência nova**.
+- **Nota de concorrência:** número **D236** escolhido como o próximo livre após o D235 já mergeado (Sessão 241). Se uma PR
+  paralela reivindicar o mesmo número, renumerar na consolidação.
