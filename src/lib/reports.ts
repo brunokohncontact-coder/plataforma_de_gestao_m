@@ -55,6 +55,14 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "🪜",
       },
       {
+        title: "Tempo em cada etapa",
+        href: "/shows/funil/tempo-em-etapa",
+        description:
+          "Quanto tempo, tipicamente, um show fica em cada etapa do funil antes de avançar ou ser cancelado.",
+        subtopic: "Agenda & pipeline",
+        icon: "⏱",
+      },
+      {
         title: "Por dia da semana",
         href: "/shows/dias-semana",
         description: "Quais dias da semana rendem mais shows e mais dinheiro.",

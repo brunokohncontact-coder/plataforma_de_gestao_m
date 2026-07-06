@@ -1013,3 +1013,99 @@ export function buildStatusTimeline(events: StatusEventLike[]): StatusTimelineEn
   }
   return out;
 }
+
+// ── Tempo médio em cada etapa do funil (residence time) ───────────────────────
+// Agregado sobre o histórico de status (`ShowStatusEvent`) de VÁRIOS shows: para
+// cada etapa (PROPOSED, CONFIRMED, …) quanto tempo, tipicamente, um show fica
+// nela antes de sair (avançar OU ser cancelado). É a primeira métrica de
+// conversão de verdade que a linha do tempo da D234 habilita: enquanto o funil
+// (`showPipeline`) fotografa ONDE os shows estão hoje, isto mede A VELOCIDADE com
+// que atravessam cada etapa. Ver D235.
+
+/** Show, como o agregador de tempo-em-etapa precisa vê-lo (só os eventos). */
+export interface StageDurationShowLike {
+  statusEvents: StatusEventLike[];
+}
+
+/** Permanência típica numa etapa do funil, em dias inteiros. */
+export interface StageDurationStat {
+  /** Etapa medida — o `fromStatus` das transições que a deixaram. */
+  status: string;
+  /** Nº de transições cronometradas que saíram desta etapa (amostra). */
+  count: number;
+  /** Mediana dos dias na etapa (resistente a outlier; leitura principal). */
+  medianDays: number;
+  /** Média dos dias na etapa (informativa). */
+  averageDays: number;
+  /** Menor permanência observada nesta etapa. */
+  shortestDays: number;
+  /** Maior permanência observada nesta etapa. */
+  longestDays: number;
+}
+
+/** Resultado de `funnelStageDurations`. */
+export interface FunnelStageDurations {
+  /** Etapas com amostra, na ordem canônica do funil (`SHOW_STATUSES`). */
+  stages: StageDurationStat[];
+  /** Total de transições cronometradas (soma dos `count`). */
+  totalSamples: number;
+  /** Nº de shows que contribuíram ao menos uma transição cronometrada. */
+  showCount: number;
+}
+
+/**
+ * Tempo de permanência por etapa do funil, agregando a linha do tempo de status
+ * de vários shows. Para cada show monta `buildStatusTimeline` e, em cada
+ * transição a partir da segunda (as que têm `daysInPrevious`), credita esse
+ * número de dias à etapa de ORIGEM (`fromStatus`) — o tempo que o show passou ali
+ * antes de sair. Uma etapa acumula tanto as saídas por avanço quanto por
+ * cancelamento (é a residência honesta: "quanto tempo isto costuma ficar
+ * parado?"). Etapas terminais sem transição de saída (tipicamente PLAYED,
+ * CANCELLED) não aparecem. Devolve as etapas na ordem canônica do funil, com
+ * mediana/média/mín/máx. Pura e determinística — não depende de "agora" (a
+ * permanência na etapa atual, ainda em aberto, fica de fora, coerente com
+ * `buildStatusTimeline`). Ver D235.
+ */
+export function funnelStageDurations(
+  shows: StageDurationShowLike[],
+): FunnelStageDurations {
+  const samplesByStage = new Map<string, number[]>();
+  let showCount = 0;
+
+  for (const show of shows) {
+    const timeline = buildStatusTimeline(show.statusEvents);
+    let contributed = false;
+    for (const entry of timeline) {
+      if (entry.daysInPrevious === null || entry.fromStatus === null) continue;
+      const arr = samplesByStage.get(entry.fromStatus);
+      if (arr) arr.push(entry.daysInPrevious);
+      else samplesByStage.set(entry.fromStatus, [entry.daysInPrevious]);
+      contributed = true;
+    }
+    if (contributed) showCount += 1;
+  }
+
+  // Ordem canônica do funil primeiro; qualquer status fora do canônico (dado
+  // inesperado) vai ao fim em ordem alfabética, sem sumir da agregação.
+  const canonical = SHOW_STATUSES.filter((s) => samplesByStage.has(s));
+  const extra = [...samplesByStage.keys()]
+    .filter((s) => !SHOW_STATUSES.includes(s as ShowStatus))
+    .sort();
+
+  const stages: StageDurationStat[] = [];
+  let totalSamples = 0;
+  for (const status of [...canonical, ...extra]) {
+    const nums = samplesByStage.get(status)!;
+    totalSamples += nums.length;
+    stages.push({
+      status,
+      count: nums.length,
+      medianDays: leadMedian(nums),
+      averageDays: Math.round(nums.reduce((a, b) => a + b, 0) / nums.length),
+      shortestDays: Math.min(...nums),
+      longestDays: Math.max(...nums),
+    });
+  }
+
+  return { stages, totalSamples, showCount };
+}
