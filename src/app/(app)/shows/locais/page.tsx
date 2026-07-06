@@ -117,6 +117,9 @@ export default async function VenueProfitabilityPage({
               ⬇ CSV
             </a>
           )}
+          <Link href="/shows/locais/revisitar" className="btn-secondary">
+            🏛 Revisitar
+          </Link>
           <Link href="/shows" className="btn-secondary">
             ← Shows
           </Link>

@@ -61,6 +61,8 @@ import {
   REENGAGE_CSV_HEADERS,
   citiesToReengageToCsv,
   CITIES_REENGAGE_CSV_HEADERS,
+  venuesToReengageToCsv,
+  VENUES_REENGAGE_CSV_HEADERS,
   CLIENT_RETENTION_CSV_HEADERS,
   yearlyHistoryToCsv,
   YEARLY_HISTORY_CSV_HEADERS,
@@ -175,6 +177,7 @@ import {
   type ContactRankLike,
 } from "./contacts";
 import { findCitiesToReengage, type CityReengageShowLike } from "./finance";
+import { findVenuesToReengage, type VenueReengageShowLike } from "./finance";
 
 describe("escapeCsvField", () => {
   it("não envolve em aspas campos simples", () => {
@@ -2303,6 +2306,65 @@ describe("citiesToReengageToCsv", () => {
     // só "Belo Horizonte" vira linha.
     expect(lines).toHaveLength(3);
     expect(lines[1]).toBe("Belo Horizonte;01/12/2025;212;1;500,00");
+    expect(lines[2]).toBe("Total;;;1;500,00");
+  });
+});
+
+describe("venuesToReengageToCsv", () => {
+  const NOW = "2026-07-01T00:00:00.000Z";
+  const s = (over: Partial<VenueReengageShowLike>): VenueReengageShowLike => ({
+    status: "PLAYED",
+    venue: "Bar do Zé",
+    date: "2025-01-01T00:00:00.000Z",
+    fee: 100000,
+    ...over,
+  });
+
+  it("só cabeçalho + Total zerado quando não há casas", () => {
+    const csv = venuesToReengageToCsv(findVenuesToReengage([], { now: new Date(NOW) }));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(VENUES_REENGAGE_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe("Total;;;0;0,00");
+  });
+
+  it("uma linha por casa (mais esquecida primeiro) + Total", () => {
+    const list = findVenuesToReengage(
+      [
+        s({ venue: "Bar do Zé", date: "2024-06-01T00:00:00.000Z", fee: 50000 }),
+        s({ venue: "Bar do Zé", date: "2025-06-01T00:00:00.000Z", fee: 100000 }),
+        s({ venue: "Circo Voador", date: "2026-01-01T00:00:00.000Z", fee: 200000 }),
+      ],
+      { now: new Date(NOW) },
+    );
+    const lines = venuesToReengageToCsv(list).split("\r\n");
+    // cabeçalho + 2 casas (maior defasagem primeiro) + Total.
+    expect(lines).toHaveLength(4);
+    expect(lines[1]).toBe("Bar do Zé;01/06/2025;395;2;1500,00");
+    expect(lines[2]).toBe("Circo Voador;01/01/2026;181;1;2000,00");
+    expect(lines[3]).toBe("Total;;;3;3500,00");
+  });
+
+  it("ignora casa com show futuro, só-cancelada, recente (< staleDays) ou sem local", () => {
+    const list = findVenuesToReengage(
+      [
+        // tem show futuro confirmado → não está dormente.
+        s({ venue: "Teatro Guaíra", date: "2025-01-01T00:00:00.000Z" }),
+        s({ venue: "Teatro Guaíra", status: "CONFIRMED", date: "2099-01-01T00:00:00.000Z" }),
+        // só cancelada → sem histórico passado.
+        s({ venue: "Studio SP", status: "CANCELLED", date: "2024-04-01T00:00:00.000Z" }),
+        // último show há ~16 dias → abaixo do limiar de 90.
+        s({ venue: "Blue Note", date: "2026-06-15T00:00:00.000Z" }),
+        // sem local → não há casa a revisitar.
+        s({ venue: "", date: "2025-01-01T00:00:00.000Z" }),
+        // dormente de verdade.
+        s({ venue: "Sesc Pompeia", date: "2025-12-01T00:00:00.000Z", fee: 50000 }),
+      ],
+      { now: new Date(NOW) },
+    );
+    const lines = venuesToReengageToCsv(list).split("\r\n");
+    expect(lines).toHaveLength(3);
+    expect(lines[1]).toBe("Sesc Pompeia;01/12/2025;212;1;500,00");
     expect(lines[2]).toBe("Total;;;1;500,00");
   });
 });

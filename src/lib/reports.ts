@@ -114,6 +114,14 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "📍",
       },
       {
+        title: "Casas para revisitar",
+        href: "/shows/locais/revisitar",
+        description:
+          "Locais/palcos onde você já tocou mas parou de voltar — as casas frias para planejar um retorno.",
+        subtopic: "Agenda & pipeline",
+        icon: "🏛",
+      },
+      {
         title: "Rentabilidade por show",
         href: "/shows/rentabilidade",
         description: "O resultado líquido (cachê − despesas) de cada show realizado, do mais ao menos rentável.",

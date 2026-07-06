@@ -9,7 +9,20 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1290 testes** verdes após a **exportação CSV das praças
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1299 testes** verdes após as **casas/venues para
+revisitar** (Sessão 237, D231 — versão por **local/venue** das "Praças para revisitar" (`findCitiesToReengage`/D229), apontada como
+evolução na D229(a): as **casas/palcos** onde já toquei, sem nada agendado e há ≥ 90 dias sem show — uma cidade quente pode esconder
+um bar frio. Novo `findVenuesToReengage(shows, opts)` + tipos `VenueReengageShowLike`/`VenueReengageRow`/`VenueReengageList`/
+`VenueReengageOptions` + `VENUE_REENGAGE_STALE_DAYS`(=90) em `src/lib/finance.ts`, agrupando por `venue` em vez de `city`. Como a
+lógica é byte a byte a mesma, extraí o núcleo puro `collectPlacesToReengage(shows, getPlace, now, staleDays)` (interno) e fiz tanto
+`findCitiesToReengage` quanto `findVenuesToReengage` delegarem a ele (precedente de `aggregateShowProfit`; DRY sem tocar a API
+pública). Página `/shows/locais/revisitar` (tabela Local/Último show/Sem tocar/Shows/Cachê histórico + card de prioridade +
+empty-state), link "🏛 Revisitar" no cabeçalho de `/shows/locais`, entrada no hub (`REPORT_GROUPS`, "Agenda & pipeline", 🏛). CSV:
+`venuesToReengageToCsv` + `VENUES_REENGAGE_CSV_HEADERS` + rota `/shows/locais/revisitar/export` (`casas-para-revisitar.csv`, BOM
+UTF-8), botão "⬇ CSV" só com `list.count > 0`. Sem `?ano=` (coerente com a D229(d): leitura sobre o histórico inteiro). **+6 testes**
+(`finance.test.ts`) **+3 testes** (`csv.test.ts`). Smoke test (`next start`) → `/login` 200, `/shows/locais/revisitar` e
+`/shows/locais/revisitar/export` 307 (auth-gated). `npm audit` sem novas vulnerabilidades (mesmos advisories Next/postcss da D6;
+nenhuma dependência nova). Ver D231. Antes, a **exportação CSV das praças
 para revisitar** (Sessão 236, D230 — as "Praças para revisitar" (`findCitiesToReengage`/D229) — cidades onde já toquei, sem nada
 agendado e há > 90 dias sem show — nasceram sem CSV (a própria D229(c) adiou); eram a única vista analítica recém-nascida sem "⬇
 CSV". Novo serializador puro `citiesToReengageToCsv(list)` + `CITIES_REENGAGE_CSV_HEADERS` (Cidade / Último show / Dias sem tocar /
@@ -4118,8 +4131,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    D229. **Exportação CSV** entregue na Sessão 236 — `citiesToReengageToCsv` + `CITIES_REENGAGE_CSV_HEADERS` (Cidade / Último
    show / Dias sem tocar / Shows / Cachê histórico) em `src/lib/csv.ts` (irmão geográfico de `reengageToCsv`/D127: uma linha
    por praça na ordem da página + Total) + rota `/shows/cidades/revisitar/export` + botão "⬇ CSV" só com `list.count > 0`, sem
-   `?ano=` (a leitura é sobre o histórico inteiro, D229(d)); **+3 testes**, ver D230. Próximo possível — (a) versão por
-   local/venue (D229(a)); o `staleDays`=90 é **hipótese** (cadência de retorno a uma cidade), sinalizada nos bloqueios.
+   `?ano=` (a leitura é sobre o histórico inteiro, D229(d)); **+3 testes**, ver D230.
+   **Versão por local/venue** entregue na Sessão 237 — `findVenuesToReengage` (+ tipos + `VENUE_REENGAGE_STALE_DAYS`) em
+   `src/lib/finance.ts` delegando ao núcleo puro compartilhado `collectPlacesToReengage` (extraído de `findCitiesToReengage`,
+   DRY) + página `/shows/locais/revisitar` + link "🏛 Revisitar" em `/shows/locais` + entrada no hub + CSV
+   `venuesToReengageToCsv`/`/shows/locais/revisitar/export`; **+9 testes** (6 finance + 3 csv), ver D231. Próximo possível — o
+   `staleDays`=90 é **hipótese** (cadência de retorno a uma casa/cidade), sinalizada nos bloqueios; ou um nudge da casa/praça
+   mais esquecida no Painel (adiável: o Painel já é denso e tem o nudge de concentração geográfica/D114).
 10. **Exportação CSV das telas de Finanças — evoluções** (transações entregues na Sessão 14, `/financas/export`;
    resumo anual na Sessão 47, `/financas/anual/export`; trimestral, `/financas/trimestral/export`):
    **fontes de renda** entregue na Sessão 152 — `incomeMixToCsv` + `INCOME_MIX_CSV_HEADERS` em `src/lib/csv.ts` +

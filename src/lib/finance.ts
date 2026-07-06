@@ -684,26 +684,35 @@ export interface CityReengageOptions {
 /** Dias sem tocar (padrão) para considerar uma praça fria — ~1 temporada. */
 export const CITY_REENGAGE_STALE_DAYS = 90;
 
+/** Forma mínima que o núcleo de reengajamento por lugar consome. */
+interface PlaceReengageShowLike {
+  status?: string;
+  date: Date | string;
+  fee: number;
+}
+
 /**
- * Lista as **cidades dormentes** que valem um retorno. Inclui uma cidade quando:
+ * Núcleo compartilhado de "lugares dormentes que valem um retorno" — usado tanto
+ * pela cidade (`findCitiesToReengage`) quanto pela casa/venue
+ * (`findVenuesToReengage`); o único eixo que varia é qual campo do show identifica
+ * o lugar (`getPlace`). Inclui um lugar quando:
  * - tem ao menos um show não cancelado no passado (`date < now`);
  * - não tem nenhum show não cancelado futuro (`date >= now`) — nada agendado;
- * - o último show não cancelado é há `>= staleDays` dias (padrão 90).
+ * - o último show não cancelado é há `>= staleDays` dias.
  *
- * Shows sem cidade (chave normalizada vazia) são ignorados — não há praça a
- * revisitar. Agrupa por cidade normalizada (sem acento/caixa/trim, mesma
- * convenção de `rankCitiesByProfit`) e exibe a grafia original mais frequente.
- * Ordena pelas mais esquecidas primeiro (maior `daysSinceLastShow`), desempatando
- * pelo maior cachê acumulado (praças mais valiosas), depois nome (pt-BR) e chave —
- * estável e determinística. Shows `CANCELLED` são ignorados em tudo. Pura;
- * `now`/`staleDays` injetáveis para testes.
+ * Shows sem lugar (chave normalizada vazia) são ignorados. Agrupa pela chave
+ * normalizada (sem acento/caixa/trim, mesma convenção de `rankVenuesByProfit`/
+ * `rankCitiesByProfit`) e exibe a grafia original mais frequente. Ordena pelos
+ * mais esquecidos primeiro (maior `daysSinceLastShow`), desempatando pelo maior
+ * cachê acumulado, depois nome (pt-BR) e chave — estável e determinística. Shows
+ * `CANCELLED` são ignorados em tudo. Pura; `now`/`staleDays` injetáveis.
  */
-export function findCitiesToReengage(
-  shows: CityReengageShowLike[],
-  opts: CityReengageOptions = {},
-): CityReengageList {
-  const now = opts.now ?? new Date();
-  const staleDays = Math.max(0, opts.staleDays ?? CITY_REENGAGE_STALE_DAYS);
+function collectPlacesToReengage<S extends PlaceReengageShowLike>(
+  shows: S[],
+  getPlace: (show: S) => string | null | undefined,
+  now: Date,
+  staleDays: number,
+): CityReengageRow[] {
   const nowTime = now.getTime();
   const nowMidnight = utcMidnight(now);
 
@@ -720,9 +729,9 @@ export function findCitiesToReengage(
 
   for (const show of shows) {
     if (show.status === "CANCELLED") continue;
-    const rawCity = (show.city ?? "").trim();
-    const key = normalizeText(rawCity);
-    if (key === "") continue; // sem cidade → não há praça a revisitar
+    const rawPlace = (getPlace(show) ?? "").trim();
+    const key = normalizeText(rawPlace);
+    if (key === "") continue; // sem lugar → não há praça a revisitar
 
     let acc = groups.get(key);
     if (!acc) {
@@ -731,9 +740,9 @@ export function findCitiesToReengage(
     }
 
     acc.totalFee += show.fee;
-    const seen = acc.labels.get(rawCity);
+    const seen = acc.labels.get(rawPlace);
     if (seen) seen.count += 1;
-    else acc.labels.set(rawCity, { count: 1, order: acc.labels.size });
+    else acc.labels.set(rawPlace, { count: 1, order: acc.labels.size });
 
     const d = typeof show.date === "string" ? new Date(show.date) : show.date;
     const t = d.getTime();
@@ -772,6 +781,97 @@ export function findCitiesToReengage(
     return a.key.localeCompare(b.key);
   });
 
+  return rows;
+}
+
+/**
+ * Lista as **cidades dormentes** que valem um retorno. Inclui uma cidade quando:
+ * - tem ao menos um show não cancelado no passado (`date < now`);
+ * - não tem nenhum show não cancelado futuro (`date >= now`) — nada agendado;
+ * - o último show não cancelado é há `>= staleDays` dias (padrão 90).
+ *
+ * Shows sem cidade (chave normalizada vazia) são ignorados — não há praça a
+ * revisitar. Agrupa por cidade normalizada (sem acento/caixa/trim, mesma
+ * convenção de `rankCitiesByProfit`) e exibe a grafia original mais frequente.
+ * Ordena pelas mais esquecidas primeiro (maior `daysSinceLastShow`), desempatando
+ * pelo maior cachê acumulado (praças mais valiosas), depois nome (pt-BR) e chave —
+ * estável e determinística. Shows `CANCELLED` são ignorados em tudo. Pura;
+ * `now`/`staleDays` injetáveis para testes. Delega ao núcleo compartilhado
+ * `collectPlacesToReengage` (eixo cidade).
+ */
+export function findCitiesToReengage(
+  shows: CityReengageShowLike[],
+  opts: CityReengageOptions = {},
+): CityReengageList {
+  const now = opts.now ?? new Date();
+  const staleDays = Math.max(0, opts.staleDays ?? CITY_REENGAGE_STALE_DAYS);
+  const rows = collectPlacesToReengage(shows, (s) => s.city, now, staleDays);
+  return { rows, count: rows.length, staleDays };
+}
+
+// ── Casas/venues para revisitar (recência da agenda por local) ──────────────
+// Espelho de `findCitiesToReengage` um nível abaixo na hierarquia geográfica: em
+// vez de "que cidades esfriaram?", responde "que CASAS (venues) esfriaram?". Uma
+// cidade quente pode esconder um bar antigo onde você não toca há uma temporada;
+// aqui o eixo é a mesma RECÊNCIA da agenda, mas por palco. Compartilha o núcleo
+// puro `collectPlacesToReengage` (só muda o campo: `venue` em vez de `city`).
+
+/** Forma mínima de show para o reengajamento por casa/venue (precisa da data). */
+export interface VenueReengageShowLike {
+  status?: string;
+  venue?: string | null;
+  date: Date | string;
+  /** Cachê em centavos — soma o valor histórico da casa (desempate de ordenação). */
+  fee: number;
+}
+
+export interface VenueReengageRow {
+  /** Chave normalizada da casa (nunca vazia — "sem local" é ignorado). */
+  key: string;
+  /** Nome de exibição (grafia original mais frequente da casa). */
+  name: string;
+  /** Show não cancelado mais recente (sempre no passado para uma linha incluída). */
+  lastShowDate: Date;
+  /** Dias inteiros (UTC) desde o último show até `now`. */
+  daysSinceLastShow: number;
+  /** Nº de shows não cancelados já realizados (passados) na casa. */
+  pastShows: number;
+  /** Cachê somado dos shows não cancelados na casa (centavos) — valor do palco. */
+  totalFee: number;
+}
+
+export interface VenueReengageList {
+  rows: VenueReengageRow[];
+  count: number;
+  /** Limite de dias sem tocar para a casa ser considerada fria. */
+  staleDays: number;
+}
+
+export interface VenueReengageOptions {
+  now?: Date;
+  /** Dias sem show para a casa ser considerada fria (padrão 90). */
+  staleDays?: number;
+}
+
+/** Dias sem tocar (padrão) para considerar uma casa fria — ~1 temporada. */
+export const VENUE_REENGAGE_STALE_DAYS = 90;
+
+/**
+ * Lista as **casas/venues dormentes** que valem um retorno — mesma regra de
+ * `findCitiesToReengage`, mas agrupando por `venue` (o palco) em vez de `city`.
+ * Inclui uma casa quando tem show passado não cancelado, nada agendado adiante e
+ * o último show é há `>= staleDays` dias. Shows sem local (chave normalizada
+ * vazia) são ignorados. Ordenação/desempate idênticos ao eixo cidade. Pura;
+ * `now`/`staleDays` injetáveis. Delega ao núcleo compartilhado
+ * `collectPlacesToReengage` (eixo venue).
+ */
+export function findVenuesToReengage(
+  shows: VenueReengageShowLike[],
+  opts: VenueReengageOptions = {},
+): VenueReengageList {
+  const now = opts.now ?? new Date();
+  const staleDays = Math.max(0, opts.staleDays ?? VENUE_REENGAGE_STALE_DAYS);
+  const rows = collectPlacesToReengage(shows, (s) => s.venue, now, staleDays);
   return { rows, count: rows.length, staleDays };
 }
 
