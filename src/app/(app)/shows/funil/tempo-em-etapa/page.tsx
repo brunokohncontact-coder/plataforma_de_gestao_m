@@ -45,9 +45,16 @@ export default async function StageDurationsPage() {
             isto mostra a <em>velocidade</em> com que atravessam.
           </p>
         </div>
-        <Link href="/shows/funil" className="btn-secondary">
-          ← Funil
-        </Link>
+        <div className="flex items-center gap-2">
+          {durations.totalSamples > 0 && (
+            <Link href="/shows/funil/tempo-em-etapa/export" className="btn-secondary">
+              ⬇ CSV
+            </Link>
+          )}
+          <Link href="/shows/funil" className="btn-secondary">
+            ← Funil
+          </Link>
+        </div>
       </div>
 
       {durations.totalSamples === 0 ? (

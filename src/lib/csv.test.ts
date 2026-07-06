@@ -76,6 +76,8 @@ import {
   BOOKED_REVENUE_CSV_HEADERS,
   pipelineToCsv,
   PIPELINE_CSV_HEADERS,
+  stageDurationsToCsv,
+  STAGE_DURATIONS_CSV_HEADERS,
   pipelineByContactToCsv,
   PIPELINE_BY_CONTACT_CSV_HEADERS,
   dueAgendaToCsv,
@@ -120,6 +122,7 @@ import {
   findOpenWeekends,
   findScheduleConflicts,
   bookingLeadTime,
+  funnelStageDurations,
   type ConflictShowLike,
   type LeadTimeShowLike,
 } from "./shows";
@@ -2709,6 +2712,67 @@ describe("pipelineToCsv", () => {
     expect(lines[5]).toBe("Total;2;;1800,00");
     // Sem coluna de taxa de concretização (escalar de destaque, não tabular).
     expect(lines[0].split(";")).toHaveLength(4);
+  });
+});
+
+describe("stageDurationsToCsv", () => {
+  const ev = (fromStatus: string | null, toStatus: string, createdAt: string) => ({
+    fromStatus,
+    toStatus,
+    createdAt,
+  });
+
+  it("sem amostra: só cabeçalho + Total zerado", () => {
+    const lines = stageDurationsToCsv(funnelStageDurations([])).split("\r\n");
+    expect(lines[0]).toBe(STAGE_DURATIONS_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(2);
+    // Total: 0 transições; colunas de dias em branco (não há agregado entre etapas).
+    expect(lines[1]).toBe("Total;0;;;;");
+  });
+
+  it("uma linha por etapa (ordem canônica do funil) com dias crus + Total", () => {
+    const durations = funnelStageDurations([
+      {
+        statusEvents: [
+          ev(null, "PROPOSED", "2026-01-01T00:00:00.000Z"),
+          ev("PROPOSED", "CONFIRMED", "2026-01-05T00:00:00.000Z"), // 4 dias em Proposto
+          ev("CONFIRMED", "PLAYED", "2026-01-11T00:00:00.000Z"), // 6 dias em Confirmado
+        ],
+      },
+    ]);
+    const lines = stageDurationsToCsv(durations).split("\r\n");
+    // cabeçalho + 2 etapas com amostra + Total
+    expect(lines).toHaveLength(4);
+    expect(lines[1]).toBe("Proposto;1;4;4;4;4");
+    expect(lines[2]).toBe("Confirmado;1;6;6;6;6");
+    // Total soma as transições cronometradas; dias em branco.
+    expect(lines[3]).toBe("Total;2;;;;");
+    // Emite o inteiro de dias cru (legível por máquina), não "N dias" da UI.
+    expect(lines[0].split(";")).toHaveLength(6);
+  });
+
+  it("agrega a mesma etapa entre shows (mediana/média/mín/máx)", () => {
+    const mkProposed = (days: number, id: string) => ({
+      statusEvents: [
+        ev(null, "PROPOSED", `2026-02-0${id}T00:00:00.000Z`),
+        ev(
+          "PROPOSED",
+          "CONFIRMED",
+          new Date(
+            Date.parse(`2026-02-0${id}T00:00:00.000Z`) + days * 86400000,
+          ).toISOString(),
+        ),
+      ],
+    });
+    const durations = funnelStageDurations([
+      mkProposed(2, "1"),
+      mkProposed(4, "2"),
+      mkProposed(9, "3"),
+    ]);
+    const lines = stageDurationsToCsv(durations).split("\r\n");
+    // mediana [2,4,9]=4, média 5, mín 2, máx 9
+    expect(lines[1]).toBe("Proposto;3;4;5;2;9");
+    expect(lines[2]).toBe("Total;3;;;;");
   });
 });
 

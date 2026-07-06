@@ -9,7 +9,24 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1331 testes** verdes após o **comparativo ano a ano
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1334 testes** verdes após a **exportação CSV do
+tempo em cada etapa do funil** em `/shows/funil/tempo-em-etapa/export` (Sessão 243, D237 — a tela "Tempo em cada etapa"
+(`funnelStageDurations`, o residence time por etapa: mediana/média/mín/máx de dias que um show fica em cada etapa antes de
+sair, D235) ganhou botão de exportação, fechando a última vista de funil sem download. Novo serializador puro
+`stageDurationsToCsv(durations)` + `STAGE_DURATIONS_CSV_HEADERS` (Etapa / Transições / Mediana (dias) / Média (dias) /
+Mín (dias) / Máx (dias)) em `src/lib/csv.ts` recebe a `FunnelStageDurations` já computada (`funnelStageDurations`, de
+`@/lib/shows`) e emite uma linha por etapa com amostra, na ordem canônica do funil, encerrada numa linha "Total" com o total
+de transições cronometradas (`totalSamples`); as colunas de dias do Total ficam em branco (não há agregado honesto entre
+etapas — a mediana do conjunto não se recompõe das medianas por etapa, espelho da participação em branco de `pipelineToCsv`).
+Diferente da tela (que escreve "N dias"), o CSV emite o inteiro de dias cru (legível por máquina/ordenável, convenção de
+`bookingLeadTimeToCsv`); rótulo de etapa via `showStatusLabel`. Rota `/shows/funil/tempo-em-etapa/export` reusa a mesma
+consulta (só `statusEvents` de cada show) e o mesmo `funnelStageDurations` da página + BOM UTF-8; nome fixo
+`tempo-em-etapa.csv`; botão "⬇ CSV" no cabeçalho só com `durations.totalSamples > 0`. Sem `?ano=` (herda a D235: amostra
+pós-D234 ainda pequena, sem backfill; a página também não tem seletor). **+3 testes** (`describe("stageDurationsToCsv")`: sem
+amostra → só cabeçalho + Total zerado com dias em branco; uma linha por etapa na ordem canônica com dias crus + Total; agrega
+multi-show com mediana/média/mín/máx). Smoke test (`next start`) → `/login` 200 e `/shows/funil/tempo-em-etapa` +
+`/shows/funil/tempo-em-etapa/export` 307 (auth-gated). `npm audit` sem novas vulnerabilidades (mesmos advisories Next/postcss
+da D6). Ver D237. Antes, **1331 testes** verdes após o **comparativo ano a ano
 do funil por contratante** (Sessão 242, D236 — a outra metade da D233: novo helper puro `compareContactPipelines(current,
 previous)` + tipos `ContactPipelineChange`/`ContactPipelineComparison` em `src/lib/contacts.ts` casa os contratantes de dois
 `pipelineByContact` (ano atual × anterior) por `contact.id` e destila os dois **movers** — quem mais melhorou (`biggestImprovement`)
@@ -3831,7 +3848,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `count`/`medianDays`(reusa `leadMedian`)/`averageDays`/`shortestDays`/`longestDays` na ordem canônica do funil +
    `totalSamples`/`showCount`; avanço + cancelamento somados; etapa atual em aberto fora, puro/determinístico) + página
    `/shows/funil/tempo-em-etapa` (barras da mediana + tabela + empty-state) + link "⏱ Tempo em etapa" no funil + entrada no
-   hub; sem `?ano=`/CSV (amostra jovem, sem backfill); **+6 testes**, ver D235.
+   hub; sem `?ano=` (amostra jovem, sem backfill); **+6 testes**, ver D235.
+   **Exportação CSV do tempo em cada etapa** entregue na Sessão 243 — `stageDurationsToCsv` + `STAGE_DURATIONS_CSV_HEADERS`
+   (Etapa / Transições / Mediana (dias) / Média (dias) / Mín (dias) / Máx (dias)) em `src/lib/csv.ts` (uma linha por etapa
+   na ordem canônica + Total com o total de transições; dias crus inteiros, colunas de dias do Total em branco) + rota
+   `/shows/funil/tempo-em-etapa/export` (nome fixo `tempo-em-etapa.csv`) + botão "⬇ CSV" só com `totalSamples > 0`, sem
+   `?ano=` (herda a D235); **+3 testes**, ver D237 — fecha a última vista de funil sem download.
    **Comparativo ano a ano do funil por contratante** entregue na Sessão 242 — `compareContactPipelines(current, previous)` +
    tipos `ContactPipelineChange`/`ContactPipelineComparison` em `src/lib/contacts.ts` casa os contratantes de dois
    `pipelineByContact` por `contact.id` e destila os movers da **taxa de concretização** (quem passou a fechar mais/menos) +
@@ -3840,8 +3862,8 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `CONVERSION_TREND_EPSILON`; **+8 testes**, ver D236 — fecha a outra metade da D233.
    Próximo possível — a **outra** métrica que
    os eventos destravam: taxa de conversão proposta→realizado **de verdade** por período (quantos % dos PROPOSED chegaram a
-   PLAYED, distinta da taxa de estado atual do `showPipeline`); quando a amostra de tempo-em-etapa amadurecer, `?ano=`/CSV
-   nela; ou uma coluna "vs. {ano-1}" por linha na tabela do funil por contratante (como no DSO/D195, via um
+   PLAYED, distinta da taxa de estado atual do `showPipeline`); quando a amostra de tempo-em-etapa amadurecer, `?ano=`
+   nela (o CSV já foi entregue na Sessão 243/D237); ou uma coluna "vs. {ano-1}" por linha na tabela do funil por contratante (como no DSO/D195, via um
    `indexContactPipelineChanges`) — o polimento barato que o card de movers da D236 abre.
 3. **Filtros — evoluções**: persistência do último filtro entregue para Finanças (Sessão 32),
    Shows e Contatos (Sessão 33) — módulo genérico `src/lib/listFilter.ts` + middleware (ver D23/D24);
