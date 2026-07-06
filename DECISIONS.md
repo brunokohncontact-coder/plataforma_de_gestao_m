@@ -8044,3 +8044,46 @@ contexto, decisão, justificativa e alternativas consideradas.
   **inalterado** vs. baseline (mesmos advisories Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
 - **Nota de concorrência:** número **D240** escolhido como o próximo livre após o D239 (Sessão 245). Se uma PR paralela reivindicar
   o mesmo número, renumerar na consolidação.
+
+## D241 — Nudge do Painel para propostas paradas (`staleProposalsHeadline`) (Sessão 247)
+- **Contexto:** a D240 entregou o relatório "Propostas paradas" (`findStaleProposals` + `/shows/funil/paradas`) — QUAIS
+  propostas em aberto pedem decisão agora (vencidas ou paradas). Mas, como quase todo relatório, ele só existia se o músico
+  abrisse a sub-rota. Diferente de sazonalidade, concentração, antecedência, DSO, cancelamento e funil-por-contratante — todos
+  com manchete que os empurra ao Painel — as propostas paradas não tinham nudge. E é a leitura mais **acionável** de todas: uma
+  proposta cuja data já passou ainda em PROPOSED é receita perdida por inércia; uma iminente e parada é a decisão mais urgente
+  da semana. A própria D240 listou "nudge no Painel" como alternativa (b) **adiada** ("o Painel já carrega ~10 nudges").
+- **Decisão:** reverter a deferência da D240(b). Novo helper puro `staleProposalsHeadline(report)` em `src/lib/shows.ts`
+  (espelho de `pipelineByContactHeadline`/`cancellationHeadline`/`bookingLeadTimeHeadline`: a regra de EXIBIÇÃO vive na lógica
+  pura, o Painel só consome). Recebe uma `StaleProposalsReport` **já computada** (zero recomputação) e destila o subconjunto que
+  aperta: dispara (`show`) só quando há proposta **vencida** ou **iminente** (`overdueCount + imminentCount > 0`); `critical`
+  (🔴 vs 🟠) quando há ao menos uma vencida. Expõe `top` (a mais urgente — 1º não-cold da fila já ordenada), contagens,
+  `actionableCount`, `actionableFee` (cachê só das acionáveis) e `totalStale` (para o "+N sem resposta" secundário).
+- **Disciplina anti-ruído (por que NÃO é o 11º nudge de ruído):** as propostas **"cold"** (paradas por inatividade, mas com a
+  data distante) **ficam de fora** do nudge — são follow-up de funil, não urgência de decisão; vivem só na página, que
+  legitimamente lista tudo. O Painel só alerta quando morde (data vencida ou logo à frente), mesma disciplina do nudge de
+  antecedência (D189, "mediana curta É alarme") e da reversão que ele fez das deferências D185(a)/D187(a). O gate é mais estreito
+  que a página de propósito.
+- **Reaproveitamento (zero I/O extra):** o nudge roda sobre a MESMA consulta `shows` já carregada pelo Painel para os outros
+  ~10 nudges; nenhuma consulta nova. **Consequência:** sem `statusEvents` nessa consulta, o "tempo parado" (`enteredStatusAt`)
+  cai para `createdAt`. É bom proxy — um show **nasce** PROPOSED (D234), então `createdAt` ≈ entrada no status para a esmagadora
+  maioria; o raro show que voltou de CONFIRMED a PROPOSED teria o tempo superestimado, mas isso só torna o nudge levemente mais
+  ansioso, nunca mais permissivo com o caso crítico (a urgência `overdue` depende **só** de `date < now`, exata sem eventos).
+  A página `/shows/funil/paradas` continua carregando o histórico completo para precisão. Precedente: D189 ("o Painel usa a
+  amostra ampla por design").
+- **UI:** banner em `dashboard/page.tsx` (`href="/shows/funil/paradas"`), 🔴 vermelho quando crítico / 🟠 âmbar caso contrário,
+  igual aos irmãos: "Propostas paradas — N pede(m) decisão", nome da proposta-topo + "venceu há N dias / é hoje / é daqui a N
+  dias" + "R$ X em risco" + "(+K sem resposta)" quando há cold além das acionáveis. Colocado logo após o nudge de antecedência,
+  na faixa de nudges de shows/pipeline.
+- **Testes:** **+5** em `shows.test.ts` (`describe("staleProposalsHeadline")`: sem paradas → sem nudge; só cold → sem nudge;
+  iminente → nudge não-crítico com `top`/`actionableFee`; vencida → crítico e é o topo; soma do cachê acionável ignora cold).
+  **1367 testes** no total (eram 1362).
+- **Alternativas consideradas:** (a) incluir também as "cold" no nudge — descartado: mataria a disciplina; cold é follow-up, o
+  nudge é urgência. (b) adicionar `statusEvents` à consulta do Painel para precisão total — descartado: I/O extra numa consulta
+  compartilhada por ~10 nudges por um ganho marginal (createdAt já é bom proxy; overdue é exato sem eventos). (c) ceder a vez a
+  outro nudge de shows (como a sazonalidade cede ao vale, D135) — dispensado: é o nudge mais acionável (dinheiro em risco agora),
+  não deve ceder; o volume de propostas paradas acionáveis é naturalmente baixo, então raramente compete.
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1367 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200, `/dashboard` e `/shows/funil/paradas` 307 (auth-gated). `npm audit` **inalterado**
+  vs. baseline (mesmos advisories Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Nota de concorrência:** número **D241** escolhido como o próximo livre após o D240 (Sessão 246). Se uma PR paralela reivindicar
+  o mesmo número, renumerar na consolidação.

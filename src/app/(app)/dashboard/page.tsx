@@ -62,8 +62,11 @@ import {
   formatWeekendLabel,
   bookingLeadTime,
   bookingLeadTimeHeadline,
+  findStaleProposals,
+  staleProposalsHeadline,
   type ConflictShowLike,
   type LeadTimeShowLike,
+  type StaleProposalShowLike,
 } from "@/lib/shows";
 import {
   cancellationByContact,
@@ -377,6 +380,18 @@ export default async function DashboardPage() {
   // O detalhe completo está em /shows/antecedencia.
   const leadHeadline = bookingLeadTimeHeadline(
     bookingLeadTime(shows as LeadTimeShowLike[]),
+  );
+
+  // Propostas paradas (D240): "quais propostas em aberto pedem uma decisão agora?".
+  // Reaproveita os shows já carregados (zero I/O extra): findStaleProposals varre os
+  // PROPOSED e staleProposalsHeadline destila só o subconjunto que aperta — vencidas
+  // (data já passou) ou iminentes (data logo à frente e já parada). As "cold" (paradas
+  // mas com data distante) ficam de fora do nudge (são follow-up, não urgência) e
+  // vivem só na página /shows/funil/paradas. Sem os statusEvents na consulta do Painel,
+  // o "tempo parado" cai para createdAt (um show nasce PROPOSED, então é bom proxy); a
+  // página carrega o histórico completo para precisão. Ver D241.
+  const staleHeadline = staleProposalsHeadline(
+    findStaleProposals(shows as StaleProposalShowLike[]),
   );
 
   // Oportunidade de rebooking (D229): a praça mais esquecida que vale um retorno —
@@ -866,6 +881,51 @@ export default async function DashboardPage() {
           <span
             className={leadHeadline.critical ? "text-red-600" : "text-amber-600"}
           >
+            Ver →
+          </span>
+        </Link>
+      )}
+
+      {/* Propostas paradas que pedem decisão agora: vencidas (data passou ainda em
+          PROPOSED) ou iminentes (data logo à frente e já parada). Só o subconjunto
+          acionável vira nudge; o detalhe completo (inclusive as "cold") está em
+          /shows/funil/paradas. Escala para vermelho quando há proposta vencida. */}
+      {staleHeadline.show && staleHeadline.top && (
+        <Link
+          href="/shows/funil/paradas"
+          className={
+            "flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3 text-sm transition " +
+            (staleHeadline.critical
+              ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100")
+          }
+        >
+          <span className="font-semibold">
+            {staleHeadline.critical ? "🔴" : "🟠"} Propostas paradas —{" "}
+            {staleHeadline.actionableCount}{" "}
+            {staleHeadline.actionableCount === 1 ? "pede" : "pedem"} decisão
+          </span>
+          <span>
+            <strong>{staleHeadline.top.title}</strong>{" "}
+            {staleHeadline.top.daysUntilShow < 0
+              ? `venceu há ${daysLabel(-staleHeadline.top.daysUntilShow)}`
+              : staleHeadline.top.daysUntilShow === 0
+                ? "é hoje"
+                : `é daqui a ${daysLabel(staleHeadline.top.daysUntilShow)}`}
+            {staleHeadline.actionableFee > 0 && (
+              <>
+                {" "}
+                · <strong>{formatMoney(staleHeadline.actionableFee)}</strong> em risco
+              </>
+            )}
+            {staleHeadline.totalStale > staleHeadline.actionableCount && (
+              <span className={staleHeadline.critical ? "text-red-600" : "text-amber-600"}>
+                {" "}
+                (+{staleHeadline.totalStale - staleHeadline.actionableCount} sem resposta)
+              </span>
+            )}
+          </span>
+          <span className={staleHeadline.critical ? "text-red-600" : "text-amber-600"}>
             Ver →
           </span>
         </Link>

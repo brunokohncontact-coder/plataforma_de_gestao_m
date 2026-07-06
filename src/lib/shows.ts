@@ -1329,3 +1329,73 @@ export function findStaleProposals(
     coldCount,
   };
 }
+
+// ── Nudge do Painel: propostas paradas que pedem decisão agora ────────────────
+//
+// Espelha os headlines de Painel já existentes (cancellationHeadline,
+// pipelineByContactHeadline, bookingLeadTimeHeadline…): a regra de EXIBIÇÃO vive
+// aqui, na lógica pura, e o Painel só consome o veredito. Deriva de uma
+// `StaleProposalsReport` já computada (zero recomputação) o subconjunto que de
+// fato morde: as propostas **vencidas** (data passou ainda em PROPOSED) ou
+// **iminentes** (data logo à frente e já parada). As "cold" — paradas por
+// inatividade, mas com a data distante — NÃO viram nudge: são acompanhamento de
+// funil, não urgência de decisão; ficam para a página `/shows/funil/paradas`, que
+// legitimamente lista tudo (mesma disciplina anti-ruído dos demais nudges: o
+// Painel só alerta quando aperta).
+
+/** Resumo de Painel de `findStaleProposals`. */
+export interface StaleProposalsHeadline {
+  /**
+   * Aparecer no Painel? Só quando há ao menos uma proposta que pede decisão
+   * AGORA (vencida ou iminente). Só propostas "cold" à frente não disparam o
+   * nudge — são follow-up, não urgência.
+   */
+  show: boolean;
+  /**
+   * Ao menos uma proposta **vencida** (a data do show já passou e ela nunca saiu
+   * de PROPOSED). Permite ao Painel subir o tom (🔴 vs 🟠).
+   */
+  critical: boolean;
+  /** A proposta mais urgente (topo da fila do report), ou null se não há nudge. */
+  top: StaleProposal | null;
+  /** Propostas vencidas. */
+  overdueCount: number;
+  /** Propostas iminentes. */
+  imminentCount: number;
+  /** Vencidas + iminentes — as que pedem decisão agora. */
+  actionableCount: number;
+  /** Cachê somado das propostas acionáveis (vencidas + iminentes), centavos. */
+  actionableFee: number;
+  /** Total de propostas paradas, inclusive as "cold" (para o "+N" secundário). */
+  totalStale: number;
+}
+
+/**
+ * Deriva o nudge de Painel de `findStaleProposals`. Puro, sem I/O: recebe o
+ * report já computado sobre os shows carregados. `proposals` já vem ordenado por
+ * urgência (overdue → imminent → cold), então a primeira proposta não-cold é a
+ * mais urgente. Só dispara com proposta vencida ou iminente; `critical` quando há
+ * ao menos uma vencida.
+ */
+export function staleProposalsHeadline(
+  report: StaleProposalsReport,
+): StaleProposalsHeadline {
+  const actionableCount = report.overdueCount + report.imminentCount;
+  let actionableFee = 0;
+  let top: StaleProposal | null = null;
+  for (const p of report.proposals) {
+    if (p.urgency === "cold") continue;
+    if (top === null) top = p;
+    actionableFee += p.fee;
+  }
+  return {
+    show: actionableCount > 0,
+    critical: report.overdueCount > 0,
+    top,
+    overdueCount: report.overdueCount,
+    imminentCount: report.imminentCount,
+    actionableCount,
+    actionableFee,
+    totalStale: report.count,
+  };
+}
