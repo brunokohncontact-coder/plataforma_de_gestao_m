@@ -42,6 +42,9 @@ import {
   gigSeasonality,
   gigSeasonalityHeadline,
   gigSeasonalityLull,
+  findCitiesToReengage,
+  citiesToReengageHeadline,
+  type CityReengageShowLike,
   type TxLike,
   type ContactProfitContact,
   type QuarterGoalStatus,
@@ -376,6 +379,15 @@ export default async function DashboardPage() {
     bookingLeadTime(shows as LeadTimeShowLike[]),
   );
 
+  // Oportunidade de rebooking (D229): a praça mais esquecida que vale um retorno —
+  // cidade onde já toquei (com lastro, ≥ 2 shows), nada agendado adiante e há > 90
+  // dias sem show. Reaproveita os shows já carregados (city vem na consulta, sem I/O
+  // extra); a disciplina anti-ruído (só relações com track record) vive na
+  // citiesToReengageHeadline. O detalhe completo está em /shows/cidades/revisitar.
+  const reengageHeadline = citiesToReengageHeadline(
+    findCitiesToReengage(shows as CityReengageShowLike[]),
+  );
+
   // Rentabilidade: top shows realizados por resultado
   const playedShows = shows.filter((s) => s.status === "PLAYED");
   const showPnls = playedShows
@@ -537,6 +549,31 @@ export default async function DashboardPage() {
             do mês médio — prospecte com antecedência.
           </span>
           <span className="text-amber-600">Prospectar →</span>
+        </Link>
+      )}
+
+      {/* Oportunidade: praça esquecida que vale um retorno (rebooking geográfico).
+          A cidade com lastro (≥ 2 shows) parada há mais tempo e sem nada agendado. */}
+      {reengageHeadline.show && reengageHeadline.city && (
+        <Link
+          href="/shows/cidades/revisitar"
+          className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900 transition hover:bg-brand-100"
+        >
+          <span className="font-semibold">📍 Praça para revisitar</span>
+          <span>
+            <strong>{reengageHeadline.city.name}</strong> — sem show há{" "}
+            <strong>{reengageHeadline.city.daysSinceLastShow} dias</strong> (
+            {reengageHeadline.city.pastShows}{" "}
+            {reengageHeadline.city.pastShows === 1 ? "show" : "shows"} no histórico)
+            {reengageHeadline.total > 1 && (
+              <span className="text-brand-600">
+                {" "}
+                · +{reengageHeadline.total - 1}{" "}
+                {reengageHeadline.total - 1 === 1 ? "praça fria" : "praças frias"}
+              </span>
+            )}
+          </span>
+          <span className="text-brand-600">Reagendar →</span>
         </Link>
       )}
 
