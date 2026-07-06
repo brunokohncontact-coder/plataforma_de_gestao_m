@@ -9,7 +9,7 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **970 testes** verdes após consolidar a **exportação CSV da agenda de contas a pagar/receber** em `/financas/agenda/export` (PR #180, D157 — a tela "A pagar e receber"/`buildDueAgenda` ganhou botão "⬇ CSV"; serializador puro `dueAgendaToCsv` + `DUE_AGENDA_CSV_HEADERS` em `src/lib/csv.ts`, rótulos de janela extraídos para `DUE_BUCKET_LABELS` em `@/lib/finance` (DRY com a página); **+3 testes**) sobre a Sessão 166. Segue 967 da Sessão 166
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **973 testes** verdes após a **exportação CSV dos custos fixos** em `/financas/custos-fixos/export` (Sessão 167, D160 — a tela "Custos fixos"/`recurringExpenses` ganhou botão "⬇ CSV"; serializador puro `recurringExpensesToCsv` + `RECURRING_EXPENSES_CSV_HEADERS` em `src/lib/csv.ts`, uma linha por categoria recorrente — Categoria/Conta típica/mês/Meses/Última/Total/Situação (Ativa/Encerrada) — + linha "Total" com o custo fixo mensal estimado (só ativas), meses observados e "{ativas}/{total} ativas"; **+3 testes**) sobre a Sessão 166. Segue 970 da Sessão 166 (consolidação da **exportação CSV da agenda de contas a pagar/receber** em `/financas/agenda/export`, PR #180, D157 — `dueAgendaToCsv` + `DUE_AGENDA_CSV_HEADERS`, rótulos de janela em `DUE_BUCKET_LABELS`; **+3 testes**). Segue 967 da Sessão 166
 (**exportação CSV dos contatos para reativar** em `/contatos/reativar/export` — a tela "Contatos para reativar"
 (`findContactsToReengage`, a fila de follow-up dos dormentes: quem já tocou, está sem nada agendado e há mais de `staleDays`=60
 dias sem show) ganhou botão de exportação, fechando mais uma lacuna tabular do lado Contatos (ao lado de
@@ -3187,9 +3187,15 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `dueAgendaToCsv` + `DUE_AGENDA_CSV_HEADERS` em `src/lib/csv.ts` + `/financas/agenda/export`
    (Vencimento/Descrição/Categoria/Janela/Tipo/Dias até vencer/Show/A receber/A pagar + linha Total), achata as quatro janelas de
    `buildDueAgenda` na ordem canônica, valor em duas colunas (somável), rótulos de janela compartilhados via `DUE_BUCKET_LABELS`,
-   nome fixo `agenda-pagar-receber.csv`, botão "⬇ CSV" só com `agenda.count > 0`, ver D157. Próximo possível — as
-   telas de Finanças que ainda não exportam são agora sobretudo painéis de cenário/projeção de número único (metas,
-   projeção-ano, ponto-de-equilíbrio, reserva-impostos): menos óbvias como planilha; avaliar caso a caso se o tabular agrega.
+   nome fixo `agenda-pagar-receber.csv`, botão "⬇ CSV" só com `agenda.count > 0`, ver D157. **Exportação CSV dos custos fixos**
+   entregue na Sessão 167 — `recurringExpensesToCsv` + `RECURRING_EXPENSES_CSV_HEADERS` em `src/lib/csv.ts` +
+   `/financas/custos-fixos/export` (Categoria/Conta típica-mês/Meses/Última/Total/Situação + linha Total com o custo fixo mensal
+   estimado só das ativas, meses observados e "{ativas}/{total} ativas"), uma linha por categoria recorrente na ordem da conta
+   típica desc (mesma da página), coluna "Situação" Ativa/Encerrada p/ a planilha abrir auto-suficiente, sem `?ano=` (a detecção
+   de recorrência precisa do histórico inteiro), nome fixo `custos-fixos.csv`, botão "⬇ CSV" só com `categories.length > 0`,
+   ver D160. Próximo possível — as telas de Finanças que ainda não exportam são agora sobretudo painéis de cenário/projeção de
+   número único (metas, projeção-ano, ponto-de-equilíbrio, reserva-impostos): menos óbvias como planilha; avaliar caso a caso se
+   o tabular agrega.
 
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)

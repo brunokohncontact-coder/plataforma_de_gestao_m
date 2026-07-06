@@ -36,6 +36,7 @@ import {
   type CashFlowMonth,
   type BookedRevenueForecast,
   type DueAgenda,
+  type RecurringExpensesReport,
   type TxLike,
   DUE_BUCKET_LABELS,
   type YearlyHistory,
@@ -1571,6 +1572,72 @@ export function dueAgendaToCsv(
     "",
     centsToCsvAmount(agenda.totalIncome),
     centsToCsvAmount(agenda.totalExpense),
+  ]);
+  return toCsv(out, delimiter);
+}
+
+// ── Custos fixos (despesas recorrentes mês a mês) ─────────────────────────────
+
+export const RECURRING_EXPENSES_CSV_HEADERS = [
+  "Categoria",
+  "Conta típica/mês (R$)",
+  "Meses",
+  "Última",
+  "Total (R$)",
+  "Situação",
+] as const;
+
+/** Rótulos de situação da categoria recorrente (espelha o selo "encerrada" da UI). */
+const RECURRING_STATUS_LABELS = { active: "Ativa", closed: "Encerrada" } as const;
+
+/**
+ * Serializa os custos fixos (`recurringExpenses`) em CSV, pronto para download —
+ * espelha a tabela "Despesas recorrentes" de `/financas/custos-fixos`. Uma linha
+ * por categoria recorrente (`report.categories`, já ordenadas por conta típica
+ * desc, com desempate por total e nome — a mesma ordem da página), com a conta
+ * típica por mês ativo (`avgPerActiveMonth`), o nº de meses com lançamento
+ * (`monthsActive`), a chave do último mês, o total histórico e a situação
+ * (Ativa/Encerrada). A coluna "Situação" entra para a planilha abrir
+ * auto-suficiente: a página distingue as encerradas por cor + selo, e é essa
+ * marca que explica por que uma categoria não entra no custo fixo estimado.
+ *
+ * Encerra numa linha "Total" com: o custo fixo mensal estimado
+ * (`estimatedMonthlyFixedCost` — a soma das típicas só das ATIVAS, o mesmo número
+ * do card de destaque, e não a soma da coluna toda), o nº de meses observados
+ * (`monthsObserved`, a amplitude do histórico de despesas — distinta dos meses por
+ * categoria, como o "Anos" de `monthlySeasonalityToCsv`) na coluna "Meses", o
+ * total histórico de TODAS as categorias e, na coluna "Situação", "{ativas}/{total}
+ * ativas" (por que a típica do Total só conta as ativas). A coluna "Última" fica
+ * vazia no Total. A chave de mês usa o ISO "YYYY-MM" (ordenável por máquina), e não
+ * o "jun/26" da UI. Mesma convenção pt-BR dos irmãos (delimitador ";", decimal com
+ * vírgula). Pura.
+ */
+export function recurringExpensesToCsv(
+  report: RecurringExpensesReport,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(RECURRING_EXPENSES_CSV_HEADERS)];
+  let totalAll = 0;
+  let activeCount = 0;
+  for (const c of report.categories) {
+    if (c.active) activeCount += 1;
+    totalAll += c.total;
+    out.push([
+      c.category,
+      centsToCsvAmount(c.avgPerActiveMonth),
+      String(c.monthsActive),
+      c.lastMonth,
+      centsToCsvAmount(c.total),
+      c.active ? RECURRING_STATUS_LABELS.active : RECURRING_STATUS_LABELS.closed,
+    ]);
+  }
+  out.push([
+    "Total",
+    centsToCsvAmount(report.estimatedMonthlyFixedCost),
+    String(report.monthsObserved),
+    "",
+    centsToCsvAmount(totalAll),
+    `${activeCount}/${report.categories.length} ativas`,
   ]);
   return toCsv(out, delimiter);
 }

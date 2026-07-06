@@ -60,6 +60,8 @@ import {
   BOOKED_REVENUE_CSV_HEADERS,
   dueAgendaToCsv,
   DUE_AGENDA_CSV_HEADERS,
+  recurringExpensesToCsv,
+  RECURRING_EXPENSES_CSV_HEADERS,
   type DueAgendaCsvTx,
   type CsvTransaction,
   type CsvShow,
@@ -81,6 +83,7 @@ import {
   forecastBookedRevenue,
   buildDueAgenda,
   yearlyHistory,
+  recurringExpenses,
   weekdayPerformance,
   feeDistribution,
   incomeMix,
@@ -1762,5 +1765,76 @@ describe("dueAgendaToCsv", () => {
     expect(lines[1]).toBe("10/06/2026;;Transporte;Vencidas;A pagar;-19;;0,00;50,00");
     expect(lines[2]).toBe("25/06/2026;Cachê atrasado;Cachê;Vencidas;A receber;-4;;80,00;0,00");
     expect(lines[3]).toBe("Total;;;;;;;80,00;50,00");
+  });
+});
+
+describe("recurringExpensesToCsv", () => {
+  const NOW = "2026-07-15T00:00:00.000Z";
+  const ex = (category: string, amount: number, date: string): TxLike => ({
+    type: "EXPENSE",
+    amount,
+    category,
+    date,
+    received: false,
+    showId: null,
+  });
+
+  it("só cabeçalho + Total zerado quando não há despesas", () => {
+    const csv = recurringExpensesToCsv(recurringExpenses([], { now: new Date(NOW) }));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(RECURRING_EXPENSES_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe("Total;0,00;0;;0,00;0/0 ativas");
+  });
+
+  it("uma linha por categoria recorrente (conta típica desc) + Total com o custo fixo estimado", () => {
+    const lines = recurringExpensesToCsv(
+      recurringExpenses(
+        [
+          // Estúdio: típica maior → primeira. 3 meses, ativa (última 07/2026).
+          ex("Estúdio", 30000, "2026-05-10T00:00:00.000Z"),
+          ex("Estúdio", 30000, "2026-06-10T00:00:00.000Z"),
+          ex("Estúdio", 30000, "2026-07-10T00:00:00.000Z"),
+          // Aluguel: típica menor → segunda. 3 meses, ativa.
+          ex("Aluguel", 20000, "2026-05-05T00:00:00.000Z"),
+          ex("Aluguel", 20000, "2026-06-05T00:00:00.000Z"),
+          ex("Aluguel", 20000, "2026-07-05T00:00:00.000Z"),
+        ],
+        { now: new Date(NOW) },
+      ),
+    ).split("\r\n");
+    // cabeçalho + 2 categorias + Total.
+    expect(lines).toHaveLength(4);
+    expect(lines[1]).toBe("Estúdio;300,00;3;2026-07;900,00;Ativa");
+    expect(lines[2]).toBe("Aluguel;200,00;3;2026-07;600,00;Ativa");
+    // Total: custo fixo estimado (só ativas) 500,00; meses observados 3; total geral 1500,00.
+    expect(lines[3]).toBe("Total;500,00;3;;1500,00;2/2 ativas");
+  });
+
+  it("marca a categoria encerrada (fora da janela), exclui-a do custo fixo estimado e ignora a não recorrente", () => {
+    const lines = recurringExpensesToCsv(
+      recurringExpenses(
+        [
+          // Marketing: recorrente mas ANTIGA (última 03/2025) → Encerrada, fora do estimado.
+          ex("Marketing", 40000, "2025-01-10T00:00:00.000Z"),
+          ex("Marketing", 40000, "2025-02-10T00:00:00.000Z"),
+          ex("Marketing", 40000, "2025-03-10T00:00:00.000Z"),
+          // Internet: recorrente e ativa.
+          ex("Internet", 10000, "2026-05-01T00:00:00.000Z"),
+          ex("Internet", 10000, "2026-06-01T00:00:00.000Z"),
+          ex("Internet", 10000, "2026-07-01T00:00:00.000Z"),
+          // Reparo: só 2 meses (< minMonths=3) → não recorrente, fora da tabela e do total.
+          ex("Reparo", 50000, "2026-06-20T00:00:00.000Z"),
+          ex("Reparo", 50000, "2026-07-20T00:00:00.000Z"),
+        ],
+        { now: new Date(NOW) },
+      ),
+    ).split("\r\n");
+    // cabeçalho + Marketing + Internet (Reparo não entra) + Total.
+    expect(lines).toHaveLength(4);
+    expect(lines[1]).toBe("Marketing;400,00;3;2025-03;1200,00;Encerrada");
+    expect(lines[2]).toBe("Internet;100,00;3;2026-07;300,00;Ativa");
+    // Total: estimado só a ativa (100,00); meses observados 6 (jan–mar/25 + mai–jul/26); total das recorrentes 1500,00.
+    expect(lines[3]).toBe("Total;100,00;6;;1500,00;1/2 ativas");
   });
 });

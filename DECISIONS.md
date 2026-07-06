@@ -4931,3 +4931,36 @@ contexto, decisão, justificativa e alternativas consideradas.
   D6/bloqueios); **nenhuma dependência nova**.
 - **Nota de concorrência:** **D157** segue reservado à PR paralela #180 (export CSV da agenda) ainda em aberto; esta sessão usa
   **D159** (após o D158 já mergeado da Sessão 165) para evitar colisão de numeração na `main`.
+
+## D160 — Exportação CSV dos custos fixos (`/financas/custos-fixos/export`) (Sessão 167)
+- **Contexto:** a tela `/financas/custos-fixos` (`recurringExpenses`) detecta as despesas que se repetem mês a mês (categorias
+  com lançamento em ≥3 meses distintos), mostra a **conta típica/mês** por categoria e soma as ativas num **custo fixo mensal
+  estimado** — o piso que o músico precisa faturar só para se manter. Era uma das telas tabulares de Finanças ainda sem
+  exportação: uma planilha de custos fixos é insumo natural de orçamento (comparar com meses passados, negociar contas,
+  planejar reservas). O item 10 dos próximos passos observava que as telas de Finanças sem export restantes eram sobretudo
+  painéis de cenário/número único — mas custos fixos é genuinamente **tabular** (uma linha por categoria), então entra.
+- **Decisão:** novo serializador puro `recurringExpensesToCsv(report)` + `RECURRING_EXPENSES_CSV_HEADERS` em `src/lib/csv.ts`
+  recebe o `RecurringExpensesReport` já computado e emite uma linha por categoria recorrente em `report.categories` (já
+  ordenadas por conta típica desc, desempate por total e nome — **a mesma ordem da página**), encerrada numa linha "Total".
+  Rota `/financas/custos-fixos/export` reusa a **mesma consulta** da página (só `type: "EXPENSE"`) e o mesmo `recurringExpenses`
+  + BOM UTF-8; nome fixo `custos-fixos.csv`; botão "⬇ CSV" no cabeçalho só com `categories.length > 0`.
+- **Colunas:** Categoria / Conta típica/mês (R$) (`avgPerActiveMonth`) / Meses (`monthsActive`) / Última / Total (R$)
+  (`total`) / Situação. A coluna "Situação" (Ativa/Encerrada) entra para a planilha abrir **auto-suficiente**: a página
+  distingue as encerradas por cor + selo "encerrada", e é essa marca que explica por que uma categoria não soma no custo fixo
+  estimado (mesma filosofia da coluna "Recorrente" de `clientRetentionToCsv`/D153). A coluna "Última" usa a chave ISO
+  "YYYY-MM" (ordenável por máquina), não o "jun/26" da UI — como as séries temporais dos irmãos (`cashFlowToCsv`/D155).
+- **Linha "Total":** carrega o **custo fixo mensal estimado** (`estimatedMonthlyFixedCost` — a soma das típicas só das
+  **ativas**, o mesmo número do card de destaque) na coluna "Conta típica/mês", **não** a soma da coluna inteira (que incluiria
+  as encerradas) — assimetria idêntica à da página, documentada no doc-comment; o nº de **meses observados**
+  (`monthsObserved`, a amplitude do histórico de despesas, distinta dos meses por categoria — como o "Anos" de
+  `monthlySeasonalityToCsv`/D147) na coluna "Meses"; o total histórico de **todas** as categorias recorrentes na coluna
+  "Total"; e "{ativas}/{total} ativas" na coluna "Situação" (explica a assimetria da típica do Total). "Última" fica vazia.
+- **Sem recorte por `?ano=`:** a detecção de recorrência precisa do histórico inteiro (regularidade por mês, "ainda ativa" na
+  janela recente) — recortar por ano descaracterizaria o custo fixo. A tela é um retrato do padrão atual, não uma série anual.
+- **Testes:** **+3** em `csv.test.ts` (`describe("recurringExpensesToCsv")`, com `now` fixo p/ estabilizar a marca ativa):
+  só cabeçalho + Total zerado sem despesas; uma linha por categoria (conta típica desc) + Total com o custo fixo estimado;
+  marca a encerrada (fora da janela), exclui-a do estimado e ignora a não recorrente (< 3 meses). **973 testes** (eram 970).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **973 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/financas/custos-fixos` + `/financas/custos-fixos/export` 307 (auth-gated).
+  `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 / postcss
+  bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
