@@ -9,7 +9,19 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1334 testes** verdes após a **exportação CSV do
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1338 testes** verdes após a **coluna "vs. {ano-1}"
+por linha na tabela do funil por contratante** (Sessão 244, D238 — a tela `/contatos/funil`, com o card agregado de "movers"
+da D236, ganhou o detalhe por-linha: ao lado de cada contratante, quanto sua taxa de concretização mudou frente ao ano
+anterior. Novo helper puro `indexContactPipelineChanges(comparison)` + tipo `ContactPipelineRowStatus` em `src/lib/contacts.ts`
+(espelho de `indexContactPaymentLagChanges`/D196): recebe a `ContactPipelineComparison` **já computada** pela página (D236 —
+zero I/O, zero recomputação) e devolve um lookup por `contact.id` em O(1) → "changed" (variação da taxa + `trend`), "new" (só
+teve pipeline neste ano) ou "none". A tabela ganha, **só quando há comparativo** (um ano específico + ambos os períodos com
+pipeline), a coluna "vs. {ano-1}" com a célula `PipelineRowDelta`: verde = fechou uma fração maior, vermelho = fechou menos,
+cinza no limiar, "novo" para os novos na mesa, "—" para não-comparável ou taxa indefinida em algum ano. Reusa `pctDelta` e
+`previousYear` já na página; herda a semântica da D236 (subir a taxa é melhora, `CONVERSION_TREND_EPSILON`=0.05), sem número
+mágico novo. **+4 testes** (`describe("indexContactPipelineChanges")`). Smoke test (`next start`) → `/login` 200 e
+`/contatos/funil?ano=2026` 307 (auth-gated). `npm audit` sem novas vulnerabilidades (mesmos advisories Next/postcss da D6).
+Ver D238. Segue 1334 da Sessão 243 (**exportação CSV do
 tempo em cada etapa do funil** em `/shows/funil/tempo-em-etapa/export` (Sessão 243, D237 — a tela "Tempo em cada etapa"
 (`funnelStageDurations`, o residence time por etapa: mediana/média/mín/máx de dias que um show fica em cada etapa antes de
 sair, D235) ganhou botão de exportação, fechando a última vista de funil sem download. Novo serializador puro
@@ -3860,11 +3872,16 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    entradas/saídas da mesa; card `PipelineMoversCard` "Quem passou a fechar mais/menos · {ano} vs. {ano-1}" em `/contatos/funil`,
    só com um ano específico e ambos os períodos com pipeline, ano anterior do acervo já carregado (zero I/O), reusando
    `CONVERSION_TREND_EPSILON`; **+8 testes**, ver D236 — fecha a outra metade da D233.
+   **Coluna "vs. {ano-1}" por linha na tabela do funil por contratante** entregue na Sessão 244 — `indexContactPipelineChanges`
+   + tipo `ContactPipelineRowStatus` em `src/lib/contacts.ts` (espelho de `indexContactPaymentLagChanges`/D196) transforma a
+   `ContactPipelineComparison` da D236 num lookup por `contact.id` (O(1), zero I/O) e a página ganha a célula `PipelineRowDelta`
+   ("changed" com a variação da taxa / "new" / "—"), só quando há comparativo; **+4 testes**, ver D238 — o polimento barato que
+   o card de movers da D236 abriu.
    Próximo possível — a **outra** métrica que
    os eventos destravam: taxa de conversão proposta→realizado **de verdade** por período (quantos % dos PROPOSED chegaram a
    PLAYED, distinta da taxa de estado atual do `showPipeline`); quando a amostra de tempo-em-etapa amadurecer, `?ano=`
-   nela (o CSV já foi entregue na Sessão 243/D237); ou uma coluna "vs. {ano-1}" por linha na tabela do funil por contratante (como no DSO/D195, via um
-   `indexContactPipelineChanges`) — o polimento barato que o card de movers da D236 abre.
+   nela (o CSV já foi entregue na Sessão 243/D237); ou levar a tendência por-linha ao CSV do funil por contratante (coluna
+   "vs. {ano-1}" no molde de `clientConcentrationToCsv`/`withTrend`).
 3. **Filtros — evoluções**: persistência do último filtro entregue para Finanças (Sessão 32),
    Shows e Contatos (Sessão 33) — módulo genérico `src/lib/listFilter.ts` + middleware (ver D23/D24);
    **indicador visual de "filtro lembrado"** entregue na Sessão 79 — marcador `?lembrado=1` na

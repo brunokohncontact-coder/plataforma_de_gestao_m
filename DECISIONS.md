@@ -7934,3 +7934,37 @@ contexto, decisão, justificativa e alternativas consideradas.
   baseline (10 advisories — 4 moderate / 5 high / 1 critical, Next 14 / postcss; ver D6); **nenhuma dependência nova**.
 - **Nota de concorrência:** número **D237** escolhido como o próximo livre após o D236 já mergeado (Sessão 242). Se uma PR
   paralela reivindicar o mesmo número, renumerar na consolidação.
+
+## D238 — Coluna "vs. {ano-1}" por linha na tabela do funil por contratante (`indexContactPipelineChanges`) (Sessão 244)
+- **Contexto:** a D236 (Sessão 242) fechou o comparativo ano a ano do funil por contratante com o card **agregado**
+  `PipelineMoversCard` (só os dois movers — quem mais melhorou / piorou), e registrou como próximo possível "uma coluna
+  vs. {ano-1} por linha na tabela do funil por contratante (como no DSO/D195), via um `indexContactPipelineChanges` — o
+  polimento barato que o card de movers abre". O prazo de recebimento por contratante já traz esse detalhe por-linha
+  (`indexContactPaymentLagChanges`/D196 + coluna "vs. {ano-1}"), assim como a concentração de contratantes
+  (`indexClientShareChanges`). Faltava a versão do funil: ao lado de cada contratante, quanto sua taxa de concretização
+  mudou frente ao ano anterior, sem obrigar o leitor a cruzar com o card agregado.
+- **Decisão:** novo helper puro `indexContactPipelineChanges(comparison)` + tipo `ContactPipelineRowStatus` em
+  `src/lib/contacts.ts`, espelho exato de `indexContactPaymentLagChanges` (D196). Recebe a `ContactPipelineComparison` **já
+  computada** pela página (D236 — zero I/O e zero recomputação) e devolve uma função de lookup por `contact.id` que resolve
+  cada linha em O(1): "changed" (com a `ContactPipelineChange` — variação da taxa + `trend`), "new" (só teve pipeline neste
+  ano) ou "none" (não comparável). A página `/contatos/funil` ganha, **só quando o comparativo existe** (um ano específico +
+  ambos os períodos com pipeline), a coluna "vs. {ano-1}" com a célula `PipelineRowDelta`: verde = fechou uma fração maior
+  (`improved`), vermelho = fechou menos (`worsened`), cinza dentro do limiar; "novo" para quem só apareceu no atual; "—"
+  para não-comparável **ou** taxa indefinida em algum período (`conversionRateDelta == null` — sem base honesta). Reusa o
+  `pctDelta` já existente na página e o `previousYear` já derivado para o card.
+- **Por que reusar a `comparison` em vez de reindexar:** a página já roda `compareContactPipelines` para o card de movers; o
+  helper só transforma o resultado num mapa de lookup. Nada de nova consulta ao banco nem nova varredura dos shows — o mesmo
+  princípio dos índices irmãos (D196/`indexClientShareChanges`). A coluna herda toda a semântica da D236 (subir a taxa é
+  melhora, `CONVERSION_TREND_EPSILON`=0.05 como limiar), então não introduz nenhum número mágico novo.
+- **Escopo/limites:** puramente aditivo. Sem coluna quando o recorte é "todos os anos" ou não há comparativo (a tabela fica
+  idêntica à histórica — 5 colunas). "Taxa indefinida em algum ano" cai no mesmo "—" cinza que "não comparável" (com `title`
+  distinto), preservando a leitura de que não há tendência a ler, não que a variação foi zero. Sem export CSV desta coluna
+  nesta fatia (o CSV do funil por contratante segue como a D184; a coluna de tendência no CSV fica como próximo possível, no
+  molde de `clientConcentrationToCsv` com `withTrend`).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1338 testes**
+  (`vitest run`, +4 vs. 1334 — `describe("indexContactPipelineChanges")`: id nulo/ausente→none; contratante nos dois
+  períodos→changed com a variação; só-atual→new e só-anterior→none; taxa indefinida→changed com delta null); smoke test
+  (`next start`) → `/login` 200, `/contatos/funil?ano=2026` 307 (auth-gated). `npm audit` **inalterado** vs. baseline
+  (10 advisories — 4 moderate / 5 high / 1 critical, Next 14 / postcss; ver D6); **nenhuma dependência nova**.
+- **Nota de concorrência:** número **D238** escolhido como o próximo livre após o D237 já mergeado (Sessão 243). Se uma PR
+  paralela reivindicar o mesmo número, renumerar na consolidação.
