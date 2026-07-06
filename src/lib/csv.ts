@@ -84,7 +84,7 @@ import type {
   ScheduleConflicts,
   FunnelStageDurations,
 } from "./shows";
-import { summarizeMonthShows } from "./shows";
+import { summarizeMonthShows, summarizeWeekShows } from "./shows";
 
 const DEFAULT_DELIMITER = ";";
 
@@ -329,6 +329,52 @@ export function monthCalendarToCsv(
   // total e do cachê, conta-os à parte no rótulo). Data/Hora em branco.
   if (sorted.length > 0) {
     const summary = summarizeMonthShows(inMonth, year, month);
+    const label =
+      `${summary.total} show${summary.total === 1 ? "" : "s"}` +
+      (summary.cancelled > 0
+        ? ` (${summary.cancelled} cancelado${summary.cancelled === 1 ? "" : "s"})`
+        : "");
+    out.push(["Total", "", label, "", "", centsToCsvAmount(summary.totalFee)]);
+  }
+
+  return toCsv(out, delimiter);
+}
+
+/**
+ * Converte os shows da semana exibida em `/shows/semana` em CSV, irmã de
+ * `monthCalendarToCsv` no eixo semanal (mesmas colunas
+ * `MONTH_CALENDAR_CSV_HEADERS` e mesma convenção de data/hora LOCAL — a agenda
+ * semanal recorta pela data local, como a grade do mês). Recebe **exatamente**
+ * os shows da janela da semana (o chamador já filtrou por `weekRange`, então
+ * aqui não há recorte por data — distinto do mês, que recebe as bordas das
+ * semanas vizinhas). Lista uma linha por show, em ordem de data, e fecha (quando
+ * há linhas) com uma linha **"Total"** que reusa `summarizeWeekShows`: contagem
+ * de shows (cancelados à parte, fora da soma) e cachê total da semana (confirmado
+ * + a confirmar). Sem linhas → só o cabeçalho (como a irmã do mês). Pura.
+ */
+export function weekShowsToCsv(
+  shows: CsvCalendarShow[],
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const toDate = (v: Date | string) => (v instanceof Date ? v : new Date(v));
+  const sorted = [...shows].sort(
+    (a, b) => toDate(a.date).getTime() - toDate(b.date).getTime(),
+  );
+
+  const out: string[][] = [Array.from(MONTH_CALENDAR_CSV_HEADERS)];
+  for (const s of sorted) {
+    out.push([
+      csvLocalDate(s.date),
+      csvLocalTime(s.date),
+      s.title,
+      s.venue ?? "",
+      showStatusLabel(s.status),
+      centsToCsvAmount(s.fee ?? 0),
+    ]);
+  }
+
+  if (sorted.length > 0) {
+    const summary = summarizeWeekShows(sorted);
     const label =
       `${summary.total} show${summary.total === 1 ? "" : "s"}` +
       (summary.cancelled > 0

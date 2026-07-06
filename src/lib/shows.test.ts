@@ -18,6 +18,7 @@ import {
   compareBookingLeadTimeScopes,
   bookingLeadTimeHeadline,
   summarizeMonthShows,
+  summarizeWeekShows,
   buildDuplicatedShow,
   buildDuplicatedShowSeries,
   parseDuplicateInterval,
@@ -989,6 +990,58 @@ describe("summarizeMonthShows", () => {
   it("mês sem shows zera tudo", () => {
     const s = summarizeMonthShows([], 2026, 3);
     expect(s).toEqual({
+      total: 0,
+      cancelled: 0,
+      confirmedFee: 0,
+      pendingFee: 0,
+      totalFee: 0,
+      byStatus: { PROPOSED: 0, CONFIRMED: 0, PLAYED: 0, CANCELLED: 0 },
+    });
+  });
+});
+
+describe("summarizeWeekShows", () => {
+  const local = (y: number, m: number, d: number, hh = 20, mm = 0) =>
+    new Date(y, m - 1, d, hh, mm);
+
+  it("soma confirmado (CONFIRMED+PLAYED) e pendente (PROPOSED) sem recortar por data", () => {
+    // Nenhum filtro de data: a janela já veio recortada pelo chamador (weekRange).
+    const s = summarizeWeekShows([
+      { date: local(2026, 3, 2), status: "CONFIRMED", fee: 100_00 },
+      { date: local(2026, 3, 4), status: "PLAYED", fee: 250_00 },
+      { date: local(2026, 3, 6), status: "PROPOSED", fee: 400_00 },
+    ]);
+    expect(s.total).toBe(3);
+    expect(s.confirmedFee).toBe(350_00);
+    expect(s.pendingFee).toBe(400_00);
+    expect(s.totalFee).toBe(750_00);
+    expect(s.byStatus).toEqual({ PROPOSED: 1, CONFIRMED: 1, PLAYED: 1, CANCELLED: 0 });
+  });
+
+  it("exclui cancelados do total e dos cachês, mas os conta à parte", () => {
+    const s = summarizeWeekShows([
+      { date: local(2026, 3, 2), status: "CONFIRMED", fee: 100_00 },
+      { date: local(2026, 3, 3), status: "CANCELLED", fee: 999_00 },
+      { date: local(2026, 3, 5), status: "CANCELLED", fee: 500_00 },
+    ]);
+    expect(s.total).toBe(1);
+    expect(s.cancelled).toBe(2);
+    expect(s.confirmedFee).toBe(100_00);
+    expect(s.totalFee).toBe(100_00);
+  });
+
+  it("ignora status desconhecido e trata fee ausente como zero", () => {
+    const s = summarizeWeekShows([
+      { date: local(2026, 3, 2), status: "CONFIRMED" },
+      { date: local(2026, 3, 3), status: "RASCUNHO", fee: 999_00 },
+    ]);
+    expect(s.total).toBe(1);
+    expect(s.confirmedFee).toBe(0);
+    expect(s.byStatus.CONFIRMED).toBe(1);
+  });
+
+  it("semana sem shows zera tudo", () => {
+    expect(summarizeWeekShows([])).toEqual({
       total: 0,
       cancelled: 0,
       confirmedFee: 0,

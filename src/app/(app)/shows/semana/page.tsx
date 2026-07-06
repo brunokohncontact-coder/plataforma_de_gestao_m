@@ -52,6 +52,17 @@ export default async function ShowsWeekPage({
           >
             Exportar .ics
           </a>
+          {total > 0 && (
+            <a
+              href={`/shows/semana/export${
+                searchParams.semana ? `?semana=${encodeURIComponent(searchParams.semana)}` : ""
+              }`}
+              className="text-sm text-brand-700 hover:underline"
+              title="Baixar os shows desta semana em CSV"
+            >
+              ⬇ CSV
+            </a>
+          )}
           <Link href="/shows/novo" className="btn-primary">
             + Novo show
           </Link>

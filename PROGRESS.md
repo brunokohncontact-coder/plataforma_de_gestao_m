@@ -9,8 +9,8 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1338 testes** verdes após a **coluna "vs. {ano-1}"
-por linha na tabela do funil por contratante** (Sessão 244, D238 — a tela `/contatos/funil`, com o card agregado de "movers"
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1347 testes** verdes após a **exportação CSV da agenda semanal** em `/shows/semana/export` (Sessão 245, D239 — a agenda semanal `/shows/semana` ganhou botão "⬇ CSV", irmã do export do mês do calendário (D221): serializador puro `weekShowsToCsv` em `src/lib/csv.ts` (mesmas colunas `MONTH_CALENDAR_CSV_HEADERS`, data/hora LOCAL, uma linha por show + Total) + novo helper puro `summarizeWeekShows` em `src/lib/shows.ts` (resumo de uma lista já recortada à janela, sem filtro de data; reusa o shape `MonthShowsSummary`); rota reusa a janela `weekRange` da página, nome `semana-{início}.csv`; botão só com shows na semana; **+9 testes**). Segue 1338 da Sessão 244 (**coluna "vs. {ano-1}"
+por linha na tabela do funil por contratante** — a tela `/contatos/funil`, com o card agregado de "movers"
 da D236, ganhou o detalhe por-linha: ao lado de cada contratante, quanto sua taxa de concretização mudou frente ao ano
 anterior. Novo helper puro `indexContactPipelineChanges(comparison)` + tipo `ContactPipelineRowStatus` em `src/lib/contacts.ts`
 (espelho de `indexContactPaymentLagChanges`/D196): recebe a `ContactPipelineComparison` **já computada** pela página (D236 —
@@ -3753,6 +3753,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    em `src/lib/csv.ts` (recorte LOCAL ao mês, uma linha por show + linha Total reusando `summarizeMonthShows`;
    `csvLocalDate`/`csvLocalTime` em horário LOCAL) + rota `/shows/calendario/export?mes=YYYY-MM` + botão "⬇ CSV"
    propagando o mês, ver D221.
+   **Exportação CSV da agenda semanal** entregue na Sessão 245 — `weekShowsToCsv` em `src/lib/csv.ts` (irmã de
+   `monthCalendarToCsv`/D221 no eixo semanal: mesmas colunas `MONTH_CALENDAR_CSV_HEADERS`, data/hora LOCAL, uma linha por
+   show + Total) + novo helper puro `summarizeWeekShows` em `src/lib/shows.ts` (resumo de uma lista já recortada à janela,
+   **sem** filtro por data — o chamador passa a semana de `weekRange`; reusa o shape `MonthShowsSummary`) + rota
+   `/shows/semana/export?semana=YYYY-MM-DD` (reusa a mesma janela da página, nome ancorado na segunda `semana-{início}.csv`)
+   + botão "⬇ CSV" em `/shows/semana` só com shows na semana, ver D239.
    Próximo possível — um mini-calendário de salto rápido na agenda, ou estimar a receita parada por fim de
    semana livre (adiada na D96 por ser hipótese frágil).
 2d. **Antecedência de agendamento** (entregue na Sessão 192, `/shows/antecedencia` + `bookingLeadTime` em
