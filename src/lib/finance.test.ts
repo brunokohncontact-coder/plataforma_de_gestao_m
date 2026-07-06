@@ -137,6 +137,8 @@ import {
   type TxLike,
   findCitiesToReengage,
   CITY_REENGAGE_STALE_DAYS,
+  citiesToReengageHeadline,
+  REENGAGE_HEADLINE_MIN_PAST_SHOWS,
   findVenuesToReengage,
   VENUE_REENGAGE_STALE_DAYS,
   type VenueReengageShowLike,
@@ -8480,6 +8482,85 @@ describe("findCitiesToReengage", () => {
     const shows = [s({ city: "Manaus", date: "2026-05-20T20:00:00Z" })]; // ~28 dias
     expect(findCitiesToReengage(shows, { now: NOW }).count).toBe(0); // < 90
     expect(findCitiesToReengage(shows, { now: NOW, staleDays: 14 }).count).toBe(1);
+  });
+});
+
+describe("citiesToReengageHeadline", () => {
+  const NOW = new Date("2026-06-17T12:00:00Z");
+  function s(over: Partial<CityReengageShowLike> = {}): CityReengageShowLike {
+    return { status: "CONFIRMED", city: "São Paulo", date: "2026-01-01T20:00:00Z", fee: 100_00, ...over };
+  }
+
+  it("não aparece com lista vazia", () => {
+    const h = citiesToReengageHeadline(findCitiesToReengage([], { now: NOW }));
+    expect(h.show).toBe(false);
+    expect(h.city).toBeNull();
+    expect(h.total).toBe(0);
+    expect(h.staleDays).toBe(CITY_REENGAGE_STALE_DAYS);
+  });
+
+  it("não aparece quando a única praça fria tem só um show passado (evento avulso)", () => {
+    // Curitiba: 1 show há ~5 meses → fria na lista, mas sem lastro (pastShows=1).
+    const list = findCitiesToReengage(
+      [s({ city: "Curitiba", date: "2026-01-10T20:00:00Z" })],
+      { now: NOW },
+    );
+    expect(list.count).toBe(1); // está na lista
+    const h = citiesToReengageHeadline(list);
+    expect(h.show).toBe(false); // mas não vira nudge
+    expect(h.city).toBeNull();
+    expect(h.total).toBe(1);
+  });
+
+  it("aparece com a praça mais esquecida que tenha lastro (>= 2 shows passados)", () => {
+    const list = findCitiesToReengage(
+      [
+        // Belo Horizonte: 2 shows, o mais recente há ~5 meses → fria com lastro
+        s({ city: "Belo Horizonte", date: "2026-01-05T20:00:00Z", fee: 200_00 }),
+        s({ city: "Belo Horizonte", date: "2026-01-20T20:00:00Z", fee: 300_00 }),
+      ],
+      { now: NOW },
+    );
+    const h = citiesToReengageHeadline(list);
+    expect(h.show).toBe(true);
+    expect(h.city?.key).toBe("belo horizonte");
+    expect(h.city?.pastShows).toBe(2);
+    expect(h.total).toBe(1);
+  });
+
+  it("pula praças sem lastro e escolhe a mais esquecida entre as qualificadas", () => {
+    const list = findCitiesToReengage(
+      [
+        // Recife: mais esquecida (jan) mas 1 show só → não qualifica
+        s({ city: "Recife", date: "2026-01-01T20:00:00Z" }),
+        // Salvador: menos esquecida (fev) mas 2 shows → qualifica e vence
+        s({ city: "Salvador", date: "2026-02-01T20:00:00Z" }),
+        s({ city: "Salvador", date: "2026-02-10T20:00:00Z" }),
+      ],
+      { now: NOW },
+    );
+    // A lista põe Recife primeiro (mais dias), mas o nudge pula para Salvador.
+    expect(list.rows[0].key).toBe("recife");
+    const h = citiesToReengageHeadline(list);
+    expect(h.show).toBe(true);
+    expect(h.city?.key).toBe("salvador");
+    expect(h.total).toBe(2); // ambas continuam frias na lista
+  });
+
+  it("respeita o mínimo padrão exportado", () => {
+    expect(REENGAGE_HEADLINE_MIN_PAST_SHOWS).toBe(2);
+  });
+
+  it("aceita minPastShows customizado (satura em 1 para valores < 1)", () => {
+    const list = findCitiesToReengage(
+      [s({ city: "Curitiba", date: "2026-01-10T20:00:00Z" })], // 1 show passado
+      { now: NOW },
+    );
+    // limiar 1 (ou 0, saturado a 1) → uma praça de show único já qualifica
+    expect(citiesToReengageHeadline(list, 1).show).toBe(true);
+    expect(citiesToReengageHeadline(list, 0).show).toBe(true);
+    // limiar 3 → nem duas passagens bastam
+    expect(citiesToReengageHeadline(list, 3).show).toBe(false);
   });
 });
 

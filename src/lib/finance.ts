@@ -809,6 +809,53 @@ export function findCitiesToReengage(
   return { rows, count: rows.length, staleDays };
 }
 
+// ── Nudge do Painel: praça esquecida que vale um retorno ─────────────────────
+// Manchete acionável para o dashboard, no mesmo espírito de `gigSeasonalityHeadline`
+// (D134) / `geoConcentrationHeadline` (D114): a `findCitiesToReengage` já entrega a
+// LISTA ordenada de praças frias; aqui destilamos a UMA praça que merece o toque
+// agora. Disciplina anti-ruído: exige um TRACK RECORD (≥ `minPastShows` shows já
+// tocados na cidade) — uma cidade onde toquei UMA vez há 90 dias é um evento, não
+// uma relação a reacender; sem o filtro, o nudge dispararia por qualquer bolo solto.
+
+export interface CitiesToReengageHeadline {
+  /** Se o nudge deve aparecer no Painel. */
+  show: boolean;
+  /** A praça mais esquecida COM histórico suficiente (a mais forte para revisitar). */
+  city: CityReengageRow | null;
+  /** Total de praças frias na lista (para o texto "e mais N"). */
+  total: number;
+  /** Limite de dias sem tocar herdado da lista (contexto). */
+  staleDays: number;
+}
+
+/**
+ * Mínimo de shows passados na cidade para o nudge do Painel dispará-la — filtra
+ * praças de "passagem única" (um show avulso), deixando só relações com lastro.
+ */
+export const REENGAGE_HEADLINE_MIN_PAST_SHOWS = 2;
+
+/**
+ * Destila da lista de praças frias (`findCitiesToReengage`) a UMA praça a revisitar
+ * no Painel: a mais esquecida (a lista já vem ordenada por `daysSinceLastShow`) que
+ * tenha ao menos `minPastShows` shows passados — uma relação com lastro, não um show
+ * avulso. Sem candidata qualificada → `show: false`. Pura; espelha a disciplina de
+ * `gigSeasonalityHeadline`/`geoConcentrationHeadline` (a regra de exibição vive aqui,
+ * o dashboard só lê `.show`). Ver DECISIONS.md.
+ */
+export function citiesToReengageHeadline(
+  list: CityReengageList,
+  minPastShows: number = REENGAGE_HEADLINE_MIN_PAST_SHOWS,
+): CitiesToReengageHeadline {
+  const threshold = Math.max(1, minPastShows);
+  const city = list.rows.find((r) => r.pastShows >= threshold) ?? null;
+  return {
+    show: city !== null,
+    city,
+    total: list.count,
+    staleDays: list.staleDays,
+  };
+}
+
 // ── Casas/venues para revisitar (recência da agenda por local) ──────────────
 // Espelho de `findCitiesToReengage` um nível abaixo na hierarquia geográfica: em
 // vez de "que cidades esfriaram?", responde "que CASAS (venues) esfriaram?". Uma

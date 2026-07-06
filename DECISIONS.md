@@ -7700,3 +7700,38 @@ contexto, decisão, justificativa e alternativas consideradas.
   (`vitest run`); smoke test (`next start`) → `/login` 200, `/shows/locais/revisitar` 307 e
   `/shows/locais/revisitar/export` 307 (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories —
   4 moderate / 5 high / 1 critical, Next 14 / postcss; ver D6); **nenhuma dependência nova**.
+
+## D232 — Nudge do Painel: praça esquecida que vale um retorno (`citiesToReengageHeadline`) (Sessão 238)
+
+- **Contexto:** as "Praças para revisitar" (`findCitiesToReengage`/D229) entregaram a lista ordenada de cidades
+  frias (já toquei, nada agendado adiante, ≥ 90 dias sem show), com página, CSV e a irmã por casa/venue (D231).
+  Mas o sinal só existia se o músico abrisse `/shows/cidades/revisitar` — ao contrário de sazonalidade (D134),
+  concentração geográfica (D114) ou antecedência (D189), não havia manchete que o **empurrasse** ao Painel. O
+  rebooking geográfico é oportunidade de receita; deixá-lo escondido numa sub-rota o desperdiça.
+- **Decisão:** `citiesToReengageHeadline(list, minPastShows?)` + tipo `CitiesToReengageHeadline` +
+  `REENGAGE_HEADLINE_MIN_PAST_SHOWS`(=2) em `src/lib/finance.ts`. Pura, destila da lista a UMA praça a mostrar: a
+  primeira (mais esquecida — a lista já vem ordenada por `daysSinceLastShow`) que tenha ao menos `minPastShows`
+  shows passados. Sem candidata → `show:false`. Banner brand "📍 Praça para revisitar" em `dashboard/page.tsx`
+  ("{cidade} — sem show há {N} dias ({M} shows no histórico) · +K praças frias", link `/shows/cidades/revisitar`),
+  reaproveitando os shows já carregados (`city` vem na consulta, **zero I/O extra**). Segue a disciplina de
+  `gigSeasonalityHeadline`/`geoConcentrationHeadline`: a regra de exibição vive na função pura, o dashboard só lê `.show`.
+- **Por que o filtro de lastro (≥ 2 shows passados):** uma cidade onde toquei UMA vez há 90 dias é um evento
+  avulso, não uma relação a reacender — sem o filtro o nudge dispararia por qualquer bolo solto e viraria ruído.
+  O limiar mora na manchete (não na lista/D229, que legitimamente mostra tudo na página): o Painel é o lugar da
+  disciplina anti-ruído (precedente: amostra mínima de `gigSeasonalityHeadline`/D134). Escolho a praça mais
+  esquecida ENTRE as qualificadas (pula as sem lastro), não a global — mais acionável que a mais antiga porém rasa.
+- **Eixo cidade, não casa:** o nudge usa `findCitiesToReengage` (cidade), não `findVenuesToReengage` (casa/D231) —
+  a cidade é a decisão de deslocamento/prospecção que cabe num empurrão único do Painel; a granularidade de palco
+  fica para quem abre a sub-rota. Um só nudge de rebooking por vez, no eixo mais amplo.
+- **Alternativas consideradas:** (a) sem filtro de lastro — descartado (ruído de passagens únicas); (b) ceder a
+  vez a outro nudge como o vale de sazonalidade (D135) — não: é sinal ortogonal (rebooking geográfico × temporada),
+  ambos podem coexistir, e cada banner já tem seu próprio gate; (c) surfaçar a casa/venue — adiado (ver acima).
+- **Hipótese:** `minPastShows`=2 (lastro mínimo p/ o empurrão) e o `staleDays`=90 herdado da D229 são heurísticas
+  a validar com uso real; injetáveis para ajuste.
+- **Testes:** **+6** em `finance.test.ts` (`describe("citiesToReengageHeadline")`): lista vazia; praça de show
+  único não vira nudge (mas segue na lista); praça com lastro aparece; pula sem-lastro e escolhe a mais esquecida
+  entre as qualificadas; constante padrão; `minPastShows` customizado (satura em 1). **1305 testes** no total.
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1305 testes**
+  (`vitest run`); smoke test (`next start`) → `/login` 200, `/dashboard` 307 e `/shows/cidades/revisitar` 307
+  (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical,
+  Next 14 / postcss; ver D6); **nenhuma dependência nova**.

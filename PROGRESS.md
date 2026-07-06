@@ -9,8 +9,18 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1299 testes** verdes após as **casas/venues para
-revisitar** (Sessão 237, D231 — versão por **local/venue** das "Praças para revisitar" (`findCitiesToReengage`/D229), apontada como
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1305 testes** verdes após o **nudge do Painel "praça
+para revisitar"** (Sessão 238, D232 — as "Praças para revisitar" (`findCitiesToReengage`/D229) só existiam se o músico abrisse a
+sub-rota; ao contrário de sazonalidade/concentração/antecedência, não tinham manchete que as empurrasse ao Painel — e rebooking
+geográfico é oportunidade de receita. Novo `citiesToReengageHeadline(list, minPastShows?)` + tipo `CitiesToReengageHeadline` +
+`REENGAGE_HEADLINE_MIN_PAST_SHOWS`(=2) em `src/lib/finance.ts`: pura, destila da lista a UMA praça — a mais esquecida que tenha ≥ 2
+shows passados (lastro; uma passagem única há 90 dias é evento avulso, não relação a reacender — a disciplina anti-ruído mora na
+manchete, não na lista/D229 que legitimamente mostra tudo na página). Banner brand "📍 Praça para revisitar" em `dashboard/page.tsx`
+("{cidade} — sem show há N dias (M shows no histórico) · +K praças frias", link `/shows/cidades/revisitar`), reaproveitando os shows
+já carregados (`city` na consulta, zero I/O extra). Eixo cidade (não casa/D231): a decisão de deslocamento que cabe num empurrão
+único. **+6 testes** (`finance.test.ts`). Smoke test (`next start`) → `/login` 200, `/dashboard` 307 e `/shows/cidades/revisitar` 307
+(auth-gated). `npm audit` sem novas vulnerabilidades (mesmos advisories Next/postcss da D6; nenhuma dependência nova). Ver D232. Antes,
+as **casas/venues para revisitar** (Sessão 237, D231 — versão por **local/venue** das "Praças para revisitar" (`findCitiesToReengage`/D229), apontada como
 evolução na D229(a): as **casas/palcos** onde já toquei, sem nada agendado e há ≥ 90 dias sem show — uma cidade quente pode esconder
 um bar frio. Novo `findVenuesToReengage(shows, opts)` + tipos `VenueReengageShowLike`/`VenueReengageRow`/`VenueReengageList`/
 `VenueReengageOptions` + `VENUE_REENGAGE_STALE_DAYS`(=90) em `src/lib/finance.ts`, agrupando por `venue` em vez de `city`. Como a
@@ -4135,9 +4145,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    **Versão por local/venue** entregue na Sessão 237 — `findVenuesToReengage` (+ tipos + `VENUE_REENGAGE_STALE_DAYS`) em
    `src/lib/finance.ts` delegando ao núcleo puro compartilhado `collectPlacesToReengage` (extraído de `findCitiesToReengage`,
    DRY) + página `/shows/locais/revisitar` + link "🏛 Revisitar" em `/shows/locais` + entrada no hub + CSV
-   `venuesToReengageToCsv`/`/shows/locais/revisitar/export`; **+9 testes** (6 finance + 3 csv), ver D231. Próximo possível — o
-   `staleDays`=90 é **hipótese** (cadência de retorno a uma casa/cidade), sinalizada nos bloqueios; ou um nudge da casa/praça
-   mais esquecida no Painel (adiável: o Painel já é denso e tem o nudge de concentração geográfica/D114).
+   `venuesToReengageToCsv`/`/shows/locais/revisitar/export`; **+9 testes** (6 finance + 3 csv), ver D231.
+   **Nudge no Painel "praça para revisitar"** entregue na Sessão 238 — `citiesToReengageHeadline(list, minPastShows?)` +
+   `CitiesToReengageHeadline` + `REENGAGE_HEADLINE_MIN_PAST_SHOWS`(=2) em `src/lib/finance.ts` (destila a praça mais esquecida
+   COM lastro ≥ 2 shows; disciplina anti-ruído na manchete, não na lista) + banner brand "📍 Praça para revisitar" em
+   `dashboard/page.tsx` (eixo cidade, zero I/O extra), ver D232. Próximo possível — o `staleDays`=90 e o `minPastShows`=2 são
+   **hipóteses** sinalizadas nos bloqueios; ou um nudge simétrico no eixo casa/venue (adiável: um só nudge de rebooking por vez,
+   no eixo cidade — mais amplo).
 10. **Exportação CSV das telas de Finanças — evoluções** (transações entregues na Sessão 14, `/financas/export`;
    resumo anual na Sessão 47, `/financas/anual/export`; trimestral, `/financas/trimestral/export`):
    **fontes de renda** entregue na Sessão 152 — `incomeMixToCsv` + `INCOME_MIX_CSV_HEADERS` em `src/lib/csv.ts` +
@@ -4234,6 +4248,7 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
 - Foco **português/LATAM** e faixas de preço (`business-plan.md`) são hipóteses — validar.
 - **Praças para revisitar (D229)**: o limiar padrão de 90 dias sem tocar (`CITY_REENGAGE_STALE_DAYS`) para
   considerar uma cidade "fria" é **hipótese** — a cadência natural de retorno a uma praça varia por gênero/
-  circuito. Validar com músicos em turnê antes de virar premissa fixa.
+  circuito. Validar com músicos em turnê antes de virar premissa fixa. O `minPastShows`=2 do nudge do Painel
+  (`REENGAGE_HEADLINE_MIN_PAST_SHOWS`/D232) — lastro mínimo p/ empurrar uma praça — também é heurística a validar.
 - **Segurança em produção**: definir `AUTH_SECRET` forte e migrar para PostgreSQL antes
   de qualquer deploy real. Revisar advisories do Next (D6) e planejar upgrade p/ Next 15+.
