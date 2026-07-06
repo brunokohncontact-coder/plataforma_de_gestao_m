@@ -35,6 +35,7 @@ import {
   buildStatusTimeline,
   funnelStageDurations,
   findStaleProposals,
+  staleProposalsHeadline,
   STALE_PROPOSAL_DAYS,
   STALE_PROPOSAL_IMMINENT_DAYS,
   type ConflictShowLike,
@@ -1533,5 +1534,102 @@ describe("findStaleProposals", () => {
     expect(STALE_PROPOSAL_DAYS).toBeGreaterThan(0);
     expect(STALE_PROPOSAL_IMMINENT_DAYS).toBeGreaterThan(0);
     expect(STALE_PROPOSAL_IMMINENT_DAYS).toBeLessThan(STALE_PROPOSAL_DAYS);
+  });
+});
+
+describe("staleProposalsHeadline", () => {
+  const NOW = new Date("2026-06-01T00:00:00.000Z");
+  const daysBefore = (n: number) =>
+    new Date(NOW.getTime() - n * 86400000).toISOString();
+  const daysAfter = (n: number) =>
+    new Date(NOW.getTime() + n * 86400000).toISOString();
+
+  function prop(partial: Partial<StaleProposalShowLike>): StaleProposalShowLike {
+    return {
+      id: "s1",
+      title: "Show",
+      date: daysAfter(60),
+      venue: null,
+      city: null,
+      fee: 100_00,
+      status: "PROPOSED",
+      createdAt: daysBefore(30),
+      ...partial,
+    };
+  }
+
+  it("sem propostas paradas não mostra nudge", () => {
+    const h = staleProposalsHeadline(findStaleProposals([], { now: NOW }));
+    expect(h.show).toBe(false);
+    expect(h.critical).toBe(false);
+    expect(h.top).toBeNull();
+    expect(h).toMatchObject({ actionableCount: 0, actionableFee: 0, totalStale: 0 });
+  });
+
+  it("só propostas 'cold' (data distante) não disparam o nudge", () => {
+    // parada há 30 dias, mas o show é daqui a 60 → cold, sem urgência de decisão
+    const h = staleProposalsHeadline(
+      findStaleProposals([prop({ createdAt: daysBefore(30), date: daysAfter(60) })], {
+        now: NOW,
+      }),
+    );
+    expect(h.show).toBe(false);
+    expect(h.critical).toBe(false);
+    expect(h.top).toBeNull();
+    expect(h.totalStale).toBe(1);
+    expect(h.actionableCount).toBe(0);
+  });
+
+  it("proposta iminente dispara o nudge (não crítico)", () => {
+    const h = staleProposalsHeadline(
+      findStaleProposals([prop({ createdAt: daysBefore(30), date: daysAfter(10) })], {
+        now: NOW,
+      }),
+    );
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(false);
+    expect(h.imminentCount).toBe(1);
+    expect(h.actionableCount).toBe(1);
+    expect(h.actionableFee).toBe(100_00);
+    expect(h.top?.urgency).toBe("imminent");
+  });
+
+  it("proposta vencida deixa o nudge crítico e é o topo da fila", () => {
+    const h = staleProposalsHeadline(
+      findStaleProposals(
+        [
+          prop({ id: "cold", createdAt: daysBefore(30), date: daysAfter(60) }),
+          prop({ id: "late", createdAt: daysBefore(2), date: daysBefore(3), fee: 500_00 }),
+        ],
+        { now: NOW },
+      ),
+    );
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(true);
+    expect(h.overdueCount).toBe(1);
+    expect(h.top?.id).toBe("late");
+    expect(h.top?.urgency).toBe("overdue");
+    // cold não entra na conta acionável, mas continua no totalStale
+    expect(h.actionableCount).toBe(1);
+    expect(h.actionableFee).toBe(500_00);
+    expect(h.totalStale).toBe(2);
+  });
+
+  it("soma o cachê só das acionáveis (vencidas + iminentes), ignorando cold", () => {
+    const h = staleProposalsHeadline(
+      findStaleProposals(
+        [
+          prop({ id: "over", createdAt: daysBefore(2), date: daysBefore(1), fee: 300_00 }),
+          prop({ id: "imm", createdAt: daysBefore(30), date: daysAfter(5), fee: 200_00 }),
+          prop({ id: "cold", createdAt: daysBefore(40), date: daysAfter(90), fee: 999_00 }),
+        ],
+        { now: NOW },
+      ),
+    );
+    expect(h.actionableCount).toBe(2);
+    expect(h.actionableFee).toBe(500_00);
+    expect(h.totalStale).toBe(3);
+    // a fila vem ordenada por urgência → vencida é o topo
+    expect(h.top?.id).toBe("over");
   });
 });
