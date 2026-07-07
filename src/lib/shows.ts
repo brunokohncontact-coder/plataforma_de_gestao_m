@@ -1372,6 +1372,87 @@ export function compareProposalOutcomes(
   };
 }
 
+// ── Manchete de conversão para o Painel (a conversão real está caindo?) ───────
+// Eco de `compareProposalOutcomes` (D244) no dashboard, na mesma disciplina de
+// gate dos nudges irmãos (`bookingLeadTimeHeadline`, `cancellationHeadline`,
+// `pipelineByContactHeadline`…): a regra de EXIBIÇÃO vive num helper puro que
+// recebe o comparativo já computado e destila só o subconjunto que aperta.
+// Aqui o alarme é a queda ano a ano da taxa de conversão real das propostas —
+// das que decidi neste ano, uma fração menor virou palco que na coorte do ano
+// anterior. Rara por design: só com amostra confiável em AMBAS as coortes e uma
+// queda materialmente maior que o epsilon do veredito de tendência (que só
+// separa "melhorou/piorou/estável" no card, sem gate de amostra nem de
+// magnitude). Ao contrário do card ano-a-ano, aqui o Painel só se manifesta na
+// ponta ruim (piora): subir a conversão é boa notícia, não vira nudge.
+
+/** Mínimo de propostas DECIDIDAS em cada coorte para o nudge confiar na queda. */
+export const CONVERSION_DROP_MIN_DECIDED = 4;
+/**
+ * Queda mínima da taxa de conversão (em pontos 0..1) para o nudge disparar.
+ * Maior que `CONVERSION_TREND_EPSILON` (=0.05, o limiar do veredito do card):
+ * o Painel só alerta com uma queda de fato material, não qualquer variação.
+ */
+export const CONVERSION_DROP_POINTS = 0.1;
+/** Queda da taxa (em pontos 0..1) que escala o nudge para crítico. */
+export const CONVERSION_DROP_CRITICAL_POINTS = 0.25;
+
+/** Manchete de conversão para o Painel (nudge de queda ano a ano). */
+export interface ProposalConversionHeadline {
+  /** True quando o nudge deve aparecer (amostra confiável + queda material). */
+  show: boolean;
+  /** True quando a queda entra na faixa crítica (≥ `criticalPoints`). */
+  critical: boolean;
+  /** Queda da taxa em pontos (0..1): anterior − atual; ≥ 0 quando `show`. */
+  drop: number;
+  /** Taxa de conversão real da coorte atual (0..1). */
+  currentRate: number;
+  /** Taxa de conversão real da coorte anterior (0..1). */
+  previousRate: number;
+  /** Propostas ganhas na coorte atual (para o banner: "N de M"). */
+  won: number;
+  /** Propostas decididas na coorte atual (denominador da taxa). */
+  decided: number;
+}
+
+/**
+ * Decide se o Painel deve alertar que a conversão real das propostas caiu de um
+ * ano para o outro — o eco de `compareProposalOutcomes` (D244) no dashboard.
+ * Recebe um comparativo já computado (as duas coortes) e não faz I/O. `show` só
+ * quando AMBAS as coortes têm taxa definida (≥ `minDecided` propostas decididas
+ * cada, para a leitura não se apoiar em 1–2 desfechos) **e** a taxa caiu ao menos
+ * `dropPoints`; `critical` quando a queda chega a `criticalPoints` ou mais.
+ *
+ * Só a ponta de PIORA vira nudge (queda da conversão = mais do que propus virou
+ * perda, sinal para revisar preço/disponibilidade/follow-up); uma melhora é boa
+ * notícia e não precisa de alerta. Como os nudges irmãos, fica raro por gate.
+ * Pura.
+ */
+export function proposalConversionHeadline(
+  comparison: ProposalConversionComparison,
+  minDecided: number = CONVERSION_DROP_MIN_DECIDED,
+  dropPoints: number = CONVERSION_DROP_POINTS,
+  criticalPoints: number = CONVERSION_DROP_CRITICAL_POINTS,
+): ProposalConversionHeadline {
+  const { current, previous, conversionRateDelta } = comparison;
+  // `conversionRateDelta` só é não-null com taxa definida (decidedCount>0) nas
+  // duas coortes; o gate de amostra reforça com o mínimo de decididas.
+  const reliable =
+    conversionRateDelta != null &&
+    current.decidedCount >= minDecided &&
+    previous.decidedCount >= minDecided;
+  const drop = conversionRateDelta != null ? -conversionRateDelta : 0;
+  const show = reliable && drop >= dropPoints;
+  return {
+    show,
+    critical: show && drop >= criticalPoints,
+    drop,
+    currentRate: current.conversionRate ?? 0,
+    previousRate: previous.conversionRate ?? 0,
+    won: current.wonCount,
+    decided: current.decidedCount,
+  };
+}
+
 // ── Propostas paradas (follow-up de deals esquecidos) ─────────────────────────
 // Enquanto o funil (`showPipeline`) fotografa ONDE os shows estão e o tempo em
 // etapa (`funnelStageDurations`/D235) mede a VELOCIDADE típica de travessia, esta
