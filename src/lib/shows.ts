@@ -14,10 +14,11 @@ export interface ShowLike {
   city?: string | null;
   status: string;
   date: Date | string;
+  notes?: string | null;
 }
 
 export interface ShowFilter {
-  /** Termo de busca livre (casa título + local + cidade, sem acento/caixa). */
+  /** Termo de busca livre (casa título + local + cidade + anotações, sem acento/caixa). */
   q?: string | null;
   /** Status exato (PROPOSED/CONFIRMED/PLAYED/CANCELLED); inválido é ignorado. */
   status?: string | null;
@@ -48,8 +49,8 @@ export function hasActiveShowFilter(filter: ShowFilter): boolean {
  * Filtra shows pelos critérios informados. Critérios ausentes/ inválidos são
  * ignorados. O intervalo `from`/`to` é inclusivo nas duas pontas (compara a
  * chave de dia do show); um intervalo invertido (`from` > `to`) não casa nada.
- * O termo `q` casa contra título + local + cidade normalizados (substring,
- * combinada em AND com os demais critérios). Pura.
+ * O termo `q` casa contra título + local + cidade + anotações normalizados
+ * (substring, combinada em AND com os demais critérios). Pura.
  */
 export function filterShows<T extends ShowLike>(
   shows: T[],
@@ -69,7 +70,7 @@ export function filterShows<T extends ShowLike>(
     if (q) {
       const haystack = `${normalizeText(s.title)} ${normalizeText(s.venue)} ${normalizeText(
         s.city,
-      )}`;
+      )} ${normalizeText(s.notes)}`;
       if (!haystack.includes(q)) return false;
     }
     return true;

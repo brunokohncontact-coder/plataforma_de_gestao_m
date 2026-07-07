@@ -136,7 +136,7 @@ export default async function ShowsPage({
               type="search"
               name="q"
               defaultValue={filter.q ?? ""}
-              placeholder="Título, local ou cidade"
+              placeholder="Título, local, cidade ou anotações"
               className="input"
             />
           </Field>
