@@ -37,6 +37,10 @@ import {
   proposalOutcomes,
   proposalOutcomeYears,
   compareProposalOutcomes,
+  proposalConversionHeadline,
+  CONVERSION_DROP_MIN_DECIDED,
+  CONVERSION_DROP_POINTS,
+  CONVERSION_DROP_CRITICAL_POINTS,
   findStaleProposals,
   staleProposalsHeadline,
   STALE_PROPOSAL_DAYS,
@@ -1634,6 +1638,88 @@ describe("compareProposalOutcomes", () => {
     const cmp = compareProposalOutcomes(decided, openOnly);
     expect(cmp.conversionRateDelta).toBeNull();
     expect(cmp.trend).toBe("stable");
+  });
+});
+
+describe("proposalConversionHeadline", () => {
+  // Fábrica de uma coorte `ProposalConversion` a partir de won/lost/open, com a
+  // mesma aritmética de `proposalOutcomes` (taxa = won/decididas).
+  const conv = (won: number, lost: number, open: number) => {
+    const total = won + lost + open;
+    const decidedCount = won + lost;
+    return {
+      total,
+      wonCount: won,
+      lostCount: lost,
+      openCount: open,
+      decidedCount,
+      conversionRate: decidedCount > 0 ? won / decidedCount : null,
+      winRate: total > 0 ? won / total : null,
+    };
+  };
+  const headline = (current: ReturnType<typeof conv>, previous: ReturnType<typeof conv>) =>
+    proposalConversionHeadline(compareProposalOutcomes(current, previous));
+
+  it("dispara quando a conversão cai além do limiar com amostra confiável nas duas coortes", () => {
+    // atual 2/6 ≈ 33% ; anterior 6/6 = 100% → queda ~67 p.p.
+    const h = headline(conv(2, 4, 0), conv(6, 0, 0));
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(true); // queda >> 25 p.p.
+    expect(h.drop).toBeCloseTo(1 - 2 / 6);
+    expect(h.currentRate).toBeCloseTo(2 / 6);
+    expect(h.previousRate).toBeCloseTo(1);
+    expect(h).toMatchObject({ won: 2, decided: 6 });
+  });
+
+  it("respeita o piso de queda: uma queda material dispara, uma pequena não", () => {
+    // 8/20 (40%) vs 11/20 (55%) → queda de 15 p.p., acima do piso → dispara
+    const material = headline(conv(8, 12, 0), conv(11, 9, 0));
+    expect(material.drop).toBeCloseTo(0.15);
+    expect(material.show).toBe(true);
+    expect(material.critical).toBe(false); // 15 p.p. < 25 p.p. crítico
+    // 11/20 (55%) vs 12/20 (60%) → queda de 5 p.p., abaixo do piso → não dispara
+    const belowFloor = headline(conv(11, 9, 0), conv(12, 8, 0));
+    expect(belowFloor.drop).toBeCloseTo(0.05);
+    expect(belowFloor.show).toBe(false);
+    expect(CONVERSION_DROP_POINTS).toBe(0.1);
+  });
+
+  it("uma melhora (conversão subindo) nunca vira nudge", () => {
+    const h = headline(conv(6, 0, 0), conv(2, 4, 0)); // 100% vs 33% → subiu
+    expect(h.show).toBe(false);
+    expect(h.critical).toBe(false);
+    expect(h.drop).toBeLessThan(0); // drop negativo = melhora
+  });
+
+  it("não dispara sem amostra mínima de decididas em alguma coorte", () => {
+    // queda enorme, mas a coorte anterior tem só 1 decidida (abaixo do mínimo)
+    const thin = headline(conv(0, 6, 0), conv(1, 0, 0));
+    expect(thin.show).toBe(false);
+    // agora com amostra suficiente nas duas → dispara
+    const enough = headline(conv(0, 6, 0), conv(4, 0, 0));
+    expect(enough.show).toBe(true);
+  });
+
+  it("com taxa indefinida (coorte sem decididas) não dispara", () => {
+    const h = headline(conv(0, 0, 5), conv(5, 0, 0)); // atual só em aberto → rate null
+    expect(h.show).toBe(false);
+    expect(h.drop).toBe(0);
+    expect(h.currentRate).toBe(0);
+  });
+
+  it("respeita limiares injetáveis (min de decididas / pontos)", () => {
+    const cmp = compareProposalOutcomes(conv(1, 2, 0), conv(3, 0, 0)); // 33% vs 100%, 3 decididas cada
+    // com mínimo 4 não passa; com mínimo 3 passa
+    expect(proposalConversionHeadline(cmp, 4).show).toBe(false);
+    expect(proposalConversionHeadline(cmp, 3).show).toBe(true);
+    // ponto crítico afrouxado torna a queda "crítica"
+    const h = proposalConversionHeadline(cmp, 3, 0.1, 0.5);
+    expect(h.critical).toBe(true);
+  });
+
+  it("as constantes de gate são coerentes (crítico > piso > epsilon do card)", () => {
+    expect(CONVERSION_DROP_CRITICAL_POINTS).toBeGreaterThan(CONVERSION_DROP_POINTS);
+    expect(CONVERSION_DROP_MIN_DECIDED).toBeGreaterThan(1);
   });
 });
 

@@ -64,9 +64,13 @@ import {
   bookingLeadTimeHeadline,
   findStaleProposals,
   staleProposalsHeadline,
+  proposalOutcomes,
+  compareProposalOutcomes,
+  proposalConversionHeadline,
   type ConflictShowLike,
   type LeadTimeShowLike,
   type StaleProposalShowLike,
+  type ProposalOutcomeShowLike,
 } from "@/lib/shows";
 import {
   cancellationByContact,
@@ -104,6 +108,13 @@ export default async function DashboardPage() {
       include: {
         contacts: {
           select: { contact: { select: { id: true, name: true, role: true } } },
+        },
+        // Histórico de status: alimenta a coorte da conversão real (proposta →
+        // palco) do nudge de conversão caindo (D245). Só toStatus/createdAt bastam
+        // à agregação, mas incluímos fromStatus para casar o shape de StatusEventLike.
+        statusEvents: {
+          select: { fromStatus: true, toStatus: true, createdAt: true },
+          orderBy: { createdAt: "asc" },
         },
       },
     }),
@@ -392,6 +403,21 @@ export default async function DashboardPage() {
   // página carrega o histórico completo para precisão. Ver D241.
   const staleHeadline = staleProposalsHeadline(
     findStaleProposals(shows as StaleProposalShowLike[]),
+  );
+
+  // Conversão real caindo (D245): "das propostas que decidi neste ano, uma fração
+  // menor virou palco que ano passado?". Reaproveita os shows já carregados — os
+  // statusEvents agora vêm na mesma consulta (sem I/O extra): monta a coorte deste
+  // ano e a do ano anterior pela data de entrada da proposta no funil (proposalOutcomes)
+  // e compara a taxa de conversão real. Vira nudge só quando a conversão de fato CAIU,
+  // com amostra confiável em ambas as coortes (proposalConversionHeadline resolve o
+  // gate) — uma melhora é boa notícia e não vira alerta. O detalhe está em
+  // /shows/funil/conversao.
+  const conversionHead = proposalConversionHeadline(
+    compareProposalOutcomes(
+      proposalOutcomes(shows as ProposalOutcomeShowLike[], { year: currentYear }),
+      proposalOutcomes(shows as ProposalOutcomeShowLike[], { year: currentYear - 1 }),
+    ),
   );
 
   // Oportunidade de rebooking (D229): a praça mais esquecida que vale um retorno —
@@ -926,6 +952,35 @@ export default async function DashboardPage() {
             )}
           </span>
           <span className={staleHeadline.critical ? "text-red-600" : "text-amber-600"}>
+            Ver →
+          </span>
+        </Link>
+      )}
+
+      {/* Conversão real caindo (D245): das propostas decididas neste ano, uma
+          fração menor virou palco que na coorte do ano passado. Só com amostra
+          confiável em ambas as coortes e uma queda material. Vermelho na queda forte. */}
+      {conversionHead.show && (
+        <Link
+          href={`/shows/funil/conversao?ano=${currentYear}`}
+          className={
+            "flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3 text-sm transition " +
+            (conversionHead.critical
+              ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100")
+          }
+        >
+          <span className="font-semibold">
+            {conversionHead.critical ? "🔴" : "📉"} Conversão de propostas caindo
+          </span>
+          <span>
+            Das propostas decididas em {currentYear},{" "}
+            <strong>{Math.round(conversionHead.currentRate * 100)}%</strong> viraram palco (
+            {conversionHead.won} de {conversionHead.decided}) —{" "}
+            <strong>{Math.round(conversionHead.drop * 100)} p.p. abaixo</strong> de{" "}
+            {currentYear - 1} ({Math.round(conversionHead.previousRate * 100)}%)
+          </span>
+          <span className={conversionHead.critical ? "text-red-600" : "text-amber-600"}>
             Ver →
           </span>
         </Link>

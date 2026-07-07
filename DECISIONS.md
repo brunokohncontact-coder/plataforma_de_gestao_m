@@ -8207,3 +8207,49 @@ contexto, decisão, justificativa e alternativas consideradas.
   Justificativa); reavaliar se surgir demanda de exportar a série ano a ano da taxa de conversão real.
 - **Nota de concorrência:** número **D244** escolhido como o próximo livre após o D243 (Sessão 249). Se uma PR paralela reivindicar
   o mesmo número, renumerar na consolidação.
+
+## D245 — Nudge do Painel para queda ano a ano da conversão real (`proposalConversionHeadline`) (Sessão 251)
+- **Contexto:** o comparativo ano a ano da conversão real de propostas (`compareProposalOutcomes`/D244) vive na página
+  `/shows/funil/conversao`, mas o músico só o vê se abrir aquela tela. A própria D244 apontou como "próximo possível (b)" um
+  nudge no Painel quando a taxa de conversão da coorte recente cair — o mesmo padrão de manchete que os outros sinais do funil
+  (`staleProposalsHeadline`/D241, `pipelineByContactHeadline`/D184) e de risco (`cancellationHeadline`/D178,
+  `bookingLeadTimeHeadline`/D189) já têm: o Painel puxa o alarme para a frente do usuário sem ele precisar caçar a tela.
+- **Decisão:** novo helper puro `proposalConversionHeadline(comparison, minDecided?, dropPoints?, criticalPoints?)` + tipo
+  `ProposalConversionHeadline` + constantes `CONVERSION_DROP_MIN_DECIDED`(=4)/`CONVERSION_DROP_POINTS`(=0.1)/
+  `CONVERSION_DROP_CRITICAL_POINTS`(=0.25) em `src/lib/shows.ts`. Recebe um `ProposalConversionComparison` já computado (as duas
+  coortes) e destila só o subconjunto que aperta: `show` quando AMBAS as coortes têm taxa definida (≥ `minDecided` propostas
+  decididas cada) **e** a taxa caiu ao menos `dropPoints`; `critical` quando a queda chega a `criticalPoints`. Expõe `drop`
+  (anterior − atual), as duas taxas e `won`/`decided` da coorte atual para o banner. Banner 📉/🔴 "Conversão de propostas caindo"
+  em `dashboard/page.tsx`, linkando `/shows/funil/conversao?ano={anoAtual}`, computando a coorte deste ano × a do ano anterior
+  via `proposalOutcomes(shows, {year})` sobre o acervo já carregado.
+- **Só a ponta de piora vira nudge:** ao contrário do card ano-a-ano (que também celebra melhora com 🟢), o Painel só se
+  manifesta quando a conversão CAIU — subir a conversão é boa notícia e não precisa de alerta. Mesma disciplina dos nudges
+  irmãos: a regra de EXIBIÇÃO vive no helper puro, gate por amostra + magnitude para ficar raro (evita ruído com 1–2 desfechos).
+- **I/O:** o Painel passou a incluir `statusEvents` (só `fromStatus`/`toStatus`/`createdAt`, ordenados) na consulta de shows que
+  já era feita — **uma coluna a mais na mesma consulta**, não uma consulta nova. É o único insumo que faltava (a coorte da
+  conversão real se monta pela linha do tempo de status, D234/D243); os demais nudges já reaproveitam o mesmo acervo. Custo de
+  payload marginal, sem round-trip extra.
+- **Limiares como heurística:** `CONVERSION_DROP_POINTS`(=0.1, 10 p.p.) é deliberadamente **maior** que o
+  `CONVERSION_TREND_EPSILON`(=0.05) do veredito do card — o card só separa melhora/piora/estável, o Painel exige uma queda de
+  fato material para alertar. `CONVERSION_DROP_MIN_DECIDED`(=4) é o lastro mínimo de amostra por coorte. Ambos são **hipóteses**
+  a validar com músicos (a cadência natural de conversão varia por circuito/gênero) — sinalizados nos bloqueios do PROGRESS.
+- **Justificativa:** fecha o "próximo possível (b)" da D244, levando o sinal de conversão em queda ao Painel no mesmo molde dos
+  nudges existentes. Pura/determinística (o ano de referência é injetado pela página, não lido de "agora" no helper). Zero
+  dependência nova, zero migração.
+- **Testes:** **+7** em `shows.test.ts` (`describe("proposalConversionHeadline")`): dispara com queda material + amostra
+  confiável (e escala a crítico na queda forte); respeita o piso de queda (material dispara, pequena não); melhora nunca vira
+  nudge (drop negativo); não dispara sem amostra mínima em alguma coorte; taxa indefinida (coorte sem decididas) não dispara;
+  limiares injetáveis (min de decididas / pontos / crítico); e coerência das constantes (crítico > piso). **1392 testes** no
+  total (eram 1385).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1392 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200, `/dashboard` e `/shows/funil/conversao` (+ `?ano=2026`) 307 (auth-gated). `npm audit`
+  **inalterado** vs. baseline (mesmos advisories Next/postcss; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) usar o `trend === "worsened"` do card (epsilon 0.05) direto como gate — dispensado: 5 p.p.
+  é ruidoso demais para o Painel e o card não tem gate de amostra; o nudge merece um piso próprio de magnitude + amostra. (b)
+  alertar também quando a conversão SOBE muito (bom sinal) — dispensado: o Painel é uma lista de coisas a agir; uma melhora não
+  pede ação, vive na tela/card. (c) uma segunda consulta só para `statusEvents` (espelhando a página de conversão) — dispensado
+  a favor de estender a `include` da consulta já existente (menos round-trips). (d) nudge da coorte "recente" por janela móvel
+  (últimos N meses) em vez de ano-corrente × ano-anterior — adiado: o eixo ano-a-ano reusa `compareProposalOutcomes` sem lógica
+  nova e casa com o card da página; reavaliar se a leitura por janela curta se mostrar mais acionável.
+- **Nota de concorrência:** número **D245** escolhido como o próximo livre após o D244 (Sessão 250). Se uma PR paralela
+  reivindicar o mesmo número, renumerar na consolidação.
