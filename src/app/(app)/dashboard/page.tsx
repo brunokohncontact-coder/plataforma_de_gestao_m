@@ -67,6 +67,9 @@ import {
   proposalOutcomes,
   compareProposalOutcomes,
   proposalConversionHeadline,
+  proposalOutcomesByContact,
+  compareContactProposalOutcomes,
+  contactConversionDropHeadline,
   type ConflictShowLike,
   type LeadTimeShowLike,
   type StaleProposalShowLike,
@@ -419,6 +422,46 @@ export default async function DashboardPage() {
       proposalOutcomes(shows as ProposalOutcomeShowLike[], { year: currentYear - 1 }),
     ),
   );
+
+  // Conversão caindo COM UM CONTRATANTE (D248 no Painel): "com quem minhas
+  // propostas passaram a fechar bem menos?". Reaproveita o mesmo pivô show×contato
+  // (agora carregando os statusEvents já presentes na consulta) para montar a
+  // coorte de cada contratante neste ano e no anterior (proposalOutcomesByContact),
+  // comparar e destilar o contratante de maior queda confiável. Vira nudge só
+  // quando de fato caiu além do piso, com amostra confiável nas duas coortes
+  // (contactConversionDropHeadline resolve o gate). CEDE A VEZ ao nudge geral de
+  // conversão (D245): quando a carteira inteira já caiu, o Painel conta a história
+  // maior e o detalhe por contratante espera o clique; este nudge brilha quando a
+  // carteira empata mas uma relação específica azedou. O detalhe está em
+  // /shows/funil/conversao/contratantes.
+  interface DashConversionContact {
+    id: string;
+    name: string;
+  }
+  const conversionByContact = new Map<
+    string,
+    { contact: DashConversionContact; shows: ProposalOutcomeShowLike[] }
+  >();
+  for (const s of shows) {
+    for (const cs of s.contacts) {
+      const c = cs.contact;
+      let entry = conversionByContact.get(c.id);
+      if (!entry) {
+        entry = { contact: { id: c.id, name: c.name }, shows: [] };
+        conversionByContact.set(c.id, entry);
+      }
+      entry.shows.push({ statusEvents: s.statusEvents } as ProposalOutcomeShowLike);
+    }
+  }
+  const conversionContactItems = [...conversionByContact.values()];
+  const contactConversionHead = conversionHead.show
+    ? null // o nudge geral já está no ar; cede a vez (evita banner duplo)
+    : contactConversionDropHeadline(
+        compareContactProposalOutcomes(
+          proposalOutcomesByContact(conversionContactItems, { year: currentYear }),
+          proposalOutcomesByContact(conversionContactItems, { year: currentYear - 1 }),
+        ),
+      );
 
   // Oportunidade de rebooking (D229): a praça mais esquecida que vale um retorno —
   // cidade onde já toquei (com lastro, ≥ 2 shows), nada agendado adiante e há > 90
@@ -981,6 +1024,42 @@ export default async function DashboardPage() {
             {currentYear - 1} ({Math.round(conversionHead.previousRate * 100)}%)
           </span>
           <span className={conversionHead.critical ? "text-red-600" : "text-amber-600"}>
+            Ver →
+          </span>
+        </Link>
+      )}
+
+      {/* Conversão caindo com um contratante específico (cede a vez ao nudge geral
+          acima). Aponta de quem revisar preço/relação/disponibilidade. */}
+      {contactConversionHead?.show && contactConversionHead.contact && (
+        <Link
+          href={`/shows/funil/conversao/contratantes?ano=${currentYear}`}
+          className={
+            "flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3 text-sm transition " +
+            (contactConversionHead.critical
+              ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100")
+          }
+        >
+          <span className="font-semibold">
+            {contactConversionHead.critical ? "🔴" : "📉"} Conversão caindo com{" "}
+            {contactConversionHead.contact.name}
+          </span>
+          <span>
+            Das propostas decididas em {currentYear},{" "}
+            <strong>{Math.round(contactConversionHead.currentRate * 100)}%</strong> viraram
+            palco ({contactConversionHead.won} de {contactConversionHead.decided}) —{" "}
+            <strong>{Math.round(contactConversionHead.drop * 100)} p.p. abaixo</strong> de{" "}
+            {currentYear - 1} ({Math.round(contactConversionHead.previousRate * 100)}%)
+            {contactConversionHead.others > 0 && (
+              <span className={contactConversionHead.critical ? "text-red-600" : "text-amber-600"}>
+                {" "}
+                · +{contactConversionHead.others}{" "}
+                {contactConversionHead.others === 1 ? "contratante esfriou" : "contratantes esfriaram"}
+              </span>
+            )}
+          </span>
+          <span className={contactConversionHead.critical ? "text-red-600" : "text-amber-600"}>
             Ver →
           </span>
         </Link>
