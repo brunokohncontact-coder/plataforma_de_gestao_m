@@ -36,6 +36,7 @@ import {
   funnelStageDurations,
   proposalOutcomes,
   proposalOutcomeYears,
+  proposalOutcomesByContact,
   compareProposalOutcomes,
   proposalConversionHeadline,
   CONVERSION_DROP_MIN_DECIDED,
@@ -1557,6 +1558,128 @@ describe("proposalOutcomeYears", () => {
       { statusEvents: [ev("PROPOSED", "2025-12-31T23:30:00.000Z")] },
     ]);
     expect(years).toEqual([2025]);
+  });
+});
+
+describe("proposalOutcomesByContact", () => {
+  const ev = (
+    fromStatus: string | null,
+    toStatus: string,
+    createdAt: string,
+  ): StatusEventLike => ({ fromStatus, toStatus, createdAt });
+
+  const won = (createdAt: string): { statusEvents: StatusEventLike[] } => ({
+    statusEvents: [
+      ev(null, "PROPOSED", createdAt),
+      ev("PROPOSED", "PLAYED", createdAt),
+    ],
+  });
+  const lost = (createdAt: string): { statusEvents: StatusEventLike[] } => ({
+    statusEvents: [
+      ev(null, "PROPOSED", createdAt),
+      ev("PROPOSED", "CANCELLED", createdAt),
+    ],
+  });
+  const open = (createdAt: string): { statusEvents: StatusEventLike[] } => ({
+    statusEvents: [ev(null, "PROPOSED", createdAt)],
+  });
+
+  it("sem itens devolve carteira zerada e nenhuma linha", () => {
+    const r = proposalOutcomesByContact([]);
+    expect(r.contactCount).toBe(0);
+    expect(r.rows).toEqual([]);
+    expect(r.overall).toMatchObject({ total: 0, conversionRate: null, winRate: null });
+  });
+
+  it("agrega a coorte por contratante e destila a taxa de conversão", () => {
+    const r = proposalOutcomesByContact([
+      {
+        contact: { id: "a", name: "Alfa", role: "VENUE" },
+        shows: [won("2026-01-01T00:00:00.000Z"), won("2026-02-01T00:00:00.000Z")],
+      },
+      {
+        contact: { id: "b", name: "Beta", role: "PRODUCER" },
+        shows: [won("2026-01-01T00:00:00.000Z"), lost("2026-02-01T00:00:00.000Z")],
+      },
+    ]);
+    expect(r.contactCount).toBe(2);
+    const alfa = r.rows.find((x) => x.contact.id === "a")!;
+    const beta = r.rows.find((x) => x.contact.id === "b")!;
+    expect(alfa.conversion).toMatchObject({ total: 2, wonCount: 2, decidedCount: 2 });
+    expect(alfa.conversion.conversionRate).toBeCloseTo(1);
+    expect(beta.conversion.conversionRate).toBeCloseTo(0.5);
+  });
+
+  it("exclui contratantes sem coorte no recorte (sem proposta / fora do ano)", () => {
+    const r = proposalOutcomesByContact(
+      [
+        {
+          contact: { id: "a", name: "Alfa", role: "VENUE" },
+          shows: [won("2026-03-01T00:00:00.000Z")],
+        },
+        {
+          // só show sem evento PROPOSED → fora da coorte
+          contact: { id: "b", name: "Beta", role: "VENUE" },
+          shows: [
+            { statusEvents: [ev(null, "CONFIRMED", "2026-03-01T00:00:00.000Z")] },
+          ],
+        },
+        {
+          // proposta de 2025 → fora do recorte de 2026
+          contact: { id: "c", name: "Gama", role: "VENUE" },
+          shows: [lost("2025-05-01T00:00:00.000Z")],
+        },
+      ],
+      { year: 2026 },
+    );
+    expect(r.rows.map((x) => x.contact.id)).toEqual(["a"]);
+  });
+
+  it("ordena por taxa desc, com decididas desempatando amostras finas, e indefinida ao fim", () => {
+    const r = proposalOutcomesByContact([
+      // taxa 1/1 = 100% mas só 1 decidida
+      {
+        contact: { id: "thin", name: "Fina", role: "VENUE" },
+        shows: [won("2026-01-01T00:00:00.000Z")],
+      },
+      // taxa 3/3 = 100% com 3 decididas → vem antes da amostra fina
+      {
+        contact: { id: "robust", name: "Robusta", role: "VENUE" },
+        shows: [
+          won("2026-01-01T00:00:00.000Z"),
+          won("2026-01-02T00:00:00.000Z"),
+          won("2026-01-03T00:00:00.000Z"),
+        ],
+      },
+      // taxa 1/2 = 50%
+      {
+        contact: { id: "mid", name: "Media", role: "VENUE" },
+        shows: [won("2026-01-01T00:00:00.000Z"), lost("2026-01-02T00:00:00.000Z")],
+      },
+      // taxa indefinida (só em aberto) → ao fim
+      {
+        contact: { id: "openonly", name: "Aberta", role: "VENUE" },
+        shows: [open("2026-01-01T00:00:00.000Z")],
+      },
+    ]);
+    expect(r.rows.map((x) => x.contact.id)).toEqual([
+      "robust",
+      "thin",
+      "mid",
+      "openonly",
+    ]);
+  });
+
+  it("o agregado da carteira soma as coortes por relação (show partilhado conta para cada contato)", () => {
+    // o mesmo desfecho de show entra na coorte de dois contatos (relação, não show único)
+    const shared = won("2026-01-01T00:00:00.000Z");
+    const r = proposalOutcomesByContact([
+      { contact: { id: "a", name: "Alfa", role: "VENUE" }, shows: [shared] },
+      { contact: { id: "b", name: "Beta", role: "VENUE" }, shows: [shared, lost("2026-02-01T00:00:00.000Z")] },
+    ]);
+    // total por relação = 3 (won em A, won+lost em B), 2 ganhas, 1 perdida
+    expect(r.overall).toMatchObject({ total: 3, wonCount: 2, lostCount: 1, decidedCount: 3 });
+    expect(r.overall.conversionRate).toBeCloseTo(2 / 3);
   });
 });
 

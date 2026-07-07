@@ -63,6 +63,14 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "🎯",
       },
       {
+        title: "Conversão por contratante",
+        href: "/shows/funil/conversao/contratantes",
+        description:
+          "De quem suas propostas de fato viram show — a mesma coorte da conversão, quebrada por contratante.",
+        subtopic: "Agenda & pipeline",
+        icon: "👥",
+      },
+      {
         title: "Tempo em cada etapa",
         href: "/shows/funil/tempo-em-etapa",
         description:

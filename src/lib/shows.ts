@@ -1299,6 +1299,109 @@ export function proposalOutcomeYears(shows: ProposalOutcomeShowLike[]): number[]
   return [...years].sort((a, b) => b - a);
 }
 
+// ── Conversão real por contratante (de quem minhas propostas viram show?) ─────
+// Enquanto `proposalOutcomes` (D243) mede a conversão real da coorte INTEIRA (das
+// propostas de {ano}, quantas viraram palco), esta quebra a mesma leitura POR
+// contratante — para quais deles minhas propostas de fato fecham. Distinta do
+// funil por contratante (`pipelineByContact`/D184, um retrato do estado atual
+// pelo cachê aberto): aqui o eixo é a COORTE pela data da proposta e a jornada
+// completa via eventos de status (D234). Reaproveita `proposalOutcomes` por grupo
+// (mesma classificação de desfecho), sem duplicar a regra. A contagem é por
+// relação (um show com vários contatos conta para cada um, como o funil por
+// contratante). Pura e determinística.
+
+/** Um contratante e os shows a ele vinculados, para a conversão por contratante. */
+export interface ContactProposalConversionItem<C> {
+  contact: C;
+  shows: ProposalOutcomeShowLike[];
+}
+
+/** Linha da conversão por contratante: o contato + a conversão da sua coorte. */
+export interface ContactProposalConversionRow<C> {
+  contact: C;
+  conversion: ProposalConversion;
+}
+
+/** Conversão real das propostas agregada por contratante. */
+export interface ContactProposalConversion<C> {
+  /**
+   * Contratantes com ao menos uma proposta na coorte do recorte
+   * (`conversion.total >= 1`), ordenados por taxa de conversão desc (indefinida
+   * ao fim), depois nº de decididas / ganhas / coorte desc, nome pt-BR e id.
+   */
+  rows: ContactProposalConversionRow<C>[];
+  /** Nº de contratantes com coorte não-vazia (= `rows.length`). */
+  contactCount: number;
+  /**
+   * Conversão da carteira inteira somando as coortes por relação (um show com N
+   * contatos conta N vezes, como o funil por contratante). É um agregado por
+   * relação, não a coorte deduplicada — coerente com a contagem por-relação das
+   * linhas; a leitura deduplicada global vive em `/shows/funil/conversao`.
+   */
+  overall: ProposalConversion;
+}
+
+/**
+ * Conversão real das propostas por contratante: para cada contato, monta a coorte
+ * das suas propostas (via `proposalOutcomes`, o mesmo desfecho ganho/perdido/aberto
+ * da D243) e destila a taxa de conversão. Só viram linha os contatos com coorte
+ * não-vazia no recorte; o agregado `overall` soma por relação (um show partilhado
+ * conta para cada contato, como `pipelineByContact`). `opts.year` recorta a coorte
+ * pela data da PROPOSTA (repassado a `proposalOutcomes`). Pura e determinística.
+ * Ordena por taxa de conversão desc (indefinida ao fim), depois nº de decididas,
+ * ganhas e coorte desc, nome pt-BR e id — a taxa lidera, mas o volume de decididas
+ * desempata para não colocar amostras finas (1/1) acima de conversões robustas.
+ */
+export function proposalOutcomesByContact<C extends { id: string; name: string }>(
+  items: ContactProposalConversionItem<C>[],
+  opts: ProposalOutcomesOptions = {},
+): ContactProposalConversion<C> {
+  const rows: ContactProposalConversionRow<C>[] = [];
+  let won = 0;
+  let lost = 0;
+  let open = 0;
+
+  for (const { contact, shows } of items) {
+    const conversion = proposalOutcomes(shows, opts);
+    won += conversion.wonCount;
+    lost += conversion.lostCount;
+    open += conversion.openCount;
+    if (conversion.total === 0) continue; // sem coorte no recorte → fora da lista
+    rows.push({ contact, conversion });
+  }
+
+  rows.sort((a, b) => {
+    const ac = a.conversion;
+    const bc = b.conversion;
+    // Taxa de conversão desc, com indefinida (null) sempre ao fim.
+    const ar = ac.conversionRate;
+    const br = bc.conversionRate;
+    if (ar == null && br != null) return 1;
+    if (ar != null && br == null) return -1;
+    if (ar != null && br != null && ar !== br) return br - ar;
+    if (bc.decidedCount !== ac.decidedCount) return bc.decidedCount - ac.decidedCount;
+    if (bc.wonCount !== ac.wonCount) return bc.wonCount - ac.wonCount;
+    if (bc.total !== ac.total) return bc.total - ac.total;
+    const byName = a.contact.name.localeCompare(b.contact.name, "pt-BR");
+    if (byName !== 0) return byName;
+    return a.contact.id.localeCompare(b.contact.id);
+  });
+
+  const total = won + lost + open;
+  const decidedCount = won + lost;
+  const overall: ProposalConversion = {
+    total,
+    wonCount: won,
+    lostCount: lost,
+    openCount: open,
+    decidedCount,
+    conversionRate: decidedCount > 0 ? won / decidedCount : null,
+    winRate: total > 0 ? won / total : null,
+  };
+
+  return { rows, contactCount: rows.length, overall };
+}
+
 // ── Comparativo ano a ano da conversão real (fechei mais das que propus?) ─────
 // Enquanto `proposalOutcomes` (D243) mede a conversão real de UMA coorte (das
 // propostas de {ano}, quantas viraram palco), este compara a taxa de conversão
