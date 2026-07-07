@@ -1,7 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { findCitiesToReengage, type CityReengageShowLike } from "@/lib/finance";
+import {
+  findCitiesToReengage,
+  parseReengageWindow,
+  type CityReengageShowLike,
+} from "@/lib/finance";
 import { citiesToReengageToCsv } from "@/lib/csv";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +15,7 @@ export const dynamic = "force-dynamic";
 // (todos os shows do usuário); a regra de dormência fica na lógica pura
 // `findCitiesToReengage` e a serialização em `citiesToReengageToCsv` — ambas
 // testadas.
-export async function GET() {
+export async function GET(request: NextRequest) {
   const user = await requireUser();
 
   const shows = await prisma.show.findMany({
@@ -19,12 +23,14 @@ export async function GET() {
     select: { status: true, city: true, date: true, fee: true },
   });
 
-  const list = findCitiesToReengage(shows as CityReengageShowLike[]);
+  // Herda a janela `?dias=` da página (espelha o export de fins-de-semana livres).
+  const staleDays = parseReengageWindow(request.nextUrl.searchParams.get("dias") ?? undefined);
+  const list = findCitiesToReengage(shows as CityReengageShowLike[], { staleDays });
   const csv = citiesToReengageToCsv(list);
 
   // BOM UTF-8 para preservar acentuação ao abrir no Excel.
   const body = "﻿" + csv;
-  const filename = "pracas-para-revisitar.csv";
+  const filename = `pracas-para-revisitar-${staleDays}dias.csv`;
 
   return new NextResponse(body, {
     status: 200,
