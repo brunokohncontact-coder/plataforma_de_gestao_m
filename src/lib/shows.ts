@@ -1768,6 +1768,107 @@ export function proposalConversionHeadline(
   };
 }
 
+// ── Manchete de conversão POR CONTRATANTE para o Painel (quem esfriou?) ────────
+// Enquanto `proposalConversionHeadline` (D245) alerta que a conversão real da
+// carteira INTEIRA caiu ano a ano, este destila QUAL contratante específico
+// passou a fechar uma fração materialmente menor das propostas que você lhe
+// propõe — o eco de `compareContactProposalOutcomes` (D248) no dashboard. É mais
+// acionável (diz de quem revisar preço/disponibilidade/relação) e pega o caso que
+// o nudge geral perde: a carteira empata (um contratante piora enquanto outro
+// melhora), mas uma relação específica azedou. Reusa o mesmo gate dos nudges
+// irmãos (amostra confiável nas DUAS coortes + queda material > epsilon do
+// veredito), aplicado por contratante. Só a ponta de PIORA vira nudge; subir a
+// conversão de um contratante é boa notícia. Pura, sem I/O.
+
+/** Manchete de conversão por contratante para o Painel (nudge de queda ano a ano). */
+export interface ContactConversionDropHeadline<C> {
+  /** True quando o nudge deve aparecer (um contratante com queda confiável e material). */
+  show: boolean;
+  /** True quando a queda desse contratante entra na faixa crítica (≥ `criticalPoints`). */
+  critical: boolean;
+  /** O contratante que mais esfriou (dentre os que passam no gate), ou `null`. */
+  contact: C | null;
+  /** Queda da taxa em pontos (0..1): anterior − atual; ≥ 0 quando `show`. */
+  drop: number;
+  /** Taxa de conversão real do contratante na coorte atual (0..1). */
+  currentRate: number;
+  /** Taxa de conversão real do contratante na coorte anterior (0..1). */
+  previousRate: number;
+  /** Propostas ganhas do contratante na coorte atual (para o banner: "N de M"). */
+  won: number;
+  /** Propostas decididas do contratante na coorte atual (denominador da taxa). */
+  decided: number;
+  /**
+   * Quantos OUTROS contratantes também passaram no gate de queda material e
+   * confiável (para o banner: "+N esfriaram"). 0 quando só um qualifica.
+   */
+  others: number;
+}
+
+/**
+ * Decide se o Painel deve alertar que a conversão real com UM contratante
+ * específico caiu de um ano para o outro — o eco de
+ * `compareContactProposalOutcomes` (D248) no dashboard, irmão por-contratante de
+ * `proposalConversionHeadline` (D245). Recebe um comparativo já computado (dois
+ * `proposalOutcomesByContact`, cada um sobre a coorte do seu ano) e não faz I/O.
+ *
+ * Varre os `changes` (já ordenados da maior piora à maior melhora) e escolhe o
+ * contratante de MAIOR queda que ainda tenha amostra confiável — ao menos
+ * `minDecided` propostas decididas em CADA coorte, para a leitura não se apoiar em
+ * 1–2 desfechos — e queda de ao menos `dropPoints`. `critical` quando essa queda
+ * chega a `criticalPoints` ou mais; `others` conta quantos outros contratantes
+ * também passariam no mesmo gate (o banner os resume). Como os nudges irmãos, só a
+ * ponta de PIORA vira alerta e o gate o mantém raro. Pura.
+ */
+export function contactConversionDropHeadline<C extends { id: string; name: string }>(
+  comparison: ContactProposalConversionComparison<C>,
+  minDecided: number = CONVERSION_DROP_MIN_DECIDED,
+  dropPoints: number = CONVERSION_DROP_POINTS,
+  criticalPoints: number = CONVERSION_DROP_CRITICAL_POINTS,
+): ContactConversionDropHeadline<C> {
+  const qualifies = (c: ContactProposalConversionChange<C>): boolean => {
+    if (c.conversionRateDelta == null) return false;
+    const reliable =
+      c.current.conversion.decidedCount >= minDecided &&
+      c.previous.conversion.decidedCount >= minDecided;
+    return reliable && -c.conversionRateDelta >= dropPoints;
+  };
+
+  // `changes` já vem ordenado por `conversionRateDelta` asc (maior queda primeiro,
+  // taxa indefinida ao fim), então o primeiro que passa no gate é o de maior queda.
+  const worst = comparison.changes.find(qualifies) ?? null;
+  if (!worst) {
+    return {
+      show: false,
+      critical: false,
+      contact: null,
+      drop: 0,
+      currentRate: 0,
+      previousRate: 0,
+      won: 0,
+      decided: 0,
+      others: 0,
+    };
+  }
+
+  const drop = -(worst.conversionRateDelta as number);
+  const others = comparison.changes.reduce(
+    (n, c) => (c !== worst && qualifies(c) ? n + 1 : n),
+    0,
+  );
+  return {
+    show: true,
+    critical: drop >= criticalPoints,
+    contact: worst.contact,
+    drop,
+    currentRate: worst.current.conversion.conversionRate ?? 0,
+    previousRate: worst.previous.conversion.conversionRate ?? 0,
+    won: worst.current.conversion.wonCount,
+    decided: worst.current.conversion.decidedCount,
+    others,
+  };
+}
+
 // ── Propostas paradas (follow-up de deals esquecidos) ─────────────────────────
 // Enquanto o funil (`showPipeline`) fotografa ONDE os shows estão e o tempo em
 // etapa (`funnelStageDurations`/D235) mede a VELOCIDADE típica de travessia, esta
