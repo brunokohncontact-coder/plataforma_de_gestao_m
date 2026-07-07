@@ -2,9 +2,11 @@ import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
+  compareProposalOutcomes,
   proposalOutcomes,
   proposalOutcomeYears,
   type ProposalConversion,
+  type ProposalConversionComparison,
 } from "@/lib/shows";
 import { parseProfitYear, type ProfitYearFilter } from "@/lib/finance";
 import { PeriodPicker } from "@/components/PeriodPicker";
@@ -46,6 +48,19 @@ export default async function ProposalConversionPage({
     year: yearFilter === "all" ? "all" : yearFilter,
   });
   const periodLabel = yearFilter === "all" ? "todas as propostas" : `propostas de ${yearFilter}`;
+
+  // Comparativo ano a ano: só com um ano específico e ambas as coortes (este ano
+  // e o anterior) tendo propostas decididas. A coorte do ano anterior sai do
+  // mesmo acervo já carregado — zero I/O extra (o eixo é a data da proposta).
+  let comparison: ProposalConversionComparison | null = null;
+  let previousYear = 0;
+  if (yearFilter !== "all") {
+    previousYear = yearFilter - 1;
+    const previousConv = proposalOutcomes(shows, { year: previousYear });
+    if (conv.decidedCount > 0 && previousConv.decidedCount > 0) {
+      comparison = compareProposalOutcomes(conv, previousConv);
+    }
+  }
 
   const exportHref =
     yearFilter === "all"
@@ -122,6 +137,14 @@ export default async function ProposalConversionPage({
             />
           </div>
 
+          {comparison && (
+            <ConversionComparisonCard
+              comparison={comparison}
+              currentYear={yearFilter as number}
+              previousYear={previousYear}
+            />
+          )}
+
           <section className="card">
             <h2 className="mb-1 font-semibold">Desfecho das propostas</h2>
             <p className="mb-4 text-xs text-gray-500">
@@ -155,6 +178,80 @@ export default async function ProposalConversionPage({
           </section>
         </>
       )}
+    </div>
+  );
+}
+
+const CONVERSION_TREND: Record<
+  ProposalConversionComparison["trend"],
+  { label: string; emoji: string; classes: string; note: string }
+> = {
+  improved: {
+    label: "Convertendo mais",
+    emoji: "🟢",
+    classes: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    note: "Das propostas que tiveram desfecho, você converteu uma fração maior em palco que na coorte do ano anterior — mais do que propõe está virando show.",
+  },
+  worsened: {
+    label: "Convertendo menos",
+    emoji: "🔴",
+    classes: "border-red-200 bg-red-50 text-red-800",
+    note: "A taxa de conversão real caiu frente à coorte do ano anterior — mais propostas viraram perda. Vale revisar o que trava o fechamento (preço, disponibilidade, follow-up).",
+  },
+  stable: {
+    label: "Estável",
+    emoji: "⚪",
+    classes: "border-gray-200 bg-gray-50 text-gray-700",
+    note: "A taxa de conversão real ficou praticamente igual à da coorte do ano anterior.",
+  },
+};
+
+/** Variação de taxa em pontos percentuais, com sinal (ex.: 0.3 → "+30 p.p."). */
+function pointsDelta(delta: number): string {
+  const pp = Math.round(delta * 100);
+  if (pp === 0) return "0 p.p.";
+  return `${pp > 0 ? "+" : "−"}${Math.abs(pp)} p.p.`;
+}
+
+/**
+ * Card "Conversão real {ano} vs. {ano-1}": compara a taxa de conversão real
+ * (realizadas / decididas) da coorte do ano selecionado com a do ano anterior
+ * (espelha o comparativo do funil geral, D209, no eixo da data da proposta).
+ * Mostra a variação em pontos percentuais + as taxas de cada coorte, com um
+ * veredito de tendência. Aqui **subir** é a melhora.
+ */
+function ConversionComparisonCard({
+  comparison,
+  currentYear,
+  previousYear,
+}: {
+  comparison: ProposalConversionComparison;
+  currentYear: number;
+  previousYear: number;
+}) {
+  const trend = CONVERSION_TREND[comparison.trend];
+  const { current, previous, conversionRateDelta } = comparison;
+  return (
+    <div className={"card border " + trend.classes}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide opacity-80">
+          Conversão real {currentYear} vs. {previousYear}
+        </p>
+        <span className="badge bg-white/70 font-semibold">
+          {trend.emoji} {trend.label}
+        </span>
+      </div>
+      <div className="mt-3">
+        <p className="text-2xl font-bold">
+          {conversionRateDelta == null ? "—" : pointsDelta(conversionRateDelta)}
+        </p>
+        <p className="text-xs opacity-80">
+          {rateLabel(previous.conversionRate)} ({previousYear}, {previous.wonCount}/
+          {previous.decidedCount}) → {rateLabel(current.conversionRate)} ({currentYear},{" "}
+          {current.wonCount}/{current.decidedCount})
+        </p>
+      </div>
+      <p className="mt-3 text-xs opacity-90">{trend.note}</p>
     </div>
   );
 }

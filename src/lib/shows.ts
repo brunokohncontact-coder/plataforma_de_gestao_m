@@ -4,7 +4,7 @@
 // separada de `finance.ts` por ser outro domínio, mas reaproveita os helpers
 // puros de texto/data de lá (uma fonte de verdade para normalização e chaves).
 
-import { dayKey, isValidDateKey, normalizeText } from "./finance";
+import { CONVERSION_TREND_EPSILON, dayKey, isValidDateKey, normalizeText } from "./finance";
 import { SHOW_STATUSES, type ShowStatus } from "./domain";
 import { MONTH_NAMES_LONG } from "./calendar";
 
@@ -1297,6 +1297,79 @@ export function proposalOutcomeYears(shows: ProposalOutcomeShowLike[]): number[]
     if (proposedAt !== null) years.add(new Date(proposedAt).getUTCFullYear());
   }
   return [...years].sort((a, b) => b - a);
+}
+
+// ── Comparativo ano a ano da conversão real (fechei mais das que propus?) ─────
+// Enquanto `proposalOutcomes` (D243) mede a conversão real de UMA coorte (das
+// propostas de {ano}, quantas viraram palco), este compara a taxa de conversão
+// entre duas coortes — a do ano selecionado × a do ano anterior. Espelha
+// `compareShowPipelines` (D209, funil geral) e `compareContactPipelines` (D236,
+// por contratante) no eixo da COORTE (data da proposta), não do estado atual:
+// reusa o mesmo `CONVERSION_TREND_EPSILON` (=0.05) e a mesma direção (subir a
+// taxa é melhora). Fecha o "próximo possível (a)" da D243.
+
+/** Comparativo ano a ano da conversão real de propostas (duas coortes). */
+export interface ProposalConversionComparison {
+  /** Conversão da coorte do período atual (tipicamente o ano selecionado). */
+  current: ProposalConversion;
+  /** Conversão da coorte do período de comparação (tipicamente o ano anterior). */
+  previous: ProposalConversion;
+  /**
+   * Variação da taxa de conversão real (atual − anterior, em pontos 0..1).
+   * `null` quando algum dos períodos não tem proposta decidida (taxa indefinida)
+   * — aí não há comparação possível. Positivo = fechando uma fração maior das
+   * propostas agora (melhora); negativo = mais propostas viraram perda (piora).
+   */
+  conversionRateDelta: number | null;
+  /** Variação da contagem de propostas ganhas — viraram palco (atual − anterior). */
+  wonCountDelta: number;
+  /** Variação da contagem de propostas decididas — ganhas+perdidas (atual − anterior). */
+  decidedCountDelta: number;
+  /**
+   * Direção da conversão entre as duas coortes, decidida pela variação da taxa
+   * contra `CONVERSION_TREND_EPSILON`:
+   * - "improved": taxa subiu além do limiar (fechando mais do que propõe);
+   * - "worsened": taxa caiu além do limiar (perdendo mais do que propõe);
+   * - "stable": variação dentro do limiar, ou taxa indefinida em algum período.
+   * Como no funil geral, **subir** a taxa é a melhora.
+   */
+  trend: "improved" | "worsened" | "stable";
+}
+
+/**
+ * Compara a **taxa de conversão real** de propostas entre duas coortes (atual ×
+ * anterior), espelhando `compareShowPipelines` (D209) no eixo da data da
+ * proposta. Pura, sem I/O: recebe dois `proposalOutcomes` já computados (cada um
+ * sobre a coorte do seu ano) e devolve a variação da taxa de conversão (e das
+ * contagens de ganhas/decididas) + um veredito de tendência. Quando algum
+ * período não tem proposta decidida a taxa é indefinida: `conversionRateDelta`
+ * fica `null` e o veredito é "stable" (sem base para ler tendência). O chamador
+ * decide quando exibir (tipicamente só com um ano específico e ambas as coortes
+ * tendo propostas decididas). Ver D243.
+ */
+export function compareProposalOutcomes(
+  current: ProposalConversion,
+  previous: ProposalConversion,
+): ProposalConversionComparison {
+  const conversionRateDelta =
+    current.conversionRate == null || previous.conversionRate == null
+      ? null
+      : current.conversionRate - previous.conversionRate;
+  return {
+    current,
+    previous,
+    conversionRateDelta,
+    wonCountDelta: current.wonCount - previous.wonCount,
+    decidedCountDelta: current.decidedCount - previous.decidedCount,
+    trend:
+      conversionRateDelta == null
+        ? "stable"
+        : conversionRateDelta >= CONVERSION_TREND_EPSILON
+          ? "improved"
+          : conversionRateDelta <= -CONVERSION_TREND_EPSILON
+            ? "worsened"
+            : "stable",
+  };
 }
 
 // ── Propostas paradas (follow-up de deals esquecidos) ─────────────────────────
