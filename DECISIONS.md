@@ -8123,3 +8123,51 @@ contexto, decisão, justificativa e alternativas consideradas.
   leitura acionável e casa com a célula da tela; as taxas por ano já estão na coluna "Concretização" quando o usuário recorta.
 - **Nota de concorrência:** número **D242** escolhido como o próximo livre após o D241 (Sessão 247). Se uma PR paralela reivindicar
   o mesmo número, renumerar na consolidação.
+
+## D243 — Conversão real proposta → realizado, por coorte (`proposalOutcomes` + `/shows/funil/conversao`) (Sessão 249)
+- **Contexto:** a taxa de concretização do funil (`showPipeline.conversionRate`) é um retrato do estado ATUAL: dos shows hoje em
+  PLAYED ou CANCELLED, a fração tocada. Ela não sabe QUANDO cada proposta entrou no funil, e o recorte por período usa a data do
+  SHOW (quando ele acontece), não a da PROPOSTA. A D241 apontou como próximo passo "a outra métrica que os eventos (D234) destravam:
+  a conversão proposta→realizado **de verdade** por período — quantos % dos PROPOSED chegaram a PLAYED, distinta da taxa de estado".
+- **Decisão:** novo helper puro `proposalOutcomes(shows, opts?)` + tipos `ProposalConversion`/`ProposalOutcome`/
+  `ProposalOutcomeShowLike`/`ProposalOutcomesOptions` em `src/lib/shows.ts`. Monta a **coorte** dos shows que entraram em PROPOSED
+  (existe um evento `toStatus === "PROPOSED"`, da D234) e classifica o **desfecho** de cada um pela sua linha do tempo de status:
+  `won` (algum evento `toStatus === "PLAYED"`), `lost` (algum `CANCELLED` sem nunca ter tocado) ou `open` (nem um nem outro).
+  Agrega `total`/`wonCount`/`lostCount`/`openCount`/`decidedCount` (=won+lost) + `conversionRate` (`won/decided`, a leitura
+  principal — das que tiveram desfecho, a fração ganha; `null` sem decididas) e `winRate` (`won/total`, informativa — inclui as em
+  aberto no denominador). `opts.year` (ano UTC da **primeira** entrada em PROPOSED, via `firstProposedAt`) recorta a coorte pela
+  data da PROPOSTA — eixo distinto do funil (data do show). Novo `proposalOutcomeYears(shows)` devolve os anos de coorte não-vazia
+  (decrescente, dedup) para alimentar o `PeriodPicker` sem pílulas mortas — espelho de `showProfitYears` no eixo da proposta.
+  Página `/shows/funil/conversao` (3 stats + barras por desfecho + empty-state) + cross-link "🎯 Conversão" no funil + entrada no
+  hub (`REPORT_GROUPS`). CSV `proposalConversionToCsv`/`PROPOSAL_CONVERSION_CSV_HEADERS` (Desfecho/Propostas/% da coorte; uma linha
+  por desfecho + Total) + rota `/shows/funil/conversao/export?ano=` (`conversao-propostas-{ano|todas}.csv`).
+- **Desempate PLAYED > CANCELLED:** se a linha do tempo tem tanto PLAYED quanto CANCELLED (ex.: show tocado depois marcado como
+  cancelado — higiene de dados), conta como `won`: chegar ao palco é o desfecho que importa para "converteu?".
+- **Coorte ancorada na PRIMEIRA proposta:** numa re-proposta (CANCELLED → PROPOSED de novo), `firstProposedAt` usa a entrada mais
+  antiga, então a coorte/ano reflete quando o deal nasceu, não a reabertura — coerente com "quando essa proposta entrou no funil?".
+- **Sem backfill:** shows sem evento PROPOSED (os anteriores à D234, ou nascidos direto em outro status) ficam **fora da coorte** —
+  a métrica só existe sobre o histórico registrado, mesma limitação assumida do tempo-em-etapa (D235). A página e o empty-state
+  sinalizam isso.
+- **CSV exporta contagens, não a taxa:** como `pipelineToCsv`, a planilha carrega o dado bruto (contagens + participação na coorte),
+  do qual a taxa (`won/decided`) se recompõe; a taxa derivada vive nos destaques da página. Participação do "Total" em branco (100%
+  por construção). O ano concreto vai no nome do arquivo, não nos cabeçalhos (convenção de `yearPaceToCsv`).
+- **Justificativa:** responde "das propostas que fiz em {ano}, quantas viraram show?", que o retrato de estado (`showPipeline`) não
+  alcança — coorte pela data da proposta + jornada completa via eventos. Pura/determinística (não depende de "agora"; as em aberto
+  ficam fora do denominador da taxa até decidirem). Zero dependência nova, zero migração (reusa o `ShowStatusEvent` da D234).
+- **Testes:** **+12** — **+9** em `shows.test.ts` (`describe("proposalOutcomes")`: zerado sem shows; classifica won/lost/open + as
+  duas taxas; PLAYED vence CANCELLED; exclui coorte sem PROPOSED; recorte por ano da proposta; âncora na primeira reentrada — e
+  `describe("proposalOutcomeYears")`: anos UTC decrescentes/dedup; ignora sem-PROPOSED e usa a 1ª entrada; virada do dia UTC) e
+  **+3** em `csv.test.ts` (`describe("proposalConversionToCsv")`: só cabeçalho + desfechos/Total zerados; linha por desfecho com %
+  da coorte + Total; respeita o recorte por ano). **1381 testes** no total (eram 1369).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1381 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200, `/shows/funil/conversao` (+ `?ano=2026`) e `/shows/funil/conversao/export` (+
+  `?ano=2026`) 307 (auth-gated). `npm audit` **inalterado** vs. baseline (mesmos advisories Next 14 / postcss bundlado; ver
+  D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) recortar por `show.date` reusando `filterShowsByYear` — descartado: o valor da métrica é
+  justamente cortar pela data da PROPOSTA (o que o funil não faz); o eixo tem de ser o evento. (b) contar `won` só se PLAYED for o
+  status ATUAL (não "algum evento PLAYED") — dispensado: uma vez tocado, o show converteu, mesmo que dados posteriores mexam no
+  status; "algum PLAYED" é mais robusto. (c) já entregar o comparativo ano a ano (card de "movers", no espírito da D215/D236) —
+  adiado para fechar a 1ª fatia funcional; fica como próximo passo (item 2b). (d) incluir a taxa como linha no CSV — dispensado:
+  mistura semânticas (contagem × razão) e a taxa se recompõe das contagens, como em `pipelineToCsv`.
+- **Nota de concorrência:** número **D243** escolhido como o próximo livre após o D242 (Sessão 248). Se uma PR paralela reivindicar
+  o mesmo número, renumerar na consolidação.

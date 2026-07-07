@@ -1151,6 +1151,154 @@ export function funnelStageDurations(
   return { stages, totalSamples, showCount };
 }
 
+// ── Conversão real proposta → realizado (coorte, pela linha do tempo) ─────────
+// A "taxa de concretização" do funil (`showPipeline`) é um retrato do estado
+// ATUAL: dos shows que hoje estão PLAYED ou CANCELLED, quantos foram tocados. Ela
+// não sabe QUANDO cada proposta entrou no funil — só onde o show está agora, e o
+// recorte por período usa a data do SHOW (quando ele acontece), não a data da
+// PROPOSTA. Esta leitura é diferente: monta a COORTE das propostas pela data em
+// que entraram no funil (o primeiro evento `toStatus === PROPOSED`, da D234) e
+// acompanha o desfecho de cada uma — virou palco (chegou a PLAYED), foi perdida
+// (chegou a CANCELLED sem tocar) ou ainda está em andamento. Responde "das
+// propostas que fiz em {ano}, quantas viraram show?", que o retrato de estado não
+// alcança. Só existe sobre o histórico de status (sem backfill dos shows antigos,
+// como o tempo-em-etapa/D235). Ver D243.
+
+/** Show, como o rastreador de conversão de propostas precisa vê-lo (só eventos). */
+export interface ProposalOutcomeShowLike {
+  statusEvents: StatusEventLike[];
+}
+
+/** Desfecho de uma proposta ao longo da sua vida no funil. */
+export type ProposalOutcome = "won" | "lost" | "open";
+
+/** Conversão real das propostas (coorte pela data de entrada no funil). */
+export interface ProposalConversion {
+  /** Nº de propostas na coorte (shows que entraram em PROPOSED no recorte). */
+  total: number;
+  /** Chegaram a PLAYED em algum momento (ganhas). */
+  wonCount: number;
+  /** Chegaram a CANCELLED sem nunca ter tocado (perdidas). */
+  lostCount: number;
+  /** Ainda em andamento — nem PLAYED nem CANCELLED (em aberto). */
+  openCount: number;
+  /** `wonCount + lostCount`: propostas com desfecho definido. */
+  decidedCount: number;
+  /**
+   * Taxa de conversão real: `wonCount / decidedCount` (0..1), ou `null` sem
+   * nenhuma proposta decidida. É a leitura principal — das que tiveram desfecho,
+   * a fração que virou palco.
+   */
+  conversionRate: number | null;
+  /**
+   * Fração da coorte inteira que já virou palco: `wonCount / total` (0..1), ou
+   * `null` sem coorte. Informativa (penaliza propostas ainda em andamento).
+   */
+  winRate: number | null;
+}
+
+/** Opções de `proposalOutcomes`/`proposalOutcomeYears`. */
+export interface ProposalOutcomesOptions {
+  /**
+   * Recorte por ano (UTC) da entrada da proposta no funil; `"all"` (ou omitido)
+   * não recorta. Diferente do funil, o eixo é a data da PROPOSTA, não a do show.
+   */
+  year?: number | "all";
+}
+
+/**
+ * Momento (ms) em que o show entrou em PROPOSED pela primeira vez, ou `null` se
+ * nunca houve um evento `toStatus === PROPOSED` registrado (fora da coorte —
+ * shows antigos sem histórico, ou que nasceram já em outro status). Puro.
+ */
+function firstProposedAt(events: StatusEventLike[]): number | null {
+  let earliest: number | null = null;
+  for (const e of events) {
+    if (e.toStatus !== "PROPOSED") continue;
+    const ms = new Date(e.createdAt).getTime();
+    if (earliest === null || ms < earliest) earliest = ms;
+  }
+  return earliest;
+}
+
+/** Desfecho de uma proposta a partir dos seus eventos: PLAYED vence CANCELLED. */
+function proposalOutcome(events: StatusEventLike[]): ProposalOutcome {
+  let cancelled = false;
+  for (const e of events) {
+    if (e.toStatus === "PLAYED") return "won";
+    if (e.toStatus === "CANCELLED") cancelled = true;
+  }
+  return cancelled ? "lost" : "open";
+}
+
+/**
+ * Conversão real das propostas ao longo do tempo, agregando a linha do tempo de
+ * status (`ShowStatusEvent`/D234) de vários shows. Monta a coorte dos shows que
+ * entraram em PROPOSED (primeiro evento `toStatus === PROPOSED`) e classifica o
+ * desfecho de cada um: ganho (chegou a PLAYED), perdido (chegou a CANCELLED sem
+ * tocar) ou em aberto. Distinta da taxa de concretização do funil
+ * (`showPipeline`), que é um retrato do estado atual recortado pela data do show:
+ * aqui a coorte é pela data da PROPOSTA e acompanha a jornada completa.
+ *
+ * Com `opts.year` (ano UTC) restringe a coorte às propostas que entraram no funil
+ * naquele ano — o recorte que o retrato de estado não sabe fazer. Pura e
+ * determinística (não depende de "agora"; propostas em aberto ficam em
+ * `openCount`, fora do denominador da taxa). Ver D243.
+ */
+export function proposalOutcomes(
+  shows: ProposalOutcomeShowLike[],
+  opts: ProposalOutcomesOptions = {},
+): ProposalConversion {
+  const year = opts.year ?? "all";
+  let wonCount = 0;
+  let lostCount = 0;
+  let openCount = 0;
+
+  for (const show of shows) {
+    const proposedAt = firstProposedAt(show.statusEvents);
+    if (proposedAt === null) continue; // fora da coorte
+    if (year !== "all" && new Date(proposedAt).getUTCFullYear() !== year) continue;
+
+    switch (proposalOutcome(show.statusEvents)) {
+      case "won":
+        wonCount += 1;
+        break;
+      case "lost":
+        lostCount += 1;
+        break;
+      default:
+        openCount += 1;
+    }
+  }
+
+  const total = wonCount + lostCount + openCount;
+  const decidedCount = wonCount + lostCount;
+  return {
+    total,
+    wonCount,
+    lostCount,
+    openCount,
+    decidedCount,
+    conversionRate: decidedCount > 0 ? wonCount / decidedCount : null,
+    winRate: total > 0 ? wonCount / total : null,
+  };
+}
+
+/**
+ * Anos (UTC, decrescente) em que houve entrada de proposta no funil — alimenta o
+ * seletor de período de `/shows/funil/conversao` sem oferecer anos sem coorte.
+ * Espelha `showProfitYears`/`gigSeasonalityYears` no eixo da data da proposta
+ * (primeiro `toStatus === PROPOSED`), não da data do show. Puro; deduplica.
+ */
+export function proposalOutcomeYears(shows: ProposalOutcomeShowLike[]): number[] {
+  const years = new Set<number>();
+  for (const show of shows) {
+    const proposedAt = firstProposedAt(show.statusEvents);
+    if (proposedAt !== null) years.add(new Date(proposedAt).getUTCFullYear());
+  }
+  return [...years].sort((a, b) => b - a);
+}
+
 // ── Propostas paradas (follow-up de deals esquecidos) ─────────────────────────
 // Enquanto o funil (`showPipeline`) fotografa ONDE os shows estão e o tempo em
 // etapa (`funnelStageDurations`/D235) mede a VELOCIDADE típica de travessia, esta
