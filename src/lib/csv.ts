@@ -88,6 +88,7 @@ import type {
   ScheduleConflicts,
   FunnelStageDurations,
   ProposalConversion,
+  ContactProposalConversion,
   StaleProposalsReport,
   StaleProposalUrgency,
 } from "./shows";
@@ -2453,6 +2454,69 @@ export function proposalConversionToCsv(
     ["Em aberto", String(conv.openCount), share(conv.openCount)],
     ["Total", String(conv.total), ""],
   ];
+  return toCsv(out, delimiter);
+}
+
+// ── Conversão real por contratante (de quem minhas propostas viram show?) ────
+
+export const PROPOSAL_CONVERSION_BY_CONTACT_CSV_HEADERS = [
+  "Contratante",
+  "Papel",
+  "Conversão (%)",
+  "Propostas",
+  "Realizadas",
+  "Perdidas",
+  "Em aberto",
+  "Decididas",
+] as const;
+
+/**
+ * Serializa a conversão real das propostas por contratante
+ * (`proposalOutcomesByContact`) em CSV — espelha a tabela de
+ * `/shows/funil/conversao/contratantes`. Uma linha por contratante com coorte
+ * não-vazia (`report.rows`, já ordenado: maior taxa de conversão primeiro), com a
+ * taxa de conversão real (realizadas ÷ decididas) e as contagens da coorte
+ * (propostas, realizadas, perdidas, em aberto, decididas). A coluna "Papel" entra
+ * para a planilha abrir auto-suficiente (a tela a mostra como selo). A
+ * "Conversão (%)" fica em branco quando o contratante ainda não teve nenhuma
+ * proposta decidida (o "—" da UI).
+ *
+ * Encerra numa linha "Total" com o agregado da carteira (por relação, como o
+ * helper): a conversão geral (em branco sem decididas) e as contagens somadas.
+ * Como `pipelineByContactToCsv`, exporta as CONTAGENS + a taxa derivada por
+ * contratante (aqui a taxa é a leitura principal da tela, então vai também no
+ * corpo, não só recomposta). Mesma convenção pt-BR dos irmãos (delimitador ";").
+ * Pura.
+ */
+export function proposalConversionByContactToCsv<
+  C extends { id: string; name: string; role: string },
+>(report: ContactProposalConversion<C>, delimiter = DEFAULT_DELIMITER): string {
+  const out: string[][] = [
+    Array.from(PROPOSAL_CONVERSION_BY_CONTACT_CSV_HEADERS),
+  ];
+  for (const { contact, conversion } of report.rows) {
+    out.push([
+      contact.name,
+      contactRoleLabel(contact.role),
+      conversion.conversionRate == null ? "" : csvShare(conversion.conversionRate),
+      String(conversion.total),
+      String(conversion.wonCount),
+      String(conversion.lostCount),
+      String(conversion.openCount),
+      String(conversion.decidedCount),
+    ]);
+  }
+  const { overall } = report;
+  out.push([
+    "Total",
+    "",
+    overall.conversionRate == null ? "" : csvShare(overall.conversionRate),
+    String(overall.total),
+    String(overall.wonCount),
+    String(overall.lostCount),
+    String(overall.openCount),
+    String(overall.decidedCount),
+  ]);
   return toCsv(out, delimiter);
 }
 

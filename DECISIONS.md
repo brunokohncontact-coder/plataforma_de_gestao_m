@@ -8290,3 +8290,55 @@ contexto, decisão, justificativa e alternativas consideradas.
   adiado: é threshold do Painel, não da tela; sinalizado nos bloqueios como hipótese à parte.
 - **Nota de concorrência:** número **D246** escolhido como o próximo livre após o D245 (Sessão 251). Se uma PR paralela
   reivindicar o mesmo número, renumerar na consolidação.
+
+## D247 — Conversão real de propostas por contratante (`proposalOutcomesByContact` + `/shows/funil/conversao/contratantes`) (Sessão 253)
+- **Contexto:** a conversão real por coorte (`proposalOutcomes`/D243) mede a coorte INTEIRA — "das propostas que fiz em {ano},
+  quantas viraram palco?" — mas não sabe *de quem*. O funil por contratante (`pipelineByContact`/D184) quebra o pipeline por quem
+  paga, mas é um retrato do ESTADO atual pelo cachê aberto, não a jornada da proposta. Faltava a pergunta que decide com quem
+  insistir: "para quais contratantes minhas propostas de fato fecham?" — a mesma coorte da conversão real, no eixo do contratante.
+- **Decisão:** novo helper puro `proposalOutcomesByContact(items, opts?)` + tipos `ContactProposalConversionItem<C>`/
+  `ContactProposalConversionRow<C>`/`ContactProposalConversion<C>` em `src/lib/shows.ts`. Para cada contato, monta a coorte das
+  suas propostas chamando `proposalOutcomes(shows, opts)` — **reusa a mesma classificação** de desfecho (ganho/perdido/aberto,
+  PLAYED vence CANCELLED, âncora na primeira entrada em PROPOSED, sem backfill) da D243, sem duplicar regra — e guarda a
+  `ProposalConversion` por contato. Só viram linha os contatos com coorte não-vazia no recorte (`conversion.total >= 1`). O
+  agregado `overall` soma as coortes **por relação** (um show partilhado por N contatos conta N vezes), coerente com a contagem
+  por-relação de `pipelineByContact`/ranking/concentração; a leitura deduplicada global vive em `/shows/funil/conversao`.
+  `opts.year` recorta a coorte pela data da PROPOSTA (repassado a `proposalOutcomes`). Página
+  `/shows/funil/conversao/contratantes` (3 stats da carteira + tabela + empty-state) + cross-link "👥 Por contratante" na
+  conversão geral + entrada no hub (`REPORT_GROUPS`). CSV `proposalConversionByContactToCsv`/
+  `PROPOSAL_CONVERSION_BY_CONTACT_CSV_HEADERS` + rota `/shows/funil/conversao/contratantes/export?ano=`
+  (`conversao-por-contratante-{ano|todas}.csv`, BOM UTF-8).
+- **Ordenação (taxa lidera, mas o volume desempata):** taxa de conversão desc, com nº de **decididas** desc como 1º desempate,
+  depois ganhas/coorte desc, nome pt-BR, id; taxa indefinida (contato só com propostas em aberto) sempre ao fim. O desempate por
+  decididas evita que uma amostra fina (1/1 = 100%) salte à frente de uma conversão robusta (3/3 = 100%); a coluna "decididas" na
+  tabela deixa a espessura da amostra visível, a mesma disciplina de apresentação que resolveu o "ruidoso com poucos shows" da
+  D124. Sem gate de amostra mínima duro (a tela mostra todos os contratantes com coorte; o usuário pesa pela coluna).
+- **CSV carrega a taxa no corpo:** diferente de `proposalConversionToCsv` (que exporta só contagens, do qual a taxa se recompõe),
+  aqui a taxa de conversão é a leitura principal da tela por contratante, então vai na coluna "Conversão (%)" além das contagens —
+  espelha `pipelineByContactToCsv`, que também leva a "Concretização (%)" no corpo. Em branco (o "—" da UI) quando o contratante
+  ainda não tem proposta decidida. A linha "Total" traz o agregado da carteira (por relação).
+- **Justificativa:** responde a pergunta de relacionamento que a coorte agregada não alcança, **sem lógica de negócio nova** —
+  o classificador de desfecho é o de D243, só reagrupado por contato. Pura/determinística (não depende de "agora"; as em aberto
+  ficam fora do denominador da taxa). Zero dependência nova, zero migração (reusa o `ShowStatusEvent` da D234).
+- **I/O:** a página e a rota carregam cada contato + os `statusEvents` dos shows a que está vinculado (`contact.shows[].show`)
+  numa única consulta — a mesma seleção enxuta da conversão geral (só os eventos de status), acessada pela relação contato→show.
+- **Testes:** **+8** — **+5** em `shows.test.ts` (`describe("proposalOutcomesByContact")`: carteira vazia; agrega a coorte por
+  contratante e destila a taxa; exclui contatos sem coorte no recorte (sem PROPOSED / fora do ano); ordena por taxa com decididas
+  desempatando amostra fina e indefinida ao fim; agregado por relação com show partilhado) e **+3** em `csv.test.ts`
+  (`describe("proposalConversionByContactToCsv")`: sem contratantes → cabeçalho + Total zerado com conversão em branco; linha por
+  contratante na ordem do relatório + Total da carteira; conversão em branco para quem não tem decididas). **1409 testes** no total
+  (eram 1401).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1409 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200, `/shows/funil/conversao/contratantes` (+ `?ano=2026`) e o export (+ `?ano=2026`) 307
+  (auth-gated). `npm audit` **inalterado** vs. baseline (mesmos advisories Next/postcss; ver D6/bloqueios); **nenhuma dependência
+  nova**.
+- **Alternativas consideradas:** (a) hospedar o helper em `contacts.ts` genérico sobre `ContactWithShows` como `pipelineByContact`
+  — dispensado: o classificador de desfecho e `proposalOutcomes` vivem em `shows.ts`; reusá-los de lá evita exportar helpers
+  privados ou duplicar a regra. (b) ordenar por `wonCount` (volume convertido) em vez da taxa — dispensado: a página é sobre
+  conversão (a taxa), e o desempate por decididas já protege contra ruído de amostra; volume vira desempate secundário. (c)
+  deduplicar shows partilhados no `overall` — dispensado a favor da soma por relação, coerente com todos os agregados por-contato
+  do app; a leitura deduplicada já existe na conversão geral. (d) já entregar o comparativo ano a ano por contratante (movers, no
+  molde da D236) — adiado para fechar a 1ª fatia funcional; candidato natural do próximo passo. (e) nudge no Painel de contratante
+  cuja conversão despencou — adiado (mesmo espírito da D245, mas por contratante); reavaliar depois do comparativo.
+- **Nota de concorrência:** número **D247** escolhido como o próximo livre após o D246 (Sessão 252). Se uma PR paralela
+  reivindicar o mesmo número, renumerar na consolidação.

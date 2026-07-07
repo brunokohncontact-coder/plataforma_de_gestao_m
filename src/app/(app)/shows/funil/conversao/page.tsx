@@ -84,6 +84,9 @@ export default async function ProposalConversionPage({
               ⬇ CSV
             </a>
           )}
+          <Link href="/shows/funil/conversao/contratantes" className="btn-secondary text-sm">
+            👥 Por contratante
+          </Link>
           <Link href="/shows/funil" className="btn-secondary">
             ← Funil
           </Link>

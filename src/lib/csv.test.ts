@@ -80,6 +80,8 @@ import {
   STAGE_DURATIONS_CSV_HEADERS,
   proposalConversionToCsv,
   PROPOSAL_CONVERSION_CSV_HEADERS,
+  proposalConversionByContactToCsv,
+  PROPOSAL_CONVERSION_BY_CONTACT_CSV_HEADERS,
   pipelineByContactToCsv,
   PIPELINE_BY_CONTACT_CSV_HEADERS,
   dueAgendaToCsv,
@@ -129,6 +131,7 @@ import {
   bookingLeadTime,
   funnelStageDurations,
   proposalOutcomes,
+  proposalOutcomesByContact,
   findStaleProposals,
   type ConflictShowLike,
   type LeadTimeShowLike,
@@ -2908,6 +2911,68 @@ describe("proposalConversionToCsv", () => {
     expect(lines[2]).toBe("Perdidas;1;100%");
     expect(lines[3]).toBe("Em aberto;0;0%");
     expect(lines[4]).toBe("Total;1;");
+  });
+});
+
+describe("proposalConversionByContactToCsv", () => {
+  const ev = (toStatus: string, createdAt: string) => ({
+    fromStatus: null,
+    toStatus,
+    createdAt,
+  });
+  const won = (createdAt: string) => ({
+    statusEvents: [ev("PROPOSED", createdAt), ev("PLAYED", createdAt)],
+  });
+  const lost = (createdAt: string) => ({
+    statusEvents: [ev("PROPOSED", createdAt), ev("CANCELLED", createdAt)],
+  });
+  const open = (createdAt: string) => ({
+    statusEvents: [ev("PROPOSED", createdAt)],
+  });
+
+  it("sem contratantes na coorte: só cabeçalho + Total zerado", () => {
+    const lines = proposalConversionByContactToCsv(
+      proposalOutcomesByContact<{ id: string; name: string; role: string }>([]),
+    ).split("\r\n");
+    expect(lines[0]).toBe(PROPOSAL_CONVERSION_BY_CONTACT_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(2);
+    // conversão indefinida (sem decididas) fica em branco
+    expect(lines[1]).toBe("Total;;;0;0;0;0;0");
+  });
+
+  it("uma linha por contratante na ordem do relatório + Total da carteira", () => {
+    const report = proposalOutcomesByContact([
+      {
+        contact: { id: "a", name: "Alfa", role: "VENUE" },
+        shows: [
+          won("2026-01-01T00:00:00.000Z"),
+          won("2026-01-02T00:00:00.000Z"),
+          lost("2026-01-03T00:00:00.000Z"),
+        ],
+      },
+      {
+        contact: { id: "b", name: "Beta", role: "PRODUCER" },
+        shows: [won("2026-01-01T00:00:00.000Z"), open("2026-01-02T00:00:00.000Z")],
+      },
+    ]);
+    const lines = proposalConversionByContactToCsv(report).split("\r\n");
+    // Beta 100% (1/1) vem antes de Alfa 67% (2/3)
+    // Contratante;Papel;Conversão(%);Propostas;Realizadas;Perdidas;Em aberto;Decididas
+    expect(lines[1]).toBe("Beta;Produtor musical;100%;2;1;0;1;1");
+    expect(lines[2]).toBe("Alfa;Casa de show;67%;3;2;1;0;3");
+    // Total por relação: 5 propostas, 3 realizadas, 1 perdida, 1 aberta, 4 decididas → 75%
+    expect(lines[3]).toBe("Total;;75%;5;3;1;1;4");
+  });
+
+  it("conversão em branco para contratante ainda sem proposta decidida", () => {
+    const report = proposalOutcomesByContact([
+      {
+        contact: { id: "a", name: "Alfa", role: "VENUE" },
+        shows: [open("2026-01-01T00:00:00.000Z")],
+      },
+    ]);
+    const lines = proposalConversionByContactToCsv(report).split("\r\n");
+    expect(lines[1]).toBe("Alfa;Casa de show;;1;0;0;1;0");
   });
 });
 
