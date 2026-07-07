@@ -58,7 +58,32 @@ export async function GET(request: NextRequest) {
 
   const report = pipelineByContact(items);
 
-  const csv = pipelineByContactToCsv(report);
+  // Comparativo por-linha "vs. {ano-1}" espelhando a tela (D238): só com um ano
+  // específico e ambos os períodos com pipeline aberto. O ano anterior sai do
+  // mesmo acervo já carregado (recorte por `date`, D108) — zero I/O extra.
+  let previousReport: typeof report | null = null;
+  let previousYear: number | null = null;
+  if (yearFilter !== "all" && report.contactCount > 0) {
+    previousYear = yearFilter - 1;
+    const prev = pipelineByContact(
+      contacts.map((c) => ({
+        contact: { id: c.id, name: c.name, role: c.role } as PipelineContact,
+        shows: filterShowsByYear(
+          c.shows.map((cs) => cs.show),
+          previousYear!,
+        ),
+      })),
+    );
+    if (prev.contactCount > 0) previousReport = prev;
+    else previousYear = null;
+  }
+
+  const csv = pipelineByContactToCsv(
+    report,
+    undefined,
+    previousReport,
+    previousYear,
+  );
 
   // BOM UTF-8 para preservar acentuação ao abrir no Excel.
   const body = "\uFEFF" + csv;
