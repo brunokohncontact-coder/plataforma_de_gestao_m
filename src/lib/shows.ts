@@ -1630,6 +1630,46 @@ export function compareContactProposalOutcomes<C extends { id: string; name: str
   };
 }
 
+/**
+ * Situação de uma linha da tabela de conversão por contratante (período atual)
+ * frente ao período anterior, para a coluna "vs. {ano-1}":
+ * - "changed": o contratante tinha coorte não-vazia nos dois períodos — traz a
+ *   variação da taxa de conversão real (`conversionRateDelta` pode ser `null`
+ *   quando algum período não tem proposta decidida);
+ * - "new": só apareceu no período atual (proposta nova na mesa);
+ * - "none": não é comparável (não está na coorte atual).
+ */
+export type ContactProposalConversionRowStatus<C> =
+  | { kind: "changed"; change: ContactProposalConversionChange<C> }
+  | { kind: "new" }
+  | { kind: "none" };
+
+/**
+ * Casa cada linha da tabela de conversão por contratante (período atual) com sua
+ * situação no comparativo `compareContactProposalOutcomes`, indexando por
+ * `contact.id` para o consumidor resolver a coluna "vs. {ano-1}" em O(1) — sem
+ * repetir a varredura na apresentação. Puro: recebe o comparativo já computado e
+ * devolve uma função de lookup. Um contratante presente nos dois períodos vira
+ * "changed"; um que só está no atual (em `newContacts`) vira "new"; qualquer outro
+ * id vira "none". Espelha `indexContactPipelineChanges` (D238) no eixo da coorte.
+ */
+export function indexContactProposalConversionChanges<C extends { id: string }>(
+  comparison: ContactProposalConversionComparison<C>,
+): (contactId: string | null | undefined) => ContactProposalConversionRowStatus<C> {
+  const changedById = new Map<string, ContactProposalConversionChange<C>>();
+  for (const c of comparison.changes) changedById.set(c.contact.id, c);
+  const newIds = new Set<string>();
+  for (const r of comparison.newContacts) newIds.add(r.contact.id);
+
+  return (contactId) => {
+    if (!contactId) return { kind: "none" };
+    const change = changedById.get(contactId);
+    if (change) return { kind: "changed", change };
+    if (newIds.has(contactId)) return { kind: "new" };
+    return { kind: "none" };
+  };
+}
+
 // ── Manchete de conversão para o Painel (a conversão real está caindo?) ───────
 // Eco de `compareProposalOutcomes` (D244) no dashboard, na mesma disciplina de
 // gate dos nudges irmãos (`bookingLeadTimeHeadline`, `cancellationHeadline`,
