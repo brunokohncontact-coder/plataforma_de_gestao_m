@@ -684,6 +684,42 @@ export interface CityReengageOptions {
 /** Dias sem tocar (padrão) para considerar uma praça fria — ~1 temporada. */
 export const CITY_REENGAGE_STALE_DAYS = 90;
 
+// ── Janela `?dias=` das telas de reengajamento (praças/casas) ────────────────
+// O limiar de dormência (`staleDays`) era fixo em 90 (uma hipótese sinalizada
+// nos bloqueios): o que conta como "esfriou" varia com o perfil do músico —
+// quem gira uma agenda intensa quer um alarme mais curto; quem toca esporádico,
+// mais longo. Espelha `parseWeekendWindow`/`?semanas=` (shows.ts) no eixo dias.
+// Compartilhado pelas duas telas de reengajamento (cidade e casa), que já têm o
+// mesmo `staleDays` default e delegam ao mesmo núcleo `collectPlacesToReengage`.
+
+/** Presets (em dias) oferecidos no seletor das telas de reengajamento. */
+export const REENGAGE_WINDOW_PRESETS = [60, 90, 180, 365] as const;
+/** Janela padrão — a mesma temporada dos helpers (`CITY_REENGAGE_STALE_DAYS`). */
+export const REENGAGE_WINDOW_DEFAULT = CITY_REENGAGE_STALE_DAYS;
+/** Limites duros da janela (1 dia … ~2 anos). */
+export const REENGAGE_WINDOW_MIN = 1;
+export const REENGAGE_WINDOW_MAX = 730;
+
+/**
+ * Lê o parâmetro `?dias=` e devolve um limiar de dormência válido — um inteiro
+ * dentro de [REENGAGE_WINDOW_MIN, REENGAGE_WINDOW_MAX]. Valor ausente, vazio ou
+ * não numérico cai no `fallback`; fora da faixa é grampeado nos limites. Pura
+ * (espelho byte a byte de `parseWeekendWindow`, no eixo de dias).
+ */
+export function parseReengageWindow(
+  raw: string | string[] | undefined,
+  fallback: number = REENGAGE_WINDOW_DEFAULT,
+): number {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (value == null || value.trim() === "") return fallback;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  const i = Math.floor(n);
+  if (i < REENGAGE_WINDOW_MIN) return REENGAGE_WINDOW_MIN;
+  if (i > REENGAGE_WINDOW_MAX) return REENGAGE_WINDOW_MAX;
+  return i;
+}
+
 /** Forma mínima que o núcleo de reengajamento por lugar consome. */
 interface PlaceReengageShowLike {
   status?: string;

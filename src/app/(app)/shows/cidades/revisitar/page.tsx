@@ -1,9 +1,14 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { findCitiesToReengage, type CityReengageShowLike } from "@/lib/finance";
+import {
+  findCitiesToReengage,
+  parseReengageWindow,
+  type CityReengageShowLike,
+} from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { formatDate } from "@/lib/format";
+import { ReengageWindowPicker } from "@/components/ReengageWindowPicker";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +25,11 @@ function describeStaleness(days: number): string {
   return `há ${days} ${days === 1 ? "dia" : "dias"}`;
 }
 
-export default async function CidadesRevisitarPage() {
+export default async function CidadesRevisitarPage({
+  searchParams,
+}: {
+  searchParams?: { dias?: string };
+}) {
   const user = await requireUser();
 
   const shows = await prisma.show.findMany({
@@ -28,7 +37,11 @@ export default async function CidadesRevisitarPage() {
     select: { status: true, city: true, date: true, fee: true },
   });
 
-  const list = findCitiesToReengage(shows as CityReengageShowLike[]);
+  // Janela de dormência configurável via `?dias=` (a hipótese do 90 fixo, ver
+  // D232/bloqueios). A regra continua pura em `findCitiesToReengage`.
+  const staleDays = parseReengageWindow(searchParams?.dias);
+  const list = findCitiesToReengage(shows as CityReengageShowLike[], { staleDays });
+  const exportHref = `/shows/cidades/revisitar/export?dias=${staleDays}`;
 
   return (
     <div className="space-y-6">
@@ -42,7 +55,7 @@ export default async function CidadesRevisitarPage() {
         </div>
         <div className="flex items-center gap-2">
           {list.count > 0 && (
-            <a href="/shows/cidades/revisitar/export" className="btn-secondary">
+            <a href={exportHref} className="btn-secondary" download>
               ⬇ CSV
             </a>
           )}
@@ -51,6 +64,8 @@ export default async function CidadesRevisitarPage() {
           </Link>
         </div>
       </div>
+
+      <ReengageWindowPicker active={staleDays} basePath="/shows/cidades/revisitar" />
 
       {list.count === 0 ? (
         <div className="card text-center text-gray-500">

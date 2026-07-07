@@ -8253,3 +8253,40 @@ contexto, decisão, justificativa e alternativas consideradas.
   nova e casa com o card da página; reavaliar se a leitura por janela curta se mostrar mais acionável.
 - **Nota de concorrência:** número **D245** escolhido como o próximo livre após o D244 (Sessão 250). Se uma PR paralela
   reivindicar o mesmo número, renumerar na consolidação.
+
+## D246 — Janela de dormência configurável (`?dias=`) nas telas de reengajamento (praças/casas) (Sessão 252)
+- **Contexto:** as telas "Praças para revisitar" (`findCitiesToReengage`/D229) e "Casas para revisitar"
+  (`findVenuesToReengage`/D231) marcam um lugar como frio quando o último show foi há ≥ `staleDays` dias, com `staleDays` **fixo
+  em 90** (uma temporada). A D231/D232 já sinalizava esse 90 como **hipótese** a validar: o que conta como "esfriou" varia com o
+  perfil do músico — quem gira uma agenda intensa quer um alarme mais curto; quem toca esporádico, mais longo. O núcleo puro
+  (`findCitiesToReengage`/`findVenuesToReengage`) **já aceitava** `opts.staleDays`; só faltava expor o controle na UI.
+- **Decisão:** novo helper puro `parseReengageWindow(raw, fallback?)` + presets `REENGAGE_WINDOW_PRESETS`(=[60, 90, 180, 365]) +
+  `REENGAGE_WINDOW_DEFAULT`(= `CITY_REENGAGE_STALE_DAYS` = 90) + limites `REENGAGE_WINDOW_MIN`(=1)/`REENGAGE_WINDOW_MAX`(=730) em
+  `src/lib/finance.ts` — espelho byte a byte de `parseWeekendWindow`/`?semanas=` (shows.ts), no eixo de dias. Novo componente
+  compartilhado `ReengageWindowPicker` (pílulas por preset, destaca a janela ativa) usado por AMBAS as telas
+  (`/shows/cidades/revisitar` e `/shows/locais/revisitar`), que diferem só no `basePath`. As páginas leem `?dias=` e passam
+  `{ staleDays }` ao helper puro (a regra de dormência segue pura e testada); os exports (`.../export`) herdam `?dias=` e ancoram
+  o nome do arquivo na janela (`pracas-para-revisitar-{n}dias.csv` / `casas-para-revisitar-{n}dias.csv`).
+- **Justificativa:** fecha o "próximo possível" da D232 (o 90 fixo era hipótese), reusando o padrão de janela `?param=` que o
+  projeto já tem (`?semanas=`/D98, `?meses=`/D170) e o `staleDays` injetável que o núcleo já expunha — **zero lógica de negócio
+  nova**, só parsing + UI. Um único componente de picker (DRY) porque as duas telas compartilham o mesmo eixo (dias) e núcleo
+  (`collectPlacesToReengage`).
+- **Escopo deliberado:** o **nudge do Painel** (`citiesToReengageHeadline`/D232) segue com a janela padrão de 90 — ele é uma
+  leitura de "agora" acionável, não uma tela exploratória; um seletor não cabe no Painel (mesma disciplina do nudge de fins de
+  semana, que usa a janela default enquanto a página tem `?semanas=`). A janela é **grampeada** em [1, 730] dias para evitar
+  entradas absurdas via URL.
+- **Testes:** **+9** em `finance.test.ts` (`describe("parseReengageWindow")`): default em ausente/vazio/não-numérico; aceita
+  inteiro na faixa; trunca fração; grampeia nos limites; usa o 1º valor de um array; fallback customizado; e um teste de
+  integração de que o valor parseado alimenta `findCitiesToReengage` com um limiar coerente (janela curta inclui um lugar que a
+  padrão exclui). **1401 testes** no total (eram 1392).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1401 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200, `/shows/cidades/revisitar` (+ `?dias=180`), `/shows/locais/revisitar` (+ `?dias=60`) e
+  ambos os exports 307 (auth-gated). `npm audit` **inalterado** vs. baseline (mesmos advisories Next/postcss; ver D6/bloqueios);
+  **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) um campo numérico livre em vez de pílulas de preset — dispensado: pílulas casam com os
+  outros seletores de janela do app e evitam validação de UI (o clamp mora no parse); a URL ainda aceita qualquer inteiro para
+  quem quiser. (b) inlinar as pílulas em cada página (como faz `fins-de-semana-livres`) — dispensado a favor de um componente
+  compartilhado, já que são DUAS telas com o mesmo eixo (menos cópia). (c) parametrizar também `minPastShows` do nudge/D232 —
+  adiado: é threshold do Painel, não da tela; sinalizado nos bloqueios como hipótese à parte.
+- **Nota de concorrência:** número **D246** escolhido como o próximo livre após o D245 (Sessão 251). Se uma PR paralela
+  reivindicar o mesmo número, renumerar na consolidação.

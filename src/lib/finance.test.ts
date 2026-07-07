@@ -148,6 +148,10 @@ import {
   type BreakEvenShowLike,
   type PromisableShowLike,
   type CityReengageShowLike,
+  parseReengageWindow,
+  REENGAGE_WINDOW_DEFAULT,
+  REENGAGE_WINDOW_MIN,
+  REENGAGE_WINDOW_MAX,
 } from "./finance";
 
 const show: ShowLike = { id: "show1", fee: 100_00, status: "CONFIRMED" };
@@ -8641,5 +8645,58 @@ describe("findVenuesToReengage", () => {
     const shows = [s({ venue: "Sesc Pompeia", date: "2026-05-20T20:00:00Z" })]; // ~28 dias
     expect(findVenuesToReengage(shows, { now: NOW }).count).toBe(0); // < 90
     expect(findVenuesToReengage(shows, { now: NOW, staleDays: 14 }).count).toBe(1);
+  });
+});
+
+describe("parseReengageWindow", () => {
+  it("cai no default quando o parâmetro está ausente", () => {
+    expect(parseReengageWindow(undefined)).toBe(REENGAGE_WINDOW_DEFAULT);
+  });
+
+  it("cai no default em string vazia ou só espaços", () => {
+    expect(parseReengageWindow("")).toBe(REENGAGE_WINDOW_DEFAULT);
+    expect(parseReengageWindow("   ")).toBe(REENGAGE_WINDOW_DEFAULT);
+  });
+
+  it("cai no default quando não é numérico", () => {
+    expect(parseReengageWindow("abc")).toBe(REENGAGE_WINDOW_DEFAULT);
+    expect(parseReengageWindow("NaN")).toBe(REENGAGE_WINDOW_DEFAULT);
+  });
+
+  it("aceita um inteiro válido dentro da faixa", () => {
+    expect(parseReengageWindow("60")).toBe(60);
+    expect(parseReengageWindow("180")).toBe(180);
+    expect(parseReengageWindow("365")).toBe(365);
+  });
+
+  it("trunca a parte fracionária", () => {
+    expect(parseReengageWindow("90.9")).toBe(90);
+  });
+
+  it("grampeia abaixo do mínimo e acima do máximo", () => {
+    expect(parseReengageWindow("0")).toBe(REENGAGE_WINDOW_MIN);
+    expect(parseReengageWindow("-5")).toBe(REENGAGE_WINDOW_MIN);
+    expect(parseReengageWindow("99999")).toBe(REENGAGE_WINDOW_MAX);
+  });
+
+  it("usa o primeiro valor quando o parâmetro vem repetido (array)", () => {
+    expect(parseReengageWindow(["60", "365"])).toBe(60);
+  });
+
+  it("aceita um fallback customizado", () => {
+    expect(parseReengageWindow(undefined, 30)).toBe(30);
+    expect(parseReengageWindow("lixo", 30)).toBe(30);
+  });
+
+  it("alimenta findCitiesToReengage com um limiar coerente", () => {
+    // ~28 dias sem tocar: fora da janela padrão (90), dentro de uma janela curta.
+    const now = new Date("2026-06-17T12:00:00Z");
+    const shows: CityReengageShowLike[] = [
+      { status: "CONFIRMED", city: "Curitiba", date: "2026-05-20T20:00:00Z", fee: 100_00 },
+    ];
+    const wide = findCitiesToReengage(shows, { now, staleDays: parseReengageWindow("90") });
+    const narrow = findCitiesToReengage(shows, { now, staleDays: parseReengageWindow("14") });
+    expect(wide.count).toBe(0);
+    expect(narrow.count).toBe(1);
   });
 });
