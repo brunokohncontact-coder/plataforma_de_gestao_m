@@ -8171,3 +8171,39 @@ contexto, decisão, justificativa e alternativas consideradas.
   mistura semânticas (contagem × razão) e a taxa se recompõe das contagens, como em `pipelineToCsv`.
 - **Nota de concorrência:** número **D243** escolhido como o próximo livre após o D242 (Sessão 248). Se uma PR paralela reivindicar
   o mesmo número, renumerar na consolidação.
+
+## D244 — Comparativo ano a ano da conversão real de propostas (`compareProposalOutcomes` + card em `/shows/funil/conversao`) (Sessão 250)
+- **Contexto:** a conversão real por coorte (`proposalOutcomes`/D243) responde "das propostas que fiz em {ano}, quantas viraram
+  show?", mas só de UM ano de cada vez. A própria D243 apontou como "próximo possível (a)" o comparativo ano a ano da taxa de
+  conversão real — o padrão "vs. {ano-1}" que o funil geral (`compareShowPipelines`/D209) e o funil por contratante
+  (`compareContactPipelines`/D236) já têm no eixo de fechamento, e que faltava no eixo da COORTE (data da proposta).
+- **Decisão:** novo helper puro `compareProposalOutcomes(current, previous)` + tipo `ProposalConversionComparison` em
+  `src/lib/shows.ts`, espelho byte a byte de `compareShowPipelines` (D209): recebe dois `ProposalConversion` já computados (cada um
+  sobre a coorte do seu ano) e devolve `conversionRateDelta` (atual − anterior, em pontos 0..1; `null` se algum período não tem
+  proposta decidida) + `wonCountDelta`/`decidedCountDelta` + um veredito `trend` ("improved"/"worsened"/"stable"). Reusa o mesmo
+  `CONVERSION_TREND_EPSILON` (=0.05) importado de `finance.ts` — nenhum número mágico novo — e a mesma direção do funil geral:
+  **subir** a taxa é a melhora. A página `/shows/funil/conversao` ganha o card `ConversionComparisonCard` "Conversão real {ano} vs.
+  {ano-1}" (🟢/🔴/⚪, variação em p.p. + as duas taxas com won/decididas), exibido **só** com um ano específico e ambas as coortes
+  (este ano e o anterior) tendo propostas decididas.
+- **Zero I/O extra:** a coorte do ano anterior sai do MESMO acervo de shows já carregado pela página (`proposalOutcomes(shows,
+  {year: ano-1})`), porque `opts.year` recorta pela data da proposta em memória — não há nova consulta ao banco (mesmo princípio
+  da D236/D242, onde o ano anterior vem de `filterShowsByYear` sobre o acervo já em mão).
+- **Justificativa:** fecha o gap do padrão "vs. {ano-1}" na única vista de funil que ainda não o tinha, na coorte pela data da
+  proposta (o eixo que distingue a D243 do retrato de estado). Pura/determinística (não depende de "agora"). Sem CSV nesta fatia —
+  o comparativo aqui destila um único veredito ano-a-ano (uma coorte × a anterior), não uma tabela ordenável; segue a decisão
+  simétrica da D236 (o card de movers do funil por contratante também não teve CSV próprio). Zero dependência nova, zero migração.
+- **Testes:** **+4** em `shows.test.ts` (`describe("compareProposalOutcomes")`): mede a variação e vereda "improved" quando sobe
+  além do limiar (50%→100%, +50 p.p.); "worsened" na ordem invertida; "stable" quando a variação fica dentro do epsilon (coortes de
+  taxa idêntica); e delta `null`/"stable" quando a taxa é indefinida em algum período (coorte só com propostas em aberto).
+  **1385 testes** no total (eram 1381).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1385 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200, `/shows/funil/conversao` (+ `?ano=2026`) e `/shows/funil/conversao/export?ano=2026`
+  307 (auth-gated). `npm audit` **inalterado** vs. baseline (mesmos advisories Next/postcss; ver D6/bloqueios); **nenhuma
+  dependência nova**.
+- **Alternativas consideradas:** (a) card de "movers" mês a mês como na sazonalidade (D215) — não se aplica: a conversão real é
+  uma métrica única por coorte/ano, não 12 baldes; o comparativo natural é a taxa do ano × ano-1, como no funil geral. (b) exibir
+  o card mesmo sem decididas em um dos anos (com delta `null`) — dispensado: sem base para ler tendência, o card não informa nada;
+  o gate espelha o do `ConversionComparisonCard` do funil (`decidedCount > 0` nos dois). (c) CSV do comparativo — adiado (ver
+  Justificativa); reavaliar se surgir demanda de exportar a série ano a ano da taxa de conversão real.
+- **Nota de concorrência:** número **D244** escolhido como o próximo livre após o D243 (Sessão 249). Se uma PR paralela reivindicar
+  o mesmo número, renumerar na consolidação.

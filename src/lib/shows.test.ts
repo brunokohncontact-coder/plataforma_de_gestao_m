@@ -36,6 +36,7 @@ import {
   funnelStageDurations,
   proposalOutcomes,
   proposalOutcomeYears,
+  compareProposalOutcomes,
   findStaleProposals,
   staleProposalsHeadline,
   STALE_PROPOSAL_DAYS,
@@ -1552,6 +1553,87 @@ describe("proposalOutcomeYears", () => {
       { statusEvents: [ev("PROPOSED", "2025-12-31T23:30:00.000Z")] },
     ]);
     expect(years).toEqual([2025]);
+  });
+});
+
+describe("compareProposalOutcomes", () => {
+  const ev = (
+    fromStatus: string | null,
+    toStatus: string,
+    createdAt: string,
+  ): StatusEventLike => ({ fromStatus, toStatus, createdAt });
+
+  // Coorte com propostas de 2025 e 2026: em 2025, 1 de 2 decididas ganhou (50%);
+  // em 2026, 2 de 2 decididas ganharam (100%) — melhora de +50 p.p.
+  const shows = [
+    // 2025 — ganho
+    {
+      statusEvents: [
+        ev(null, "PROPOSED", "2025-01-01T00:00:00.000Z"),
+        ev("PROPOSED", "PLAYED", "2025-01-20T00:00:00.000Z"),
+      ],
+    },
+    // 2025 — perda
+    {
+      statusEvents: [
+        ev(null, "PROPOSED", "2025-02-01T00:00:00.000Z"),
+        ev("PROPOSED", "CANCELLED", "2025-02-10T00:00:00.000Z"),
+      ],
+    },
+    // 2026 — ganho
+    {
+      statusEvents: [
+        ev(null, "PROPOSED", "2026-01-01T00:00:00.000Z"),
+        ev("PROPOSED", "PLAYED", "2026-01-20T00:00:00.000Z"),
+      ],
+    },
+    // 2026 — ganho
+    {
+      statusEvents: [
+        ev(null, "PROPOSED", "2026-02-01T00:00:00.000Z"),
+        ev("PROPOSED", "PLAYED", "2026-02-20T00:00:00.000Z"),
+      ],
+    },
+  ];
+
+  it("mede a variação da taxa de conversão e vereda 'improved' quando sobe além do limiar", () => {
+    const current = proposalOutcomes(shows, { year: 2026 });
+    const previous = proposalOutcomes(shows, { year: 2025 });
+    const cmp = compareProposalOutcomes(current, previous);
+    expect(cmp.conversionRateDelta).toBeCloseTo(0.5); // 100% − 50%
+    expect(cmp.wonCountDelta).toBe(1); // 2 ganhas em 2026 − 1 em 2025
+    expect(cmp.decidedCountDelta).toBe(0); // 2 decididas em cada
+    expect(cmp.trend).toBe("improved");
+    expect(cmp.current).toBe(current);
+    expect(cmp.previous).toBe(previous);
+  });
+
+  it("vereda 'worsened' quando a taxa cai além do limiar (ordem invertida)", () => {
+    const current = proposalOutcomes(shows, { year: 2025 }); // 50%
+    const previous = proposalOutcomes(shows, { year: 2026 }); // 100%
+    const cmp = compareProposalOutcomes(current, previous);
+    expect(cmp.conversionRateDelta).toBeCloseTo(-0.5);
+    expect(cmp.trend).toBe("worsened");
+  });
+
+  it("vereda 'stable' quando a variação fica dentro do limiar de ruído", () => {
+    // duas coortes com taxa idêntica (50%): delta 0 → estável
+    const a = proposalOutcomes(shows, { year: 2025 });
+    const cmp = compareProposalOutcomes(a, a);
+    expect(cmp.conversionRateDelta).toBeCloseTo(0);
+    expect(cmp.trend).toBe("stable");
+  });
+
+  it("com taxa indefinida em algum período, delta é null e o veredito é 'stable'", () => {
+    const decided = proposalOutcomes(shows, { year: 2026 }); // 2 decididas
+    const openOnly = proposalOutcomes(
+      [{ statusEvents: [ev(null, "PROPOSED", "2024-01-01T00:00:00.000Z")] }],
+      { year: 2024 },
+    ); // só em aberto → conversionRate null
+    expect(openOnly.conversionRate).toBeNull();
+    const cmp = compareProposalOutcomes(decided, openOnly);
+    expect(cmp.conversionRateDelta).toBeNull();
+    expect(cmp.trend).toBe("stable");
   });
 });
 
