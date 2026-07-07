@@ -39,6 +39,7 @@ import {
   proposalOutcomesByContact,
   compareProposalOutcomes,
   compareContactProposalOutcomes,
+  indexContactProposalConversionChanges,
   proposalConversionHeadline,
   CONVERSION_DROP_MIN_DECIDED,
   CONVERSION_DROP_POINTS,
@@ -1872,6 +1873,61 @@ describe("compareContactProposalOutcomes", () => {
     expect(cmp.changes).toEqual([]);
     expect(cmp.newContacts.map((r) => r.contact.id).sort()).toEqual(["a", "b"]);
     expect(cmp.droppedContacts).toEqual([]);
+  });
+
+  describe("indexContactProposalConversionChanges", () => {
+    it("resolve 'changed' para quem tem coorte nos dois períodos, com a variação", () => {
+      const cmp = compareContactProposalOutcomes(currentReport, previousReport);
+      const lookup = indexContactProposalConversionChanges(cmp);
+      const alfa = lookup("a");
+      expect(alfa.kind).toBe("changed");
+      if (alfa.kind === "changed") {
+        expect(alfa.change.contact.id).toBe("a");
+        expect(alfa.change.conversionRateDelta).toBeCloseTo(0.5);
+        expect(alfa.change.trend).toBe("improved");
+      }
+    });
+
+    it("resolve 'new' para quem só tem coorte no atual e 'none' para desconhecidos/nulos", () => {
+      const current = proposalOutcomesByContact(
+        [
+          { contact: { id: "a", name: "Alfa", role: "VENUE" }, shows: [won("2026-01-01T00:00:00.000Z")] },
+          { contact: { id: "n", name: "Nova", role: "VENUE" }, shows: [won("2026-02-01T00:00:00.000Z")] },
+        ],
+        { year: 2026 },
+      );
+      const previous = proposalOutcomesByContact(
+        [{ contact: { id: "a", name: "Alfa", role: "VENUE" }, shows: [lost("2025-01-01T00:00:00.000Z")] }],
+        { year: 2025 },
+      );
+      const lookup = indexContactProposalConversionChanges(
+        compareContactProposalOutcomes(current, previous),
+      );
+      expect(lookup("n").kind).toBe("new");
+      expect(lookup("a").kind).toBe("changed");
+      expect(lookup("zzz").kind).toBe("none");
+      expect(lookup(null).kind).toBe("none");
+      expect(lookup(undefined).kind).toBe("none");
+    });
+
+    it("mantém 'changed' mesmo com delta null (taxa indefinida em algum ano)", () => {
+      const current = proposalOutcomesByContact(
+        [{ contact: { id: "a", name: "Alfa", role: "VENUE" }, shows: [open("2026-01-01T00:00:00.000Z")] }],
+        { year: 2026 },
+      );
+      const previous = proposalOutcomesByContact(
+        [{ contact: { id: "a", name: "Alfa", role: "VENUE" }, shows: [won("2025-01-01T00:00:00.000Z")] }],
+        { year: 2025 },
+      );
+      const status = indexContactProposalConversionChanges(
+        compareContactProposalOutcomes(current, previous),
+      )("a");
+      expect(status.kind).toBe("changed");
+      if (status.kind === "changed") {
+        expect(status.change.conversionRateDelta).toBeNull();
+        expect(status.change.trend).toBe("stable");
+      }
+    });
   });
 });
 

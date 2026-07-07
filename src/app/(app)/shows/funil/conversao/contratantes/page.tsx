@@ -5,9 +5,11 @@ import {
   proposalOutcomesByContact,
   proposalOutcomeYears,
   compareContactProposalOutcomes,
+  indexContactProposalConversionChanges,
   type ProposalOutcomeShowLike,
   type ContactProposalConversionComparison,
   type ContactProposalConversionChange,
+  type ContactProposalConversionRowStatus,
 } from "@/lib/shows";
 import { parseProfitYear, type ProfitYearFilter } from "@/lib/finance";
 import { CONTACT_ROLE_LABELS, type ContactRole } from "@/lib/domain";
@@ -103,6 +105,12 @@ export default async function ProposalConversionByContactPage({
       if (cmp.changes.length > 0) comparison = cmp;
     }
   }
+
+  // Lookup por `contact.id` para a coluna "vs. {ano-1}" da tabela: casa cada linha
+  // com sua variação da taxa de conversão real no comparativo (D248), em O(1) — o
+  // detalhe por-linha que o card de movers abre (espelho de D238 no funil por
+  // contratante). Só existe quando há comparativo exibível.
+  const rowStatus = comparison ? indexContactProposalConversionChanges(comparison) : null;
 
   const exportHref =
     yearFilter === "all"
@@ -201,6 +209,11 @@ export default async function ProposalConversionByContactPage({
                   <th className="px-4 py-3 text-right font-medium">Perdidas</th>
                   <th className="px-4 py-3 text-right font-medium">Em aberto</th>
                   <th className="px-4 py-3 text-right font-medium">Coorte</th>
+                  {rowStatus && (
+                    <th className="px-4 py-3 text-right font-medium">
+                      vs. {previousYear}
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -250,6 +263,14 @@ export default async function ProposalConversionByContactPage({
                     <td className="px-4 py-3 text-right font-medium text-gray-700">
                       {conversion.total}
                     </td>
+                    {rowStatus && (
+                      <td className="px-4 py-3 text-right">
+                        <ConversionRowDelta
+                          status={rowStatus(contact.id)}
+                          year={previousYear}
+                        />
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -262,6 +283,16 @@ export default async function ProposalConversionByContactPage({
             do contratante, mas ficam fora do denominador da taxa. Um show com mais de um contato
             conta para cada um. A ordem prioriza a maior taxa; onde a taxa empata, quem decidiu
             mais propostas aparece antes — leia a coluna “decididas” para pesar amostras finas.
+            {rowStatus && (
+              <>
+                {" "}
+                A coluna <strong>vs. {previousYear}</strong> mostra a variação da taxa de conversão
+                real deste contratante frente ao ano anterior:{" "}
+                <span className="text-emerald-600">verde</span> fechou uma fração maior,{" "}
+                <span className="text-red-600">vermelho</span> fechou menos, “novo” só teve proposta
+                na coorte deste ano.
+              </>
+            )}
           </p>
         </>
       )}
@@ -293,6 +324,55 @@ function Stat({
       {hint && <p className="mt-1 text-xs text-gray-400">{hint}</p>}
     </div>
   );
+}
+
+/**
+ * Célula da coluna "vs. {ano-1}" na tabela de conversão por contratante: a variação
+ * da taxa de conversão real deste contratante frente ao ano anterior
+ * (`indexContactProposalConversionChanges`). Subir a taxa é melhora (verde, fecha
+ * uma fração maior das que propõe); descer é piora (vermelho); dentro do limiar é
+ * estável (cinza). Quem só teve proposta neste ano vira "novo"; quem não é comparável
+ * (ou sem base — taxa indefinida em algum período) fica em "—". Espelho de
+ * `PipelineRowDelta` (D238) no eixo da coorte.
+ */
+function ConversionRowDelta({
+  status,
+  year,
+}: {
+  status: ContactProposalConversionRowStatus<ConversionContact>;
+  year: number;
+}) {
+  if (status.kind === "new") {
+    return (
+      <span
+        className="text-xs text-gray-400"
+        title={`Só teve proposta na coorte depois de ${year}`}
+      >
+        novo
+      </span>
+    );
+  }
+  if (status.kind === "none") {
+    return <span className="text-gray-300">—</span>;
+  }
+  const { conversionRateDelta, trend } = status.change;
+  if (conversionRateDelta == null) {
+    return (
+      <span
+        className="text-gray-300"
+        title="Sem proposta decidida em algum dos anos — sem base para comparar."
+      >
+        —
+      </span>
+    );
+  }
+  const tone =
+    trend === "improved"
+      ? "text-emerald-600"
+      : trend === "worsened"
+        ? "text-red-600"
+        : "text-gray-500";
+  return <span className={"font-medium " + tone}>{pctDelta(conversionRateDelta)}</span>;
 }
 
 /**

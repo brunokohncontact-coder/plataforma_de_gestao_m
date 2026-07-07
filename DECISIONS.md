@@ -8382,3 +8382,38 @@ contexto, decisão, justificativa e alternativas consideradas.
   disciplina de todos os cards de comparativo (D236/D244).
 - **Nota de concorrência:** número **D248** escolhido como o próximo livre após o D247 (Sessão 253). Se uma PR paralela reivindicar
   o mesmo número, renumerar na consolidação.
+
+## D249 — Coluna "vs. {ano-1}" por linha na tabela de conversão por contratante (`indexContactProposalConversionChanges`) (Sessão 255)
+- **Contexto:** a tela `/shows/funil/conversao/contratantes`, com o card agregado de "movers" da D248 (`compareContactProposalOutcomes`),
+  mostrava a tendência ano a ano só nos dois extremos (quem mais melhorou / mais piorou). Faltava o detalhe **por-linha**: ao lado de
+  cada contratante da tabela, quanto sua taxa de conversão real mudou frente ao ano anterior. Era o "próximo possível (a)" apontado na
+  própria D248, o polimento barato que o card de movers abre — exatamente a mesma evolução que a D238 levou à tabela do funil por
+  contratante (`indexContactPipelineChanges` + célula `PipelineRowDelta`), aqui no eixo da COORTE (data da proposta) e sobre o desfecho
+  real, não sobre o cachê em aberto.
+- **Decisão:** novo helper puro `indexContactProposalConversionChanges(comparison)` + tipo `ContactProposalConversionRowStatus<C>` em
+  `src/lib/shows.ts` — **espelho de `indexContactPipelineChanges`** (D238) no eixo da conversão. Recebe a `ContactProposalConversionComparison`
+  **já computada** pela página (D248 — zero I/O, zero recomputação) e devolve uma função de lookup por `contact.id` em O(1) → `"changed"`
+  (variação da taxa + `trend`), `"new"` (só teve coorte no período atual, veio de `newContacts`) ou `"none"` (id desconhecido/nulo, não
+  comparável). Nenhuma regra de negócio nova — reusa a aritmética de tendência do comparativo.
+- **UI:** a tabela ganha, **só quando há comparativo** (um ano específico + ambas as coortes não-vazias com ao menos um comparável), a
+  coluna "vs. {ano-1}" com a célula `ConversionRowDelta`: verde = fechou uma fração maior (`improved`), vermelho = fechou menos
+  (`worsened`), cinza no limiar (`stable`), "novo" para quem só teve proposta na coorte deste ano, "—" para não-comparável ou taxa
+  indefinida em algum ano (`conversionRateDelta == null`). Reusa `pctDelta` e `previousYear` já na página; herda a semântica da
+  D248 (subir a taxa é melhora, `CONVERSION_TREND_EPSILON`=0.05), sem número mágico novo. Nota de rodapé explica a coluna, espelho da
+  D238. Sem comparativo, a tabela segue idêntica (6 colunas, sem a 7ª).
+- **Justificativa:** fecha a assimetria card↔tabela na conversão por contratante, dando o número por-linha que o card de dois extremos
+  não alcança — a leitura de "qual das minhas relações esquentou/esfriou" fica ao lado do próprio contratante. Puro/determinístico,
+  zero dependência nova, zero migração, zero I/O extra (a página já computava o comparativo para o card).
+- **Testes:** **+3** em `shows.test.ts` (`describe("indexContactProposalConversionChanges")`, aninhado no bloco de
+  `compareContactProposalOutcomes`: resolve "changed" com a variação para quem tem coorte nos dois anos; resolve "new"/"none" para
+  quem só está no atual / ids desconhecidos / null / undefined; mantém "changed" com delta null quando a taxa é indefinida em algum
+  ano). **1417 testes** no total (eram 1414).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1417 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200, `/shows/funil/conversao/contratantes` (+ `?ano=2026`) 307 (auth-gated). `npm audit`
+  **inalterado** vs. baseline (mesmos advisories Next/postcss; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) levar a coluna também ao CSV do export (no molde da D242, que fez isso para o funil por
+  contratante) — adiado; a assimetria tela↔CSV é o próximo passo barato, mas esta fatia fecha primeiro a coluna na tela (o valor
+  imediato). (b) nudge no Painel de contratante cuja conversão despencou (D247 alt. (e) / D248 alt. (b)) — segue adiável; o Painel já
+  tem o nudge da conversão agregada (`proposalConversionHeadline`/D245).
+- **Nota de concorrência:** número **D249** escolhido como o próximo livre após o D248 (Sessão 254). Se uma PR paralela reivindicar
+  o mesmo número, renumerar na consolidação.
