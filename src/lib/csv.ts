@@ -76,7 +76,11 @@ import type {
   ContactRankLike,
   ReengageList,
 } from "./contacts";
-import { indexClientShareChanges } from "./contacts";
+import {
+  indexClientShareChanges,
+  compareContactPipelines,
+  indexContactPipelineChanges,
+} from "./contacts";
 import { MONTH_NAMES_LONG } from "./calendar";
 import type {
   BookingLeadTime,
@@ -2514,14 +2518,36 @@ export const PIPELINE_BY_CONTACT_CSV_HEADERS = [
  * pipeline aberto não viram linha mas entram na `overallConversionRate`), a
  * mesma distinção linhas×carteira de `cancellationByContactToCsv`. Mesma
  * convenção pt-BR dos irmãos (delimitador ";", decimal com vírgula). Pura.
+ *
+ * Quando `previous` (o funil por contratante do ano anterior) e `previousYear`
+ * são informados (recorte por ano com comparativo, D242/D238), a planilha ganha
+ * uma última coluna "vs. {previousYear} (p.p.)" — o detalhe por-linha da coluna
+ * já existente na tela (`PipelineRowDelta`): variação assinada da taxa de
+ * concretização em pontos percentuais para quem teve pipeline aberto nos dois
+ * anos ("+12"/"-5", positivo = passou a fechar uma fração maior), "novo" para
+ * quem só apareceu no ano atual, e em branco quando não há base de comparação
+ * (taxa indefinida em algum dos anos) ou na linha Total. Reaproveita
+ * `compareContactPipelines` + `indexContactPipelineChanges` (zero lógica pura
+ * nova). Sem `previous`/`previousYear`, a saída é byte a byte idêntica à
+ * histórica (11 colunas), preservando os chamadores/testes.
  */
 export function pipelineByContactToCsv<C extends ContactRankLike & { role: string }>(
   report: ContactPipeline<C>,
   delimiter = DEFAULT_DELIMITER,
+  previous?: ContactPipeline<C> | null,
+  previousYear?: number | null,
 ): string {
-  const out: string[][] = [Array.from(PIPELINE_BY_CONTACT_CSV_HEADERS)];
+  const withTrend = previous != null && previousYear != null;
+  const lookup = withTrend
+    ? indexContactPipelineChanges(compareContactPipelines(report, previous))
+    : null;
+
+  const header = Array.from(PIPELINE_BY_CONTACT_CSV_HEADERS) as string[];
+  if (withTrend) header.push(`vs. ${previousYear} (p.p.)`);
+  const out: string[][] = [header];
+
   for (const row of report.rows) {
-    out.push([
+    const cols = [
       row.contact.name,
       contactRoleLabel(row.contact.role),
       centsToCsvAmount(row.openValue),
@@ -2533,9 +2559,25 @@ export function pipelineByContactToCsv<C extends ContactRankLike & { role: strin
       row.conversionRate == null ? "" : csvShare(row.conversionRate),
       String(row.playedCount),
       String(row.decidedCount),
-    ]);
+    ];
+    if (lookup) {
+      const status = lookup(row.contact.id);
+      // "novo" quando só teve pipeline neste ano; para os comparáveis, os pontos
+      // assinados da variação da taxa — em branco quando não há base (taxa
+      // indefinida em algum dos anos, `conversionRateDelta == null`), espelhando
+      // o "—" da célula `PipelineRowDelta` na tela.
+      cols.push(
+        status.kind === "new"
+          ? "novo"
+          : status.kind === "changed" && status.change.conversionRateDelta != null
+            ? csvSignedPoints(status.change.conversionRateDelta)
+            : "",
+      );
+    }
+    out.push(cols);
   }
-  out.push([
+
+  const totalCols = [
     "Total",
     "",
     centsToCsvAmount(report.totalOpenValue),
@@ -2549,7 +2591,10 @@ export function pipelineByContactToCsv<C extends ContactRankLike & { role: strin
       : csvShare(report.overallConversionRate),
     "",
     "",
-  ]);
+  ];
+  if (withTrend) totalCols.push("");
+  out.push(totalCols);
+
   return toCsv(out, delimiter);
 }
 

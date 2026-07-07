@@ -8087,3 +8087,39 @@ contexto, decisão, justificativa e alternativas consideradas.
   vs. baseline (mesmos advisories Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
 - **Nota de concorrência:** número **D241** escolhido como o próximo livre após o D240 (Sessão 246). Se uma PR paralela reivindicar
   o mesmo número, renumerar na consolidação.
+
+## D242 — Coluna "vs. {ano-1}" no CSV do funil por contratante (`pipelineByContactToCsv` com comparativo) (Sessão 248)
+- **Contexto:** a D238 levou a tendência ano a ano por-linha para a **tabela** de `/contatos/funil` (`indexContactPipelineChanges`
+  + célula `PipelineRowDelta`): ao lado de cada contratante, quanto sua taxa de concretização mudou frente ao ano anterior. Mas o
+  export CSV da mesma tela (`/contatos/funil/export`) só emitia as 11 colunas históricas — a planilha ficava um passo atrás da tela.
+  A própria D238 (e o item 2b dos próximos passos) apontaram "levar a tendência por-linha ao CSV, no molde de
+  `clientConcentrationToCsv`/`withTrend`" como o próximo passo natural.
+- **Decisão:** estender `pipelineByContactToCsv` com dois parâmetros opcionais `previous?: ContactPipeline<C> | null` e
+  `previousYear?: number | null`, seguindo byte a byte o precedente de `clientConcentrationToCsv` (D201): quando **ambos** são
+  informados (guarda `withTrend = previous != null && previousYear != null`), a planilha ganha uma última coluna
+  `vs. {previousYear} (p.p.)`. Reaproveita a lógica pura já existente — `indexContactPipelineChanges(compareContactPipelines(report,
+  previous))` — sem nenhuma regra nova. Por linha: `"novo"` para quem só teve pipeline neste ano, os pontos assinados
+  (`csvSignedPoints`, "+25"/"-5") para os comparáveis com base, e **em branco** quando `conversionRateDelta == null` (taxa
+  indefinida em algum dos anos → sem base), espelhando o "—" da célula `PipelineRowDelta` na tela. A linha Total recebe a coluna
+  extra em branco (não há tendência agregada honesta, mesma convenção do "Total" sem participação em `clientConcentrationToCsv`).
+- **Compatibilidade:** sem `previous`/`previousYear`, a saída é **byte a byte idêntica** à histórica (11 colunas), preservando os
+  chamadores/testes existentes — a mesma disciplina "aditiva" da D201. A rota `/contatos/funil/export` passa a computar o funil do
+  ano anterior espelhando a página (D238): só com um ano específico (`?ano=`) e ambos os períodos com pipeline aberto; o ano
+  anterior sai do **mesmo acervo já carregado** (recorte por `date`, D108) — **zero I/O extra**, nenhuma consulta nova.
+- **Justificativa:** fecha a assimetria tela↔CSV que a D238 abriu, com a mesma semântica ("subir a taxa é melhora", verde;
+  `CONVERSION_TREND_EPSILON` já embutido no `trend`), sem reabrir decisão de produto. O CSV emite os pontos crus (máquina-legível,
+  ordenável), convenção dos irmãos com tendência.
+- **Testes:** **+2** em `csv.test.ts` (`describe("pipelineByContactToCsv")`): (1) com comparativo — cabeçalho ganha "vs. 2025
+  (p.p.)", `+25` para quem subiu a taxa, em branco para quem tinha taxa indefinida no ano anterior, `novo` para o novo na mesa,
+  Total com coluna extra em branco; (2) sem ano anterior (só `previous`, `previousYear` nulo) — saída idêntica à histórica (guarda
+  AND). **1369 testes** no total (eram 1367).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1369 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200, `/contatos/funil` e `/contatos/funil/export?ano=2026` 307 (auth-gated). `npm audit`
+  **inalterado** vs. baseline (mesmos advisories Next 14 / postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) inline a comparação na rota sem tocar a função pura — descartado: repetiria a lógica que já
+  vive em `contacts.ts`, contra o DRY do precedente `withTrend`. (b) sempre emitir a coluna (com "Todos os anos" → em branco) —
+  descartado: quebraria a identidade byte a byte com o histórico e os testes; a coluna só faz sentido com um ano específico, como
+  a tela. (c) emitir a taxa dos dois anos (duas colunas "taxa {ano}"/"taxa {ano-1}") em vez do delta — dispensado: o delta é a
+  leitura acionável e casa com a célula da tela; as taxas por ano já estão na coluna "Concretização" quando o usuário recorta.
+- **Nota de concorrência:** número **D242** escolhido como o próximo livre após o D241 (Sessão 247). Se uma PR paralela reivindicar
+  o mesmo número, renumerar na consolidação.

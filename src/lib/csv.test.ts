@@ -2957,6 +2957,68 @@ describe("pipelineByContactToCsv", () => {
     // …mas o Total mostra 50% (1 realizado / 2 decididos do "Fechado", sem linha).
     expect(lines[2]).toBe("Total;;300,00;1;300,00;;0,00;;50%;;");
   });
+
+  it("com comparativo: coluna 'vs. {ano-1}' com pontos assinados / novo / em branco", () => {
+    // Ano atual: g fecha 3/4 (75%), b fecha 1/2 (50%), n só apareceu agora.
+    const current = pipelineByContact<C>([
+      item({ id: "g", name: "Grande", role: "VENUE" }, [
+        s("PROPOSED", 900_00),
+        s("PLAYED", 100_00),
+        s("PLAYED", 100_00),
+        s("PLAYED", 100_00),
+        s("CANCELLED", 100_00),
+      ]),
+      item({ id: "b", name: "Base", role: "VENUE" }, [
+        s("PROPOSED", 300_00),
+        s("PLAYED", 100_00),
+        s("CANCELLED", 100_00),
+      ]),
+      item({ id: "n", name: "Novo", role: "VENUE" }, [s("PROPOSED", 200_00)]),
+    ]);
+    // Ano anterior: g fechava 1/2 (50%); b tinha pipeline aberto mas nada decidido
+    // (taxa indefinida → sem base de comparação). n não existia.
+    const previous = pipelineByContact<C>([
+      item({ id: "g", name: "Grande", role: "VENUE" }, [
+        s("PROPOSED", 500_00),
+        s("PLAYED", 100_00),
+        s("CANCELLED", 100_00),
+      ]),
+      item({ id: "b", name: "Base", role: "VENUE" }, [s("PROPOSED", 300_00)]),
+    ]);
+
+    const lines = pipelineByContactToCsv(current, undefined, previous, 2025).split(
+      "\r\n",
+    );
+    // cabeçalho ganha a última coluna "vs. 2025 (p.p.)"
+    expect(lines[0]).toBe(
+      [...PIPELINE_BY_CONTACT_CSV_HEADERS, "vs. 2025 (p.p.)"].join(";"),
+    );
+    // ordem por cachê aberto desc: g (900) → b (300) → n (200) → Total
+    expect(lines).toHaveLength(5);
+    // g: 50% → 75% = +25 pontos
+    expect(lines[1]).toBe(
+      "Grande;Casa de show;900,00;1;900,00;1;0,00;0;75%;3;4;+25",
+    );
+    // b: taxa indefinida no ano anterior → sem base, célula em branco
+    expect(lines[2]).toBe("Base;Casa de show;300,00;1;300,00;1;0,00;0;50%;1;2;");
+    // n: só teve pipeline neste ano → "novo"
+    expect(lines[3]).toBe("Novo;Casa de show;200,00;1;200,00;1;0,00;0;;0;0;novo");
+    // Total: concretização da carteira 4/6 = 67%; coluna de tendência em branco
+    expect(lines[4]).toBe("Total;;1400,00;3;1400,00;;0,00;;67%;;;");
+  });
+
+  it("sem ano anterior informado: saída idêntica à histórica (11 colunas)", () => {
+    const report = pipelineByContact<C>([
+      item({ id: "g", name: "Grande", role: "VENUE" }, [s("PROPOSED", 900_00)]),
+    ]);
+    // previous presente mas previousYear nulo → não ativa a coluna (guarda AND).
+    const withPrevOnly = pipelineByContactToCsv(report, undefined, report, null);
+    const plain = pipelineByContactToCsv(report);
+    expect(withPrevOnly).toBe(plain);
+    expect(withPrevOnly.split("\r\n")[0]).toBe(
+      PIPELINE_BY_CONTACT_CSV_HEADERS.join(";"),
+    );
+  });
 });
 
 describe("dueAgendaToCsv", () => {
