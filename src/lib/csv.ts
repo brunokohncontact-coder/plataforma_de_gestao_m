@@ -87,6 +87,7 @@ import type {
   OpenWeekendsReport,
   ScheduleConflicts,
   FunnelStageDurations,
+  ProposalConversion,
   StaleProposalsReport,
   StaleProposalUrgency,
 } from "./shows";
@@ -2415,6 +2416,43 @@ export function stageDurationsToCsv(
     ]);
   }
   out.push(["Total", String(durations.totalSamples), "", "", "", ""]);
+  return toCsv(out, delimiter);
+}
+
+// ── Conversão real proposta → realizado (coorte pela data da proposta) ───────
+
+export const PROPOSAL_CONVERSION_CSV_HEADERS = [
+  "Desfecho",
+  "Propostas",
+  "% da coorte",
+] as const;
+
+/**
+ * Serializa a conversão real das propostas (`proposalOutcomes`) em CSV, pronto
+ * para download — espelha a decomposição da coorte de `/shows/funil/conversao`.
+ * Uma linha por desfecho (Realizadas / Perdidas / Em aberto) com a contagem e a
+ * participação na coorte, encerrada numa linha "Total" com o tamanho da coorte.
+ *
+ * Como `pipelineToCsv`, o CSV exporta as CONTAGENS e a participação, não a taxa
+ * de conversão (`wonCount / decidedCount`) — que é uma leitura derivada (das
+ * decididas, a fração ganha) e vive nos destaques da página; a planilha carrega o
+ * dado bruto, do qual a taxa se recompõe. A participação do "Total" fica em branco
+ * (é 100% por construção). Sem coorte sai só cabeçalho + Total zerado. O ano
+ * concreto vai no nome do arquivo, não nos cabeçalhos (como `yearPaceToCsv`).
+ * Mesma convenção pt-BR dos irmãos (delimitador ";"). Pura.
+ */
+export function proposalConversionToCsv(
+  conv: ProposalConversion,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const share = (n: number) => (conv.total > 0 ? csvShare(n / conv.total) : "0%");
+  const out: string[][] = [
+    Array.from(PROPOSAL_CONVERSION_CSV_HEADERS),
+    ["Realizadas", String(conv.wonCount), share(conv.wonCount)],
+    ["Perdidas", String(conv.lostCount), share(conv.lostCount)],
+    ["Em aberto", String(conv.openCount), share(conv.openCount)],
+    ["Total", String(conv.total), ""],
+  ];
   return toCsv(out, delimiter);
 }
 

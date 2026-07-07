@@ -34,6 +34,8 @@ import {
   MIN_LEAD_TIME_SAMPLE,
   buildStatusTimeline,
   funnelStageDurations,
+  proposalOutcomes,
+  proposalOutcomeYears,
   findStaleProposals,
   staleProposalsHeadline,
   STALE_PROPOSAL_DAYS,
@@ -1387,6 +1389,169 @@ describe("funnelStageDurations", () => {
       },
     ]);
     expect(r.stages.map((s) => s.status)).toEqual(["PROPOSED", "CONFIRMED"]);
+  });
+});
+
+describe("proposalOutcomes", () => {
+  const ev = (
+    fromStatus: string | null,
+    toStatus: string,
+    createdAt: string,
+  ): StatusEventLike => ({ fromStatus, toStatus, createdAt });
+
+  it("sem shows devolve conversão zerada e taxas nulas", () => {
+    const r = proposalOutcomes([]);
+    expect(r).toMatchObject({
+      total: 0,
+      wonCount: 0,
+      lostCount: 0,
+      openCount: 0,
+      decidedCount: 0,
+      conversionRate: null,
+      winRate: null,
+    });
+  });
+
+  it("classifica ganho/perdido/aberto e calcula as duas taxas", () => {
+    const r = proposalOutcomes([
+      // ganho: chegou a PLAYED
+      {
+        statusEvents: [
+          ev(null, "PROPOSED", "2026-01-01T00:00:00.000Z"),
+          ev("PROPOSED", "CONFIRMED", "2026-01-05T00:00:00.000Z"),
+          ev("CONFIRMED", "PLAYED", "2026-01-20T00:00:00.000Z"),
+        ],
+      },
+      // perdido: chegou a CANCELLED sem tocar
+      {
+        statusEvents: [
+          ev(null, "PROPOSED", "2026-02-01T00:00:00.000Z"),
+          ev("PROPOSED", "CANCELLED", "2026-02-10T00:00:00.000Z"),
+        ],
+      },
+      // aberto: só proposto ainda
+      { statusEvents: [ev(null, "PROPOSED", "2026-03-01T00:00:00.000Z")] },
+    ]);
+    expect(r).toMatchObject({
+      total: 3,
+      wonCount: 1,
+      lostCount: 1,
+      openCount: 1,
+      decidedCount: 2,
+    });
+    expect(r.conversionRate).toBeCloseTo(0.5); // 1 de 2 decididas
+    expect(r.winRate).toBeCloseTo(1 / 3); // 1 de 3 da coorte
+  });
+
+  it("PLAYED vence CANCELLED (show tocado que depois foi marcado cancelado conta como ganho)", () => {
+    const r = proposalOutcomes([
+      {
+        statusEvents: [
+          ev(null, "PROPOSED", "2026-01-01T00:00:00.000Z"),
+          ev("PROPOSED", "PLAYED", "2026-01-15T00:00:00.000Z"),
+          ev("PLAYED", "CANCELLED", "2026-01-16T00:00:00.000Z"),
+        ],
+      },
+    ]);
+    expect(r).toMatchObject({ total: 1, wonCount: 1, lostCount: 0, openCount: 0 });
+  });
+
+  it("exclui da coorte shows que nunca entraram em PROPOSED (sem backfill)", () => {
+    const r = proposalOutcomes([
+      // nasceu já CONFIRMED, sem evento PROPOSED → fora da coorte
+      {
+        statusEvents: [
+          ev(null, "CONFIRMED", "2026-01-01T00:00:00.000Z"),
+          ev("CONFIRMED", "PLAYED", "2026-01-10T00:00:00.000Z"),
+        ],
+      },
+      // sem eventos → fora da coorte
+      { statusEvents: [] },
+    ]);
+    expect(r.total).toBe(0);
+    expect(r.conversionRate).toBeNull();
+  });
+
+  it("com ano, restringe a coorte pela data (UTC) da PRIMEIRA entrada em PROPOSED", () => {
+    const shows = [
+      // proposta entrou em 2025, tocada em 2026
+      {
+        statusEvents: [
+          ev(null, "PROPOSED", "2025-12-20T00:00:00.000Z"),
+          ev("PROPOSED", "PLAYED", "2026-01-10T00:00:00.000Z"),
+        ],
+      },
+      // proposta entrou em 2026, perdida
+      {
+        statusEvents: [
+          ev(null, "PROPOSED", "2026-02-01T00:00:00.000Z"),
+          ev("PROPOSED", "CANCELLED", "2026-02-05T00:00:00.000Z"),
+        ],
+      },
+    ];
+    const y2025 = proposalOutcomes(shows, { year: 2025 });
+    expect(y2025).toMatchObject({ total: 1, wonCount: 1, lostCount: 0 });
+    const y2026 = proposalOutcomes(shows, { year: 2026 });
+    expect(y2026).toMatchObject({ total: 1, wonCount: 0, lostCount: 1 });
+    // "all" (default) soma os dois anos
+    expect(proposalOutcomes(shows).total).toBe(2);
+  });
+
+  it("usa a PRIMEIRA entrada em PROPOSED quando há reentradas (re-proposta)", () => {
+    const r = proposalOutcomes(
+      [
+        {
+          statusEvents: [
+            ev(null, "PROPOSED", "2025-11-01T00:00:00.000Z"),
+            ev("PROPOSED", "CANCELLED", "2025-11-05T00:00:00.000Z"),
+            ev("CANCELLED", "PROPOSED", "2026-01-02T00:00:00.000Z"), // reaberta em 2026
+            ev("PROPOSED", "PLAYED", "2026-01-20T00:00:00.000Z"),
+          ],
+        },
+      ],
+      { year: 2025 },
+    );
+    // a coorte é ancorada na primeira proposta (2025), e o desfecho é ganho (chegou a PLAYED)
+    expect(r).toMatchObject({ total: 1, wonCount: 1 });
+    expect(proposalOutcomes([], { year: 2026 })).toMatchObject({ total: 0 });
+  });
+});
+
+describe("proposalOutcomeYears", () => {
+  const ev = (toStatus: string, createdAt: string): StatusEventLike => ({
+    fromStatus: null,
+    toStatus,
+    createdAt,
+  });
+
+  it("devolve os anos UTC da entrada da proposta, decrescente e sem repetição", () => {
+    const years = proposalOutcomeYears([
+      { statusEvents: [ev("PROPOSED", "2026-05-01T00:00:00.000Z")] },
+      { statusEvents: [ev("PROPOSED", "2024-01-01T00:00:00.000Z")] },
+      { statusEvents: [ev("PROPOSED", "2026-11-01T00:00:00.000Z")] }, // 2026 de novo
+    ]);
+    expect(years).toEqual([2026, 2024]);
+  });
+
+  it("ignora shows sem evento PROPOSED e usa a primeira entrada em reentradas", () => {
+    const years = proposalOutcomeYears([
+      { statusEvents: [ev("CONFIRMED", "2026-01-01T00:00:00.000Z")] }, // sem PROPOSED
+      { statusEvents: [] },
+      {
+        statusEvents: [
+          ev("PROPOSED", "2025-06-01T00:00:00.000Z"),
+          ev("PROPOSED", "2026-06-01T00:00:00.000Z"),
+        ],
+      },
+    ]);
+    expect(years).toEqual([2025]);
+  });
+
+  it("usa o ano UTC na virada do dia", () => {
+    const years = proposalOutcomeYears([
+      { statusEvents: [ev("PROPOSED", "2025-12-31T23:30:00.000Z")] },
+    ]);
+    expect(years).toEqual([2025]);
   });
 });
 

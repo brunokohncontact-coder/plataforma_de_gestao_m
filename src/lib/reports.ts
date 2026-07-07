@@ -55,6 +55,14 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "🪜",
       },
       {
+        title: "Conversão de propostas",
+        href: "/shows/funil/conversao",
+        description:
+          "Das propostas que entraram no funil, quantas viraram palco — a coorte pela data da proposta, com desfecho de cada uma.",
+        subtopic: "Agenda & pipeline",
+        icon: "🎯",
+      },
+      {
         title: "Tempo em cada etapa",
         href: "/shows/funil/tempo-em-etapa",
         description:

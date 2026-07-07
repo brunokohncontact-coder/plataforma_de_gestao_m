@@ -78,6 +78,8 @@ import {
   PIPELINE_CSV_HEADERS,
   stageDurationsToCsv,
   STAGE_DURATIONS_CSV_HEADERS,
+  proposalConversionToCsv,
+  PROPOSAL_CONVERSION_CSV_HEADERS,
   pipelineByContactToCsv,
   PIPELINE_BY_CONTACT_CSV_HEADERS,
   dueAgendaToCsv,
@@ -126,6 +128,7 @@ import {
   findScheduleConflicts,
   bookingLeadTime,
   funnelStageDurations,
+  proposalOutcomes,
   findStaleProposals,
   type ConflictShowLike,
   type LeadTimeShowLike,
@@ -2836,6 +2839,75 @@ describe("stageDurationsToCsv", () => {
     // mediana [2,4,9]=4, média 5, mín 2, máx 9
     expect(lines[1]).toBe("Proposto;3;4;5;2;9");
     expect(lines[2]).toBe("Total;3;;;;");
+  });
+});
+
+describe("proposalConversionToCsv", () => {
+  const ev = (toStatus: string, createdAt: string) => ({
+    fromStatus: null,
+    toStatus,
+    createdAt,
+  });
+
+  it("sem coorte: só cabeçalho + desfechos zerados + Total zerado", () => {
+    const lines = proposalConversionToCsv(proposalOutcomes([])).split("\r\n");
+    expect(lines[0]).toBe(PROPOSAL_CONVERSION_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(5);
+    expect(lines[1]).toBe("Realizadas;0;0%");
+    expect(lines[2]).toBe("Perdidas;0;0%");
+    expect(lines[3]).toBe("Em aberto;0;0%");
+    // Participação do Total em branco (é 100% por construção).
+    expect(lines[4]).toBe("Total;0;");
+  });
+
+  it("uma linha por desfecho com a participação na coorte + Total", () => {
+    const conv = proposalOutcomes([
+      {
+        statusEvents: [
+          ev("PROPOSED", "2026-01-01T00:00:00.000Z"),
+          ev("PLAYED", "2026-01-20T00:00:00.000Z"),
+        ],
+      },
+      {
+        statusEvents: [
+          ev("PROPOSED", "2026-02-01T00:00:00.000Z"),
+          ev("CANCELLED", "2026-02-10T00:00:00.000Z"),
+        ],
+      },
+      { statusEvents: [ev("PROPOSED", "2026-03-01T00:00:00.000Z")] },
+      { statusEvents: [ev("PROPOSED", "2026-04-01T00:00:00.000Z")] },
+    ]);
+    const lines = proposalConversionToCsv(conv).split("\r\n");
+    // coorte de 4: 1 ganha (25%), 1 perdida (25%), 2 em aberto (50%)
+    expect(lines[1]).toBe("Realizadas;1;25%");
+    expect(lines[2]).toBe("Perdidas;1;25%");
+    expect(lines[3]).toBe("Em aberto;2;50%");
+    expect(lines[4]).toBe("Total;4;");
+  });
+
+  it("respeita o recorte por ano da proposta (mesma coorte da página)", () => {
+    const shows = [
+      {
+        statusEvents: [
+          ev("PROPOSED", "2025-12-01T00:00:00.000Z"),
+          ev("PLAYED", "2026-01-10T00:00:00.000Z"),
+        ],
+      },
+      {
+        statusEvents: [
+          ev("PROPOSED", "2026-02-01T00:00:00.000Z"),
+          ev("CANCELLED", "2026-02-05T00:00:00.000Z"),
+        ],
+      },
+    ];
+    const lines = proposalConversionToCsv(
+      proposalOutcomes(shows, { year: 2026 }),
+    ).split("\r\n");
+    // só a proposta de 2026 (perdida) entra
+    expect(lines[1]).toBe("Realizadas;0;0%");
+    expect(lines[2]).toBe("Perdidas;1;100%");
+    expect(lines[3]).toBe("Em aberto;0;0%");
+    expect(lines[4]).toBe("Total;1;");
   });
 });
 
