@@ -92,7 +92,12 @@ import type {
   StaleProposalsReport,
   StaleProposalUrgency,
 } from "./shows";
-import { summarizeMonthShows, summarizeWeekShows } from "./shows";
+import {
+  summarizeMonthShows,
+  summarizeWeekShows,
+  compareContactProposalOutcomes,
+  indexContactProposalConversionChanges,
+} from "./shows";
 
 const DEFAULT_DELIMITER = ";";
 
@@ -2487,15 +2492,41 @@ export const PROPOSAL_CONVERSION_BY_CONTACT_CSV_HEADERS = [
  * contratante (aqui a taxa é a leitura principal da tela, então vai também no
  * corpo, não só recomposta). Mesma convenção pt-BR dos irmãos (delimitador ";").
  * Pura.
+ *
+ * Quando `previous` (a conversão por contratante do ano anterior) e `previousYear`
+ * são informados (recorte por ano com comparativo, D249/D248), a planilha ganha
+ * uma última coluna "vs. {previousYear} (p.p.)" — o detalhe por-linha da coluna já
+ * existente na tela (a célula `ConversionRowDelta`): variação assinada da taxa de
+ * conversão real em pontos percentuais para quem teve coorte não-vazia nos dois
+ * anos ("+12"/"-5", positivo = passou a fechar uma fração maior das propostas),
+ * "novo" para quem só teve proposta na coorte deste ano, e em branco quando não há
+ * base de comparação (taxa indefinida em algum dos anos) ou na linha Total.
+ * Reaproveita `compareContactProposalOutcomes` + `indexContactProposalConversionChanges`
+ * (zero lógica pura nova), espelho de `pipelineByContactToCsv`/D242 no eixo da
+ * coorte. Sem `previous`/`previousYear`, a saída é byte a byte idêntica à histórica
+ * (8 colunas), preservando os chamadores/testes.
  */
 export function proposalConversionByContactToCsv<
   C extends { id: string; name: string; role: string },
->(report: ContactProposalConversion<C>, delimiter = DEFAULT_DELIMITER): string {
-  const out: string[][] = [
-    Array.from(PROPOSAL_CONVERSION_BY_CONTACT_CSV_HEADERS),
-  ];
+>(
+  report: ContactProposalConversion<C>,
+  delimiter = DEFAULT_DELIMITER,
+  previous?: ContactProposalConversion<C> | null,
+  previousYear?: number | null,
+): string {
+  const withTrend = previous != null && previousYear != null;
+  const lookup = withTrend
+    ? indexContactProposalConversionChanges(
+        compareContactProposalOutcomes(report, previous),
+      )
+    : null;
+
+  const header = Array.from(PROPOSAL_CONVERSION_BY_CONTACT_CSV_HEADERS) as string[];
+  if (withTrend) header.push(`vs. ${previousYear} (p.p.)`);
+  const out: string[][] = [header];
+
   for (const { contact, conversion } of report.rows) {
-    out.push([
+    const cols = [
       contact.name,
       contactRoleLabel(contact.role),
       conversion.conversionRate == null ? "" : csvShare(conversion.conversionRate),
@@ -2504,10 +2535,26 @@ export function proposalConversionByContactToCsv<
       String(conversion.lostCount),
       String(conversion.openCount),
       String(conversion.decidedCount),
-    ]);
+    ];
+    if (lookup) {
+      const status = lookup(contact.id);
+      // "novo" quando só teve coorte neste ano; para os comparáveis, os pontos
+      // assinados da variação da taxa de conversão real — em branco quando não há
+      // base (taxa indefinida em algum dos anos, `conversionRateDelta == null`),
+      // espelhando o "—" da célula `ConversionRowDelta` na tela.
+      cols.push(
+        status.kind === "new"
+          ? "novo"
+          : status.kind === "changed" && status.change.conversionRateDelta != null
+            ? csvSignedPoints(status.change.conversionRateDelta)
+            : "",
+      );
+    }
+    out.push(cols);
   }
+
   const { overall } = report;
-  out.push([
+  const totalCols = [
     "Total",
     "",
     overall.conversionRate == null ? "" : csvShare(overall.conversionRate),
@@ -2516,7 +2563,10 @@ export function proposalConversionByContactToCsv<
     String(overall.lostCount),
     String(overall.openCount),
     String(overall.decidedCount),
-  ]);
+  ];
+  if (withTrend) totalCols.push("");
+  out.push(totalCols);
+
   return toCsv(out, delimiter);
 }
 

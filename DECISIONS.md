@@ -8417,3 +8417,39 @@ contexto, decisão, justificativa e alternativas consideradas.
   tem o nudge da conversão agregada (`proposalConversionHeadline`/D245).
 - **Nota de concorrência:** número **D249** escolhido como o próximo livre após o D248 (Sessão 254). Se uma PR paralela reivindicar
   o mesmo número, renumerar na consolidação.
+
+## D250 — Coluna "vs. {ano-1}" no CSV da conversão por contratante (`proposalConversionByContactToCsv` com comparativo) (Sessão 256)
+- **Contexto:** a tendência ano a ano por-linha, que a D249 levou à **tabela** de `/shows/funil/conversao/contratantes`
+  (`indexContactProposalConversionChanges` + célula `ConversionRowDelta`), ainda não saía no **CSV** do mesmo relatório
+  (`/shows/funil/conversao/contratantes/export`). Era exatamente a assimetria tela↔planilha apontada como próximo passo barato na
+  alternativa (a) da própria D249 — e a MESMA evolução que a D242 já fizera para o funil por contratante (`pipelineByContactToCsv`),
+  aqui no eixo da COORTE (data da proposta) e sobre o desfecho real das propostas.
+- **Decisão:** `proposalConversionByContactToCsv` ganhou dois parâmetros opcionais `previous?`/`previousYear?` no molde **byte a byte da
+  D242** (`pipelineByContactToCsv`): quando ambos vêm, a planilha ganha a última coluna `vs. {previousYear} (p.p.)`. Reaproveita
+  `indexContactProposalConversionChanges(compareContactProposalOutcomes(report, previous))` (D248/D249) — **zero lógica pura nova**. A
+  célula usa `csvSignedPoints` (mesmo helper dos CSV irmãos): `"novo"` para quem só teve coorte de proposta neste ano, os pontos
+  assinados da variação da taxa de conversão real para os comparáveis, e **em branco** quando `conversionRateDelta == null` (taxa
+  indefinida em algum dos anos → sem base, o "—" da célula `ConversionRowDelta` na tela) e na linha Total. Sem `previous`/`previousYear`,
+  a saída é **byte a byte idêntica** à histórica (8 colunas), preservando chamadores/testes.
+- **Rota:** `/shows/funil/conversao/contratantes/export` computa a conversão do ano anterior espelhando a página (D249): só com `?ano=`
+  específico + ambas as coortes não-vazias (`contactCount > 0`), ano anterior do MESMO acervo já carregado (recorte em memória pela data
+  da proposta via `opts.year`), **zero I/O extra**. Com "Todos os anos" ou coorte anterior vazia, o export sai sem a coluna (idêntico ao
+  histórico).
+- **Justificativa:** fecha a assimetria tela↔planilha na conversão por contratante — quem olha o relatório exportado passa a ver a mesma
+  tendência ano a ano que a tabela já mostra, ordenável na planilha pelos pontos assinados. Puro/determinístico, zero dependência nova,
+  zero migração, zero I/O extra. Precedente direto na D242 (mesma mecânica no funil por contratante).
+- **Testes:** **+3** em `csv.test.ts` (`describe("proposalConversionByContactToCsv")`): sem `previous`/`previousYear` a saída tem 8
+  colunas idênticas ao histórico; com o comparativo o cabeçalho ganha `vs. {ano} (p.p.)` e as linhas trazem pontos assinados (`+50`),
+  `"novo"` para coorte só no ano atual e branco na linha Total; taxa indefinida em algum ano → célula em branco (sem base). **1420
+  testes** no total (eram 1417).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1420 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200, `/shows/funil/conversao/contratantes` e `/shows/funil/conversao/contratantes/export`
+  (+ `?ano=2026`) 307 (auth-gated). `npm audit` **inalterado** vs. baseline (mesmos advisories Next/postcss; ver D6/bloqueios);
+  **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) passar `previous`/`previousYear` sempre que ambas as coortes existem, mesmo sem contratante
+  comparável (quando toda a coorte do ano é "nova") — mantido; a coluna então mostra "novo" em todas as linhas, semanticamente correto e
+  espelhando a D242 (que passa `previous` sempre que há pipeline nos dois anos, sem exigir comparável). O gate `changes.length > 0` da
+  página existe só para decidir exibir o **card de movers**, não a coluna. (b) nudge no Painel de contratante cuja conversão despencou
+  (D249 alt. (b)) — segue adiável; o Painel já tem o nudge da conversão agregada (`proposalConversionHeadline`/D245).
+- **Nota de concorrência:** número **D250** escolhido como o próximo livre após o D249 (Sessão 255). Se uma PR paralela reivindicar
+  o mesmo número, renumerar na consolidação.

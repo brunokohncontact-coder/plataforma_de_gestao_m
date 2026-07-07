@@ -2974,6 +2974,77 @@ describe("proposalConversionByContactToCsv", () => {
     const lines = proposalConversionByContactToCsv(report).split("\r\n");
     expect(lines[1]).toBe("Alfa;Casa de show;;1;0;0;1;0");
   });
+
+  it("sem previous/previousYear: 8 colunas idênticas ao histórico", () => {
+    const report = proposalOutcomesByContact([
+      {
+        contact: { id: "a", name: "Alfa", role: "VENUE" },
+        shows: [won("2026-01-01T00:00:00.000Z")],
+      },
+    ]);
+    const lines = proposalConversionByContactToCsv(report).split("\r\n");
+    expect(lines[0]).toBe(PROPOSAL_CONVERSION_BY_CONTACT_CSV_HEADERS.join(";"));
+    // sem coluna de tendência
+    expect(lines[0].split(";")).toHaveLength(8);
+  });
+
+  it("com previous/previousYear: coluna 'vs. {ano}' com pontos assinados, 'novo' e Total em branco", () => {
+    // Alfa: 2026 fecha 2/2 (100%); 2025 fechou 1/2 (50%) → +50 p.p.
+    // Beta: só coorte em 2026 → "novo"
+    const items = [
+      {
+        contact: { id: "a", name: "Alfa", role: "VENUE" },
+        shows: [
+          won("2026-01-01T00:00:00.000Z"),
+          won("2026-01-02T00:00:00.000Z"),
+          won("2025-01-01T00:00:00.000Z"),
+          lost("2025-01-02T00:00:00.000Z"),
+        ],
+      },
+      {
+        contact: { id: "b", name: "Beta", role: "PRODUCER" },
+        shows: [won("2026-01-03T00:00:00.000Z")],
+      },
+    ];
+    const current = proposalOutcomesByContact(items, { year: 2026 });
+    const previous = proposalOutcomesByContact(items, { year: 2025 });
+    const lines = proposalConversionByContactToCsv(
+      current,
+      undefined,
+      previous,
+      2025,
+    ).split("\r\n");
+    // cabeçalho ganha a 9ª coluna
+    expect(lines[0]).toBe(
+      PROPOSAL_CONVERSION_BY_CONTACT_CSV_HEADERS.join(";") + ";vs. 2025 (p.p.)",
+    );
+    // Alfa 100% em 2026, era 50% em 2025 → +50
+    expect(lines[1]).toBe("Alfa;Casa de show;100%;2;2;0;0;2;+50");
+    // Beta só existe em 2026 → "novo"
+    expect(lines[2]).toBe("Beta;Produtor musical;100%;1;1;0;0;1;novo");
+    // Total sempre em branco na coluna de tendência
+    expect(lines[3]).toBe("Total;;100%;3;3;0;0;3;");
+  });
+
+  it("com previous mas taxa indefinida em algum ano: célula em branco (sem base)", () => {
+    // Alfa: 2026 fecha 1/1 (100%); 2025 só teve proposta em aberto (taxa indefinida)
+    // → conversionRateDelta null → célula em branco
+    const items = [
+      {
+        contact: { id: "a", name: "Alfa", role: "VENUE" },
+        shows: [won("2026-01-01T00:00:00.000Z"), open("2025-01-01T00:00:00.000Z")],
+      },
+    ];
+    const current = proposalOutcomesByContact(items, { year: 2026 });
+    const previous = proposalOutcomesByContact(items, { year: 2025 });
+    const lines = proposalConversionByContactToCsv(
+      current,
+      undefined,
+      previous,
+      2025,
+    ).split("\r\n");
+    expect(lines[1]).toBe("Alfa;Casa de show;100%;1;1;0;0;1;");
+  });
 });
 
 describe("staleProposalsToCsv", () => {
