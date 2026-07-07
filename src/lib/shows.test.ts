@@ -102,8 +102,8 @@ describe("filterShows", () => {
   const shows: ShowLike[] = [
     show({ title: "Show no Bar do Zé", city: "São Paulo", status: "CONFIRMED", date: "2026-03-05T00:00:00.000Z" }),
     show({ title: "Festival de Inverno", venue: "Praça Central", city: "Curitiba", status: "PROPOSED", date: "2026-04-10T00:00:00.000Z" }),
-    show({ title: "Sarau acústico", venue: "Casa Violão", city: "Santos", status: "PLAYED", date: "2026-02-20T00:00:00.000Z" }),
-    show({ title: "Show cancelado", status: "CANCELLED", date: "2026-03-15T00:00:00.000Z" }),
+    show({ title: "Sarau acústico", venue: "Casa Violão", city: "Santos", status: "PLAYED", date: "2026-02-20T00:00:00.000Z", notes: "Levar cabo reserva" }),
+    show({ title: "Show cancelado", status: "CANCELLED", date: "2026-03-15T00:00:00.000Z", notes: "Aniversário da Cláudia" }),
   ];
 
   it("retorna tudo quando o filtro está vazio", () => {
@@ -135,6 +135,16 @@ describe("filterShows", () => {
   it("busca ignorando acentos e caixa", () => {
     expect(filterShows(shows, { q: "VIOLAO" })).toHaveLength(1);
     expect(filterShows(shows, { q: "sao paulo" })).toHaveLength(1);
+  });
+
+  it("busca também nas anotações do show", () => {
+    expect(filterShows(shows, { q: "cabo reserva" }).map((s) => s.title)).toEqual([
+      "Sarau acústico",
+    ]);
+    // Sem acento/caixa nas anotações também.
+    expect(filterShows(shows, { q: "CLAUDIA" }).map((s) => s.title)).toEqual([
+      "Show cancelado",
+    ]);
   });
 
   it("ignora termo de busca só com espaços", () => {

@@ -8453,3 +8453,33 @@ contexto, decisão, justificativa e alternativas consideradas.
   (D249 alt. (b)) — segue adiável; o Painel já tem o nudge da conversão agregada (`proposalConversionHeadline`/D245).
 - **Nota de concorrência:** número **D250** escolhido como o próximo livre após o D249 (Sessão 255). Se uma PR paralela reivindicar
   o mesmo número, renumerar na consolidação.
+
+## D251 — Busca da lista de shows passa a casar também as anotações (`notes`) (Sessão 257)
+- **Contexto:** o campo de busca livre (`q`) da lista `/shows` (`filterShows`, ver D9) casava
+  título + local + cidade normalizados, mas ignorava o campo `notes` do show. É justamente onde o
+  músico registra lembretes operacionais, nomes de contato/evento e detalhes ("levar cabo reserva",
+  "aniversário da Cláudia", "cachê a combinar com o produtor") — texto que, na prática, é o jeito mais
+  natural de reencontrar um show específico numa agenda grande. A assimetria "guardo a informação no
+  show mas não consigo buscá-la" era uma lacuna de UX pequena mas real.
+- **Decisão:** `ShowLike` ganhou `notes?: string | null` e o `haystack` de `filterShows` passou a
+  incluir `normalizeText(s.notes)`, na mesma linha dos demais campos — substring sem acento/caixa,
+  combinada em AND com status/intervalo de datas (regra intacta). Placeholder do campo atualizado
+  para "Título, local, cidade ou anotações".
+- **Justificativa:** puro/determinístico, zero regra de negócio nova, zero migração, zero I/O extra —
+  tanto a página (`prisma.show.findMany` sem `select`, traz todos os campos) quanto o `/shows/export`
+  (que já seleciona `notes` explicitamente) já carregavam o campo; a exportação CSV, que reusa o mesmo
+  `filterShows`, herda o novo alcance de busca automaticamente, sem tocar na rota. O tipo `notes` é
+  opcional em `ShowLike` para não quebrar nenhum chamador que monte shows mínimos.
+- **Testes:** **+1** em `shows.test.ts` (`describe("filterShows")`, "busca também nas anotações do
+  show": casa por trecho das anotações e ignorando acento/caixa). **1421 testes** no total (eram 1420).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1421
+  testes** (`vitest run`); smoke test (`next start`) → `/login` 200, `/shows` 307 (auth-gated). `npm
+  audit` **inalterado** vs. baseline (mesmos advisories Next/postcss; ver D6/bloqueios); **nenhuma
+  dependência nova**.
+- **Alternativas consideradas:** (a) estender a mesma busca por `notes` à lista de contatos
+  (`/contatos`) por simetria — adiado; escopo desta fatia é o eixo de shows, e a lista de contatos usa
+  outro helper (`listFilter`), que merece sua própria decisão. (b) buscar também pelos nomes dos
+  contatos vinculados ao show — adiado; os contatos não são carregados na consulta da lista, exigiria
+  I/O extra (a busca atual é 100% em memória sobre o recorte já carregado, ver D9).
+- **Nota de concorrência:** número **D251** escolhido como o próximo livre após o D250 (Sessão 256). Se
+  uma PR paralela reivindicar o mesmo número, renumerar na consolidação.
