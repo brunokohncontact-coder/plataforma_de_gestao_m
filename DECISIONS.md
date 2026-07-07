@@ -8342,3 +8342,43 @@ contexto, decisão, justificativa e alternativas consideradas.
   cuja conversão despencou — adiado (mesmo espírito da D245, mas por contratante); reavaliar depois do comparativo.
 - **Nota de concorrência:** número **D247** escolhido como o próximo livre após o D246 (Sessão 252). Se uma PR paralela
   reivindicar o mesmo número, renumerar na consolidação.
+
+## D248 — Comparativo ano a ano da conversão real por contratante (`compareContactProposalOutcomes` + card em `/shows/funil/conversao/contratantes`) (Sessão 254)
+- **Contexto:** a conversão real por contratante (`proposalOutcomesByContact`/D247) é um retrato de UM recorte — "das minhas propostas
+  de {ano}, de quais contratantes elas viraram show?". Faltava a leitura de TENDÊNCIA por contratante: "para quem eu passei a fechar
+  mais / menos de um ano para o outro?" — o eixo de decisão sobre com quem a relação está esquentando ou esfriando. Era o candidato
+  natural apontado como próximo passo na própria D247 (alternativa (d)), no molde do card de movers do funil por contratante
+  (`compareContactPipelines`/D236), mas no eixo da COORTE (data da proposta) e sobre o desfecho real, não sobre o cachê em aberto.
+- **Decisão:** novo helper puro `compareContactProposalOutcomes(current, previous)` + tipos `ContactProposalConversionChange<C>`/
+  `ContactProposalConversionComparison<C>` em `src/lib/shows.ts`, **espelho byte a byte** de `compareContactPipelines` (D236) no eixo
+  da conversão. Casa os contratantes de dois `proposalOutcomesByContact` por `contact.id`: para cada um com coorte não-vazia nos DOIS
+  períodos devolve `conversionRateDelta` (atual − anterior em pontos 0..1; `null` se algum lado não tem proposta decidida →
+  taxa indefinida), `wonCountDelta`/`decidedCountDelta` e o veredito `trend` (improved/worsened/stable) contra o mesmo
+  `CONVERSION_TREND_EPSILON` (=0.05) importado de `finance.ts` — **nenhum número mágico novo** — na mesma direção do funil geral
+  (**subir** a taxa é a melhora). Os que só têm coorte num período viram `newContacts`/`droppedContacts`. Ordena da maior piora à
+  maior melhora (delta asc; indefinida ao fim), e elege `biggestImprovement`/`biggestWorsening` entre os classificados.
+- **UI:** card `ConversionMoversCard` "Para quem passei a fechar mais/menos · {ano} vs. {ano-1}" em
+  `/shows/funil/conversao/contratantes` (blocos "Convertendo mais" 🟢 / "Convertendo menos" 🔴 com a variação em p.p. + as duas
+  taxas, + rodapé de entradas/saídas da mesa de propostas), exibido **só** com um ano específico e ambas as coortes não-vazias e ao
+  menos um contratante comparável (`comparison.changes.length > 0`) — senão "convertendo mais/menos" enganaria. A coorte do ano
+  anterior sai dos **mesmos `items` já carregados** (`proposalOutcomesByContact(items, { year: ano-1 })`, recorte em memória pela
+  data da proposta), **zero I/O extra**. Sem CSV nesta fatia (destila dois movers, como o card de movers da D236; a tabela-mãe já
+  tem export/D247).
+- **Justificativa:** responde à pergunta de tendência de relacionamento que o retrato de um recorte não alcança, reusando **toda** a
+  aritmética de desfecho (o helper recebe dois `proposalOutcomesByContact` já computados, não recomputa nada). Pura/determinística,
+  zero dependência nova, zero migração.
+- **Testes:** **+5** em `shows.test.ts` (`describe("compareContactProposalOutcomes")`: casa por id e destila a variação da taxa
+  (improved/worsened + wonCountDelta); elege os movers e ordena da maior piora à maior melhora; classifica novos/sumidos; taxa
+  indefinida em algum período → delta null, "stable", fora dos movers; sem contratantes em comum → changes vazio, todos viram
+  "novos"). **1414 testes** no total (eram 1409).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1414 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200, `/shows/funil/conversao/contratantes` (+ `?ano=2026`) 307 (auth-gated). `npm audit`
+  **inalterado** vs. baseline (mesmos advisories Next/postcss; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) coluna "vs. {ano-1}" por linha na tabela (no molde de `indexContactPipelineChanges`/D238) —
+  adiada; o card de movers destila os dois extremos, que é o valor imediato; a coluna por-linha é o polimento barato do próximo
+  passo. (b) nudge no Painel de contratante cuja conversão despencou (D247 alt. (e)) — adiado; o Painel já tem o nudge de queda da
+  conversão agregada (`proposalConversionHeadline`/D245), e um segundo eixo por contratante pode ficar barulhento — reavaliar. (c)
+  exibir o card também no recorte "todas as propostas" — dispensado: sem ano específico não há "ano anterior" a comparar, mesma
+  disciplina de todos os cards de comparativo (D236/D244).
+- **Nota de concorrência:** número **D248** escolhido como o próximo livre após o D247 (Sessão 253). Se uma PR paralela reivindicar
+  o mesmo número, renumerar na consolidação.

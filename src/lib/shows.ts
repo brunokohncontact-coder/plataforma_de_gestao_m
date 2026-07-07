@@ -1475,6 +1475,161 @@ export function compareProposalOutcomes(
   };
 }
 
+// ── Comparativo ano a ano da conversão real POR contratante ───────────────────
+// Enquanto `compareProposalOutcomes` (D244) compara a conversão real da coorte
+// INTEIRA entre dois anos, este casa os contratantes de dois
+// `proposalOutcomesByContact` (D247) por `contact.id` e destila os dois movers —
+// para quem minhas propostas passaram a fechar MAIS / MENOS de um ano para o
+// outro. É a mesma leitura do card de movers do funil por contratante
+// (`compareContactPipelines`/D236), mas no eixo da COORTE (data da proposta) e
+// sobre o desfecho real (realizada/perdida), não sobre o cachê em aberto do
+// estado atual. Reusa o mesmo `CONVERSION_TREND_EPSILON` (=0.05) e a mesma
+// direção (subir a taxa é melhora). Pura, sem I/O.
+
+/** Variação da conversão real de um contratante entre duas coortes (atual × anterior). */
+export interface ContactProposalConversionChange<C> {
+  /** Contratante comparado (com coorte não-vazia nos dois períodos). */
+  contact: C;
+  /** Linha do contratante na coorte atual. */
+  current: ContactProposalConversionRow<C>;
+  /** Linha do contratante na coorte anterior. */
+  previous: ContactProposalConversionRow<C>;
+  /**
+   * Variação da taxa de conversão real (atual − anterior, em pontos 0..1).
+   * `null` quando algum período não tem proposta decidida (taxa indefinida) — sem
+   * base para comparar. Positivo = fechando uma fração maior das propostas agora
+   * (melhora); negativo = mais propostas viraram perda (piora).
+   */
+  conversionRateDelta: number | null;
+  /** Variação da contagem de propostas ganhas — viraram palco (atual − anterior). */
+  wonCountDelta: number;
+  /** Variação da contagem de propostas decididas — ganhas+perdidas (atual − anterior). */
+  decidedCountDelta: number;
+  /**
+   * Direção da conversão entre as duas coortes, pela variação da taxa contra
+   * `CONVERSION_TREND_EPSILON`:
+   * - "improved": a taxa subiu além do limiar (fechando mais do que propõe);
+   * - "worsened": a taxa caiu além do limiar (perdendo mais do que propõe);
+   * - "stable": variação dentro do limiar, ou taxa indefinida em algum período.
+   * Como no funil geral/por contratante, **subir** a taxa é a melhora.
+   */
+  trend: "improved" | "worsened" | "stable";
+}
+
+/** Comparativo ano a ano da conversão real por contratante (dois `proposalOutcomesByContact`). */
+export interface ContactProposalConversionComparison<C> {
+  /**
+   * Contratantes com coorte não-vazia nos DOIS períodos, com a variação da taxa.
+   * Ordenados da maior piora à maior melhora (quem passou a converter menos
+   * primeiro), para o mover de cima ser o que mais merece atenção; taxa indefinida
+   * em algum período vai ao fim.
+   */
+  changes: ContactProposalConversionChange<C>[];
+  /** Quem mais melhorou a conversão (maior variação positiva entre os "improved"). */
+  biggestImprovement: ContactProposalConversionChange<C> | null;
+  /** Quem mais piorou a conversão (variação mais negativa entre os "worsened"). */
+  biggestWorsening: ContactProposalConversionChange<C> | null;
+  /** Contratantes com coorte só no período atual (novas propostas na mesa). */
+  newContacts: ContactProposalConversionRow<C>[];
+  /** Contratantes com coorte no anterior mas não no atual (sumiram da mesa). */
+  droppedContacts: ContactProposalConversionRow<C>[];
+}
+
+/**
+ * Compara a **conversão real por contratante** entre dois períodos (atual ×
+ * anterior), casando os contratantes por `contact.id`. Espelha
+ * `compareContactPipelines` (D236) no eixo da coorte (data da proposta): para cada
+ * contratante com coorte não-vazia nos dois períodos devolve a variação da taxa de
+ * conversão real (quem passou a fechar mais / menos das que propõe); os que só têm
+ * coorte num período viram `newContacts`/`droppedContacts`. Pura, sem I/O: recebe
+ * dois `proposalOutcomesByContact` já computados (cada um sobre a coorte do seu
+ * ano). O chamador decide quando exibir (tipicamente só com um ano específico e
+ * ambas as coortes não-vazias). Ver D247.
+ */
+export function compareContactProposalOutcomes<C extends { id: string; name: string }>(
+  current: ContactProposalConversion<C>,
+  previous: ContactProposalConversion<C>,
+): ContactProposalConversionComparison<C> {
+  const prevById = new Map<string, ContactProposalConversionRow<C>>();
+  for (const r of previous.rows) prevById.set(r.contact.id, r);
+
+  const currentIds = new Set<string>();
+  const changes: ContactProposalConversionChange<C>[] = [];
+  const newContacts: ContactProposalConversionRow<C>[] = [];
+
+  for (const cur of current.rows) {
+    currentIds.add(cur.contact.id);
+    const prev = prevById.get(cur.contact.id);
+    if (!prev) {
+      newContacts.push(cur);
+      continue;
+    }
+    const conversionRateDelta =
+      cur.conversion.conversionRate == null || prev.conversion.conversionRate == null
+        ? null
+        : cur.conversion.conversionRate - prev.conversion.conversionRate;
+    changes.push({
+      contact: cur.contact,
+      current: cur,
+      previous: prev,
+      conversionRateDelta,
+      wonCountDelta: cur.conversion.wonCount - prev.conversion.wonCount,
+      decidedCountDelta: cur.conversion.decidedCount - prev.conversion.decidedCount,
+      trend:
+        conversionRateDelta == null
+          ? "stable"
+          : conversionRateDelta >= CONVERSION_TREND_EPSILON
+            ? "improved"
+            : conversionRateDelta <= -CONVERSION_TREND_EPSILON
+              ? "worsened"
+              : "stable",
+    });
+  }
+
+  const droppedContacts = previous.rows.filter(
+    (r) => !currentIds.has(r.contact.id),
+  );
+
+  // Maior piora no topo: variação da taxa asc (mais negativa primeiro). Taxa
+  // indefinida (delta null) vai ao fim; empate estável pelo id.
+  changes.sort((a, b) => {
+    const av = a.conversionRateDelta;
+    const bv = b.conversionRateDelta;
+    if (av == null && bv == null) return a.contact.id.localeCompare(b.contact.id);
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    return av - bv || a.contact.id.localeCompare(b.contact.id);
+  });
+
+  let biggestImprovement: ContactProposalConversionChange<C> | null = null;
+  let biggestWorsening: ContactProposalConversionChange<C> | null = null;
+  for (const c of changes) {
+    if (c.conversionRateDelta == null) continue;
+    if (
+      c.trend === "improved" &&
+      (!biggestImprovement ||
+        c.conversionRateDelta > biggestImprovement.conversionRateDelta!)
+    ) {
+      biggestImprovement = c;
+    }
+    if (
+      c.trend === "worsened" &&
+      (!biggestWorsening ||
+        c.conversionRateDelta < biggestWorsening.conversionRateDelta!)
+    ) {
+      biggestWorsening = c;
+    }
+  }
+
+  return {
+    changes,
+    biggestImprovement,
+    biggestWorsening,
+    newContacts,
+    droppedContacts,
+  };
+}
+
 // ── Manchete de conversão para o Painel (a conversão real está caindo?) ───────
 // Eco de `compareProposalOutcomes` (D244) no dashboard, na mesma disciplina de
 // gate dos nudges irmãos (`bookingLeadTimeHeadline`, `cancellationHeadline`,

@@ -38,6 +38,7 @@ import {
   proposalOutcomeYears,
   proposalOutcomesByContact,
   compareProposalOutcomes,
+  compareContactProposalOutcomes,
   proposalConversionHeadline,
   CONVERSION_DROP_MIN_DECIDED,
   CONVERSION_DROP_POINTS,
@@ -1761,6 +1762,116 @@ describe("compareProposalOutcomes", () => {
     const cmp = compareProposalOutcomes(decided, openOnly);
     expect(cmp.conversionRateDelta).toBeNull();
     expect(cmp.trend).toBe("stable");
+  });
+});
+
+describe("compareContactProposalOutcomes", () => {
+  const ev = (
+    fromStatus: string | null,
+    toStatus: string,
+    createdAt: string,
+  ): StatusEventLike => ({ fromStatus, toStatus, createdAt });
+  const won = (createdAt: string) => ({
+    statusEvents: [ev(null, "PROPOSED", createdAt), ev("PROPOSED", "PLAYED", createdAt)],
+  });
+  const lost = (createdAt: string) => ({
+    statusEvents: [ev(null, "PROPOSED", createdAt), ev("PROPOSED", "CANCELLED", createdAt)],
+  });
+  const open = (createdAt: string) => ({
+    statusEvents: [ev(null, "PROPOSED", createdAt)],
+  });
+  type C = { id: string; name: string; role: string };
+
+  // Alfa melhora (2025: 1/2=50% → 2026: 2/2=100%, +50 p.p.); Beta piora
+  // (2025: 2/2=100% → 2026: 1/2=50%, −50 p.p.). Comparação por contratante
+  // recorta cada coorte pela data da proposta via `opts.year`.
+  const items: { contact: C; shows: { statusEvents: StatusEventLike[] }[] }[] = [
+    {
+      contact: { id: "a", name: "Alfa", role: "VENUE" },
+      shows: [
+        won("2025-01-01T00:00:00.000Z"),
+        lost("2025-02-01T00:00:00.000Z"),
+        won("2026-01-01T00:00:00.000Z"),
+        won("2026-02-01T00:00:00.000Z"),
+      ],
+    },
+    {
+      contact: { id: "b", name: "Beta", role: "PRODUCER" },
+      shows: [
+        won("2025-03-01T00:00:00.000Z"),
+        won("2025-04-01T00:00:00.000Z"),
+        won("2026-03-01T00:00:00.000Z"),
+        lost("2026-04-01T00:00:00.000Z"),
+      ],
+    },
+  ];
+
+  const currentReport = proposalOutcomesByContact(items, { year: 2026 });
+  const previousReport = proposalOutcomesByContact(items, { year: 2025 });
+
+  it("casa os contratantes por id e destila a variação da taxa de conversão", () => {
+    const cmp = compareContactProposalOutcomes(currentReport, previousReport);
+    expect(cmp.changes.map((c) => c.contact.id).sort()).toEqual(["a", "b"]);
+    const alfa = cmp.changes.find((c) => c.contact.id === "a")!;
+    const beta = cmp.changes.find((c) => c.contact.id === "b")!;
+    expect(alfa.conversionRateDelta).toBeCloseTo(0.5);
+    expect(alfa.trend).toBe("improved");
+    expect(alfa.wonCountDelta).toBe(1); // 2 em 2026 − 1 em 2025
+    expect(beta.conversionRateDelta).toBeCloseTo(-0.5);
+    expect(beta.trend).toBe("worsened");
+  });
+
+  it("elege os movers e ordena da maior piora à maior melhora", () => {
+    const cmp = compareContactProposalOutcomes(currentReport, previousReport);
+    // maior piora no topo
+    expect(cmp.changes[0].contact.id).toBe("b");
+    expect(cmp.biggestImprovement?.contact.id).toBe("a");
+    expect(cmp.biggestWorsening?.contact.id).toBe("b");
+  });
+
+  it("classifica novos (só no atual) e sumidos (só no anterior)", () => {
+    const current = proposalOutcomesByContact(
+      [
+        { contact: { id: "a", name: "Alfa", role: "VENUE" }, shows: [won("2026-01-01T00:00:00.000Z")] },
+        { contact: { id: "n", name: "Nova", role: "VENUE" }, shows: [won("2026-02-01T00:00:00.000Z")] },
+      ],
+      { year: 2026 },
+    );
+    const previous = proposalOutcomesByContact(
+      [
+        { contact: { id: "a", name: "Alfa", role: "VENUE" }, shows: [lost("2025-01-01T00:00:00.000Z")] },
+        { contact: { id: "d", name: "Sumida", role: "VENUE" }, shows: [won("2025-02-01T00:00:00.000Z")] },
+      ],
+      { year: 2025 },
+    );
+    const cmp = compareContactProposalOutcomes(current, previous);
+    expect(cmp.newContacts.map((r) => r.contact.id)).toEqual(["n"]);
+    expect(cmp.droppedContacts.map((r) => r.contact.id)).toEqual(["d"]);
+    expect(cmp.changes.map((c) => c.contact.id)).toEqual(["a"]);
+  });
+
+  it("com taxa indefinida em algum período, delta é null, veredito 'stable' e fica fora dos movers", () => {
+    const current = proposalOutcomesByContact(
+      [{ contact: { id: "a", name: "Alfa", role: "VENUE" }, shows: [open("2026-01-01T00:00:00.000Z")] }],
+      { year: 2026 },
+    );
+    const previous = proposalOutcomesByContact(
+      [{ contact: { id: "a", name: "Alfa", role: "VENUE" }, shows: [won("2025-01-01T00:00:00.000Z")] }],
+      { year: 2025 },
+    );
+    const cmp = compareContactProposalOutcomes(current, previous);
+    expect(cmp.changes).toHaveLength(1);
+    expect(cmp.changes[0].conversionRateDelta).toBeNull();
+    expect(cmp.changes[0].trend).toBe("stable");
+    expect(cmp.biggestImprovement).toBeNull();
+    expect(cmp.biggestWorsening).toBeNull();
+  });
+
+  it("sem contratantes em comum, changes fica vazio (nada a exibir)", () => {
+    const cmp = compareContactProposalOutcomes(currentReport, proposalOutcomesByContact([]));
+    expect(cmp.changes).toEqual([]);
+    expect(cmp.newContacts.map((r) => r.contact.id).sort()).toEqual(["a", "b"]);
+    expect(cmp.droppedContacts).toEqual([]);
   });
 });
 

@@ -4,7 +4,10 @@ import { prisma } from "@/lib/prisma";
 import {
   proposalOutcomesByContact,
   proposalOutcomeYears,
+  compareContactProposalOutcomes,
   type ProposalOutcomeShowLike,
+  type ContactProposalConversionComparison,
+  type ContactProposalConversionChange,
 } from "@/lib/shows";
 import { parseProfitYear, type ProfitYearFilter } from "@/lib/finance";
 import { CONTACT_ROLE_LABELS, type ContactRole } from "@/lib/domain";
@@ -23,6 +26,13 @@ interface ConversionContact {
 /** Taxa (0..1) como percentual inteiro, ou "—" quando indefinida. */
 function rateLabel(rate: number | null): string {
   return rate == null ? "—" : `${(rate * 100).toFixed(0)}%`;
+}
+
+/** Variação da taxa de conversão em pontos percentuais, com sinal. */
+function pctDelta(delta: number): string {
+  const points = Math.round(delta * 100);
+  const sign = points > 0 ? "+" : "";
+  return `${sign}${points} pts`;
 }
 
 export default async function ProposalConversionByContactPage({
@@ -74,6 +84,25 @@ export default async function ProposalConversionByContactPage({
   });
   const periodLabel =
     yearFilter === "all" ? "todas as propostas" : `propostas de ${yearFilter}`;
+
+  // Comparativo por contratante {ano} × {ano-1}: para quem minhas propostas
+  // passaram a fechar mais / menos (o card de movers do funil por contratante /
+  // D236, aqui no eixo da conversão real / D247). Só com um ano específico e ambas
+  // as coortes não-vazias — senão "convertendo mais/menos" enganaria. Reusa os
+  // mesmos `items` já carregados, recortando pela data da proposta (opts.year),
+  // sem nova consulta; o veredito ancora na taxa de conversão, direção "subir é
+  // melhora" como o funil geral.
+  let comparison: ContactProposalConversionComparison<ConversionContact> | null = null;
+  let previousYear = 0;
+  if (yearFilter !== "all" && report.contactCount > 0) {
+    previousYear = yearFilter - 1;
+    const previousReport = proposalOutcomesByContact(items, { year: previousYear });
+    if (previousReport.contactCount > 0) {
+      const cmp = compareContactProposalOutcomes(report, previousReport);
+      // Só vale exibir se há de fato algum contratante nas duas coortes.
+      if (cmp.changes.length > 0) comparison = cmp;
+    }
+  }
 
   const exportHref =
     yearFilter === "all"
@@ -153,6 +182,14 @@ export default async function ProposalConversionByContactPage({
               tone="emerald"
             />
           </div>
+
+          {comparison && (
+            <ConversionMoversCard
+              comparison={comparison}
+              currentYear={yearFilter as number}
+              previousYear={previousYear}
+            />
+          )}
 
           <section className="card overflow-x-auto p-0">
             <table className="w-full text-sm">
@@ -254,6 +291,103 @@ function Stat({
       <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
       <p className={"mt-1 text-xl font-bold " + tones[tone]}>{value}</p>
       {hint && <p className="mt-1 text-xs text-gray-400">{hint}</p>}
+    </div>
+  );
+}
+
+/**
+ * Card "Para quem passei a fechar mais/menos · {ano} vs. {ano-1}": destaca o
+ * contratante cuja conversão real mais melhorou e o cuja mais piorou frente ao ano
+ * anterior (`compareContactProposalOutcomes`). Espelho por contratante do
+ * comparativo geral da conversão (D244) no eixo da coorte: **subir** a taxa é a
+ * melhora (fecha uma fração maior das propostas que faz). Fecha o rodapé com quem
+ * entrou / saiu da mesa de propostas neste ano.
+ */
+function ConversionMoversCard({
+  comparison,
+  currentYear,
+  previousYear,
+}: {
+  comparison: ContactProposalConversionComparison<ConversionContact>;
+  currentYear: number;
+  previousYear: number;
+}) {
+  const { biggestImprovement, biggestWorsening, changes, newContacts, droppedContacts } =
+    comparison;
+  return (
+    <section className="card space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+          Para quem passei a fechar mais/menos · {currentYear} vs. {previousYear}
+        </p>
+        <span className="text-xs text-gray-400">
+          {changes.length}{" "}
+          {changes.length === 1 ? "contratante comparável" : "contratantes comparáveis"}
+        </span>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <MoverBlock title="Convertendo mais" change={biggestImprovement} tone="improved" />
+        <MoverBlock title="Convertendo menos" change={biggestWorsening} tone="worsened" />
+      </div>
+      {(newContacts.length > 0 || droppedContacts.length > 0) && (
+        <p className="text-xs text-gray-400">
+          {newContacts.length > 0 && (
+            <>
+              {newContacts.length}{" "}
+              {newContacts.length === 1
+                ? "contratante com proposta nova na mesa"
+                : "contratantes com proposta nova na mesa"}{" "}
+              em {currentYear}
+            </>
+          )}
+          {newContacts.length > 0 && droppedContacts.length > 0 && " · "}
+          {droppedContacts.length > 0 && (
+            <>
+              {droppedContacts.length}{" "}
+              {droppedContacts.length === 1
+                ? "tinha proposta"
+                : "tinham proposta"}{" "}
+              em {previousYear} mas não em {currentYear}
+            </>
+          )}
+          .
+        </p>
+      )}
+    </section>
+  );
+}
+
+/** Um lado do card de "movers": para quem passei a fechar mais ou menos. */
+function MoverBlock({
+  title,
+  change,
+  tone,
+}: {
+  title: string;
+  change: ContactProposalConversionChange<ConversionContact> | null;
+  tone: "improved" | "worsened";
+}) {
+  const valueClass = tone === "improved" ? "text-emerald-600" : "text-red-600";
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{title}</p>
+      {change && change.conversionRateDelta != null ? (
+        <>
+          <p className="mt-1 truncate font-medium text-gray-900">{change.contact.name}</p>
+          <p className={"mt-1 text-lg font-bold " + valueClass}>
+            {pctDelta(change.conversionRateDelta)}
+          </p>
+          <p className="text-xs text-gray-400">
+            {rateLabel(change.previous.conversion.conversionRate)} →{" "}
+            {rateLabel(change.current.conversion.conversionRate)}
+          </p>
+        </>
+      ) : (
+        <p className="mt-1 text-sm text-gray-400">
+          Nenhum contratante passou a converter{" "}
+          {tone === "improved" ? "mais" : "menos"} de forma relevante
+        </p>
+      )}
     </div>
   );
 }
