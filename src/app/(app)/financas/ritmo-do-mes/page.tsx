@@ -113,6 +113,12 @@ export default async function MonthPacePage({
               );
             })}
           </div>
+          <a
+            href={`/financas/ritmo-do-mes/export?meses=${windowMonths}`}
+            className="btn-secondary"
+          >
+            ⬇ CSV
+          </a>
           <Link href="/financas" className="text-sm text-gray-500 hover:underline">
             ← Finanças
           </Link>

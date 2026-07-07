@@ -60,6 +60,8 @@ import {
   BOOKED_REVENUE_CSV_HEADERS,
   dueAgendaToCsv,
   DUE_AGENDA_CSV_HEADERS,
+  monthPaceToCsv,
+  MONTH_PACE_CSV_HEADERS,
   type DueAgendaCsvTx,
   type CsvTransaction,
   type CsvShow,
@@ -79,6 +81,7 @@ import {
   feeTrend,
   cashFlowByMonth,
   forecastBookedRevenue,
+  currentMonthPace,
   buildDueAgenda,
   yearlyHistory,
   weekdayPerformance,
@@ -1762,5 +1765,72 @@ describe("dueAgendaToCsv", () => {
     expect(lines[1]).toBe("10/06/2026;;Transporte;Vencidas;A pagar;-19;;0,00;50,00");
     expect(lines[2]).toBe("25/06/2026;Cachê atrasado;Cachê;Vencidas;A receber;-4;;80,00;0,00");
     expect(lines[3]).toBe("Total;;;;;;;80,00;50,00");
+  });
+});
+
+describe("monthPaceToCsv", () => {
+  // `now` fixo em 15/06/2026 (dia 15 de 30 → 50% do mês decorrido, projeção limpa).
+  // A janela do mês típico (months: 3) são os meses COMPLETOS antes de junho:
+  // março, abril, maio de 2026.
+  const NOW = "2026-06-15T00:00:00.000Z";
+  const tx = (type: TxLike["type"], amount: number, date: string): TxLike => ({
+    type,
+    amount,
+    category: "",
+    date,
+    received: true,
+    showId: null,
+  });
+
+  it("só cabeçalho + 3 métricas zeradas sem transações", () => {
+    const csv = monthPaceToCsv(currentMonthPace([], { now: NOW, months: 3 }));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(MONTH_PACE_CSV_HEADERS.join(";"));
+    // cabeçalho + Receitas/Despesas/Resultado — sem linha "Total" (métricas
+    // heterogêneas não somam).
+    expect(lines).toHaveLength(4);
+    expect(lines[1]).toBe("Receitas;0,00;0,00;0,00;0,00;0%");
+    expect(lines[2]).toBe("Despesas;0,00;0,00;0,00;0,00;0%");
+    expect(lines[3]).toBe("Resultado;0,00;0,00;0,00;0,00;0%");
+  });
+
+  it("uma linha por métrica com lançado/projeção/mês típico/esperado/variação", () => {
+    const pace = currentMonthPace(
+      [
+        // Baseline (mês típico): receita média 2000, despesa média 200.
+        tx("INCOME", 100000, "2026-03-10T00:00:00.000Z"),
+        tx("INCOME", 300000, "2026-04-10T00:00:00.000Z"),
+        tx("EXPENSE", 20000, "2026-04-20T00:00:00.000Z"),
+        tx("INCOME", 200000, "2026-05-10T00:00:00.000Z"),
+        tx("EXPENSE", 40000, "2026-05-20T00:00:00.000Z"),
+        // Mês corrente (junho até o dia 15): lançado 1500 de receita, 500 de despesa.
+        tx("INCOME", 150000, "2026-06-05T00:00:00.000Z"),
+        tx("EXPENSE", 50000, "2026-06-12T00:00:00.000Z"),
+      ],
+      { now: NOW, months: 3 },
+    );
+    const lines = monthPaceToCsv(pace).split("\r\n");
+    expect(lines).toHaveLength(4);
+    // Receitas: lançado 1500, projeção 3000 (1500 ÷ 50%), típico 2000, esperado 1000,
+    // variação +50% (projeção 3000 vs. típico 2000).
+    expect(lines[1]).toBe("Receitas;1500,00;3000,00;2000,00;1000,00;+50%");
+    // Despesas: lançado 500, projeção 1000, típico 200, esperado 100, +400%.
+    expect(lines[2]).toBe("Despesas;500,00;1000,00;200,00;100,00;+400%");
+    // Resultado: lançado 1000, projeção 2000, típico 1800, esperado 900, +11%.
+    expect(lines[3]).toBe("Resultado;1000,00;2000,00;1800,00;900,00;+11%");
+  });
+
+  it("emite 'novo' na variação quando não há mês típico (baseline 0)", () => {
+    const pace = currentMonthPace(
+      // Só o mês corrente, sem meses anteriores → baseline vazia (insufficient).
+      [tx("INCOME", 150000, "2026-06-05T00:00:00.000Z")],
+      { now: NOW, months: 3 },
+    );
+    const lines = monthPaceToCsv(pace).split("\r\n");
+    expect(lines).toHaveLength(4);
+    // Sem base, a variação vira "novo" (a página exibe "—"); despesa 0×0 fica "0%".
+    expect(lines[1]).toBe("Receitas;1500,00;3000,00;0,00;0,00;novo");
+    expect(lines[2]).toBe("Despesas;0,00;0,00;0,00;0,00;0%");
+    expect(lines[3]).toBe("Resultado;1500,00;3000,00;0,00;0,00;novo");
   });
 });

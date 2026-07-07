@@ -36,6 +36,7 @@ import {
   type CashFlowMonth,
   type BookedRevenueForecast,
   type DueAgenda,
+  type MonthPace,
   type TxLike,
   DUE_BUCKET_LABELS,
   type YearlyHistory,
@@ -1571,6 +1572,70 @@ export function dueAgendaToCsv(
     "",
     centsToCsvAmount(agenda.totalIncome),
     centsToCsvAmount(agenda.totalExpense),
+  ]);
+  return toCsv(out, delimiter);
+}
+
+// ── Ritmo do mês corrente (projeção pro-rata × mês típico) ────────────────────
+
+export const MONTH_PACE_CSV_HEADERS = [
+  "Métrica",
+  "Já lançado (R$)",
+  "Projeção do mês (R$)",
+  "Mês típico (R$)",
+  "Esperado a esta altura (R$)",
+  "Variação proj. × típico (%)",
+] as const;
+
+/**
+ * Serializa o "ritmo do mês corrente" (`currentMonthPace`) em CSV, pronto para
+ * download — espelha a tabela "Projeção do mês × mês típico" de
+ * `/financas/ritmo-do-mes`. **Não é uma série temporal** (como
+ * `cashFlowToCsv`/`gigCadenceToCsv`): é uma fotografia do mês em curso, então cada
+ * linha é uma **métrica** (Receitas / Despesas / Resultado), não um mês, e não há
+ * linha "Total" — somar receitas + despesas + resultado não teria sentido (a linha
+ * "Resultado" já é o fecho).
+ *
+ * Cada linha traz o que já foi **lançado** no mês (regime de competência), a
+ * **projeção** pro-rata do fechamento (lançado ÷ fração do mês decorrida), o
+ * **mês típico** (baseline: média dos meses completos com movimento na janela) e o
+ * **esperado a esta altura** (baseline × fração decorrida — a leitura alternativa
+ * do card), fechando com a variação da projeção frente ao mês típico.
+ *
+ * A coluna de variação usa `csvDeltaPct` ("+25%"/"-30%"/"0%"/"novo"), a mesma
+ * convenção legível por máquina dos irmãos: quando não há base (mês típico 0),
+ * emite "novo" — diferente da página, que exibe "—" nesse caso (`insufficient`).
+ * Números pt-BR (decimal com vírgula, delimitador ";"). Pura.
+ */
+export function monthPaceToCsv(
+  pace: MonthPace,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(MONTH_PACE_CSV_HEADERS)];
+  const expectedNetByNow = pace.expectedIncomeByNow - pace.expectedExpenseByNow;
+  out.push([
+    "Receitas",
+    centsToCsvAmount(pace.income),
+    centsToCsvAmount(pace.projectedIncome),
+    centsToCsvAmount(pace.baselineIncome),
+    centsToCsvAmount(pace.expectedIncomeByNow),
+    csvDeltaPct(pace.incomeVsBaseline),
+  ]);
+  out.push([
+    "Despesas",
+    centsToCsvAmount(pace.expense),
+    centsToCsvAmount(pace.projectedExpense),
+    centsToCsvAmount(pace.baselineExpense),
+    centsToCsvAmount(pace.expectedExpenseByNow),
+    csvDeltaPct(pace.expenseVsBaseline),
+  ]);
+  out.push([
+    "Resultado",
+    centsToCsvAmount(pace.net),
+    centsToCsvAmount(pace.projectedNet),
+    centsToCsvAmount(pace.baselineNet),
+    centsToCsvAmount(expectedNetByNow),
+    csvDeltaPct(pace.netVsBaseline),
   ]);
   return toCsv(out, delimiter);
 }

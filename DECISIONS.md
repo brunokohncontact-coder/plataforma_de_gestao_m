@@ -4931,3 +4931,39 @@ contexto, decisão, justificativa e alternativas consideradas.
   D6/bloqueios); **nenhuma dependência nova**.
 - **Nota de concorrência:** **D157** segue reservado à PR paralela #180 (export CSV da agenda) ainda em aberto; esta sessão usa
   **D159** (após o D158 já mergeado da Sessão 165) para evitar colisão de numeração na `main`.
+
+## D160 — Exportação CSV do ritmo do mês corrente (`/financas/ritmo-do-mes/export`) (Sessão 167)
+- **Contexto:** a tela `/financas/ritmo-do-mes` (`currentMonthPace`/D158) responde "estou faturando no ritmo de um mês normal?" —
+  projeta o fechamento do mês em curso por extrapolação pro-rata e o compara ao "mês típico" recente (média dos meses completos
+  com movimento na janela `?meses=`). Era o **último relatório tabular ainda sem exportação CSV**: todas as demais telas de
+  Finanças/Shows/Contatos já exportavam (anual/trimestral/sazonalidade/variação/fontes/composição/crescimento/fôlego/receita
+  agendada/agenda…). Levar a tabela "Projeção do mês × mês típico" para a planilha fecha a última lacuna de exportação do acervo.
+- **Decisão:** novo serializador puro `monthPaceToCsv(pace)` + `MONTH_PACE_CSV_HEADERS` em `src/lib/csv.ts` recebe o `MonthPace`
+  já computado por `currentMonthPace` (de `@/lib/finance`) e espelha a tabela da página. Rota `/financas/ritmo-do-mes/export`
+  reusa a **mesma consulta** e a **mesma janela** (`?meses=`, saneada por `parseBurnWindow`) da página + BOM UTF-8; nome
+  `ritmo-do-mes-<YYYY-MM>-<n>m.csv` (carrega o mês fotografado **e** a janela do mês típico, já que a janela muda as colunas de
+  baseline); botão "⬇ CSV" no cabeçalho, propagando a janela ativa.
+- **Não é uma série temporal — cada linha é uma métrica, sem "Total":** diferente de `cashFlowToCsv`/`gigCadenceToCsv` (uma linha
+  por mês), esta é uma **fotografia** do mês em curso. As três linhas são as métricas da tabela (Receitas / Despesas /
+  Resultado), **não** meses, então **não há linha "Total"**: somar receitas + despesas + resultado não teria sentido, e a linha
+  "Resultado" já é o fecho. Divergência consciente do padrão "sempre fecha com Total" dos irmãos-séries.
+- **Colunas:** Métrica / Já lançado (R$) / Projeção do mês (R$) / Mês típico (R$) / Esperado a esta altura (R$) /
+  Variação proj. × típico (%). Captura **todo o número visível da página** numa só tabela: o lançado (regime de competência), a
+  projeção pro-rata, a baseline (mês típico), o "esperado a esta altura" (baseline × fração decorrida — a leitura alternativa do
+  card de Receita) e a variação da projeção frente ao típico. A variação usa `csvDeltaPct` ("+50%"/"-30%"/"0%"/"novo"), a mesma
+  convenção legível por máquina de `categoryVariationToCsv`/`yearlyHistoryToCsv`: **sem base** (mês típico 0, veredito
+  `insufficient`) emite **"novo"**, onde a página exibe "—" — mesma divergência já registrada em D154.
+- **Contexto qualitativo fica de fora do corpo do CSV:** veredito (`ahead`/`onPace`/`behind`) e a fração do mês decorrida não
+  viram linhas (seriam metadados escalares repetidos, estranhos numa tabela) — o mês fotografado vai no **nome do arquivo**;
+  segue a convenção dos irmãos de manter o CSV uma tabela limpa.
+- **Testes:** **+3** em `csv.test.ts` (`describe("monthPaceToCsv")`, `now` fixo em 15/06/2026 → 50% do mês, projeção limpa): só
+  cabeçalho + 3 métricas zeradas (sem "Total"); uma linha por métrica com lançado/projeção/mês típico/esperado/variação; emite
+  "novo" na variação quando não há mês típico (baseline 0). **973 testes** no total (eram 970).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **973 testes** (`vitest run`);
+  smoke test (`next start`) → `/login` 200 e `/financas/ritmo-do-mes` + `/financas/ritmo-do-mes/export` (+ `?meses=12`) 307
+  (auth-gated). `npm audit` **inalterado** vs. baseline (10 advisories — 4 moderate / 5 high / 1 critical, todos do Next 14 /
+  postcss bundlado; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Nota de ambiente:** o cliente Prisma pré-instalado no container estava dessincronizado do `prisma/schema.prisma` da `main`
+  (esperava uma coluna `billingContactId` inexistente no schema), quebrando os testes de integração de server actions; um
+  `npx prisma generate` a partir do schema commitado reconciliou o cliente e a suíte voltou a 973/973. Nenhuma mudança de código
+  foi necessária — só regeneração do client (etapa do `npm run build`/hook de setup).
