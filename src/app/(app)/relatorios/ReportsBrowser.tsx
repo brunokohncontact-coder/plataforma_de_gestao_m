@@ -20,10 +20,32 @@ const ACTIVATION_MARGIN = 130;
 // Hub de relatórios com busca textual ao vivo. A lista é estática (catálogo
 // de `reports.ts`); o filtro roda no cliente sobre a lógica pura `filterReports`
 // (insensível a acento/caixa, multitermo AND, varrendo título/descrição/área).
-export default function ReportsBrowser() {
-  const [query, setQuery] = useState("");
+// A consulta é deep-linkável: o valor inicial chega da URL (`?q=`) e o campo
+// espelha de volta em `?q=` conforme o usuário digita, para que uma visão
+// filtrada seja compartilhável/favoritável e sobreviva ao voltar/avançar.
+export default function ReportsBrowser({
+  initialQuery = "",
+}: {
+  initialQuery?: string;
+}) {
+  const [query, setQuery] = useState(initialQuery);
   const total = reportCount();
   const navIndex = reportsNavIndex();
+
+  // Espelha a busca em `?q=` sem recarregar (o hub é estático — nada no servidor
+  // depende de `q`). Usa `history.replaceState` para não empilhar uma entrada de
+  // histórico por tecla; a busca vazia limpa o parâmetro, deixando a URL crua.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const trimmed = query.trim();
+    const url = new URL(window.location.href);
+    if (trimmed) url.searchParams.set("q", trimmed);
+    else url.searchParams.delete("q");
+    const next = url.pathname + url.search;
+    if (next !== window.location.pathname + window.location.search) {
+      window.history.replaceState(window.history.state, "", next);
+    }
+  }, [query]);
 
   const groups = useMemo(() => filterReports(query), [query]);
   const matched = useMemo(
@@ -105,9 +127,18 @@ export default function ReportsBrowser() {
           className="input w-full"
         />
         {filtering && (
-          <p className="mt-1.5 text-sm text-gray-500" aria-live="polite">
-            {matched} de {total} relatórios
-          </p>
+          <div className="mt-1.5 flex items-baseline justify-between gap-2">
+            <p className="text-sm text-gray-500" aria-live="polite">
+              {matched} de {total} relatórios
+            </p>
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              className="text-sm text-brand-700 hover:underline"
+            >
+              Limpar
+            </button>
+          </div>
         )}
       </div>
 
