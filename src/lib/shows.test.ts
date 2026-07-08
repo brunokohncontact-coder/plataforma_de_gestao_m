@@ -49,6 +49,8 @@ import {
   staleProposalsHeadline,
   STALE_PROPOSAL_DAYS,
   STALE_PROPOSAL_IMMINENT_DAYS,
+  showGaps,
+  MIN_SHOW_GAP_SAMPLE,
   type ConflictShowLike,
   type StaleProposalShowLike,
   type LeadTimeShowLike,
@@ -2471,5 +2473,105 @@ describe("staleProposalsHeadline", () => {
     expect(h.totalStale).toBe(3);
     // a fila vem ordenada por urgência → vencida é o topo
     expect(h.top?.id).toBe("over");
+  });
+});
+
+describe("showGaps", () => {
+  const NOW = "2026-06-15T12:00:00.000Z";
+  const g = (date: string, status: string = "PLAYED") => ({ date, status });
+
+  it("devolve tudo zerado/nulo sem shows", () => {
+    const r = showGaps([], { now: NOW });
+    expect(r.gaps).toEqual([]);
+    expect(r.showDays).toBe(0);
+    expect(r.longest).toBeNull();
+    expect(r.medianGapDays).toBe(0);
+    expect(r.averageGapDays).toBe(0);
+    expect(r.firstDay).toBeNull();
+    expect(r.lastDay).toBeNull();
+    expect(r.currentGapDays).toBeNull();
+    expect(r.daysUntilNext).toBeNull();
+  });
+
+  it("ignora propostas e cancelados (só firmes ocupam a agenda)", () => {
+    const r = showGaps(
+      [
+        g("2026-01-10", "PROPOSED"),
+        g("2026-02-10", "CANCELLED"),
+        g("2026-03-10", "PLAYED"),
+      ],
+      { now: NOW },
+    );
+    expect(r.showDays).toBe(1);
+    expect(r.gaps).toEqual([]);
+  });
+
+  it("um único gig passado: sem hiatos, mas conta a seca atual", () => {
+    const r = showGaps([g("2026-06-05")], { now: NOW });
+    expect(r.showDays).toBe(1);
+    expect(r.longest).toBeNull();
+    expect(r.firstDay).toBe("2026-06-05");
+    expect(r.lastDay).toBe("2026-06-05");
+    expect(r.currentGapDays).toBe(10); // 05 → 15 de junho
+    expect(r.daysUntilNext).toBeNull();
+  });
+
+  it("mede os hiatos entre dias consecutivos e ordena do maior ao menor", () => {
+    const r = showGaps(
+      [g("2026-01-01"), g("2026-01-11"), g("2026-02-10")],
+      { now: NOW },
+    );
+    // 01→11 = 10 dias; 11 jan → 10 fev = 30 dias
+    expect(r.gaps.map((x) => x.days)).toEqual([30, 10]);
+    expect(r.longest).toEqual({ fromDay: "2026-01-11", toDay: "2026-02-10", days: 30 });
+    expect(r.averageGapDays).toBe(20);
+    expect(r.medianGapDays).toBe(20); // média de 10 e 30 (par → média dos centrais)
+  });
+
+  it("colapsa vários shows no mesmo dia (uma seca é sobre dias sem gig)", () => {
+    const r = showGaps(
+      [g("2026-03-01"), g("2026-03-01", "CONFIRMED"), g("2026-03-08")],
+      { now: NOW },
+    );
+    expect(r.showDays).toBe(2);
+    expect(r.gaps).toHaveLength(1);
+    expect(r.gaps[0].days).toBe(7);
+  });
+
+  it("trata CONFIRMED futuro como próximo gig e não como seca atual", () => {
+    const r = showGaps(
+      [g("2026-06-01"), g("2026-06-20", "CONFIRMED")],
+      { now: NOW },
+    );
+    expect(r.currentGapDays).toBe(14); // último passado = 01 jun → 15 jun
+    expect(r.daysUntilNext).toBe(5); // 15 → 20 jun
+    // o hiato passado↔futuro entra na lista
+    expect(r.gaps[0]).toEqual({ fromDay: "2026-06-01", toDay: "2026-06-20", days: 19 });
+  });
+
+  it("sem gig passado (só futuros), a seca atual é nula", () => {
+    const r = showGaps([g("2026-07-01", "CONFIRMED")], { now: NOW });
+    expect(r.currentGapDays).toBeNull();
+    expect(r.daysUntilNext).toBe(16); // 15 jun → 01 jul
+  });
+
+  it("gig hoje zera a seca atual", () => {
+    const r = showGaps([g("2026-06-15")], { now: NOW });
+    expect(r.currentGapDays).toBe(0);
+  });
+
+  it("desempata hiatos iguais pelo mais recente", () => {
+    const r = showGaps(
+      [g("2026-01-01"), g("2026-01-08"), g("2026-02-01"), g("2026-02-08")],
+      { now: NOW },
+    );
+    // dois hiatos de 7 dias (01→08 jan e 01→08 fev) e um de 24 (08 jan→01 fev)
+    expect(r.gaps[0].days).toBe(24);
+    expect(r.gaps[1]).toEqual({ fromDay: "2026-02-01", toDay: "2026-02-08", days: 7 });
+    expect(r.gaps[2]).toEqual({ fromDay: "2026-01-01", toDay: "2026-01-08", days: 7 });
+  });
+
+  it("expõe o limiar mínimo de amostra", () => {
+    expect(MIN_SHOW_GAP_SAMPLE).toBeGreaterThanOrEqual(2);
   });
 });

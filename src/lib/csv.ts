@@ -92,6 +92,7 @@ import type {
   ContactProposalConversion,
   StaleProposalsReport,
   StaleProposalUrgency,
+  ShowGapsReport,
 } from "./shows";
 import {
   summarizeMonthShows,
@@ -1799,6 +1800,35 @@ export function gigCadenceToCsv(
     out.push([m.month, String(m.count)]);
   }
   out.push(["Total", String(cadence.totalShows)]);
+  return toCsv(out, delimiter);
+}
+
+// ── Hiatos entre shows (secas de agenda) ─────────────────────────────────────
+
+export const SHOW_GAPS_CSV_HEADERS = [
+  "De",
+  "Até",
+  "Dias entre shows",
+] as const;
+
+/**
+ * Serializa os hiatos entre shows (`showGaps`) em CSV, pronto para download.
+ * Espelha a tabela "Maiores secas" de `/shows/hiatos`: uma linha por hiato entre
+ * gigs firmes consecutivos, do MAIOR ao menor (mesma ordem da tela), com o dia
+ * do gig que abre e o que fecha o hiato e os dias corridos entre eles. Como em
+ * `gigCadenceToCsv`, as colunas de data usam a chave ISO "YYYY-MM-DD" (ordenável
+ * por máquina), e não o rótulo amigável da UI. Sem linha "Total" (hiatos não
+ * somam); os agregados — espaçamento típico, seca atual — vivem nos cards da
+ * tela. Mesma convenção pt-BR dos irmãos (delimitador ";"). Pura.
+ */
+export function showGapsToCsv(
+  report: ShowGapsReport,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(SHOW_GAPS_CSV_HEADERS)];
+  for (const gap of report.gaps) {
+    out.push([gap.fromDay, gap.toDay, String(gap.days)]);
+  }
   return toCsv(out, delimiter);
 }
 
