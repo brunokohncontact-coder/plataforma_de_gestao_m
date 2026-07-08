@@ -3,8 +3,14 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { LoginForm } from "./LoginForm";
 
-export default async function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: { redefinida?: string };
+}) {
   if (await getCurrentUser()) redirect("/dashboard");
+
+  const passwordReset = searchParams.redefinida === "1";
 
   return (
     <main className="flex min-h-screen items-center justify-center px-6 py-12">
@@ -15,7 +21,17 @@ export default async function LoginPage() {
         <div className="card">
           <h1 className="mb-1 text-xl font-semibold">Entrar</h1>
           <p className="mb-5 text-sm text-gray-500">Acesse o seu workspace.</p>
+          {passwordReset && (
+            <p className="mb-4 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
+              Senha redefinida com sucesso. Entre com a nova senha.
+            </p>
+          )}
           <LoginForm />
+          <p className="mt-4 text-center text-sm text-gray-600">
+            <Link href="/esqueci-senha" className="font-medium text-brand-700 hover:underline">
+              Esqueci a senha
+            </Link>
+          </p>
         </div>
         <p className="mt-4 text-center text-sm text-gray-600">
           Não tem conta?{" "}
