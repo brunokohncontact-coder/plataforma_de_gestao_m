@@ -48,3 +48,34 @@ export function isResetTokenUsable(token: ResetTokenState, now: Date): boolean {
   if (token.usedAt != null) return false;
   return now.getTime() < token.expiresAt.getTime();
 }
+
+/**
+ * Máximo de pedidos de redefinição aceitos por conta dentro da janela
+ * deslizante. Acima disso os pedidos seguintes são silenciosamente ignorados
+ * (nenhum token novo é criado), para conter abuso/spam de links. É uma
+ * heurística — ver DECISIONS.md (D260), marcada para validação.
+ */
+export const RESET_REQUEST_MAX_PER_WINDOW = 3;
+
+/** Janela deslizante do rate-limit de pedidos de redefinição, em minutos. */
+export const RESET_REQUEST_WINDOW_MINUTES = 60;
+
+/**
+ * Início da janela deslizante de rate-limit para um pedido feito em `now`:
+ * pedidos anteriores a este instante já não contam. Puro; `now` injetável. Serve
+ * de limite inferior para contar os pedidos recentes da conta (`createdAt >=`).
+ */
+export function resetRequestWindowStart(now: Date): Date {
+  return new Date(now.getTime() - RESET_REQUEST_WINDOW_MINUTES * 60 * 1000);
+}
+
+/**
+ * Rate-limit anti-abuso: dado o número de pedidos de redefinição já feitos pela
+ * conta dentro da janela corrente (ver `resetRequestWindowStart`), retorna true
+ * quando o próximo pedido deve ser barrado (já atingiu `RESET_REQUEST_MAX_PER_WINDOW`).
+ * Puro e determinístico. Barrar mantém a resposta genérica (anti-enumeração): o
+ * usuário vê a mesma mensagem, apenas nenhum link novo é gerado.
+ */
+export function isPasswordResetRateLimited(recentRequestCount: number): boolean {
+  return recentRequestCount >= RESET_REQUEST_MAX_PER_WINDOW;
+}

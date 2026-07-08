@@ -4,7 +4,11 @@ import {
   hashResetToken,
   resetTokenExpiry,
   isResetTokenUsable,
+  resetRequestWindowStart,
+  isPasswordResetRateLimited,
   RESET_TOKEN_TTL_MINUTES,
+  RESET_REQUEST_WINDOW_MINUTES,
+  RESET_REQUEST_MAX_PER_WINDOW,
 } from "./passwordReset";
 
 describe("generateResetToken", () => {
@@ -70,5 +74,30 @@ describe("isResetTokenUsable", () => {
 
   it("usado tem precedência mesmo que ainda não tenha expirado", () => {
     expect(isResetTokenUsable({ expiresAt: future, usedAt: now }, now)).toBe(false);
+  });
+});
+
+describe("resetRequestWindowStart", () => {
+  it("recua a janela minutos antes do instante base", () => {
+    const now = new Date("2026-07-08T12:00:00.000Z");
+    const start = resetRequestWindowStart(now);
+    expect(now.getTime() - start.getTime()).toBe(
+      RESET_REQUEST_WINDOW_MINUTES * 60 * 1000,
+    );
+  });
+});
+
+describe("isPasswordResetRateLimited", () => {
+  it("permite enquanto os pedidos recentes ficam abaixo do máximo", () => {
+    expect(isPasswordResetRateLimited(0)).toBe(false);
+    expect(isPasswordResetRateLimited(RESET_REQUEST_MAX_PER_WINDOW - 1)).toBe(false);
+  });
+
+  it("barra ao atingir o máximo de pedidos na janela", () => {
+    expect(isPasswordResetRateLimited(RESET_REQUEST_MAX_PER_WINDOW)).toBe(true);
+  });
+
+  it("segue barrando acima do máximo", () => {
+    expect(isPasswordResetRateLimited(RESET_REQUEST_MAX_PER_WINDOW + 5)).toBe(true);
   });
 });

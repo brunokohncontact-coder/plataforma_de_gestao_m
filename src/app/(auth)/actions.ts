@@ -15,6 +15,8 @@ import {
   hashResetToken,
   resetTokenExpiry,
   isResetTokenUsable,
+  resetRequestWindowStart,
+  isPasswordResetRateLimited,
 } from "@/lib/passwordReset";
 
 export interface AuthState {
@@ -116,6 +118,17 @@ export async function requestPasswordResetAction(
   if (!user) return { success: RESET_REQUEST_MESSAGE };
 
   const now = new Date();
+
+  // Rate-limit anti-abuso: se a conta já pediu muitos links dentro da janela,
+  // ignora silenciosamente (nenhum token novo) mantendo a mesma resposta genérica
+  // — não gera spam de e-mail nem revela a existência da conta (anti-enumeração).
+  const recentRequestCount = await prisma.passwordResetToken.count({
+    where: { userId: user.id, createdAt: { gte: resetRequestWindowStart(now) } },
+  });
+  if (isPasswordResetRateLimited(recentRequestCount)) {
+    return { success: RESET_REQUEST_MESSAGE };
+  }
+
   const rawToken = generateResetToken();
 
   // Invalida pedidos anteriores ainda pendentes desta conta (marca como usados),

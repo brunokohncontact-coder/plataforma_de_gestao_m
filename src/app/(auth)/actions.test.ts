@@ -12,7 +12,11 @@ vi.mock("next/navigation", () => ({
 
 import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyPassword } from "@/lib/auth";
-import { hashResetToken } from "@/lib/passwordReset";
+import {
+  hashResetToken,
+  RESET_REQUEST_MAX_PER_WINDOW,
+  RESET_REQUEST_WINDOW_MINUTES,
+} from "@/lib/passwordReset";
 import { resetDb } from "@/test/db";
 import { requestPasswordResetAction, resetPasswordAction } from "./actions";
 
@@ -97,6 +101,46 @@ describe("requestPasswordResetAction", () => {
   it("rejeita e-mail inválido", async () => {
     const result = await requestPasswordResetAction({}, requestForm("nao-e-email"));
     expect(result.error).toBeTruthy();
+  });
+
+  it("barra pedidos além do limite na janela (rate-limit), sem gerar novo token", async () => {
+    await createUser("musico@example.com", "senha-original");
+
+    // Os primeiros pedidos passam e criam tokens (cada um invalida o anterior).
+    for (let i = 0; i < RESET_REQUEST_MAX_PER_WINDOW; i++) {
+      const ok = await requestPasswordResetAction({}, requestForm("musico@example.com"));
+      expect(ok.devResetLink).toBeTruthy();
+    }
+    const countAfterLimit = await prisma.passwordResetToken.count();
+    expect(countAfterLimit).toBe(RESET_REQUEST_MAX_PER_WINDOW);
+
+    // O pedido seguinte é barrado: mesma mensagem genérica, nenhum link/token novo.
+    const blocked = await requestPasswordResetAction({}, requestForm("musico@example.com"));
+    expect(blocked.success).toBeTruthy();
+    expect(blocked.error).toBeUndefined();
+    expect(blocked.devResetLink).toBeUndefined();
+    expect(await prisma.passwordResetToken.count()).toBe(countAfterLimit);
+  });
+
+  it("não conta pedidos fora da janela deslizante ao aplicar o rate-limit", async () => {
+    const user = await createUser("musico@example.com", "senha-original");
+
+    // Pedidos antigos (fora da janela) não devem contar para o limite.
+    const old = new Date(Date.now() - (RESET_REQUEST_WINDOW_MINUTES + 5) * 60 * 1000);
+    for (let i = 0; i < RESET_REQUEST_MAX_PER_WINDOW; i++) {
+      await prisma.passwordResetToken.create({
+        data: {
+          userId: user.id,
+          tokenHash: hashResetToken(`antigo-${i}`),
+          expiresAt: new Date(old.getTime() + 60 * 60 * 1000),
+          usedAt: old,
+          createdAt: old,
+        },
+      });
+    }
+
+    const result = await requestPasswordResetAction({}, requestForm("musico@example.com"));
+    expect(result.devResetLink).toBeTruthy(); // não barrado: os antigos não contam
   });
 });
 
