@@ -48,11 +48,29 @@ export default async function ContactsPage({
 
   const visible = filterContacts(contacts, filter);
 
+  // Propaga os filtros ativos para o export, para baixar exatamente o recorte visível.
+  const exportQuery = new URLSearchParams();
+  if (filter.q) exportQuery.set("q", filter.q);
+  if (filter.role) exportQuery.set("papel", filter.role);
+  const exportHref = `/contatos/export${
+    exportQuery.toString() ? `?${exportQuery.toString()}` : ""
+  }`;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">Contatos</h1>
         <div className="flex items-center gap-2">
+          {visible.length > 0 && (
+            <a
+              href={exportHref}
+              className="btn-secondary"
+              download
+              title="Baixar os contatos (do recorte filtrado) em CSV"
+            >
+              ⬇ CSV
+            </a>
+          )}
           {contacts.length > 0 && (
             <Link href="/relatorios#contatos" className="btn-secondary">
               Relatórios

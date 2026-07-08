@@ -896,6 +896,53 @@ export function contactActivityToCsv(
   return toCsv(out, delimiter);
 }
 
+// ── Diretório de contatos (a lista de `/contatos`) ───────────────────────────
+
+export const CONTACT_DIRECTORY_CSV_HEADERS = [
+  "Nome",
+  "Tipo",
+  "E-mail",
+  "Telefone",
+  "Notas",
+] as const;
+
+/**
+ * Forma mínima de um contato para a exportação do diretório. Espelha
+ * `ContactLike` de `@/lib/contacts` sem criar dependência de tipo (só o que o
+ * CSV usa).
+ */
+export interface ContactDirectoryCsvRow {
+  name: string;
+  role: string;
+  email?: string | null;
+  phone?: string | null;
+  notes?: string | null;
+}
+
+/**
+ * Serializa o diretório de contatos (a lista de `/contatos`) em CSV, pronto para
+ * download. Mesma convenção pt-BR de `transactionsToCsv`. Uma linha por contato,
+ * na ordem recebida (a página ordena por nome). Campos ausentes saem vazios; as
+ * quebras de linha das notas são normalizadas para um espaço, mantendo uma linha
+ * por contato na planilha. Pura.
+ */
+export function contactsToCsv(
+  rows: ContactDirectoryCsvRow[],
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(CONTACT_DIRECTORY_CSV_HEADERS)];
+  for (const row of rows) {
+    out.push([
+      row.name,
+      contactRoleLabel(row.role),
+      row.email ?? "",
+      row.phone ?? "",
+      (row.notes ?? "").replace(/\s*[\r\n]+\s*/g, " ").trim(),
+    ]);
+  }
+  return toCsv(out, delimiter);
+}
+
 // ── Cachês a receber (recebíveis em aberto, aging + promessas) ───────────────
 
 export const RECEIVABLE_CSV_HEADERS = [

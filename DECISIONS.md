@@ -8850,3 +8850,32 @@ contexto, decisão, justificativa e alternativas consideradas.
   (mesmos advisories Next/postcss; ver D6); **nenhuma dependência nova**.
 - **Nota de concorrência:** número **D260** escolhido como o próximo livre após o D259 (Sessão 264). Se uma PR
   paralela reivindicar D260, renumerar para o próximo livre no merge.
+
+## 2026-07-08 — D261: Exportação CSV do diretório de contatos (a lista de `/contatos`)
+- **Contexto:** varredura de cobertura de export mostrou que **todas** as telas analíticas já tinham
+  "⬇ CSV", exceto a própria lista de contatos (`/contatos`) — a única página de navegação com
+  busca+filtro sem download. Os CSVs de contatos existentes eram todos **analíticos** (rentabilidade,
+  atividade, retenção, concentração, cancelamento); faltava o **diretório cru** (agenda de contatos).
+- **Decisão:** adicionar `contactsToCsv` + `CONTACT_DIRECTORY_CSV_HEADERS` (Nome/Tipo/E-mail/Telefone/Notas)
+  em `src/lib/csv.ts` (puro), a rota `/contatos/export` (espelha a query da página: `?q=` + `?papel=`,
+  reusa `filterContacts`/`isValidContactRole` de `@/lib/contacts`) e o botão "⬇ CSV" no cabeçalho de
+  `/contatos`, exibido só com linhas visíveis e propagando os filtros ativos (baixa exatamente o recorte).
+- **Justificativa:** fecha a lacuna de cobertura de export; reusa integralmente o filtro já testado da
+  lista (mesma semântica AND busca+papel) e os utilitários de CSV (BOM UTF-8, RFC 4180, rótulo de papel
+  legível), sem lógica nova além da serialização. Nome do arquivo com a data (`contatos-AAAA-MM-DD.csv`),
+  padrão de `showsToCsv`/D-shows.
+- **Notas:**
+  - As quebras de linha das **notas** são normalizadas para um espaço (`\s*[\r\n]+\s*` → " ") para manter
+    **uma linha por contato** na planilha; o resto do escape (delimitador/aspas) fica com `escapeCsvField`.
+  - Papel desconhecido cai em "Outro" (defensivo), reusando `contactRoleLabel`.
+- **Alternativas consideradas:** preservar as quebras de linha das notas via aspas RFC 4180 (válido, mas
+  gera linhas físicas multi-linha, ruim para leitura rápida do diretório); um export separado "completo"
+  com todos os campos de CRM (adiado — o diretório visível é o caso de uso imediato).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`, 0 erros) e lint (`next lint`, 0 avisos) verdes;
+  **1483 testes** (`vitest run`, +7 puros de `contactsToCsv`: cabeçalho vazio, campos completos,
+  ausentes vazios, normalização de notas, escape RFC 4180, papel desconhecido, ordem preservada); smoke
+  test autenticado (`next start` + cookie de sessão forjado) → `/contatos/export` 200 com
+  `Content-Disposition` e BOM corretos, `?papel=VENUE` e `?q=marina` recortando certo; deslogado → 307.
+  `npm audit` **inalterado** vs. baseline (mesmos advisories Next/postcss; ver D6); **nenhuma dependência nova**.
+- **Nota de concorrência:** número **D261** escolhido como o próximo livre após o D260 (Sessão 265). Se uma
+  PR paralela reivindicar D261, renumerar para o próximo livre no merge.

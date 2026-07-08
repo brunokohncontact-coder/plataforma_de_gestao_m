@@ -14,6 +14,9 @@ import {
   contactProfitToCsv,
   roleProfitToCsv,
   contactActivityToCsv,
+  contactsToCsv,
+  CONTACT_DIRECTORY_CSV_HEADERS,
+  type ContactDirectoryCsvRow,
   receivablesToCsv,
   receivablesByContactToCsv,
   paymentLagByContactToCsv,
@@ -859,6 +862,66 @@ describe("contactActivityToCsv", () => {
     const lines = csv.split("\r\n");
     expect(lines[1].startsWith("Casa A;")).toBe(true);
     expect(lines[2].startsWith("Casa B;")).toBe(true);
+  });
+});
+
+describe("contactsToCsv", () => {
+  const row = (over: Partial<ContactDirectoryCsvRow> = {}): ContactDirectoryCsvRow => ({
+    name: "Produtora Lua",
+    role: "PROMOTER",
+    email: "lua@exemplo.com",
+    phone: "(11) 90000-0000",
+    notes: "Paga em dia",
+    ...over,
+  });
+
+  it("emite só o cabeçalho quando não há linhas", () => {
+    expect(contactsToCsv([])).toBe(CONTACT_DIRECTORY_CSV_HEADERS.join(";"));
+  });
+
+  it("serializa contato com papel legível e todos os campos", () => {
+    const lines = contactsToCsv([row()]).split("\r\n");
+    expect(lines[0]).toBe("Nome;Tipo;E-mail;Telefone;Notas");
+    expect(lines[1]).toBe(
+      "Produtora Lua;Produtor/Promoter;lua@exemplo.com;(11) 90000-0000;Paga em dia",
+    );
+  });
+
+  it("deixa e-mail, telefone e notas vazios quando ausentes (null/undefined)", () => {
+    const cols = contactsToCsv([
+      row({ email: null, phone: undefined, notes: null }),
+    ])
+      .split("\r\n")[1]
+      .split(";");
+    expect(cols[2]).toBe("");
+    expect(cols[3]).toBe("");
+    expect(cols[4]).toBe("");
+  });
+
+  it("normaliza quebras de linha das notas para um espaço (uma linha por contato)", () => {
+    const csv = contactsToCsv([row({ notes: "Linha 1\nLinha 2\r\n  Linha 3" })]);
+    // Sem quebra de linha interna sobrando: só o CRLF separador entre cabeçalho e a linha.
+    expect(csv.split("\r\n")).toHaveLength(2);
+    expect(csv.split("\r\n")[1].endsWith("Linha 1 Linha 2 Linha 3")).toBe(true);
+  });
+
+  it("escapa o delimitador e as aspas nos campos (RFC 4180)", () => {
+    const csv = contactsToCsv([row({ name: 'Bar "O Ponto"; Ltda', notes: "" })]);
+    expect(csv.split("\r\n")[1].startsWith('"Bar ""O Ponto""; Ltda";')).toBe(true);
+  });
+
+  it("cai em 'Outro' para papel desconhecido (defensivo)", () => {
+    const cols = contactsToCsv([row({ role: "ALIEN" })]).split("\r\n")[1].split(";");
+    expect(cols[1]).toBe("Outro");
+  });
+
+  it("preserva a ordem das linhas recebidas", () => {
+    const lines = contactsToCsv([
+      row({ name: "Ana" }),
+      row({ name: "Bruno" }),
+    ]).split("\r\n");
+    expect(lines[1].startsWith("Ana;")).toBe(true);
+    expect(lines[2].startsWith("Bruno;")).toBe(true);
   });
 });
 
