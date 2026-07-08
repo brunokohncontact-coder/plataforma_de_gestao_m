@@ -8774,3 +8774,47 @@ contexto, decisão, justificativa e alternativas consideradas.
   descartado, o cabeçalho da semana é onde vive a navegação temporal (setas/"Esta semana").
 - **Nota de concorrência:** número **D258** escolhido como o próximo livre após o D257 (Sessão 262). Se uma PR
   paralela reivindicar D258, renumerar para o próximo livre no merge.
+
+## 2026-07-08 — D259: Recuperação de senha (fluxo deslogado por token de uso único) (Sessão 264)
+- **Contexto:** o login já tinha cadastro/entrada (D4) e troca de senha **logada** em `/conta` (D10), mas
+  quem esquecia a senha não tinha saída de autoatendimento — precisaria de acesso direto ao banco. Os
+  "próximos passos" apontavam "recuperação de senha" como uma das poucas features maiores restantes (o eixo
+  de exportação/analytics tabular já estava esgotado). A recuperação por e-mail já havia sido **adiada** no MVP
+  por não haver SMTP (D4/bloqueios); esta sessão implementa a **mecânica** completa, deixando só a entrega do
+  e-mail como dependência de produção.
+- **Decisão:** fluxo em dois passos com **token opaco de uso único**:
+  1. Modelo Prisma `PasswordResetToken` (userId, `tokenHash` @unique, `expiresAt`, `usedAt?`, `createdAt`).
+     Guarda-se apenas o **hash SHA-256** do token; o token cru só existe no link. Aplicado via `prisma db push`
+     (sem migração versionada, coerente com o resto do schema).
+  2. Lógica pura em `src/lib/passwordReset.ts`: `generateResetToken` (CSPRNG `node:crypto.randomBytes(32)` →
+     base64url), `hashResetToken` (SHA-256 hex, determinístico — a chave de busca), `resetTokenExpiry(now)`
+     (now + `RESET_TOKEN_TTL_MINUTES`=60), `isResetTokenUsable` (não usado **e** `now < expiresAt`, estrito). `now`
+     injetável; zero I/O — a parte testável do ciclo de vida.
+  3. Server actions `(auth)/actions.ts`: `requestPasswordResetAction` (invalida tokens pendentes anteriores + cria
+     um novo) e `resetPasswordAction` (busca por `tokenHash`, valida usabilidade, `$transaction` grava
+     `passwordHash`+`passwordChangedAt` e marca `usedAt`; sucesso → `redirect("/login?redefinida=1")`).
+  4. Rotas `(auth)/esqueci-senha` e `(auth)/redefinir-senha?token=`; login com link "Esqueci a senha" + banner de
+     sucesso.
+- **Postura de segurança:**
+  - **Só o hash no banco** (vazamento não expõe tokens utilizáveis); token cru de 256 bits só no link.
+  - **Uso único** (`usedAt`) + **expiração** curta (60 min); ao pedir um novo, os pendentes são invalidados.
+  - **Anti-enumeração:** o pedido responde SEMPRE a mesma mensagem genérica, exista ou não a conta (só cria token
+    quando existe, sem mudar a resposta). Erros de token no resgate são genéricos ("inválido ou expirado").
+  - Redefinir marca `passwordChangedAt`, **deslogando sessões antigas** (reusa a regra da D10).
+- **Entrega do e-mail (dependência de produção, sinalizada):** não há provedor de e-mail configurado. Em
+  desenvolvimento (`NODE_ENV !== "production"`) a action devolve o link (`devResetLink`) e o registra no log, para
+  o fluxo ser testável ponta a ponta; em produção nada é surfado — falta **plugar um provedor** (Resend/SendGrid/SMTP)
+  para de fato enviar o link. Registrado como bloqueio no PROGRESS.
+- **Alternativas consideradas:** (a) guardar o token cru no banco — descartado (vazamento = tokens válidos). (b)
+  reusar o JWT de sessão como token de reset — descartado (escopo/expiração diferentes; um token dedicado é de uso
+  único e some ao ser consumido). (c) auto-login após redefinir — descartado por segurança (redireciona ao login;
+  o usuário reautentica com a senha nova). (d) revelar "e-mail não encontrado" para melhor UX — descartado
+  (enumeração de contas). (e) esperar o provedor de e-mail para implementar tudo junto — descartado: a mecânica é o
+  grosso do valor/risco e é testável hoje; o e-mail é um plugue pequeno e isolável depois.
+- **DoD:** build de produção (rotas `/esqueci-senha` e `/redefinir-senha` compiladas), typecheck (`tsc --noEmit`,
+  0 erros) e lint (`next lint`, 0 avisos) verdes; **1470 testes** (`vitest run`, +21: 11 puros + 10 de integração);
+  smoke test (`next start`) → `/login` 200 (com o link "esqueci-senha"), `/esqueci-senha` 200, `/redefinir-senha?token=x`
+  200. `npm audit` **inalterado** vs. baseline (mesmos advisories Next/postcss; ver D6/bloqueios); **nenhuma dependência
+  nova** (usa `node:crypto` + `bcryptjs`/`zod` já presentes).
+- **Nota de concorrência:** número **D259** escolhido como o próximo livre após o D258 (Sessão 263). Se uma PR
+  paralela reivindicar D259, renumerar para o próximo livre no merge.

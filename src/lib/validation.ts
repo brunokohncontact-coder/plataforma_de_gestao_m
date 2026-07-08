@@ -47,6 +47,26 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Informe a senha"),
 });
 
+// ── Recuperação de senha (fluxo deslogado) ───────────────────────────────────
+// Pedir o link: só o e-mail (normalizado). A resposta é sempre genérica para
+// não revelar se a conta existe (anti-enumeração) — ver DECISIONS.md (D259).
+export const requestPasswordResetSchema = z.object({
+  email: z.string().trim().toLowerCase().email("E-mail inválido"),
+});
+
+// Redefinir com o token do link: token opaco + nova senha (mesma regra de força
+// do cadastro) com confirmação.
+export const resetPasswordSchema = z
+  .object({
+    token: z.string().min(1, "Token de redefinição ausente"),
+    newPassword: z.string().min(8, "A nova senha deve ter ao menos 8 caracteres"),
+    confirmPassword: z.string().min(1, "Confirme a nova senha"),
+  })
+  .refine((d) => d.newPassword === d.confirmPassword, {
+    message: "A confirmação não corresponde à nova senha",
+    path: ["confirmPassword"],
+  });
+
 // ── Conta (perfil + senha) ───────────────────────────────────────────────────
 export const updateProfileSchema = z.object({
   name: z.string().trim().min(1, "Informe seu nome"),

@@ -37,6 +37,26 @@ model User {
   transactions Transaction[]
   contacts     Contact[]
   revenueGoals RevenueGoal[]
+  passwordResetTokens PasswordResetToken[]
+}
+
+// ── Recuperação de senha ────────────────────────────────────────────────────
+// Token de uso único para redefinir a senha sem estar logado. Guardamos apenas
+// o HASH do token (SHA-256) — o token cru só existe no link enviado ao usuário,
+// então um vazamento do banco não expõe tokens utilizáveis. Cada token expira
+// (`expiresAt`) e é de uso único (`usedAt` marcado ao ser consumido).
+// Ver DECISIONS.md (D259).
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tokenHash String    @unique // SHA-256 hex do token cru
+  expiresAt DateTime
+  usedAt    DateTime? // marca de consumo (uso único); null = ainda válido
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
 // ── Metas: meta de faturamento anual ────────────────────────────────────────

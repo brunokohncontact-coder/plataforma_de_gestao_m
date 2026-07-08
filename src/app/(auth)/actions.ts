@@ -4,10 +4,25 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyPassword } from "@/lib/auth";
 import { setSessionCookie, clearSessionCookie } from "@/lib/session";
-import { loginSchema, registerSchema } from "@/lib/validation";
+import {
+  loginSchema,
+  registerSchema,
+  requestPasswordResetSchema,
+  resetPasswordSchema,
+} from "@/lib/validation";
+import {
+  generateResetToken,
+  hashResetToken,
+  resetTokenExpiry,
+  isResetTokenUsable,
+} from "@/lib/passwordReset";
 
 export interface AuthState {
   error?: string;
+  /** Mensagem de sucesso (fluxos que não redirecionam, ex.: pedir o link). */
+  success?: string;
+  /** Só em desenvolvimento: o link de redefinição (sem provedor de e-mail). */
+  devResetLink?: string;
 }
 
 export async function registerAction(
@@ -66,6 +81,117 @@ export async function loginAction(
 
   await setSessionCookie(user.id);
   redirect("/dashboard");
+}
+
+// Mensagem genérica de sucesso para o pedido de redefinição — idêntica exista ou
+// não a conta, para não revelar quais e-mails têm cadastro (anti-enumeração).
+const RESET_REQUEST_MESSAGE =
+  "Se houver uma conta com este e-mail, enviamos um link para redefinir a senha.";
+
+/**
+ * Passo 1 do fluxo deslogado: o usuário informa o e-mail e pedimos um link de
+ * redefinição. Cria um token de uso único (guardando só o hash) com validade
+ * curta e invalida tokens pendentes anteriores da mesma conta. A resposta é
+ * SEMPRE a mesma mensagem genérica, exista ou não a conta (anti-enumeração).
+ *
+ * Sem provedor de e-mail configurado (segredo de produção — ver DECISIONS.md
+ * D259), em desenvolvimento devolvemos o link diretamente (`devResetLink`) e o
+ * registramos no log do servidor para que o fluxo seja testável ponta a ponta.
+ */
+export async function requestPasswordResetAction(
+  _prev: AuthState,
+  formData: FormData,
+): Promise<AuthState> {
+  const parsed = requestPasswordResetSchema.safeParse({
+    email: formData.get("email"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.errors[0]?.message ?? "Dados inválidos" };
+  }
+
+  const { email } = parsed.data;
+  const user = await prisma.user.findUnique({ where: { email } });
+
+  // Sem conta: responde genérico sem criar nada (mesmo shape/tempo de resposta).
+  if (!user) return { success: RESET_REQUEST_MESSAGE };
+
+  const now = new Date();
+  const rawToken = generateResetToken();
+
+  // Invalida pedidos anteriores ainda pendentes desta conta (marca como usados),
+  // para que só o link mais recente funcione.
+  await prisma.passwordResetToken.updateMany({
+    where: { userId: user.id, usedAt: null },
+    data: { usedAt: now },
+  });
+
+  await prisma.passwordResetToken.create({
+    data: {
+      userId: user.id,
+      tokenHash: hashResetToken(rawToken),
+      expiresAt: resetTokenExpiry(now),
+    },
+  });
+
+  const result: AuthState = { success: RESET_REQUEST_MESSAGE };
+
+  if (process.env.NODE_ENV !== "production") {
+    const link = `/redefinir-senha?token=${rawToken}`;
+    // eslint-disable-next-line no-console
+    console.log(`[dev] Link de redefinição de senha para ${email}: ${link}`);
+    result.devResetLink = link;
+  }
+
+  return result;
+}
+
+/**
+ * Passo 2: consome o token do link e grava a nova senha. Verifica que o token
+ * existe, não expirou e não foi usado; então atualiza o hash da senha e marca
+ * `passwordChangedAt` (o que também invalida sessões antigas — ver D10) e o
+ * token como consumido (uso único), numa transação. Erros de token são
+ * deliberadamente genéricos ("inválido ou expirado"). Em sucesso, redireciona
+ * ao login já com o aviso — o usuário faz login com a senha nova.
+ */
+export async function resetPasswordAction(
+  _prev: AuthState,
+  formData: FormData,
+): Promise<AuthState> {
+  const parsed = resetPasswordSchema.safeParse({
+    token: formData.get("token"),
+    newPassword: formData.get("newPassword"),
+    confirmPassword: formData.get("confirmPassword"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.errors[0]?.message ?? "Dados inválidos" };
+  }
+
+  const { token, newPassword } = parsed.data;
+  const record = await prisma.passwordResetToken.findUnique({
+    where: { tokenHash: hashResetToken(token) },
+  });
+
+  if (!record || !isResetTokenUsable(record, new Date())) {
+    return {
+      error: "Link de redefinição inválido ou expirado. Solicite um novo.",
+    };
+  }
+
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: record.userId },
+      data: {
+        passwordHash: await hashPassword(newPassword),
+        passwordChangedAt: new Date(),
+      },
+    }),
+    prisma.passwordResetToken.update({
+      where: { id: record.id },
+      data: { usedAt: new Date() },
+    }),
+  ]);
+
+  redirect("/login?redefinida=1");
 }
 
 export async function logoutAction(): Promise<void> {
