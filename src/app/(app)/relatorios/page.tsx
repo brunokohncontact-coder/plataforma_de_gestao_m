@@ -1,14 +1,22 @@
 import { requireUser } from "@/lib/session";
-import { reportCount } from "@/lib/reports";
+import { reportCount, normalizeReportQuery } from "@/lib/reports";
 import ReportsBrowser from "./ReportsBrowser";
 
 export const metadata = {
   title: "Relatórios — Palco",
 };
 
-export default async function ReportsHubPage() {
-  // Hub puramente navegável: exige apenas sessão, sem consulta ao banco.
+export default async function ReportsHubPage({
+  searchParams,
+}: {
+  searchParams?: { q?: string | string[] };
+}) {
+  // Hub puramente navegável: exige apenas sessão, sem consulta ao banco. A busca
+  // é deep-linkável via `?q=` (compartilhável/favoritável); o valor inicial vem
+  // da URL e o campo sincroniza de volta no cliente.
   await requireUser();
+
+  const initialQuery = normalizeReportQuery(searchParams?.q);
 
   return (
     <div className="space-y-6">
@@ -20,7 +28,7 @@ export default async function ReportsHubPage() {
         </p>
       </div>
 
-      <ReportsBrowser />
+      <ReportsBrowser initialQuery={initialQuery} />
     </div>
   );
 }

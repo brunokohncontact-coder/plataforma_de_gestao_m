@@ -5,6 +5,7 @@ import {
   reportCount,
   filterReports,
   countFilteredReports,
+  normalizeReportQuery,
   subgroupEntries,
   subtopicSlug,
   reportsNavIndex,
@@ -279,6 +280,36 @@ describe("filterReports / countFilteredReports", () => {
       const fromGroups = filterReports(q).reduce((n, g) => n + g.entries.length, 0);
       expect(countFilteredReports(q)).toBe(fromGroups);
     }
+  });
+});
+
+describe("normalizeReportQuery", () => {
+  it("devolve a string aparada quando recebe uma string", () => {
+    expect(normalizeReportQuery("  cachê  ")).toBe("cachê");
+    expect(normalizeReportQuery("prazo contratante")).toBe("prazo contratante");
+  });
+
+  it("colapsa espaços internos e quebras de linha num único espaço", () => {
+    expect(normalizeReportQuery("prazo\n\tcontratante")).toBe("prazo contratante");
+    expect(normalizeReportQuery("cachê   médio")).toBe("cachê médio");
+  });
+
+  it("trata ausência (undefined) e só-espaços como consulta vazia", () => {
+    expect(normalizeReportQuery(undefined)).toBe("");
+    expect(normalizeReportQuery("   ")).toBe("");
+    expect(normalizeReportQuery("")).toBe("");
+  });
+
+  it("pega a primeira ocorrência quando o parâmetro vem repetido (array)", () => {
+    expect(normalizeReportQuery(["cachê", "prazo"])).toBe("cachê");
+    expect(normalizeReportQuery([])).toBe("");
+    expect(normalizeReportQuery(["  prazo  "])).toBe("prazo");
+  });
+
+  it("o resultado alimenta filterReports sem interpretação extra", () => {
+    const q = normalizeReportQuery(["  recebíveis  "]);
+    expect(q).toBe("recebíveis");
+    expect(countFilteredReports(q)).toBe(countFilteredReports("recebíveis"));
   });
 });
 

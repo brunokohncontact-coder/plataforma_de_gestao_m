@@ -591,3 +591,22 @@ export function filterReports(query: string): ReportGroup[] {
 export function countFilteredReports(query: string): number {
   return filterReports(query).reduce((n, g) => n + g.entries.length, 0);
 }
+
+// Busca deep-linkável: o campo de busca do hub sincroniza com `?q=` na URL, para
+// que uma visão filtrada ("recebíveis", "cachê") possa ser compartilhada,
+// marcada nos favoritos e sobreviva ao voltar/avançar do navegador. A leitura do
+// parâmetro cru é lógica pura (sem React) para ser testável: coage o valor que o
+// Next entrega (string | string[] | undefined) numa única linha limpa.
+
+/**
+ * Normaliza o parâmetro de busca `?q=` do hub para uma consulta de uma linha.
+ * O Next entrega um search param como `string`, `string[]` (repetido) ou
+ * `undefined`; aqui pegamos a primeira ocorrência, colapsamos qualquer quebra de
+ * linha em espaço e aparamos as pontas. Consulta ausente ou só de espaços vira
+ * `""` (o hub então mostra o acervo inteiro). Não muta nem interpreta os termos
+ * — o casamento continua sendo de `filterReports`.
+ */
+export function normalizeReportQuery(raw: string | string[] | undefined): string {
+  const first = Array.isArray(raw) ? raw[0] ?? "" : raw ?? "";
+  return first.replace(/\s+/g, " ").trim();
+}

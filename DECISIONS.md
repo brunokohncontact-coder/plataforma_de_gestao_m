@@ -8696,3 +8696,39 @@ contexto, decisão, justificativa e alternativas consideradas.
   para a planilha abrir auto-suficiente como os irmãos.
 - **Nota de concorrência:** número **D256** escolhido como o próximo livre após o D255 (Sessão 260). Se uma PR
   paralela reivindicar D256, renumerar para o próximo livre no merge.
+
+## 2026-07-08 — D257: busca do hub de relatórios deep-linkável via `?q=` (`normalizeReportQuery` + sincronização de URL em `ReportsBrowser`)
+- **Contexto:** o hub `/relatorios` (D53+) já filtra os 49 relatórios ao vivo por texto (`filterReports`/D56,
+  varrendo título/descrição/subtema/área), mas a consulta vivia só como estado de cliente efêmero: recarregar,
+  compartilhar o link ou voltar/avançar no navegador perdia o filtro. Não dava para mandar a alguém "abra os
+  relatórios de recebíveis" nem favoritar uma visão recortada. Era o "próximo possível" de polimento do hub.
+- **Decisão:** tornar a busca **deep-linkável** por `?q=`, sem mudar a lógica de casamento:
+  (1) novo helper puro `normalizeReportQuery(raw: string | string[] | undefined): string` em `reports.ts` —
+  coage o search param que o Next entrega (string, array repetido ou ausente) numa consulta de uma linha:
+  pega a primeira ocorrência, colapsa espaços/quebras num único espaço e apara as pontas; ausência/só-espaços
+  → `""`. (2) `page.tsx` (server component) lê `searchParams.q`, normaliza e passa como `initialQuery` ao
+  `ReportsBrowser`. (3) `ReportsBrowser` inicia o estado da busca com `initialQuery` e, num `useEffect`,
+  espelha a consulta de volta em `?q=` via `window.history.replaceState` (sem empilhar histórico por tecla,
+  sem recarregar — o hub é estático, nada no servidor depende de `q`); busca vazia remove o parâmetro,
+  deixando a URL crua. (4) botão "Limpar" ao lado do contador "N de M relatórios".
+- **Justificativa:** `history.replaceState` em vez de `router.replace` porque o hub não busca dado no servidor
+  — evita re-render/refetch a cada tecla e mantém a URL sincronizada de graça. A normalização virou lógica
+  pura testável (o Next pode entregar `?q=` repetido como array; um valor cru nunca deve quebrar o filtro).
+  Nenhuma mudança em `filterReports` — a saída de `normalizeReportQuery` alimenta o mesmo casamento já testado.
+- **Testes:** **+5** em `reports.test.ts` (`describe("normalizeReportQuery")`): string aparada; colapso de
+  espaços internos/quebras; ausência/só-espaços/`""` → vazio; primeira ocorrência de array (incl. `[]`);
+  e que a saída alimenta `filterReports` sem interpretação extra (`countFilteredReports` igual ao da string
+  direta). **1444 testes** no total (eram 1439).
+- **DoD:** build de produção (rota `/relatorios` recompilada, serve `?q=`), typecheck (`tsc --noEmit`, 0 erros)
+  e lint (`next lint`, 0 avisos) verdes; **1444 testes** (`vitest run`); smoke test (`next start`) → `/login`
+  200 e `/relatorios?q=cache` 307 (redireciona ao login sem sessão — a rota com `?q=` compila e serve). `npm
+  audit` **inalterado** vs. baseline (mesmos advisories Next/postcss pré-existentes; ver D6/bloqueios);
+  **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) `useRouter().replace` do `next/navigation` — descartado, dispara o ciclo
+  de dados do App Router a cada tecla sem necessidade (o hub não tem dado server-side dependente de `q`).
+  (b) debounce da escrita na URL — dispensável com `replaceState` (barato, não empilha histórico); o filtro
+  em si já roda por `useMemo`. (c) badge de "novos relatórios" (o outro "próximo possível" do item 0) —
+  adiado: "recém-adicionado" não tem lastro no dado (exigiria metadado por entrada e um limiar arbitrário de
+  recência), enquanto o deep-link é acionável e sem heurística.
+- **Nota de concorrência:** número **D257** escolhido como o próximo livre após o D256 (Sessão 261). Se uma PR
+  paralela reivindicar D257, renumerar para o próximo livre no merge.
