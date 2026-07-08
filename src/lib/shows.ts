@@ -1518,6 +1518,16 @@ export interface ContactProposalConversionChange<C> {
    * (melhora); negativo = mais propostas viraram perda (piora).
    */
   conversionRateDelta: number | null;
+  /**
+   * Variação da taxa de vazão da coorte deste contratante: `winRate` atual −
+   * anterior (em pontos 0..1), ou `null` quando algum período não tem coorte (sem
+   * proposta). Espelho por-contratante do `winRateDelta` do comparativo geral
+   * (D243): o denominador aqui é a coorte TODA (inclui as em aberto), então
+   * penaliza propostas paradas — pode divergir de `conversionRateDelta` (a taxa
+   * das decididas sobe enquanto a vazão cai porque sobrou proposta em aberto, e
+   * vice-versa). Leitura complementar de throughput proposta→palco por contratante.
+   */
+  winRateDelta: number | null;
   /** Variação da contagem de propostas ganhas — viraram palco (atual − anterior). */
   wonCountDelta: number;
   /** Variação da contagem de propostas decididas — ganhas+perdidas (atual − anterior). */
@@ -1585,11 +1595,16 @@ export function compareContactProposalOutcomes<C extends { id: string; name: str
       cur.conversion.conversionRate == null || prev.conversion.conversionRate == null
         ? null
         : cur.conversion.conversionRate - prev.conversion.conversionRate;
+    const winRateDelta =
+      cur.conversion.winRate == null || prev.conversion.winRate == null
+        ? null
+        : cur.conversion.winRate - prev.conversion.winRate;
     changes.push({
       contact: cur.contact,
       current: cur,
       previous: prev,
       conversionRateDelta,
+      winRateDelta,
       wonCountDelta: cur.conversion.wonCount - prev.conversion.wonCount,
       decidedCountDelta: cur.conversion.decidedCount - prev.conversion.decidedCount,
       trend:

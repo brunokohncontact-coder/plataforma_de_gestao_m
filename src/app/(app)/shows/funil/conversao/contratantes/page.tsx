@@ -461,6 +461,14 @@ function MoverBlock({
             {rateLabel(change.previous.conversion.conversionRate)} →{" "}
             {rateLabel(change.current.conversion.conversionRate)}
           </p>
+          {change.winRateDelta != null && (
+            <p className="mt-1 text-xs text-gray-400">
+              Vazão da coorte: {pctDelta(change.winRateDelta)} —{" "}
+              {rateLabel(change.previous.conversion.winRate)} →{" "}
+              {rateLabel(change.current.conversion.winRate)} das propostas viraram palco
+              (inclui as em aberto).
+            </p>
+          )}
         </>
       ) : (
         <p className="mt-1 text-sm text-gray-400">
