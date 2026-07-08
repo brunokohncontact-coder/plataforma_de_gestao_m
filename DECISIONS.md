@@ -8818,3 +8818,35 @@ contexto, decisão, justificativa e alternativas consideradas.
   nova** (usa `node:crypto` + `bcryptjs`/`zod` já presentes).
 - **Nota de concorrência:** número **D259** escolhido como o próximo livre após o D258 (Sessão 263). Se uma PR
   paralela reivindicar D259, renumerar para o próximo livre no merge.
+
+## 2026-07-08 — D260: Rate-limit anti-abuso dos pedidos de redefinição de senha (`isPasswordResetRateLimited`) (Sessão 265)
+- **Contexto:** o fluxo de recuperação de senha (D259) não limitava o número de pedidos de link por conta. Um
+  atacante (ou um formulário em loop) podia disparar `requestPasswordResetAction` indefinidamente para um e-mail
+  cadastrado, gerando spam de links e uma vetor de abuso — item (c) dos "próximos passos" da D259.
+- **Decisão:** aplicar um rate-limit por conta baseado nos próprios registros `PasswordResetToken` (sem novo
+  modelo/estado): antes de criar um token novo, a action conta os pedidos da conta com `createdAt` dentro de uma
+  janela deslizante de `RESET_REQUEST_WINDOW_MINUTES`(=60) minutos; se já houver `RESET_REQUEST_MAX_PER_WINDOW`(=3)
+  ou mais, o pedido é **silenciosamente ignorado** (nenhum token novo) e responde a **mesma mensagem genérica**.
+  A lógica de decisão é pura e testável em `src/lib/passwordReset.ts` (`resetRequestWindowStart(now)` calcula o
+  limite inferior do `createdAt`; `isPasswordResetRateLimited(recentCount)` é o predicado), espelhando o par
+  `resetTokenExpiry`/`isResetTokenUsable`.
+- **Justificativa:**
+  - Reusa a tabela de tokens como trilha de auditoria dos pedidos — o `createdAt` já era gravado; nenhum schema
+    novo, nenhum store em memória (que não sobrevive ao container efêmero nem escala horizontalmente).
+  - **Barrar preserva a anti-enumeração** (D259): a resposta é idêntica exista/não a conta e esteja/não barrada —
+    o usuário vê a mesma mensagem genérica, apenas nenhum link novo é gerado. Não vaza estado da conta.
+  - Contagem por `createdAt` cobre pedidos usados e pendentes na janela (cada pedido invalida o anterior, mas
+    todos contam para o abuso).
+- **Alternativas consideradas:** (a) rate-limit por IP — descartado nesta fatia (o IP não chega à server action sem
+  ler headers do request; a conta é o eixo de abuso mais direto e o menos contornável por rotação de IP; pode ser
+  somado depois). (b) store em memória (Map com timestamps) — descartado (não persiste no container efêmero, não
+  escala entre instâncias; o banco é a fonte de verdade). (c) bloquear com mensagem "muitos pedidos, tente mais
+  tarde" — descartado (revelaria que a conta existe; a resposta genérica é a escolha anti-enumeração).
+- **Heurística a validar:** `RESET_REQUEST_MAX_PER_WINDOW`=3 e `RESET_REQUEST_WINDOW_MINUTES`=60 são palpites
+  razoáveis (poucos pedidos legítimos por hora), **não** medidos com uso real — sinalizado nos bloqueios do PROGRESS.
+- **DoD:** build de produção, typecheck (`tsc --noEmit`, 0 erros) e lint (`next lint`, 0 avisos) verdes; **1476
+  testes** (`vitest run`, +6: 4 puros do rate-limit + 2 de integração da action); smoke test (`next start`) →
+  `/login` 200, `/esqueci-senha` 200, `/dashboard` 307 (auth-gated). `npm audit` **inalterado** vs. baseline
+  (mesmos advisories Next/postcss; ver D6); **nenhuma dependência nova**.
+- **Nota de concorrência:** número **D260** escolhido como o próximo livre após o D259 (Sessão 264). Se uma PR
+  paralela reivindicar D260, renumerar para o próximo livre no merge.
