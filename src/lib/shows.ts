@@ -333,6 +333,148 @@ export function formatWeekendLabel(friday: string, sunday: string): string {
   return `${f.getUTCDate()} ${fMonth} – ${s.getUTCDate()} ${sMonth}`;
 }
 
+// ── Hiatos entre shows (secas de agenda) ────────────────────────────────────
+// A cadência (`gigCadence`) conta shows por mês e a sazonalidade diz QUAIS meses
+// costumam encher. Falta a leitura da CONTINUIDADE: quanto tempo, na prática,
+// passa entre um gig e o outro — e qual foi a maior seca já vivida. Para quem
+// vive de tocar, um hiato longo é receita e presença de palco perdidas. Este
+// relatório olha só os compromissos FIRMES (CONFIRMED + PLAYED) — os que de fato
+// ocupam/ocuparam a agenda; propostas em aberto ainda podem cair e não entram
+// (mesmo critério `firm` da antecedência, ver D190). Colapsa vários shows no
+// mesmo dia (uma seca é sobre dias SEM nenhum gig) e mede o intervalo em dias
+// UTC entre dias-de-show consecutivos. A "seca atual" (dias desde o último gig
+// já passado até hoje) e a espera pelo próximo gig futuro saem à parte. Pura.
+
+/** Um show visto pela ótica dos hiatos: só precisa de data e status. */
+export interface ShowGapShowLike {
+  date: Date | string;
+  status: string;
+}
+
+/** Um hiato entre dois gigs consecutivos. */
+export interface ShowGap {
+  /** Dia "YYYY-MM-DD" (UTC) do gig que abre o hiato. */
+  fromDay: string;
+  /** Dia "YYYY-MM-DD" (UTC) do gig que o fecha. */
+  toDay: string;
+  /** Dias corridos entre os dois dias-de-show (>= 1). */
+  days: number;
+}
+
+export interface ShowGapsReport {
+  /** Hiatos entre gigs consecutivos, do MAIOR para o menor (desempate: mais recente primeiro). */
+  gaps: ShowGap[];
+  /** Nº de dias-de-show firmes distintos considerados. */
+  showDays: number;
+  /** O maior hiato já registrado; null com menos de 2 dias-de-show. */
+  longest: ShowGap | null;
+  /** Espaçamento mediano entre gigs consecutivos (dias); 0 sem amostra. */
+  medianGapDays: number;
+  /** Espaçamento médio entre gigs consecutivos (dias, arredondado); 0 sem amostra. */
+  averageGapDays: number;
+  /** Primeiro dia-de-show ("YYYY-MM-DD"); null sem gigs. */
+  firstDay: string | null;
+  /** Último dia-de-show firme ("YYYY-MM-DD"), passado ou futuro; null sem gigs. */
+  lastDay: string | null;
+  /**
+   * Dias do último gig JÁ PASSADO (<= hoje) até hoje — a seca atual. `null` se
+   * não há gig passado (só futuros agendados ou nenhum gig).
+   */
+  currentGapDays: number | null;
+  /** Dias de hoje até o próximo gig FUTURO agendado; null se nada à frente. */
+  daysUntilNext: number | null;
+}
+
+/**
+ * Nº mínimo de dias-de-show para o espaçamento típico (mediana/média) ser uma
+ * leitura confiável. Com 1–2 dias há no máximo um hiato — a UI mostra o número
+ * mas marca a amostra como pequena.
+ */
+export const MIN_SHOW_GAP_SAMPLE = 3;
+
+/** "YYYY-MM-DD" (UTC) → meia-noite UTC em ms. Pura. */
+function dayKeyToUtcMs(key: string): number {
+  const [y, m, d] = key.split("-").map(Number);
+  return Date.UTC(y, m - 1, d);
+}
+
+/**
+ * Hiatos entre shows firmes (CONFIRMED + PLAYED) do usuário. Colapsa vários
+ * gigs no mesmo dia, ordena os dias-de-show e mede o intervalo (em dias UTC)
+ * entre cada par consecutivo. Devolve os hiatos ordenados do maior ao menor, o
+ * espaçamento típico (mediano/médio), a seca atual (dias desde o último gig já
+ * passado) e a espera pelo próximo gig futuro. Pura; `now` injetável.
+ */
+export function showGaps<T extends ShowGapShowLike>(
+  shows: T[],
+  options: { now?: Date | string } = {},
+): ShowGapsReport {
+  const todayMs = dayKeyToUtcMs(dayKey(options.now ?? new Date()));
+
+  // Dias-de-show FIRMES distintos (colapsa vários gigs no mesmo dia).
+  const daySet = new Set<string>();
+  for (const s of shows) {
+    if (!FIRM_LEAD_STATUSES.has(s.status)) continue;
+    daySet.add(dayKey(s.date));
+  }
+  const days = [...daySet].sort((a, b) => a.localeCompare(b));
+
+  const showDays = days.length;
+  const firstDay = showDays > 0 ? days[0] : null;
+  const lastDay = showDays > 0 ? days[showDays - 1] : null;
+
+  // Hiatos entre dias-de-show consecutivos.
+  const gaps: ShowGap[] = [];
+  const gapDays: number[] = [];
+  for (let i = 1; i < days.length; i++) {
+    const fromDay = days[i - 1];
+    const toDay = days[i];
+    const d = Math.round((dayKeyToUtcMs(toDay) - dayKeyToUtcMs(fromDay)) / DAY_MS);
+    gaps.push({ fromDay, toDay, days: d });
+    gapDays.push(d);
+  }
+
+  // Maior hiato primeiro; empate pelo mais recente (toDay desc).
+  gaps.sort((a, b) => b.days - a.days || b.toDay.localeCompare(a.toDay));
+
+  const averageGapDays =
+    gapDays.length > 0
+      ? Math.round(gapDays.reduce((sum, n) => sum + n, 0) / gapDays.length)
+      : 0;
+
+  // Seca atual: dias do último dia-de-show <= hoje até hoje.
+  let currentGapDays: number | null = null;
+  for (let i = days.length - 1; i >= 0; i--) {
+    const ms = dayKeyToUtcMs(days[i]);
+    if (ms <= todayMs) {
+      currentGapDays = Math.round((todayMs - ms) / DAY_MS);
+      break;
+    }
+  }
+
+  // Espera pelo próximo gig futuro (primeiro dia-de-show > hoje).
+  let daysUntilNext: number | null = null;
+  for (const key of days) {
+    const ms = dayKeyToUtcMs(key);
+    if (ms > todayMs) {
+      daysUntilNext = Math.round((ms - todayMs) / DAY_MS);
+      break;
+    }
+  }
+
+  return {
+    gaps,
+    showDays,
+    longest: gaps.length > 0 ? gaps[0] : null,
+    medianGapDays: leadMedian(gapDays),
+    averageGapDays,
+    firstDay,
+    lastDay,
+    currentGapDays,
+    daysUntilNext,
+  };
+}
+
 // ── Antecedência de agendamento (booking lead time) ─────────────────────────
 // Quantos dias de antecedência, na prática, você fecha os shows: a diferença
 // (em dias UTC) entre quando o show entrou na agenda (`createdAt`) e a data em

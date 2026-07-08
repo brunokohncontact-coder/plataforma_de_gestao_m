@@ -108,6 +108,13 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "🌤️",
       },
       {
+        title: "Hiatos entre shows",
+        href: "/shows/hiatos",
+        description: "Quanto tempo passa entre um gig e o outro: as maiores secas de agenda e há quanto tempo você não toca.",
+        subtopic: "Agenda & pipeline",
+        icon: "🌵",
+      },
+      {
         title: "Conflitos de agenda",
         href: "/shows/conflitos",
         description: "Dias com dois ou mais shows marcados, para resolver choques de agenda.",

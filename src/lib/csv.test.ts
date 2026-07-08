@@ -53,6 +53,8 @@ import {
   CATEGORY_VARIATION_CSV_HEADERS,
   gigCadenceToCsv,
   GIG_CADENCE_CSV_HEADERS,
+  showGapsToCsv,
+  SHOW_GAPS_CSV_HEADERS,
   feeTrendToCsv,
   FEE_TREND_CSV_HEADERS,
   clientRetentionToCsv,
@@ -139,6 +141,7 @@ import {
   compareProposalOutcomes,
   proposalOutcomesByContact,
   findStaleProposals,
+  showGaps,
   type ConflictShowLike,
   type LeadTimeShowLike,
   type StaleProposalShowLike,
@@ -2028,6 +2031,29 @@ describe("gigCadenceToCsv", () => {
     expect(lines).toHaveLength(3);
     expect(lines[1]).toBe("2026-02;1");
     expect(lines[2]).toBe("Total;1");
+  });
+});
+
+describe("showGapsToCsv", () => {
+  const NOW = "2026-06-15T12:00:00.000Z";
+  const g = (date: string, status: string = "PLAYED") => ({ date, status });
+
+  it("só cabeçalho quando não há hiatos", () => {
+    const csv = showGapsToCsv(showGaps([g("2026-06-05")], { now: NOW }));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(SHOW_GAPS_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(1);
+  });
+
+  it("uma linha por hiato, do maior ao menor, com dias ISO", () => {
+    const report = showGaps(
+      [g("2026-01-01"), g("2026-01-11"), g("2026-02-10")],
+      { now: NOW },
+    );
+    const lines = showGapsToCsv(report).split("\r\n");
+    expect(lines).toHaveLength(3); // cabeçalho + 2 hiatos
+    expect(lines[1]).toBe("2026-01-11;2026-02-10;30");
+    expect(lines[2]).toBe("2026-01-01;2026-01-11;10");
   });
 });
 

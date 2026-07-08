@@ -8879,3 +8879,36 @@ contexto, decisão, justificativa e alternativas consideradas.
   `npm audit` **inalterado** vs. baseline (mesmos advisories Next/postcss; ver D6); **nenhuma dependência nova**.
 - **Nota de concorrência:** número **D261** escolhido como o próximo livre após o D260 (Sessão 265). Se uma
   PR paralela reivindicar D261, renumerar para o próximo livre no merge.
+
+## 2026-07-08 — D262: Hiatos entre shows (secas de agenda) (`showGaps` + `/shows/hiatos`) (Sessão 267)
+- **Contexto:** a agenda já tinha a cadência (`gigCadence`, shows por mês), a sazonalidade
+  (`gigSeasonality`, quais meses do ano enchem) e os fins de semana livres (`findOpenWeekends`,
+  vazios à frente). Faltava a leitura de **continuidade**: quanto tempo, na prática, passa ENTRE um
+  gig e o outro — a maior seca já vivida e há quanto tempo o músico não sobe ao palco. Para quem vive
+  de tocar, um hiato longo é receita e presença de palco perdidas.
+- **Decisão:** nova função pura `showGaps(shows, opts?)` + tipos `ShowGap`/`ShowGapsReport`/
+  `ShowGapShowLike` + `MIN_SHOW_GAP_SAMPLE`(=3) em `src/lib/shows.ts`; página `/shows/hiatos`
+  (4 stats + tabela "Maiores secas"); CSV `showGapsToCsv` + `/shows/hiatos/export`; entrada no hub
+  (`REPORT_GROUPS`, "Agenda & pipeline", 🌵).
+- **Justificativa / escolhas discutíveis:**
+  - **Escopo = firmes (CONFIRMED + PLAYED).** Um hiato é sobre a agenda que de fato ocupa/ocupou o
+    palco; uma proposta em aberto ainda pode cair e distorceria a seca. Reusa o conjunto
+    `FIRM_LEAD_STATUSES` já usado no escopo `firm` da antecedência (D190), sem número/critério novo.
+  - **Colapsa vários gigs no mesmo dia.** A seca é sobre dias SEM nenhum gig; dois shows no mesmo dia
+    não abrem hiato. Mede-se o intervalo em dias UTC entre dias-de-show consecutivos.
+  - **Hiatos passado↔futuro entram na lista** (um gig passado seguido de um confirmado futuro é uma
+    seca real e planejável); já a seca em aberto do último gig até hoje NÃO vira um hiato fechado —
+    sai à parte em `currentGapDays` (dias desde o último gig já passado; `null` sem gig passado),
+    com `daysUntilNext` (dias até o próximo gig futuro) ao lado.
+  - Mediana via `leadMedian` (já no módulo), sem dependência nova; `now` injetável (determinismo/teste).
+- **Alternativas consideradas:** incluir todos os não-cancelados (traria propostas voláteis para a
+  medição — descartado); recorte por `?ano=` (adiado: uma seca cruza a virada do ano e o corte a
+  fragmentaria); nudge da seca atual no Painel (adiado: o Painel já é denso e a leitura se sobrepõe
+  aos fins de semana livres); linha "Total" no CSV (não faz sentido — hiatos não somam).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`, 0 erros) e lint (`next lint`, 0 avisos)
+  verdes; **1495 testes** (`vitest run`, +12: 10 puros de `showGaps`, 2 de `showGapsToCsv`); smoke
+  (`next start`) → `/shows/hiatos` e `/shows/hiatos/export` 307→/login (auth-gated, sem 500); build
+  registra as duas rotas. `npm audit` **inalterado** vs. baseline (10 advisories, mesmos Next/postcss;
+  ver D6); **nenhuma dependência nova**.
+- **Nota de concorrência:** número **D262** escolhido como o próximo livre após o D261 (Sessão 266). Se
+  uma PR paralela reivindicar D262, renumerar para o próximo livre no merge.
