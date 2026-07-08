@@ -15,6 +15,7 @@ import {
   formatWeekTitle,
   buildWeekGrid,
   buildMiniMonth,
+  findAdjacentShowDate,
 } from "./calendar";
 
 describe("monthKey / parseMonthKey", () => {
@@ -341,5 +342,58 @@ describe("buildMiniMonth", () => {
     const cells = buildMiniMonth(2026, 6).flat();
     expect(cells.some((c) => c.inSelectedWeek)).toBe(false);
     expect(cells.some((c) => c.hasShows)).toBe(false);
+  });
+});
+
+describe("findAdjacentShowDate", () => {
+  // Semana em foco: 14..20/jun/2026 (a que contém a quarta 17/jun).
+  const ref = new Date(2026, 5, 17);
+
+  it("sem datas, não há salto em nenhuma direção", () => {
+    expect(findAdjacentShowDate([], ref, "next")).toBeNull();
+    expect(findAdjacentShowDate([], ref, "prev")).toBeNull();
+  });
+
+  it("shows só na própria semana não contam como anterior nem posterior", () => {
+    const naSemana = [new Date(2026, 5, 15, 20), new Date(2026, 5, 19, 21)];
+    expect(findAdjacentShowDate(naSemana, ref, "next")).toBeNull();
+    expect(findAdjacentShowDate(naSemana, ref, "prev")).toBeNull();
+  });
+
+  it("'next' devolve o show mais cedo da primeira semana futura com algo", () => {
+    const dates = [
+      new Date(2026, 5, 30, 21), // semana 28/jun..04/jul
+      new Date(2026, 5, 29, 20), // mesma semana futura, mais cedo → vence
+      new Date(2026, 6, 12, 22), // semana ainda mais à frente
+      new Date(2026, 5, 17, 20), // dentro da semana em foco → ignorado
+    ];
+    const hit = findAdjacentShowDate(dates, ref, "next");
+    expect(hit).not.toBeNull();
+    expect(hit!.getTime()).toBe(new Date(2026, 5, 29, 20).getTime());
+  });
+
+  it("'prev' devolve o show mais tarde da última semana passada com algo", () => {
+    const dates = [
+      new Date(2026, 5, 8, 20), // semana 07..13/jun
+      new Date(2026, 5, 10, 21), // mesma semana passada, mais tarde → vence
+      new Date(2026, 4, 25, 22), // semana bem antes
+      new Date(2026, 5, 16, 20), // dentro da semana em foco → ignorado
+    ];
+    const hit = findAdjacentShowDate(dates, ref, "prev");
+    expect(hit).not.toBeNull();
+    expect(hit!.getTime()).toBe(new Date(2026, 5, 10, 21).getTime());
+  });
+
+  it("ignora a ordem de entrada e casa cada direção com a semana correta", () => {
+    const dates = [
+      new Date(2026, 6, 1, 19), // futuro
+      new Date(2026, 5, 5, 19), // passado
+    ];
+    expect(findAdjacentShowDate(dates, ref, "next")!.getTime()).toBe(
+      new Date(2026, 6, 1, 19).getTime(),
+    );
+    expect(findAdjacentShowDate(dates, ref, "prev")!.getTime()).toBe(
+      new Date(2026, 5, 5, 19).getTime(),
+    );
   });
 });

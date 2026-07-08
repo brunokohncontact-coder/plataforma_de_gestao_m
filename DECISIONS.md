@@ -8732,3 +8732,45 @@ contexto, decisão, justificativa e alternativas consideradas.
   recência), enquanto o deep-link é acionável e sem heurística.
 - **Nota de concorrência:** número **D257** escolhido como o próximo livre após o D256 (Sessão 261). Se uma PR
   paralela reivindicar D257, renumerar para o próximo livre no merge.
+
+## 2026-07-08 — D258: salto para a semana do show mais próximo na agenda semanal (`findAdjacentShowDate` + atalhos em `/shows/semana`)
+- **Contexto:** a agenda semanal `/shows/semana` (D19) navega uma semana por vez (setas ←/→), tem o atalho
+  "Esta semana" e, desde a D255, um mini-calendário lateral para pular a um mês/dia distante. Ainda assim, para
+  chegar ao próximo compromisso quando ele está a várias semanas vazias de distância, o músico precisa clicar ▶
+  repetidamente ou caçar o dia com bolinha no widget. Faltava o salto direto "leva-me ao próximo show" / "ao
+  anterior", pulando de uma vez as semanas sem nada — o eixo natural de polimento da navegação da agenda (item 2
+  dos próximos passos).
+- **Decisão:** dois atalhos "← Show anterior (DD/MM)" / "(DD/MM) Próximo show →" numa faixa fina sob o cabeçalho
+  de navegação da semana, cada um levando a `/shows/semana?semana=YYYY-MM-DD` da semana do compromisso vizinho.
+  - **Lógica pura** (`src/lib/calendar.ts`): novo `findAdjacentShowDate(showDates, weekReference, direction)` —
+    dada uma lista de datas de show e a referência da semana em foco, devolve a data do show cuja SEMANA é
+    estritamente anterior (`"prev"`) ou posterior (`"next"`). Para `"next"` retorna a MENOR data de semanas
+    futuras (o show mais cedo da primeira semana futura com algo); para `"prev"`, a MAIOR de semanas passadas.
+    Determinístico, sem efeitos, ordem de entrada indiferente; reusa `startOfWeek`.
+  - **Página** (`/shows/semana`): duas consultas enxutas e indexadas em paralelo — `findFirst` do show imediato
+    com `date < start` (desc) e do imediato com `date >= endExclusive` (asc), selecionando **só `date`** — cujo
+    resultado alimenta `findAdjacentShowDate` (que reconfirma a fronteira de semana). Os atalhos só aparecem
+    quando há vizinho na direção; a faixa some por completo quando não há nenhum.
+- **Justificativa:** as duas `findFirst` limitam a leitura ao vizinho imediato (nada de carregar todas as datas
+  do usuário), e a função pura mantém a regra de fronteira testável e reaproveitável — o mesmo padrão "DB
+  pré-estreita, função pura reconfirma e é testada no caso geral" já usado alhures. `history`/rota inalterados;
+  os atalhos são `<Link>` do App Router, sem JS de cliente. Zero regra de negócio de domínio nova, zero migração,
+  zero dependência nova.
+- **Testes:** **+5** em `calendar.test.ts` (`describe("findAdjacentShowDate")`): lista vazia → null nos dois
+  sentidos; shows só na própria semana não contam; `"next"` pega o mais cedo da primeira semana futura;
+  `"prev"` pega o mais tarde da última semana passada; ordem de entrada indiferente casando cada direção.
+  **1449 testes** no total (eram 1444).
+- **DoD:** build de produção (rota `/shows/semana` recompilada), typecheck (`tsc --noEmit`, 0 erros) e lint
+  (`next lint`, 0 avisos) verdes; **1449 testes** (`vitest run`); smoke test (`next start`) → `/login` 200 e
+  `/shows/semana?semana=2026-07-08` 307 (auth-gated) + **render autenticado** (cookie de sessão forjado com o
+  `AUTH_SECRET` de dev + usuário do seed) confirmou os dois atalhos: "← Show anterior (28/06)" →
+  `?semana=2026-06-28` e "(28/07) Próximo show →" → `?semana=2026-07-28`, coerentes com os shows do seed
+  (−10/+20 dias). `npm audit` **inalterado** vs. baseline (mesmos advisories Next/postcss; ver D6/bloqueios);
+  **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) carregar todas as datas de show do usuário e varrer na função pura — descartado,
+  I/O desnecessário; o vizinho imediato basta e as duas `findFirst` são O(log n) no índice de `date`. (b) reusar o
+  mini-calendário (D255) como única navegação distante — insuficiente: ele mostra um mês por vez e exige encontrar
+  o dia com bolinha; o salto direto é um clique. (c) mostrar o salto no mini-calendário em vez do cabeçalho —
+  descartado, o cabeçalho da semana é onde vive a navegação temporal (setas/"Esta semana").
+- **Nota de concorrência:** número **D258** escolhido como o próximo livre após o D257 (Sessão 262). Se uma PR
+  paralela reivindicar D258, renumerar para o próximo livre no merge.

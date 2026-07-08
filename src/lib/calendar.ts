@@ -151,6 +151,39 @@ export function shiftWeek(date: Date, delta: number): Date {
   return d;
 }
 
+/**
+ * Encontra a data do show mais próximo cuja SEMANA é estritamente anterior
+ * (`"prev"`) ou posterior (`"next"`) à semana que contém `weekReference`.
+ * Alimenta o salto "← show anterior / próximo show →" da agenda semanal,
+ * pulando de uma vez as semanas vazias entre um compromisso e o próximo.
+ *
+ * Para `"next"` devolve a MENOR data entre as de semanas posteriores (o show
+ * mais cedo da primeira semana futura com algo); para `"prev"`, a MAIOR entre
+ * as de semanas anteriores (o show mais tarde da última semana passada com
+ * algo). Empates de horário no mesmo dia são indiferentes — só a semana importa
+ * para o salto. Determinístico e sem efeitos; `showDates` pode vir em qualquer
+ * ordem (o chamador costuma pré-estreitar a busca no banco).
+ */
+export function findAdjacentShowDate(
+  showDates: Date[],
+  weekReference: Date,
+  direction: "prev" | "next",
+): Date | null {
+  const anchor = startOfWeek(weekReference).getTime();
+  let best: Date | null = null;
+  for (const d of showDates) {
+    const week = startOfWeek(d).getTime();
+    if (direction === "next") {
+      if (week <= anchor) continue;
+      if (best === null || d.getTime() < best.getTime()) best = d;
+    } else {
+      if (week >= anchor) continue;
+      if (best === null || d.getTime() > best.getTime()) best = d;
+    }
+  }
+  return best;
+}
+
 /** Rótulo da semana, ex.: "8 – 14 de junho de 2026" (lida com virada de mês/ano). */
 export function formatWeekTitle(start: Date): string {
   const end = new Date(start);
