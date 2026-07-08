@@ -1740,6 +1740,7 @@ describe("compareProposalOutcomes", () => {
     const previous = proposalOutcomes(shows, { year: 2025 });
     const cmp = compareProposalOutcomes(current, previous);
     expect(cmp.conversionRateDelta).toBeCloseTo(0.5); // 100% − 50%
+    expect(cmp.winRateDelta).toBeCloseTo(0.5); // vazão: 2/2 − 1/2 (sem em aberto)
     expect(cmp.wonCountDelta).toBe(1); // 2 ganhas em 2026 − 1 em 2025
     expect(cmp.decidedCountDelta).toBe(0); // 2 decididas em cada
     expect(cmp.trend).toBe("improved");
@@ -1772,7 +1773,60 @@ describe("compareProposalOutcomes", () => {
     expect(openOnly.conversionRate).toBeNull();
     const cmp = compareProposalOutcomes(decided, openOnly);
     expect(cmp.conversionRateDelta).toBeNull();
+    // A vazão da coorte segue definida mesmo sem taxa de conversão: `openOnly`
+    // tem coorte (1 proposta, 0 ganhas → winRate 0) e `decided` tem 2/2 → +1.
+    expect(cmp.winRateDelta).toBeCloseTo(1);
     expect(cmp.trend).toBe("stable");
+  });
+
+  it("winRateDelta pode cair enquanto a taxa de conversão sobe (vazão × decididas)", () => {
+    // Ano anterior: 2 decididas, 1 ganha → conversão 50%, vazão 1/2 = 50%.
+    const previous = proposalOutcomes(
+      [
+        {
+          statusEvents: [
+            ev(null, "PROPOSED", "2024-01-01T00:00:00.000Z"),
+            ev("PROPOSED", "PLAYED", "2024-01-10T00:00:00.000Z"),
+          ],
+        },
+        {
+          statusEvents: [
+            ev(null, "PROPOSED", "2024-02-01T00:00:00.000Z"),
+            ev("PROPOSED", "CANCELLED", "2024-02-10T00:00:00.000Z"),
+          ],
+        },
+      ],
+      { year: 2024 },
+    );
+    // Ano atual: 1 decidida ganha (conversão 100%, subiu) mas 3 em aberto travadas
+    // → coorte de 4, vazão 1/4 = 25% (caiu).
+    const current = proposalOutcomes(
+      [
+        {
+          statusEvents: [
+            ev(null, "PROPOSED", "2025-01-01T00:00:00.000Z"),
+            ev("PROPOSED", "PLAYED", "2025-01-10T00:00:00.000Z"),
+          ],
+        },
+        { statusEvents: [ev(null, "PROPOSED", "2025-02-01T00:00:00.000Z")] },
+        { statusEvents: [ev(null, "PROPOSED", "2025-03-01T00:00:00.000Z")] },
+        { statusEvents: [ev(null, "PROPOSED", "2025-04-01T00:00:00.000Z")] },
+      ],
+      { year: 2025 },
+    );
+    const cmp = compareProposalOutcomes(current, previous);
+    expect(cmp.conversionRateDelta).toBeCloseTo(0.5); // 100% − 50%, melhora
+    expect(cmp.trend).toBe("improved"); // veredito ancora na conversão
+    expect(cmp.winRateDelta).toBeCloseTo(-0.25); // 25% − 50%, vazão caiu
+  });
+
+  it("winRateDelta é null quando alguma coorte está vazia", () => {
+    const withCohort = proposalOutcomes(shows, { year: 2026 });
+    const empty = proposalOutcomes(shows, { year: 2099 }); // sem propostas
+    expect(empty.total).toBe(0);
+    expect(empty.winRate).toBeNull();
+    const cmp = compareProposalOutcomes(withCohort, empty);
+    expect(cmp.winRateDelta).toBeNull();
   });
 });
 

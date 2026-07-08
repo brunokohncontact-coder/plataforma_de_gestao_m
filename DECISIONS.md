@@ -8483,3 +8483,41 @@ contexto, decisão, justificativa e alternativas consideradas.
   I/O extra (a busca atual é 100% em memória sobre o recorte já carregado, ver D9).
 - **Nota de concorrência:** número **D251** escolhido como o próximo livre após o D250 (Sessão 256). Se
   uma PR paralela reivindicar o mesmo número, renumerar na consolidação.
+
+## D253 — Comparativo da conversão de propostas ganha a variação da vazão da coorte (`winRateDelta`) (Sessão 258)
+- **Contexto:** a página `/shows/funil/conversao` (D243) mostra dois números-chave lado a lado no topo:
+  a **taxa de conversão real** (`conversionRate` = realizadas ÷ decididas, resistente a propostas ainda
+  em andamento) e a **vazão da coorte** (`winRate` = realizadas ÷ coorte inteira, "Já viraram palco",
+  que inclui as em aberto no denominador). Mas o card ano a ano `ConversionComparisonCard`
+  (`compareProposalOutcomes`, D244) comparava **só** a `conversionRate`. As duas métricas podem se mover
+  em **sentidos opostos**: a taxa das decididas sobe (das que fecharam, ganhei uma fração maior) enquanto
+  a vazão cai (muita proposta ficou parada em aberto, então proporcionalmente menos da coorte virou
+  palco) — o musico via a melhora da conversão sem enxergar que o throughput proposta→palco piorou.
+- **Decisão:** `ProposalConversionComparison` ganhou o campo `winRateDelta: number | null`
+  (`current.winRate − previous.winRate`, ou `null` quando alguma coorte está vazia — `winRate` só é
+  `null` sem nenhuma proposta) computado em `compareProposalOutcomes`, irmão do `conversionRateDelta` já
+  existente. O card passa a exibir, sob o delta principal, uma linha secundária "Vazão da coorte:
+  {±N p.p.} — {antes} → {agora} das propostas do ano já viraram palco (inclui as em aberto)" quando
+  `winRateDelta != null`. O **veredito de tendência** (`trend`) continua ancorado só na `conversionRate`
+  (a leitura principal, resistente): a vazão é informativa, não muda a cor/emoji do card.
+- **Justificativa:** puro/determinístico, zero I/O extra (reusa os dois `proposalOutcomes` já computados
+  na página, um por ano, do mesmo acervo já carregado). Enriquece um leitura existente em vez de abrir
+  tela nova, no espírito de "polir o existente" — e cobre um caso de leitura enganosa real (conversão
+  sobe, vazão cai). Sem tocar o CSV nem a conversão por contratante.
+- **Testes:** **+2** em `shows.test.ts` (`describe("compareProposalOutcomes")`): (a) `winRateDelta` cai
+  (−0,25) enquanto `conversionRateDelta` sobe (+0,5) e o veredito segue "improved" — o caso de divergência;
+  (b) `winRateDelta` é `null` quando uma das coortes está vazia. Asserções de `winRateDelta` acrescidas
+  aos testes existentes (melhora simétrica; vazão definida mesmo com `conversionRateDelta` null quando o
+  período de comparação só tem propostas em aberto). **1423 testes** no total (eram 1421).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1423
+  testes** (`vitest run`); smoke test (`next start`) → `/login` 200, `/shows/funil/conversao` 307
+  (auth-gated). `npm audit` **inalterado** vs. baseline (mesmos advisories Next/postcss; ver D6/bloqueios);
+  **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) fazer o veredito de tendência considerar também a vazão (dois eixos)
+  — descartado; misturaria dois sinais numa cor só e a `conversionRate` é deliberadamente a leitura
+  principal (D243/D244). (b) levar a `winRate` ano a ano também ao comparativo **por contratante** (D248)
+  — adiado; lá o card é de "movers" (quem subiu/caiu), a vazão por-relação com amostras finas seria
+  ruidosa. (c) exportar a `winRateDelta` no CSV — desnecessário; o CSV da conversão é a decomposição de
+  uma coorte, não o comparativo (o card entrega o sinal acionável).
+- **Nota de concorrência:** número **D253** escolhido pulando **D252**, já reivindicado pela PR aberta #284
+  (nudge de conversão caindo por contratante). Se a renumeração for necessária na consolidação, ajustar.

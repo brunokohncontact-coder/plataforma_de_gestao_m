@@ -233,7 +233,7 @@ function ConversionComparisonCard({
   previousYear: number;
 }) {
   const trend = CONVERSION_TREND[comparison.trend];
-  const { current, previous, conversionRateDelta } = comparison;
+  const { current, previous, conversionRateDelta, winRateDelta } = comparison;
   return (
     <div className={"card border " + trend.classes}>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -254,6 +254,13 @@ function ConversionComparisonCard({
           {current.wonCount}/{current.decidedCount})
         </p>
       </div>
+      {winRateDelta != null && (
+        <p className="mt-2 text-xs opacity-80">
+          <span className="font-medium">Vazão da coorte:</span>{" "}
+          {pointsDelta(winRateDelta)} — {rateLabel(previous.winRate)} → {rateLabel(current.winRate)}{" "}
+          das propostas do ano já viraram palco (inclui as em aberto).
+        </p>
+      )}
       <p className="mt-3 text-xs opacity-90">{trend.note}</p>
     </div>
   );
