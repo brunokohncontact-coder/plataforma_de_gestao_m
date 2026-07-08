@@ -8598,3 +8598,54 @@ contexto, decisão, justificativa e alternativas consideradas.
   exibição só-nos-movers neutraliza o motivo do adiamento. (b) coluna "vazão vs. {ano-1}" por linha na
   tabela — mantido adiado (é justamente o espalhamento ruidoso que a D253 temia). (c) `winRateDelta` no
   CSV da conversão por contratante — adiado; o CSV é a decomposição de uma coorte, não o comparativo.
+
+## 2026-07-08 — D255: mini-calendário de salto rápido na agenda semanal (`buildMiniMonth` + `MiniCalendar` em `/shows/semana`)
+- **Contexto:** a agenda semanal `/shows/semana` (D19) navega uma semana por vez (setas ←/→) e tem o
+  atalho "Esta semana", mas não oferece uma forma de pular para uma semana/mês distante — para chegar a
+  uma data três meses à frente, o músico clica ▶ doze vezes. A visão mensal `/shows/calendario` já mostra
+  o mês inteiro, mas alternar de visão perde o contexto semanal. O item 2 dos "próximos passos" apontava
+  um "mini-calendário de salto rápido na agenda" como a evolução natural (o eixo de exportação tabular foi
+  declarado esgotado; a diretriz é polir o existente / evoluir feature de UX).
+- **Decisão:** um mini-calendário compacto embutido na própria agenda semanal, sem trocar de rota.
+  - **Lógica pura** (`src/lib/calendar.ts`): novo `buildMiniMonth(year, month, opts?)` + tipo
+    `MiniCalendarCell` — monta a grade do mês (semanas × 7 dias, com as bordas dos meses vizinhos, reusando
+    `monthGridRange`/`dayBucketKey` como `buildMonthGrid`) devolvendo **só flags de estado** por dia:
+    `inMonth`, `isToday`, `inSelectedWeek` (marca todos os dias da semana domingo→sábado que contém
+    `opts.selectedWeekRef`, via `weekRange`) e `hasShows` (pertence a `opts.showDayKeys`, um `Set` de chaves
+    "YYYY-MM-DD"). Não carrega os itens — a agenda já lista os shows da semana; aqui basta a bolinha. `today`
+    é injetável (testes determinísticos). Puro.
+  - **Componente** (`src/components/MiniCalendar.tsx`, servidor): recebe `year`/`month`/`selectedDayParam`/
+    `showDayKeys` e monta os links — cada dia do mês é um `<Link>` para `/shows/semana?semana=YYYY-MM-DD`
+    (pula a agenda para aquela semana e re-sincroniza o widget), as setas ◀/▶ vão para
+    `?semana={selecionada}&cal=YYYY-MM` (trocam **só** o mês exibido no widget, preservando a semana em
+    foco). Realça a semana atual (`bg-brand-50/60` na linha), o dia de hoje (anel `ring-brand-400` +
+    `aria-current="date"`) e pinta `bg-brand-500` nos dias com show; dias de borda ficam cinza e não
+    clicáveis. `aria-label` por dia ("Ir para a semana de DD/MM/AAAA (tem show)").
+  - **Página** (`/shows/semana`): lê `?cal=YYYY-MM` (default = mês da semana em foco) e faz uma **segunda
+    consulta enxuta** (só `date`, na grade `monthGridRange` do mini-mês) para montar `showDayKeys`. O widget
+    entra num `<aside>` — topo no mobile (`order-first`), coluna lateral em telas largas
+    (`grid lg:grid-cols-[1fr_15rem]`).
+- **Justificativa:** o núcleo é uma função pura testável, no molde dos helpers de calendário já existentes;
+  o componente só monta links (nada de client-side/JS de arrastar). A segunda consulta é barata (um mês,
+  só a coluna `date`) e desacoplada da consulta da semana, mantendo cada uma no seu escopo. A visão mensal
+  já cobre o mês inteiro, então não recebe o widget (seria redundante). Zero regra de negócio nova, zero
+  migração, zero dependência nova.
+- **Testes:** **+5** em `calendar.test.ts` (`describe("buildMiniMonth")`): (1) cobre a grade inteira com as
+  bordas fora do mês (5 semanas de junho/2026, 1..30 marcados `inMonth`); (2) marca exatamente o dia de
+  hoje; (3) realça a semana selecionada domingo→sábado (14..20 para uma quarta 17/jun); (4) pinta só os
+  dias do `Set` de chaves; (5) sem opções, nenhum dia é da semana selecionada nem tem show. **1435 testes**
+  no total (eram 1430).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1435
+  testes** (`vitest run`); smoke test (`next start`) → `/login` 200, `/shows/semana` 307 (auth-gated) — e,
+  indo além do smoke padrão, um **render autenticado** (cookie de sessão forjado com o `AUTH_SECRET` de
+  desenvolvimento + usuário do seed) confirmou o widget renderizado: título "Julho de 2026" (hoje =
+  08/07/2026), navegação Jun/Ago, um `<Link>` por dia, realce da semana em foco e a bolinha `bg-brand-500`
+  no dia com show. `npm audit` **inalterado** vs. baseline (mesmos advisories Next/postcss; ver D6/bloqueios);
+  **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) trocar a agenda semanal por um calendário mensal com drag&drop — muito
+  maior e com JS de cliente pesado, difícil de verificar headless; o mini-calendário entrega o salto rápido
+  com custo mínimo. (b) reusar `buildMonthGrid` (que carrega os itens) em vez de um builder novo — descartado;
+  o widget só precisa de flags, carregar os shows do mês inteiro seria I/O desperdiçado. (c) levar o widget
+  também a `/shows/calendario` — desnecessário, a visão mensal já é o mês inteiro. (d) mini-calendário como
+  drawer recolhível no mobile — adiado (o `<aside>` no topo é simples e suficiente por ora; reabrir se ficar
+  denso).

@@ -14,6 +14,7 @@ import {
   shiftWeek,
   formatWeekTitle,
   buildWeekGrid,
+  buildMiniMonth,
 } from "./calendar";
 
 describe("monthKey / parseMonthKey", () => {
@@ -282,5 +283,63 @@ describe("buildWeekGrid", () => {
     const items = [{ date: new Date(2026, 5, 25, 20, 0), id: "fora" }];
     const cells = buildWeekGrid(new Date(2026, 5, 17), items, today);
     expect(cells.flatMap((c) => c.items)).toHaveLength(0);
+  });
+});
+
+describe("buildMiniMonth", () => {
+  const today = new Date(2026, 5, 17); // 17/jun/2026 (quarta)
+
+  it("cobre a grade inteira do mês, marcando bordas fora do mês", () => {
+    const weeks = buildMiniMonth(2026, 6, { today });
+    // toda linha tem 7 dias; junho/2026 (1 é seg) rende 5 semanas
+    expect(weeks).toHaveLength(5);
+    for (const week of weeks) expect(week).toHaveLength(7);
+    // primeira célula é 31/mai (borda, fora do mês)
+    const first = weeks[0][0];
+    expect(first.date.getDate()).toBe(31);
+    expect(first.inMonth).toBe(false);
+    // todos os dias 1..30 estão presentes e marcados como do mês
+    const inMonth = weeks.flat().filter((c) => c.inMonth);
+    expect(inMonth.map((c) => c.date.getDate())).toEqual(
+      Array.from({ length: 30 }, (_, i) => i + 1),
+    );
+  });
+
+  it("marca exatamente o dia de hoje", () => {
+    const hoje = buildMiniMonth(2026, 6, { today })
+      .flat()
+      .filter((c) => c.isToday);
+    expect(hoje).toHaveLength(1);
+    expect(hoje[0].date.getDate()).toBe(17);
+  });
+
+  it("realça a semana selecionada (domingo→sábado) contendo a referência", () => {
+    const weeks = buildMiniMonth(2026, 6, {
+      today,
+      selectedWeekRef: new Date(2026, 5, 17), // quarta → semana 14..20
+    });
+    const marcados = weeks
+      .flat()
+      .filter((c) => c.inSelectedWeek)
+      .map((c) => c.date.getDate());
+    expect(marcados).toEqual([14, 15, 16, 17, 18, 19, 20]);
+  });
+
+  it("pinta só os dias com show conforme o conjunto de chaves", () => {
+    const weeks = buildMiniMonth(2026, 6, {
+      today,
+      showDayKeys: new Set(["2026-06-10", "2026-06-22"]),
+    });
+    const comShow = weeks
+      .flat()
+      .filter((c) => c.hasShows)
+      .map((c) => c.date.getDate());
+    expect(comShow).toEqual([10, 22]);
+  });
+
+  it("sem opções, nenhum dia é da semana selecionada nem tem show", () => {
+    const cells = buildMiniMonth(2026, 6).flat();
+    expect(cells.some((c) => c.inSelectedWeek)).toBe(false);
+    expect(cells.some((c) => c.hasShows)).toBe(false);
   });
 });
