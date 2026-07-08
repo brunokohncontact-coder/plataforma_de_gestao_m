@@ -2,9 +2,12 @@ import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { ShowsViewToggle } from "@/components/ShowsViewToggle";
+import { MiniCalendar } from "@/components/MiniCalendar";
 import {
   buildWeekGrid,
   weekRange,
+  monthGridRange,
+  parseMonthKey,
   parseDayParam,
   shiftWeek,
   startOfWeek,
@@ -19,10 +22,15 @@ export const dynamic = "force-dynamic";
 export default async function ShowsWeekPage({
   searchParams,
 }: {
-  searchParams: { semana?: string };
+  searchParams: { semana?: string; cal?: string };
 }) {
   const user = await requireUser();
   const reference = parseDayParam(searchParams.semana);
+  const selectedDayParam = toDayParam(reference);
+
+  // Mês exibido no mini-calendário de salto rápido: por padrão, o mês da semana
+  // em foco; `?cal=YYYY-MM` deixa navegar meses no widget sem trocar a semana.
+  const miniMonth = parseMonthKey(searchParams.cal, reference);
 
   // Carrega apenas os shows da semana exibida.
   const { start, endExclusive } = weekRange(reference);
@@ -31,6 +39,19 @@ export default async function ShowsWeekPage({
     orderBy: { date: "asc" },
     select: { id: true, title: true, date: true, venue: true, city: true, status: true },
   });
+
+  // Datas (só o campo `date`) dos shows que caem na grade do mini-calendário,
+  // para pintar as bolinhas de "dia com show". Consulta enxuta e separada da
+  // semana exibida (o widget cobre um mês inteiro, com bordas).
+  const miniRange = monthGridRange(miniMonth.year, miniMonth.month);
+  const miniShows = await prisma.show.findMany({
+    where: {
+      userId: user.id,
+      date: { gte: miniRange.start, lt: miniRange.endExclusive },
+    },
+    select: { date: true },
+  });
+  const showDayKeys = new Set(miniShows.map((s) => toDayParam(s.date)));
 
   const cells = buildWeekGrid(reference, shows);
   const prev = toDayParam(shiftWeek(reference, -1));
@@ -69,6 +90,7 @@ export default async function ShowsWeekPage({
         </div>
       </div>
 
+      <div className="grid gap-6 lg:grid-cols-[1fr_15rem]">
       <div className="card p-0">
         {/* Cabeçalho de navegação da semana */}
         <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
@@ -187,6 +209,17 @@ export default async function ShowsWeekPage({
             Nenhum show nesta semana.
           </p>
         )}
+      </div>
+
+      {/* Mini-calendário de salto rápido (aparece ao lado em telas largas) */}
+      <aside className="order-first lg:order-none">
+        <MiniCalendar
+          year={miniMonth.year}
+          month={miniMonth.month}
+          selectedDayParam={selectedDayParam}
+          showDayKeys={showDayKeys}
+        />
+      </aside>
       </div>
 
       {/* Legenda de status */}

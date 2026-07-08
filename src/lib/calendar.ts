@@ -207,6 +207,59 @@ export function buildWeekGrid<T extends { date: Date }>(
   return cells;
 }
 
+export type MiniCalendarCell = {
+  date: Date; // dia local à meia-noite
+  inMonth: boolean; // pertence ao mês exibido (não é borda)
+  isToday: boolean;
+  inSelectedWeek: boolean; // cai na semana atualmente exibida na agenda
+  hasShows: boolean; // há ao menos um show neste dia
+};
+
+/**
+ * Monta a grade compacta de um mês para o mini-calendário de salto rápido da
+ * agenda semanal — só flags de estado por dia, sem carregar os itens (a agenda
+ * já lista os shows da semana; aqui basta indicar quais dias têm show).
+ *
+ * `selectedWeekRef` marca (via `inSelectedWeek`) todos os dias da semana
+ * domingo→sábado que contém essa data — a semana em foco na agenda, para
+ * realçar "onde estou". `showDayKeys` é o conjunto de chaves de dia
+ * "YYYY-MM-DD" (`toDayParam`) com pelo menos um show, para pintar a bolinha.
+ * Ambos opcionais; `today` é injetável para testes determinísticos. Puro.
+ */
+export function buildMiniMonth(
+  year: number,
+  month: number,
+  opts: { selectedWeekRef?: Date; showDayKeys?: Set<string>; today?: Date } = {},
+): MiniCalendarCell[][] {
+  const today = opts.today ?? new Date();
+  const selectedWeek = opts.selectedWeekRef ? weekRange(opts.selectedWeekRef) : null;
+  const showDayKeys = opts.showDayKeys ?? new Set<string>();
+  const { start, endExclusive } = monthGridRange(year, month);
+  const todayKey = dayBucketKey(today);
+
+  const weeks: MiniCalendarCell[][] = [];
+  const cursor = new Date(start);
+  while (cursor < endExclusive) {
+    const week: MiniCalendarCell[] = [];
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(cursor);
+      const key = dayBucketKey(date);
+      week.push({
+        date,
+        inMonth: date.getMonth() === month - 1,
+        isToday: key === todayKey,
+        inSelectedWeek: selectedWeek
+          ? date >= selectedWeek.start && date < selectedWeek.endExclusive
+          : false,
+        hasShows: showDayKeys.has(key),
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    weeks.push(week);
+  }
+  return weeks;
+}
+
 /**
  * Monta a grade do mês como semanas (linhas) de 7 células (dias). Cada item é
  * distribuído no dia local correspondente ao seu `date` e ordenado por horário.
