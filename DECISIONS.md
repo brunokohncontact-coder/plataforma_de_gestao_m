@@ -8484,6 +8484,53 @@ contexto, decisão, justificativa e alternativas consideradas.
 - **Nota de concorrência:** número **D251** escolhido como o próximo livre após o D250 (Sessão 256). Se
   uma PR paralela reivindicar o mesmo número, renumerar na consolidação.
 
+## D252 — Nudge no Painel de conversão caindo com um contratante específico (`contactConversionDropHeadline` + banner em `dashboard/page.tsx`) (Sessão 258)
+- **Contexto:** o Painel já alerta quando a conversão real da carteira INTEIRA cai ano a ano
+  (`proposalConversionHeadline`/D245), e a página `/shows/funil/conversao/contratantes` já mostra o
+  comparativo por contratante (`compareContactProposalOutcomes`/D248). Faltava o eco por-contratante no
+  Painel — o item adiado na D247(alt. e)/D248(alt. b): QUAL contratante específico passou a fechar uma
+  fração materialmente menor das propostas que você lhe propõe. É mais acionável que o nudge geral (diz
+  de quem revisar preço/disponibilidade/relação) e pega o caso que o geral perde: a carteira empata (um
+  contratante piora enquanto outro melhora) mas uma relação específica azedou.
+- **Decisão:** novo helper puro `contactConversionDropHeadline(comparison, minDecided?, dropPoints?,
+  criticalPoints?)` em `src/lib/shows.ts` (+ tipo `ContactConversionDropHeadline<C>`), irmão
+  por-contratante de `proposalConversionHeadline`. Recebe um `ContactProposalConversionComparison<C>` já
+  computado (dois `proposalOutcomesByContact`, um por ano) e varre os `changes` (já ordenados da maior
+  piora à maior melhora): elege o contratante de MAIOR queda que ainda tenha amostra confiável (≥
+  `minDecided` decididas em CADA coorte) e queda ≥ `dropPoints`; `critical` quando ≥ `criticalPoints`;
+  `others` conta quantos outros contratantes também passariam no mesmo gate. Reusa as constantes de gate
+  do nudge geral (`CONVERSION_DROP_MIN_DECIDED`=4 / `CONVERSION_DROP_POINTS`=0.10 /
+  `CONVERSION_DROP_CRITICAL_POINTS`=0.25). No `dashboard/page.tsx`, um segundo pivô show×contato
+  (carregando os `statusEvents` já presentes na consulta, zero I/O extra) monta as coortes deste ano e
+  do anterior; o banner 📉/🔴 linka `/shows/funil/conversao/contratantes?ano={ano}` e nomeia o
+  contratante ("Conversão caindo com {nome}", "N de M", "P p.p. abaixo", "+K contratantes esfriaram").
+- **Justificativa:** puro/determinístico, zero regra de negócio nova, zero migração, zero I/O extra (o
+  Painel já carregava `contacts` + `statusEvents` por show desde D245). O gate por-contratante reusa a
+  mesma disciplina anti-ruído dos nudges irmãos, aplicada por relação. Só a ponta de PIORA vira alerta
+  (subir a conversão de um contratante é boa notícia).
+- **Cede a vez ao nudge geral (D245):** quando `conversionHead.show` já está no ar (a carteira inteira
+  caiu), o Painel não computa nem exibe este nudge — a história maior domina e o detalhe por
+  contratante espera o clique. Este nudge brilha justamente quando o geral está quieto mas uma relação
+  específica azedou (o caso que o agregado esconde). Mesma disciplina "no máximo um nudge de X por vez"
+  do vale × pico de sazonalidade (D135) — evita banner duplo de conversão no Painel.
+- **Testes:** **+6** em `shows.test.ts` (`describe("contactConversionDropHeadline")`): elege o maior
+  dropper confiável; ignora quedas de amostra fina e escolhe a maior queda confiável; conta `others`;
+  não dispara sem queda material/confiável; queda abaixo do piso não vira nudge; respeita limiares
+  injetáveis. **1429 testes** no total (eram 1423, consolidado sobre a main pós-D253).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1429
+  testes** (`vitest run`); smoke test (`next start`) → `/login` 200, `/dashboard` 307 (auth-gated).
+  `npm audit` **inalterado** vs. baseline (mesmos advisories Next/postcss; ver D6/bloqueios); **nenhuma
+  dependência nova**.
+- **Alternativas consideradas:** (a) mostrar os dois nudges (geral + por contratante) juntos — recusado;
+  dois banners de conversão-drop no Painel é ruído redundante, e ao clicar no geral o usuário já vê a
+  quebra por contratante. (b) dar precedência ao por-contratante quando ambos disparam (é mais
+  acionável) — recusado por ora; o geral é a manchete correta quando a carteira toda cai, e o
+  por-contratante preserva seu valor único no cenário de carteira empatada. Reavaliável se a validação
+  humana indicar que "de quem" importa mais que "quanto no total". (c) coluna/nudge por role de
+  contratante — fora de escopo. (d) export CSV do comparativo por contratante — já entregue (D250).
+- **Nota de concorrência:** número **D252** escolhido como o próximo livre após o D251 (Sessão 257). Se
+  uma PR paralela reivindicar o mesmo número, renumerar na consolidação.
+
 ## D253 — Comparativo da conversão de propostas ganha a variação da vazão da coorte (`winRateDelta`) (Sessão 258)
 - **Contexto:** a página `/shows/funil/conversao` (D243) mostra dois números-chave lado a lado no topo:
   a **taxa de conversão real** (`conversionRate` = realizadas ÷ decididas, resistente a propostas ainda

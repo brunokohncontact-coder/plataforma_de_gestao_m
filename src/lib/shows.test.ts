@@ -41,6 +41,7 @@ import {
   compareContactProposalOutcomes,
   indexContactProposalConversionChanges,
   proposalConversionHeadline,
+  contactConversionDropHeadline,
   CONVERSION_DROP_MIN_DECIDED,
   CONVERSION_DROP_POINTS,
   CONVERSION_DROP_CRITICAL_POINTS,
@@ -2074,6 +2075,123 @@ describe("proposalConversionHeadline", () => {
   it("as constantes de gate são coerentes (crítico > piso > epsilon do card)", () => {
     expect(CONVERSION_DROP_CRITICAL_POINTS).toBeGreaterThan(CONVERSION_DROP_POINTS);
     expect(CONVERSION_DROP_MIN_DECIDED).toBeGreaterThan(1);
+  });
+});
+
+describe("contactConversionDropHeadline", () => {
+  const ev = (
+    fromStatus: string | null,
+    toStatus: string,
+    createdAt: string,
+  ): StatusEventLike => ({ fromStatus, toStatus, createdAt });
+  const won = (createdAt: string) => ({
+    statusEvents: [ev(null, "PROPOSED", createdAt), ev("PROPOSED", "PLAYED", createdAt)],
+  });
+  const lost = (createdAt: string) => ({
+    statusEvents: [ev(null, "PROPOSED", createdAt), ev("PROPOSED", "CANCELLED", createdAt)],
+  });
+  type C = { id: string; name: string; role: string };
+
+  // Data da proposta: só o ANO importa (a coorte recorta por `opts.year`); o dia
+  // varia só para gerar eventos distintos. Uma coorte de `wins` ganhas + `losses`
+  // perdidas naquele ano.
+  const at = (year: number, i: number) =>
+    `${year}-01-${String((i % 28) + 1).padStart(2, "0")}T00:00:00.000Z`;
+  const cohort = (year: number, wins: number, losses: number) => {
+    const shows: { statusEvents: StatusEventLike[] }[] = [];
+    for (let i = 0; i < wins; i++) shows.push(won(at(year, i)));
+    for (let i = 0; i < losses; i++) shows.push(lost(at(year, wins + i)));
+    return shows;
+  };
+
+  // Cada def: id/nome + [ganhas, perdidas] na coorte atual (2026) e anterior (2025).
+  type Def = { id: string; name: string; cur: [number, number]; prev: [number, number] };
+  const build = (defs: Def[]): { contact: C; shows: { statusEvents: StatusEventLike[] }[] }[] =>
+    defs.map((d) => ({
+      contact: { id: d.id, name: d.name, role: "VENUE" },
+      shows: [...cohort(2026, d.cur[0], d.cur[1]), ...cohort(2025, d.prev[0], d.prev[1])],
+    }));
+  const headline = (defs: Def[]) => {
+    const items = build(defs);
+    return contactConversionDropHeadline(
+      compareContactProposalOutcomes(
+        proposalOutcomesByContact(items, { year: 2026 }),
+        proposalOutcomesByContact(items, { year: 2025 }),
+      ),
+    );
+  };
+
+  it("aponta o contratante que mais esfriou, com amostra confiável nas duas coortes", () => {
+    // Beta piora forte (2025: 4/4=100% → 2026: 1/4=25%, −75 p.p.); Alfa melhora.
+    const h = headline([
+      { id: "a", name: "Alfa", cur: [4, 0], prev: [2, 2] },
+      { id: "b", name: "Beta", cur: [1, 3], prev: [4, 0] },
+    ]);
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(true); // 75 p.p. >> 25 p.p. crítico
+    expect(h.contact?.id).toBe("b");
+    expect(h.drop).toBeCloseTo(0.75);
+    expect(h.currentRate).toBeCloseTo(0.25);
+    expect(h.previousRate).toBeCloseTo(1);
+    expect(h).toMatchObject({ won: 1, decided: 4, others: 0 });
+  });
+
+  it("ignora quedas de amostra fina e elege a maior queda CONFIÁVEL", () => {
+    // Fina: queda de 100 p.p. mas só 1 decidida em cada coorte → fora do gate.
+    // Sólida: 75%→25% (−50 p.p.) com 4 decididas em cada → é o eleito.
+    const h = headline([
+      { id: "fina", name: "Fina", cur: [0, 1], prev: [1, 0] },
+      { id: "solida", name: "Sólida", cur: [1, 3], prev: [3, 1] },
+    ]);
+    expect(h.show).toBe(true);
+    expect(h.contact?.id).toBe("solida");
+    expect(h.drop).toBeCloseTo(0.5);
+    expect(h.others).toBe(0); // a fina não conta (não passa no gate)
+  });
+
+  it("conta em `others` os demais contratantes que também esfriaram no gate", () => {
+    const h = headline([
+      { id: "b", name: "Beta", cur: [1, 3], prev: [4, 0] }, // −75 p.p.
+      { id: "c", name: "Cecê", cur: [2, 2], prev: [4, 0] }, // −50 p.p.
+      { id: "a", name: "Alfa", cur: [4, 0], prev: [2, 2] }, // melhora
+    ]);
+    expect(h.show).toBe(true);
+    expect(h.contact?.id).toBe("b"); // maior queda no topo
+    expect(h.others).toBe(1); // Cecê também passou no gate
+  });
+
+  it("não dispara quando ninguém tem queda material e confiável", () => {
+    const h = headline([
+      { id: "a", name: "Alfa", cur: [4, 0], prev: [2, 2] }, // melhora
+      { id: "b", name: "Beta", cur: [3, 1], prev: [3, 1] }, // estável
+    ]);
+    expect(h.show).toBe(false);
+    expect(h.contact).toBeNull();
+    expect(h.drop).toBe(0);
+    expect(h.others).toBe(0);
+  });
+
+  it("uma queda pequena (abaixo do piso) não vira nudge", () => {
+    // 60%→45% seria −15 p.p. (dispararia); aqui 55%→50% = −5 p.p. < piso.
+    const h = headline([
+      { id: "a", name: "Alfa", cur: [10, 10], prev: [11, 9] }, // 50% vs 55% → −5 p.p.
+    ]);
+    expect(h.show).toBe(false);
+  });
+
+  it("respeita limiares injetáveis (min de decididas / pontos / crítico)", () => {
+    const items = build([
+      { id: "a", name: "Alfa", cur: [1, 2], prev: [3, 0] }, // 33% vs 100%, 3 decididas cada
+    ]);
+    const cmp = compareContactProposalOutcomes(
+      proposalOutcomesByContact(items, { year: 2026 }),
+      proposalOutcomesByContact(items, { year: 2025 }),
+    );
+    // com mínimo 4 não passa (só 3 decididas); com mínimo 3 passa
+    expect(contactConversionDropHeadline(cmp, 4).show).toBe(false);
+    expect(contactConversionDropHeadline(cmp, 3).show).toBe(true);
+    // ponto crítico afrouxado torna a queda "crítica"
+    expect(contactConversionDropHeadline(cmp, 3, 0.1, 0.5).critical).toBe(true);
   });
 });
 
