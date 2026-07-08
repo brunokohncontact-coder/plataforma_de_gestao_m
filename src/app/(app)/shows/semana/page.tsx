@@ -12,6 +12,7 @@ import {
   shiftWeek,
   startOfWeek,
   formatWeekTitle,
+  findAdjacentShowDate,
   toDayParam,
   WEEKDAY_LABELS,
 } from "@/lib/calendar";
@@ -52,6 +53,32 @@ export default async function ShowsWeekPage({
     select: { date: true },
   });
   const showDayKeys = new Set(miniShows.map((s) => toDayParam(s.date)));
+
+  // Salto direto para a semana do show mais próximo (para trás / para frente),
+  // pulando de uma vez as semanas vazias. Duas consultas enxutas e indexadas
+  // (só a `date` do vizinho imediato fora da semana em foco) alimentam a função
+  // pura `findAdjacentShowDate` — que reconfirma a fronteira de semana.
+  const [prevShow, nextShow] = await Promise.all([
+    prisma.show.findFirst({
+      where: { userId: user.id, date: { lt: start } },
+      orderBy: { date: "desc" },
+      select: { date: true },
+    }),
+    prisma.show.findFirst({
+      where: { userId: user.id, date: { gte: endExclusive } },
+      orderBy: { date: "asc" },
+      select: { date: true },
+    }),
+  ]);
+  const neighborDates = [prevShow?.date, nextShow?.date].filter(
+    (d): d is Date => d != null,
+  );
+  const prevShowDate = findAdjacentShowDate(neighborDates, reference, "prev");
+  const nextShowDate = findAdjacentShowDate(neighborDates, reference, "next");
+  const jumpPrev = prevShowDate ? toDayParam(prevShowDate) : null;
+  const jumpNext = nextShowDate ? toDayParam(nextShowDate) : null;
+  const jumpDateLabel = (d: Date) =>
+    d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 
   const cells = buildWeekGrid(reference, shows);
   const prev = toDayParam(shiftWeek(reference, -1));
@@ -117,6 +144,36 @@ export default async function ShowsWeekPage({
             →
           </Link>
         </div>
+
+        {/* Saltos para a semana do show mais próximo (pula semanas vazias) */}
+        {(jumpPrev || jumpNext) && (
+          <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-2 text-sm">
+            {jumpPrev && prevShowDate ? (
+              <Link
+                href={`/shows/semana?semana=${jumpPrev}`}
+                className="text-brand-700 hover:underline"
+                title={`Ir para a semana do show anterior (${jumpDateLabel(prevShowDate)})`}
+              >
+                ← Show anterior{" "}
+                <span className="text-gray-400">({jumpDateLabel(prevShowDate)})</span>
+              </Link>
+            ) : (
+              <span />
+            )}
+            {jumpNext && nextShowDate ? (
+              <Link
+                href={`/shows/semana?semana=${jumpNext}`}
+                className="text-brand-700 hover:underline"
+                title={`Ir para a semana do próximo show (${jumpDateLabel(nextShowDate)})`}
+              >
+                <span className="text-gray-400">({jumpDateLabel(nextShowDate)})</span>{" "}
+                Próximo show →
+              </Link>
+            ) : (
+              <span />
+            )}
+          </div>
+        )}
 
         {/* Dias da semana (lista vertical, um por dia) */}
         <ul className="divide-y divide-gray-100">
