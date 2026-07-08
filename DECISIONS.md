@@ -8649,3 +8649,50 @@ contexto, decisão, justificativa e alternativas consideradas.
   também a `/shows/calendario` — desnecessário, a visão mensal já é o mês inteiro. (d) mini-calendário como
   drawer recolhível no mobile — adiado (o `<aside>` no topo é simples e suficiente por ora; reabrir se ficar
   denso).
+
+## 2026-07-08 — D256: exportação CSV do comparativo ano a ano da conversão real de propostas (`proposalConversionComparisonToCsv` + `/shows/funil/conversao/comparativo/export`)
+- **Contexto:** o card `ConversionComparisonCard` "Conversão real {ano} vs. {ano-1}" em
+  `/shows/funil/conversao` (D244, com a linha da vazão da coorte `winRateDelta` acrescida na D253) já
+  mostrava o comparativo ano a ano da conversão real de propostas na tela, mas — diferente do eixo por
+  contratante, cujo CSV do export ganhou a coluna "vs. {ano-1}" (D250) — o **comparativo agregado** só existia
+  como card, sem download. O CSV do agregado (`proposalConversionToCsv`/D243) exporta apenas a coorte de UM
+  ano (desfechos + participação), não a comparação entre os dois. Havia um precedente direto para fechar essa
+  lacuna: a D223 adicionou uma rota `/comparativo/export` dedicada para exatamente esse tipo de card de
+  comparação (a sazonalidade de shows, `gigSeasonalityComparisonToCsv`).
+- **Decisão:** espelhar a D223 no eixo da conversão. (1) Serializador puro `proposalConversionComparisonToCsv`
+  + `PROPOSAL_CONVERSION_COMPARISON_CSV_HEADERS` em `src/lib/csv.ts`. Como o comparativo aqui é um punhado de
+  métricas escalares (não uma tabela de 12 meses como a sazonalidade), a planilha é orientada a **métrica**,
+  no molde de `monthlyReportToCsv`: colunas `Métrica`/`Ano anterior`/`Ano corrente`/`Variação` e uma linha por
+  indicador — Taxa de conversão real (%), Vazão da coorte (%), Propostas realizadas, Propostas decididas,
+  Propostas na coorte — encerrando numa linha "Tendência" com o veredito pt-BR do card (Convertendo mais /
+  menos / Estável) na coluna de variação. As taxas saem via `csvShare` (em branco quando indefinidas, o "—" da
+  UI); a variação das taxas em pontos percentuais assinados (`csvSignedPoints`, unidade no rótulo da métrica) e
+  em branco sem base nos dois anos; as contagens cruas com variação assinada (`csvSignedCount`). Os anos
+  concretos vão no nome do arquivo (`conversao-comparativo-{ano}-vs-{ano-1}.csv`), como em
+  `gigSeasonalityComparisonToCsv`. (2) Rota `/shows/funil/conversao/comparativo/export` com o **mesmo gate do
+  card** (ano específico via `?ano=` + ambas as coortes com propostas decididas; senão 404), recortando a
+  coorte de cada ano do mesmo acervo já carregado (zero I/O extra; eixo = data da proposta). (3) Link "⬇ CSV"
+  no cabeçalho do próprio card.
+- **Justificativa:** fecha a única metade sem download do comparativo de conversão (o por-contratante já tinha
+  via D250), reusando `compareProposalOutcomes` (D244) sem nenhuma lógica de negócio nova — só serialização e
+  uma rota fina de HTTP, ambas testadas. O layout orientado a métrica se ajusta melhor a um comparativo
+  escalar que o layout mês-a-mês da sazonalidade; a linha "Tendência" mantém a planilha auto-explicativa como
+  os irmãos. Sem `previous`/`previousYear` o serializador não existe (é sempre um comparativo já montado), então
+  não há caminho de compatibilidade a preservar.
+- **Testes:** **+4** em `csv.test.ts` (`describe("proposalConversionComparisonToCsv")`): (1) uma linha por
+  métrica com os dois anos e a variação + linha Tendência ("Convertendo mais", 50%→75% = +25 p.p., vazão
+  50%→60% = +10 p.p.); (2) veredito "Convertendo menos" numa queda além do limiar (100%→25% = −75 p.p.);
+  (3) taxa indefinida em algum ano → célula e variação da taxa em branco (sem base), tendência "Estável";
+  (4) delimitador alternativo. **1439 testes** no total (eram 1435).
+- **DoD:** build de produção (rota `/shows/funil/conversao/comparativo/export` registrada), typecheck
+  (`tsc --noEmit`, 0 erros) e lint (`next lint`, 0 avisos) verdes; **1439 testes** (`vitest run`); smoke test
+  (`next start`) → `/login` 200, app sobe. `npm audit` **inalterado** vs. baseline (mesmos advisories
+  Next/postcss pré-existentes; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) estender o `proposalConversionToCsv` (agregado de um ano) para carregar o
+  comparativo em colunas extras — descartado; a coorte de um ano e a comparação entre dois anos têm formas
+  distintas (desfechos × métricas), e o padrão da casa (D223) é uma rota `/comparativo/export` separada. (b)
+  layout mês-a-mês como o da sazonalidade — não se aplica, o comparativo agregado não tem eixo temporal
+  interno. (c) omitir a linha "Tendência" (o veredito é derivável da variação da taxa) — incluída assim mesmo,
+  para a planilha abrir auto-suficiente como os irmãos.
+- **Nota de concorrência:** número **D256** escolhido como o próximo livre após o D255 (Sessão 260). Se uma PR
+  paralela reivindicar D256, renumerar para o próximo livre no merge.

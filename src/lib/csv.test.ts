@@ -80,6 +80,8 @@ import {
   STAGE_DURATIONS_CSV_HEADERS,
   proposalConversionToCsv,
   PROPOSAL_CONVERSION_CSV_HEADERS,
+  proposalConversionComparisonToCsv,
+  PROPOSAL_CONVERSION_COMPARISON_CSV_HEADERS,
   proposalConversionByContactToCsv,
   PROPOSAL_CONVERSION_BY_CONTACT_CSV_HEADERS,
   pipelineByContactToCsv,
@@ -131,6 +133,7 @@ import {
   bookingLeadTime,
   funnelStageDurations,
   proposalOutcomes,
+  compareProposalOutcomes,
   proposalOutcomesByContact,
   findStaleProposals,
   type ConflictShowLike,
@@ -2911,6 +2914,105 @@ describe("proposalConversionToCsv", () => {
     expect(lines[2]).toBe("Perdidas;1;100%");
     expect(lines[3]).toBe("Em aberto;0;0%");
     expect(lines[4]).toBe("Total;1;");
+  });
+});
+
+describe("proposalConversionComparisonToCsv", () => {
+  const ev = (toStatus: string, createdAt: string) => ({
+    fromStatus: null,
+    toStatus,
+    createdAt,
+  });
+  const won = (createdAt: string) => ({
+    statusEvents: [ev("PROPOSED", createdAt), ev("PLAYED", createdAt)],
+  });
+  const lost = (createdAt: string) => ({
+    statusEvents: [ev("PROPOSED", createdAt), ev("CANCELLED", createdAt)],
+  });
+  const open = (createdAt: string) => ({
+    statusEvents: [ev("PROPOSED", createdAt)],
+  });
+
+  // Acervo: 2025 fecha 1 de 2 decididas (50%); 2026 fecha 3 de 4 decididas (75%),
+  // com 1 em aberto (coorte de 5). A conversão real sobe +25 p.p. → "improved".
+  const shows = [
+    won("2025-01-01T00:00:00.000Z"),
+    lost("2025-02-01T00:00:00.000Z"),
+    won("2026-01-01T00:00:00.000Z"),
+    won("2026-02-01T00:00:00.000Z"),
+    won("2026-03-01T00:00:00.000Z"),
+    lost("2026-04-01T00:00:00.000Z"),
+    open("2026-05-01T00:00:00.000Z"),
+  ];
+  const comparison = compareProposalOutcomes(
+    proposalOutcomes(shows, { year: 2026 }),
+    proposalOutcomes(shows, { year: 2025 }),
+  );
+
+  it("uma linha por métrica com os dois anos e a variação + linha Tendência", () => {
+    const lines = proposalConversionComparisonToCsv(comparison).split("\r\n");
+    expect(lines[0]).toBe(PROPOSAL_CONVERSION_COMPARISON_CSV_HEADERS.join(";"));
+    // Taxa de conversão real: 50% (2025) → 75% (2026), +25 p.p.
+    expect(lines[1]).toBe("Taxa de conversão real (%);50%;75%;+25");
+    // Vazão da coorte (winRate = ganhas / coorte): 2025 1/2=50%, 2026 3/5=60%, +10 p.p.
+    expect(lines[2]).toBe("Vazão da coorte (%);50%;60%;+10");
+    // Realizadas: 1 → 3 (+2)
+    expect(lines[3]).toBe("Propostas realizadas;1;3;+2");
+    // Decididas: 2 → 4 (+2)
+    expect(lines[4]).toBe("Propostas decididas;2;4;+2");
+    // Propostas na coorte: 2 → 5 (+3)
+    expect(lines[5]).toBe("Propostas na coorte;2;5;+3");
+    // Tendência editorial na coluna de variação.
+    expect(lines[6]).toBe("Tendência;;;Convertendo mais");
+    expect(lines).toHaveLength(7);
+  });
+
+  it("veredito 'Convertendo menos' quando a conversão real cai além do limiar", () => {
+    // Inverte os anos: agora 2025 é o corrente (75%) e 2026 o anterior (50%)?
+    // Mais simples: monta uma queda direta — 2026 fecha 1 de 4 (25%), 2025 fecha 2 de 2 (100%).
+    const falling = [
+      won("2025-01-01T00:00:00.000Z"),
+      won("2025-02-01T00:00:00.000Z"),
+      won("2026-01-01T00:00:00.000Z"),
+      lost("2026-02-01T00:00:00.000Z"),
+      lost("2026-03-01T00:00:00.000Z"),
+      lost("2026-04-01T00:00:00.000Z"),
+    ];
+    const comp = compareProposalOutcomes(
+      proposalOutcomes(falling, { year: 2026 }),
+      proposalOutcomes(falling, { year: 2025 }),
+    );
+    const lines = proposalConversionComparisonToCsv(comp).split("\r\n");
+    // 100% → 25%, −75 p.p.
+    expect(lines[1]).toBe("Taxa de conversão real (%);100%;25%;-75");
+    expect(lines[6]).toBe("Tendência;;;Convertendo menos");
+  });
+
+  it("taxa indefinida em algum ano: célula e variação da taxa em branco, sem base", () => {
+    // 2025 só com proposta em aberto (nenhuma decidida → conversionRate null),
+    // 2026 fecha 1 de 1. Sem base para a variação da taxa de conversão real.
+    const partial = [
+      open("2025-01-01T00:00:00.000Z"),
+      won("2026-01-01T00:00:00.000Z"),
+    ];
+    const comp = compareProposalOutcomes(
+      proposalOutcomes(partial, { year: 2026 }),
+      proposalOutcomes(partial, { year: 2025 }),
+    );
+    const lines = proposalConversionComparisonToCsv(comp).split("\r\n");
+    // 2025 sem decididas → taxa em branco; 2026 100%; variação sem base → em branco.
+    expect(lines[1]).toBe("Taxa de conversão real (%);;100%;");
+    // winRate 2025 = 0/1 = 0% (tem coorte), 2026 = 1/1 = 100% → +100 p.p.
+    expect(lines[2]).toBe("Vazão da coorte (%);0%;100%;+100");
+    // Sem variação de taxa → tendência estável.
+    expect(lines[6]).toBe("Tendência;;;Estável");
+  });
+
+  it("aceita delimitador alternativo", () => {
+    const csv = proposalConversionComparisonToCsv(comparison, ",");
+    expect(csv.split("\r\n")[0]).toBe(
+      PROPOSAL_CONVERSION_COMPARISON_CSV_HEADERS.join(","),
+    );
   });
 });
 
