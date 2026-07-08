@@ -1425,6 +1425,16 @@ export interface ProposalConversionComparison {
    * propostas agora (melhora); negativo = mais propostas viraram perda (piora).
    */
   conversionRateDelta: number | null;
+  /**
+   * Variação da taxa de vazão da coorte inteira: `winRate` atual − anterior (em
+   * pontos 0..1), ou `null` quando algum dos períodos não tem coorte (sem
+   * proposta). Diferente de `conversionRateDelta`, o denominador aqui é a coorte
+   * TODA (inclui as em aberto), então penaliza propostas ainda paradas — as duas
+   * variações podem apontar em sentidos opostos (a taxa das decididas sobe
+   * enquanto a vazão cai porque muita proposta ficou em aberto, e vice-versa).
+   * Leitura complementar de throughput proposta→palco. Ver D243.
+   */
+  winRateDelta: number | null;
   /** Variação da contagem de propostas ganhas — viraram palco (atual − anterior). */
   wonCountDelta: number;
   /** Variação da contagem de propostas decididas — ganhas+perdidas (atual − anterior). */
@@ -1444,8 +1454,9 @@ export interface ProposalConversionComparison {
  * Compara a **taxa de conversão real** de propostas entre duas coortes (atual ×
  * anterior), espelhando `compareShowPipelines` (D209) no eixo da data da
  * proposta. Pura, sem I/O: recebe dois `proposalOutcomes` já computados (cada um
- * sobre a coorte do seu ano) e devolve a variação da taxa de conversão (e das
- * contagens de ganhas/decididas) + um veredito de tendência. Quando algum
+ * sobre a coorte do seu ano) e devolve a variação da taxa de conversão real, da
+ * taxa de vazão da coorte (`winRateDelta`) e das contagens de ganhas/decididas +
+ * um veredito de tendência (ancorado na taxa de conversão real). Quando algum
  * período não tem proposta decidida a taxa é indefinida: `conversionRateDelta`
  * fica `null` e o veredito é "stable" (sem base para ler tendência). O chamador
  * decide quando exibir (tipicamente só com um ano específico e ambas as coortes
@@ -1459,10 +1470,15 @@ export function compareProposalOutcomes(
     current.conversionRate == null || previous.conversionRate == null
       ? null
       : current.conversionRate - previous.conversionRate;
+  const winRateDelta =
+    current.winRate == null || previous.winRate == null
+      ? null
+      : current.winRate - previous.winRate;
   return {
     current,
     previous,
     conversionRateDelta,
+    winRateDelta,
     wonCountDelta: current.wonCount - previous.wonCount,
     decidedCountDelta: current.decidedCount - previous.decidedCount,
     trend:
