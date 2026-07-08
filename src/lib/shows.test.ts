@@ -1885,6 +1885,41 @@ describe("compareContactProposalOutcomes", () => {
     expect(alfa.wonCountDelta).toBe(1); // 2 em 2026 − 1 em 2025
     expect(beta.conversionRateDelta).toBeCloseTo(-0.5);
     expect(beta.trend).toBe("worsened");
+    // Sem propostas em aberto, a vazão da coorte segue a taxa de conversão:
+    // Alfa 2025 1/2 → 2026 2/2 (+0.5); Beta 2025 2/2 → 2026 1/2 (−0.5).
+    expect(alfa.winRateDelta).toBeCloseTo(0.5);
+    expect(beta.winRateDelta).toBeCloseTo(-0.5);
+  });
+
+  it("winRateDelta por contratante pode divergir da taxa de conversão (propostas em aberto)", () => {
+    // Gama 2025: 1 ganha + 1 perdida → conversão 50%, vazão 1/2 = 50%.
+    // Gama 2026: 1 ganha + 1 em aberto → conversão 100% (1/1 decidida), vazão 1/2
+    // = 50% (a em aberto entra no denominador). A taxa de conversão SOBE enquanto a
+    // vazão fica parada porque sobrou proposta em aberto — espelho por-contratante
+    // do caso de divergência do comparativo geral (D243).
+    const current = proposalOutcomesByContact(
+      [
+        {
+          contact: { id: "g", name: "Gama", role: "VENUE" },
+          shows: [won("2026-01-01T00:00:00.000Z"), open("2026-02-01T00:00:00.000Z")],
+        },
+      ],
+      { year: 2026 },
+    );
+    const previous = proposalOutcomesByContact(
+      [
+        {
+          contact: { id: "g", name: "Gama", role: "VENUE" },
+          shows: [won("2025-01-01T00:00:00.000Z"), lost("2025-02-01T00:00:00.000Z")],
+        },
+      ],
+      { year: 2025 },
+    );
+    const cmp = compareContactProposalOutcomes(current, previous);
+    const gama = cmp.changes.find((c) => c.contact.id === "g")!;
+    expect(gama.conversionRateDelta).toBeCloseTo(0.5); // 100% − 50%, melhora
+    expect(gama.trend).toBe("improved");
+    expect(gama.winRateDelta).toBeCloseTo(0); // 50% − 50%, vazão parada
   });
 
   it("elege os movers e ordena da maior piora à maior melhora", () => {

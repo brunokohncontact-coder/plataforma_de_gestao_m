@@ -8568,3 +8568,33 @@ contexto, decisão, justificativa e alternativas consideradas.
   uma coorte, não o comparativo (o card entrega o sinal acionável).
 - **Nota de concorrência:** número **D253** escolhido pulando **D252**, já reivindicado pela PR aberta #284
   (nudge de conversão caindo por contratante). Se a renumeração for necessária na consolidação, ajustar.
+
+## 2026-07-08 — D254: `winRateDelta` também no comparativo da conversão POR contratante (só nos movers)
+- **Contexto:** a D253 levou a variação da **vazão da coorte** (`winRateDelta` = `winRate` atual −
+  anterior, denominador = coorte TODA, inclui as em aberto) ao comparativo GERAL da conversão
+  (`compareProposalOutcomes`, `/shows/funil/conversao`), mas **adiou** explicitamente o mesmo eixo no
+  comparativo **por contratante** (`compareContactProposalOutcomes`/D247, card de movers em
+  `/shows/funil/conversao/contratantes`), com o receio de que "a vazão por-relação com amostras finas
+  seria ruidosa".
+- **Decisão:** computar `winRateDelta` também em `ContactProposalConversionChange<C>` (irmão do campo já
+  existente em `ProposalConversionComparison`/D253) e exibi-lo **apenas** como uma linha secundária cinza
+  dentro de cada `MoverBlock` ("Convertendo mais/menos") do card de movers — NÃO como veredito, NÃO por
+  linha na tabela, NÃO no CSV.
+- **Justificativa:** o receio de ruído da D253 era sobre espalhar a vazão por-relação em TODA a tabela;
+  restringir a exibição aos **dois** contratantes que já são os maiores movers (maior melhora / maior
+  piora da taxa de conversão) mata a maior parte desse ruído e fecha uma assimetria real — o mesmo par de
+  contratantes onde a taxa de decididas mais mexeu é onde a leitura "mas a vazão andou junto ou ficou
+  parada (proposta em aberto)?" mais informa. Espelha a apresentação já entregue no card geral (D253),
+  reusando `winRate` que a `ProposalConversion` por-contratante já expõe (zero consulta nova, lógica pura).
+- **Testes:** **+1** teste em `shows.test.ts` (`describe("compareContactProposalOutcomes")`): caso de
+  divergência por contratante — conversão sobe (+0,5, "improved") enquanto a vazão fica parada (0) porque
+  sobrou proposta em aberto; asserções de `winRateDelta` acrescidas ao teste de melhora/piora simétrica
+  (sem em aberto, a vazão segue a taxa: Alfa +0,5 / Beta −0,5). **1430 testes** (eram 1429).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1430
+  testes** (`vitest run`); smoke test (`next start`) → `/login` 200, `/` 200. `npm audit` **inalterado**
+  vs. baseline (mesmos advisories Next/postcss; ver D6/bloqueios); **nenhuma dependência nova**.
+- **Alternativas consideradas:** (a) manter a deferência da D253 (não mexer no comparativo por
+  contratante) — descartado; a assimetria tela-geral↔tela-por-contratante era leitura faltante e a
+  exibição só-nos-movers neutraliza o motivo do adiamento. (b) coluna "vazão vs. {ano-1}" por linha na
+  tabela — mantido adiado (é justamente o espalhamento ruidoso que a D253 temia). (c) `winRateDelta` no
+  CSV da conversão por contratante — adiado; o CSV é a decomposição de uma coorte, não o comparativo.
