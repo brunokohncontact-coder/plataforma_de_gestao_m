@@ -145,6 +145,7 @@ export default async function ProposalConversionPage({
               comparison={comparison}
               currentYear={yearFilter as number}
               previousYear={previousYear}
+              exportHref={`/shows/funil/conversao/comparativo/export?ano=${yearFilter}`}
             />
           )}
 
@@ -227,10 +228,12 @@ function ConversionComparisonCard({
   comparison,
   currentYear,
   previousYear,
+  exportHref,
 }: {
   comparison: ProposalConversionComparison;
   currentYear: number;
   previousYear: number;
+  exportHref: string;
 }) {
   const trend = CONVERSION_TREND[comparison.trend];
   const { current, previous, conversionRateDelta, winRateDelta } = comparison;
@@ -240,9 +243,14 @@ function ConversionComparisonCard({
         <p className="text-xs font-medium uppercase tracking-wide opacity-80">
           Conversão real {currentYear} vs. {previousYear}
         </p>
-        <span className="badge bg-white/70 font-semibold">
-          {trend.emoji} {trend.label}
-        </span>
+        <div className="flex items-center gap-2">
+          <a href={exportHref} className="badge bg-white/70 font-semibold hover:bg-white" download>
+            ⬇ CSV
+          </a>
+          <span className="badge bg-white/70 font-semibold">
+            {trend.emoji} {trend.label}
+          </span>
+        </div>
       </div>
       <div className="mt-3">
         <p className="text-2xl font-bold">

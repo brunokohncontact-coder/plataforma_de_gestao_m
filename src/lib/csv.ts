@@ -88,6 +88,7 @@ import type {
   ScheduleConflicts,
   FunnelStageDurations,
   ProposalConversion,
+  ProposalConversionComparison,
   ContactProposalConversion,
   StaleProposalsReport,
   StaleProposalUrgency,
@@ -2458,6 +2459,88 @@ export function proposalConversionToCsv(
     ["Perdidas", String(conv.lostCount), share(conv.lostCount)],
     ["Em aberto", String(conv.openCount), share(conv.openCount)],
     ["Total", String(conv.total), ""],
+  ];
+  return toCsv(out, delimiter);
+}
+
+export const PROPOSAL_CONVERSION_COMPARISON_CSV_HEADERS = [
+  "Métrica",
+  "Ano anterior",
+  "Ano corrente",
+  "Variação",
+] as const;
+
+/** Rótulo pt-BR da tendência do comparativo, espelhando o veredito do card. */
+const PROPOSAL_CONVERSION_TREND_LABELS: Record<
+  ProposalConversionComparison["trend"],
+  string
+> = {
+  improved: "Convertendo mais",
+  worsened: "Convertendo menos",
+  stable: "Estável",
+};
+
+/**
+ * Serializa o comparativo ano a ano da conversão real de propostas
+ * (`compareProposalOutcomes`) em CSV, pronto para download — espelha o card
+ * "Conversão real {ano} vs. {ano-1}" de `/shows/funil/conversao`. Diferente do
+ * `gigSeasonalityComparisonToCsv` (uma linha por mês), aqui o comparativo é um
+ * punhado de métricas escalares, então a planilha é orientada a MÉTRICA: uma linha
+ * por indicador (Taxa de conversão real, Vazão da coorte, Realizadas, Decididas,
+ * Propostas na coorte) com o valor de cada ano e a variação, no molde de
+ * `monthlyReportToCsv`.
+ *
+ * As taxas saem como porcentagem (`csvShare`), em branco quando indefinidas (sem
+ * proposta decidida / sem coorte — o "—" da UI); a variação das taxas em pontos
+ * percentuais assinados (`csvSignedPoints`, unidade no rótulo da métrica) e em
+ * branco quando não há base nos dois anos. As contagens saem cruas, com a variação
+ * assinada (`csvSignedCount`). Fecha numa linha "Tendência" com o veredito pt-BR do
+ * card (Convertendo mais / menos / Estável) na coluna de variação — a leitura
+ * editorial que resume a direção. Os anos concretos vão no nome do arquivo, não nos
+ * cabeçalhos (mesma convenção de `gigSeasonalityComparisonToCsv`/`yearPaceToCsv`).
+ * Mesma convenção pt-BR dos irmãos (";" e decimal com vírgula). Pura.
+ */
+export function proposalConversionComparisonToCsv(
+  comparison: ProposalConversionComparison,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const { current, previous, conversionRateDelta, winRateDelta } = comparison;
+  const rate = (r: number | null) => (r == null ? "" : csvShare(r));
+  const points = (d: number | null) => (d == null ? "" : csvSignedPoints(d));
+
+  const out: string[][] = [
+    Array.from(PROPOSAL_CONVERSION_COMPARISON_CSV_HEADERS),
+    [
+      "Taxa de conversão real (%)",
+      rate(previous.conversionRate),
+      rate(current.conversionRate),
+      points(conversionRateDelta),
+    ],
+    [
+      "Vazão da coorte (%)",
+      rate(previous.winRate),
+      rate(current.winRate),
+      points(winRateDelta),
+    ],
+    [
+      "Propostas realizadas",
+      String(previous.wonCount),
+      String(current.wonCount),
+      csvSignedCount(comparison.wonCountDelta),
+    ],
+    [
+      "Propostas decididas",
+      String(previous.decidedCount),
+      String(current.decidedCount),
+      csvSignedCount(comparison.decidedCountDelta),
+    ],
+    [
+      "Propostas na coorte",
+      String(previous.total),
+      String(current.total),
+      csvSignedCount(current.total - previous.total),
+    ],
+    ["Tendência", "", "", PROPOSAL_CONVERSION_TREND_LABELS[comparison.trend]],
   ];
   return toCsv(out, delimiter);
 }
