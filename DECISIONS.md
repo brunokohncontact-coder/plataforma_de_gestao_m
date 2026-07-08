@@ -8516,8 +8516,8 @@ contexto, decisão, justificativa e alternativas consideradas.
 - **Testes:** **+6** em `shows.test.ts` (`describe("contactConversionDropHeadline")`): elege o maior
   dropper confiável; ignora quedas de amostra fina e escolhe a maior queda confiável; conta `others`;
   não dispara sem queda material/confiável; queda abaixo do piso não vira nudge; respeita limiares
-  injetáveis. **1427 testes** no total (eram 1421).
-- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1427
+  injetáveis. **1429 testes** no total (eram 1423, consolidado sobre a main pós-D253).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`) e lint (`next lint`, 0 avisos) verdes; **1429
   testes** (`vitest run`); smoke test (`next start`) → `/login` 200, `/dashboard` 307 (auth-gated).
   `npm audit` **inalterado** vs. baseline (mesmos advisories Next/postcss; ver D6/bloqueios); **nenhuma
   dependência nova**.
