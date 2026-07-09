@@ -9,7 +9,26 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1562 testes** verdes após o **comparativo ano a
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1568 testes** verdes após o **nudge de queda do
+cachê típico no Painel** (Sessão 279, D274 — leva ao dashboard o comparativo de nível de preço que só vivia em
+`/shows/faixas-de-cache`: `compareFeeDistribution` (D187) já media se o cachê **mediano** subiu/caiu ano a ano, mas o sinal
+não aparecia na primeira tela. Uma erosão do preço típico é um risco de carreira tão acionável quanto a conversão caindo
+(D245) ou a antecedência encolhendo (D272) — quando o show mediano passa a pagar menos, é hora de revisar tabela/mix de
+contratantes. Novo helper puro `feeDropHeadline(comparison, minSample?, criticalRatio?)` + tipo `FeeDropHeadline` +
+constantes `FEE_DROP_MIN_SAMPLE`(=3) e `FEE_DROP_CRITICAL_RATIO`(=0,75) em `src/lib/finance.ts` (espelho de
+`proposalConversionHeadline`/`yearToDatePaceHeadline`): recebe um `FeeDistributionComparison` já computado e destila o nudge —
+`show` só quando a mediana **caiu** (`trend === "down"`, que já embute os pisos absoluto/relativo `FEE_TREND_FLOOR`/`_EPSILON`)
+**E** ambos os anos têm ≥ `minSample` shows realizados com cachê (a mediana de 1–2 shows é o próprio show); `critical` (🔴 vs
+🔻) quando a mediana atual afunda para ≤ 75% da anterior (≥ 25% abaixo). Banner no `dashboard/page.tsx` (link
+`/shows/faixas-de-cache?ano={ano}`) reaproveitando os shows **já carregados** — recorta por ano UTC (`filterShowsByYear`/D108)
+e roda a mesma `feeDistribution` da tela sobre o ano corrente e o anterior, zero I/O extra, zero regra de negócio nova, zero
+migração, zero dependência. Só a ponta de PIORA vira alerta (um cachê subindo é boa notícia); gate mantém o nudge raro. **+6
+testes** (`finance.test.ts`, `describe("feeDropHeadline")`: queda material com amostra confiável → show não-crítico com
+deltas/pct; queda ≥ 25% → crítico; mediana subindo → não dispara; variação dentro do limiar → não dispara; amostra fina num
+dos anos suprime; `minSample` parametrizável barra). Build/typecheck/lint verdes; smoke → `/login` 200, `/dashboard` e
+`/shows/faixas-de-cache` 307→/login sem auth, e **dashboard autenticado 200 renderizando o banner crítico** ("🔴 Cachê típico
+em queda … O show mediano de 2026 paga R$ 700,00 — 30% abaixo do típico de 2025 (R$ 1.000,00) …"); `npm audit` inalterado
+(10 advisories). Ver D274. Antes disso, o **comparativo ano a
 ano do desempenho por dia da semana** (Sessão 278, D273 — fecha a última tela de distribuição de shows sem comparativo YoY:
 `/shows/dias-semana` (`weekdayPerformance`/D205) já filtrava por ano (`?ano=`) e exportava CSV, mas — ao contrário da irmã
 `/shows/sazonalidade` (`compareGigSeasonality`/D223) — não dizia "em que dias da semana você passou a tocar mais/menos do que

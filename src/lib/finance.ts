@@ -7398,6 +7398,90 @@ export function compareFeeDistribution(
   };
 }
 
+// ── Manchete de queda do cachê típico para o Painel (meu preço encolheu?) ────
+//
+// `compareFeeDistribution` (D187) já mede se o cachê mediano subiu/caiu de um ano
+// para o outro, mas o sinal só vivia na tela `/shows/faixas-de-cache`. Uma erosão
+// do preço típico é um risco de carreira tão acionável quanto a conversão caindo
+// (D245) ou a antecedência encolhendo (D272) — quando o show mediano passa a pagar
+// menos, é hora de revisar tabela/mix de contratantes antes que vire tendência.
+// Este é o eco desse comparativo no dashboard, no espírito dos nudges irmãos de
+// "piora": só a ponta ruim (`trend === "down"`) vira alerta; um cachê SUBINDO é
+// boa notícia e não precisa de banner.
+
+/**
+ * Amostra mínima de shows realizados com cachê em CADA ano para a queda do cachê
+ * mediano virar nudge. A mediana de 1–2 shows é o próprio show — abaixo disto a
+ * comparação leria ruído de amostra como tendência de preço. Espelha a disciplina
+ * de `CONVERSION_DROP_MIN_DECIDED`/`MIN_LEAD_TIME_SAMPLE` nos nudges irmãos.
+ */
+export const FEE_DROP_MIN_SAMPLE = 3;
+
+/**
+ * Razão do cachê mediano (atual ÷ anterior) a partir da qual a queda entra na faixa
+ * crítica (vermelho): mediana atual ≤ 75% da anterior, i.e. caiu 25% ou mais.
+ * Espelha `YTD_PACE_CRITICAL_RATIO` (o atraso acentuado do ritmo do ano).
+ */
+export const FEE_DROP_CRITICAL_RATIO = 0.75;
+
+export interface FeeDropHeadline {
+  /**
+   * Deve aparecer no Painel? Só quando o cachê mediano **caiu** materialmente de um
+   * ano para o outro (`trend === "down"` de `compareFeeDistribution`) E ambos os
+   * anos têm amostra confiável (≥ `minSample` shows realizados com cachê cada). Com
+   * `up`/`stable`, ou amostra fina em algum lado, o aviso seria ruído — mesma
+   * disciplina de `proposalConversionHeadline`/`yearToDatePaceHeadline`.
+   */
+  show: boolean;
+  /** Queda acentuada (mediana atual ≤ `criticalRatio` × a anterior, i.e. ≥ 25% abaixo)? */
+  critical: boolean;
+  /** Cachê mediano do ano atual (centavos). */
+  currentMedian: number;
+  /** Cachê mediano do ano anterior (centavos). */
+  previousMedian: number;
+  /** Variação do cachê mediano (atual − anterior, centavos); ≤ 0 quando `show`. */
+  medianFeeDelta: number;
+  /** Variação relativa do cachê mediano (ex.: −0,3 = 30% abaixo); definida quando `show`. */
+  pct: number | null;
+  /** Shows realizados com cachê no ano atual (para a moldura textual). */
+  currentShows: number;
+  /** Shows realizados com cachê no ano anterior. */
+  previousShows: number;
+}
+
+/**
+ * Decide se o Painel deve alertar que o cachê típico (mediano) caiu de um ano para
+ * o outro — o eco de `compareFeeDistribution` (D187) no dashboard. Recebe um
+ * comparativo já computado (as duas distribuições) e não faz I/O. `show` só quando
+ * a tendência da mediana é de QUEDA (`trend === "down"`, que já embute os limiares
+ * absoluto/relativo de `FEE_TREND_FLOOR`/`FEE_TREND_EPSILON`) **e** ambos os anos
+ * têm ≥ `minSample` shows realizados com cachê; `critical` quando a mediana atual
+ * afunda para ≤ `criticalRatio` da anterior. Como os nudges irmãos, fica raro por
+ * gate. Pura.
+ */
+export function feeDropHeadline(
+  comparison: FeeDistributionComparison,
+  minSample: number = FEE_DROP_MIN_SAMPLE,
+  criticalRatio: number = FEE_DROP_CRITICAL_RATIO,
+): FeeDropHeadline {
+  const { current, previous, medianFeeDelta, medianFeePct, trend } = comparison;
+  const reliable =
+    current.totalShows >= minSample && previous.totalShows >= minSample;
+  const show = reliable && trend === "down";
+  const critical =
+    show && previous.medianFee > 0 && current.medianFee <= criticalRatio * previous.medianFee;
+  return {
+    show,
+    critical,
+    currentMedian: current.medianFee,
+    previousMedian: previous.medianFee,
+    medianFeeDelta,
+    pct: medianFeePct,
+    currentShows: current.totalShows,
+    previousShows: previous.totalShows,
+  };
+}
+
 // ── Cadência de shows (estou tocando mais ou menos ao longo do tempo?) ───────
 //
 // Responde "minha agenda está mais cheia?": conta os shows JÁ REALIZADOS (mesmo

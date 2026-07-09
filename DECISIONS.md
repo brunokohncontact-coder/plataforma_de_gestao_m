@@ -9413,3 +9413,43 @@ contexto, decisão, justificativa e alternativas consideradas.
   `npm audit` **inalterado** vs. baseline (10 advisories; ver D6).
 - **Nota de concorrência:** número **D273** escolhido como o próximo livre após o D272 (Sessão 277). Se uma
   PR paralela reivindicar D273, renumerar para o próximo livre no merge.
+
+---
+
+## 2026-07-09 — D274: Nudge no Painel de queda do cachê típico (`feeDropHeadline` + banner "Cachê típico em queda" em `dashboard/page.tsx`) (Sessão 279)
+- **Contexto:** `compareFeeDistribution` (D187) já mede se o cachê **mediano** subiu/caiu de um ano para o outro, mas o
+  sinal só vivia na tela dedicada `/shows/faixas-de-cache`. O Painel — a primeira tela, onde moram os nudges acionáveis
+  (conversão caindo/D245, antecedência encolhendo/D272, ritmo do ano atrás/D162, concentração de carteira/D109) — não
+  avisava quando o preço típico do músico encolhe ano a ano. Uma erosão do cachê mediano é um risco de carreira acionável:
+  quando o show mediano passa a pagar menos, é hora de revisar a tabela e o mix de contratantes antes que a queda vire
+  tendência. Faltava o eco desse comparativo no dashboard, no espírito dos nudges irmãos de "piora".
+- **Decisão:** novo helper puro `feeDropHeadline(comparison, minSample?, criticalRatio?)` + tipo `FeeDropHeadline` +
+  constantes `FEE_DROP_MIN_SAMPLE`(=3) e `FEE_DROP_CRITICAL_RATIO`(=0,75) em `src/lib/finance.ts`, **espelho** de
+  `proposalConversionHeadline`(D245)/`yearToDatePaceHeadline`(D162): recebe um `FeeDistributionComparison` já computado (as
+  duas distribuições, atual × anterior) e destila o nudge sem I/O. `show` só quando o cachê mediano **caiu** de fato
+  (`trend === "down"`, que já embute os pisos absoluto/relativo `FEE_TREND_FLOOR`/`FEE_TREND_EPSILON` de D187) **E** ambos os
+  anos têm ≥ `minSample` shows realizados com cachê (a mediana de 1–2 shows é o próprio show — abaixo disso a comparação
+  leria ruído de amostra como tendência de preço). `critical` quando a mediana atual afunda para ≤ `criticalRatio` da
+  anterior (≥ 25% abaixo). Banner no `dashboard/page.tsx` (🔴 crítico vs 🔻; link `/shows/faixas-de-cache?ano={ano}`;
+  "O show mediano de {ano} paga {mediana} — {N}% abaixo do típico de {ano-1} ({mediana anterior}). Hora de revisar a tabela
+  e o mix de contratantes."), inserido junto aos demais nudges de finanças (após o de ritmo do ano).
+- **Justificativa:** reaproveita os shows **já carregados** pelo dashboard — recorta por ano UTC (`filterShowsByYear`/D108)
+  e roda a MESMA `feeDistribution` da tela `/shows/faixas-de-cache` sobre o ano corrente e o anterior, `compareFeeDistribution`
+  para o veredito. Zero I/O extra, zero regra de negócio nova (a distribuição e a comparação vivem em `@/lib/finance`, puras
+  e testadas), zero migração, zero dependência. Só a ponta de PIORA vira alerta (um cachê subindo é boa notícia e não precisa
+  de banner); o gate de amostra + limiares de D187 mantêm o nudge raro, como os irmãos.
+- **Alternativas consideradas:** (a) ancorar o nudge no cachê **médio** em vez do mediano — descartado: a tela e o veredito
+  de D187 ancoram na mediana (robusta a um show fora da curva), e o nudge herda esse critério. (b) disparar também quando a
+  **participação premium** cai (`premiumShareDelta` < 0) mesmo com mediana estável — adiado: é um sinal mais sutil (a cauda de
+  cima esvazia sem o meio se mover) e o Painel já é denso; o veredito principal segue na mediana, e a tela dedicada mostra o
+  premium a quem quiser. (c) recorte por escopo firm/all — não se aplica: `feeDistribution` só conta shows realizados com
+  cachê (`isHappenedGig` + `fee > 0`), não há escopo a escolher.
+- **DoD:** build de produção OK, typecheck (`tsc --noEmit`, 0 erros), lint (`next lint`, 0 avisos); **1568 testes**
+  (`vitest run`, +6: `feeDropHeadline` — queda material com amostra confiável → show não-crítico com deltas/pct; queda ≥ 25%
+  → crítico; mediana subindo → não dispara; variação dentro do limiar → não dispara; amostra fina num dos anos suprime;
+  `minSample` parametrizável barra). Smoke (`next start`) → `/login` 200, `/dashboard` e `/shows/faixas-de-cache` 307→/login
+  (auth-gated, sem 500), e **dashboard autenticado 200 renderizando o banner crítico** num cenário de queda (2025 mediana
+  R$ 1.000 × 2026 mediana R$ 700 → "🔴 Cachê típico em queda … 30% abaixo … Ver →" com link `?ano=2026`). `npm audit`
+  **inalterado** vs. baseline (10 advisories; ver D6).
+- **Nota de concorrência:** número **D274** escolhido como o próximo livre após o D273 (Sessão 278). Se uma PR paralela
+  reivindicar D274, renumerar para o próximo livre no merge.
