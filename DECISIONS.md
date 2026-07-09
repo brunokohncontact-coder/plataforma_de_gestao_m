@@ -8995,3 +8995,53 @@ contexto, decisão, justificativa e alternativas consideradas.
   dependência nova**.
 - **Nota de concorrência:** número **D264** escolhido como o próximo livre após o D263 (Sessão 268). Se
   uma PR paralela reivindicar D264, renumerar para o próximo livre no merge.
+
+## 2026-07-09 — D265: Nudge de seca atual no Painel (`currentDrySpellHeadline`) (Sessão 270)
+- **Contexto:** `showGaps` (D262) mede a seca atual e a contextualiza pelo hábito (`currentGapVsTypical`/
+  D263) e pelo recorde (`currentGapVsLongest`/D264), mas tudo isso vivia SÓ na página `/shows/hiatos`.
+  As D262/D263/D264 adiaram deliberadamente "sem nudge no Painel". O Painel — a tela diária — não
+  avisava, num relance, o sinal mais acionável dessa leitura: "faz tempo que você não sobe ao palco e
+  **nada está agendado**", que é exatamente a hora de prospectar. Este item fecha esse adiamento.
+- **Decisão:** helper puro `currentDrySpellHeadline(report, unusualRatio = DRY_SPELL_UNUSUAL_RATIO)` +
+  tipo `CurrentDrySpellHeadline` + constante `DRY_SPELL_UNUSUAL_RATIO`(=2) em `src/lib/shows.ts`, espelho
+  dos headlines irmãos (`bookingLeadTimeHeadline`, `staleProposalsHeadline`): recebe um `ShowGapsReport`
+  já computado e devolve `{ show, critical, days, ratio, typicalDays, vsLongest }`. `show` só quando a
+  seca é **fora do comum** (`currentGapVsTypical >= 2×`) **E** não há gig firme à frente
+  (`daysUntilNext == null`); `critical` (🔴 vs 🟠) quando a seca já igualou/superou o recorde
+  (`currentGapVsLongest >= 1`). Banner no `dashboard/page.tsx` (link `/shows/hiatos`) com a mesma
+  disciplina visual dos nudges irmãos (âmbar/vermelho), reaproveitando os shows **já carregados** por
+  outros nudges (só `date`+`status` bastam a `showGaps`).
+- **Justificativa / escolhas discutíveis:**
+  - **Por que reabrir o adiamento D262/D263/D264.** Os adiamentos eram de ESCOPO por sessão (manter cada
+    fatia pequena), não um "não" permanente. O nudge é o consumo natural das três decisões anteriores e
+    não recomputa nada — só destila `showGaps` numa regra de exibição, como os demais headlines.
+  - **Gate `daysUntilNext == null` (nada agendado).** Escolha discutível: um músico com a próxima data
+    já marcada tem a seca "por terminar" — o alarme de prospecção seria menos apto e viraria ruído. Só
+    quando não há NENHUM gig firme à frente a seca é aberta e "vá prospectar" é a ação. Isso mantém o
+    nudge raro e acionável (mesma disciplina "só vira nudge quando morde" dos irmãos). Alternativa
+    descartada: disparar por ratio puro, ignorando a agenda futura (ruidoso quando já há show marcado).
+  - **Limiar 2× = o "fora do comum" da página.** Reusa o mesmo corte de APRESENTAÇÃO que a página
+    `/shows/hiatos` já pinta de vermelho (D263); não é número mágico novo. A página mostra âmbar já em
+    1,5× ("esticada"), mas o Painel — que deve ser raro — só acende na cauda (≥2×). Escala para vermelho
+    quando bate o recorde (reusa `currentGapVsLongest`/D264, o sinal categórico "território inédito").
+  - **Limiar de gate na lógica pura, como `bookingLeadTimeHeadline`.** `DRY_SPELL_UNUSUAL_RATIO` vive na
+    função pura (é o que DECIDE o nudge), não na UI — diferente do `CurrentGapReading` da página, cujos
+    cortes são de apresentação gradiente. Consistente com o gate de `LEAD_TIME_SHORT_DAYS` etc.
+  - **Zero I/O, zero regra nova.** A seca inteira já é `showGaps`; o Painel já carregava os shows. Nada
+    de consulta, migração ou dependência nova.
+- **Alternativas consideradas:** manter o adiamento (descartado: o sinal mais acionável ficava escondido
+  na página de relatório); disparar já em 1,5× como a página (descartado: nudge de Painel deve ser raro,
+  a cauda 2× é o material); não gatear por `daysUntilNext` (descartado: ruidoso com show já marcado);
+  suprimir o nudge quando o de conversão/sazonalidade já aparece (não aplicado: são eixos distintos —
+  continuidade da agenda vs. pipeline/época — e cada um gateia por si; se virar excesso de banners,
+  reavaliar um teto de nudges no Painel).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`, 0 erros) e lint (`next lint`, 0 avisos) verdes;
+  **1509 testes** (`vitest run`, +7 puros de `currentDrySpellHeadline`); smoke (`next start`) → `/login`
+  200, `/dashboard` e `/shows/hiatos` 307→/login (auth-gated, sem 500) + render autenticado (cookie
+  forjado com o `AUTH_SECRET` de dev, 5 gigs PLAYED, último 50 dias atrás, mediana 25, recorde 90, nada
+  à frente) confirmou o banner âmbar "🟠 Faz 50 dias que você não toca — Seca fora do comum — 2× o
+  intervalo típico de 25 dias entre gigs, e nada está agendado. Boa hora para prospectar." com
+  `border-amber-200`. `npm audit` **inalterado** vs. baseline (10 advisories, mesmos Next/postcss; ver
+  D6); **nenhuma dependência nova**.
+- **Nota de concorrência:** número **D265** escolhido como o próximo livre após o D264 (Sessão 269). Se
+  uma PR paralela reivindicar D265, renumerar para o próximo livre no merge.

@@ -51,6 +51,8 @@ import {
   STALE_PROPOSAL_IMMINENT_DAYS,
   showGaps,
   MIN_SHOW_GAP_SAMPLE,
+  currentDrySpellHeadline,
+  DRY_SPELL_UNUSUAL_RATIO,
   type ConflictShowLike,
   type StaleProposalShowLike,
   type LeadTimeShowLike,
@@ -2647,5 +2649,95 @@ describe("showGaps", () => {
     expect(r.longest).toBeNull();
     expect(r.currentGapDays).toBe(10);
     expect(r.currentGapVsLongest).toBeNull();
+  });
+});
+
+describe("currentDrySpellHeadline", () => {
+  const NOW = "2026-06-15T12:00:00.000Z";
+  const g = (date: string, status: string = "PLAYED") => ({ date, status });
+
+  it("não dispara sem seca a mostrar (sem shows)", () => {
+    const h = currentDrySpellHeadline(showGaps([], { now: NOW }));
+    expect(h.show).toBe(false);
+    expect(h.critical).toBe(false);
+    expect(h.days).toBe(0);
+    expect(h.ratio).toBe(0);
+    expect(h.typicalDays).toBe(0);
+    expect(h.vsLongest).toBeNull();
+  });
+
+  it("não dispara com a seca dentro do hábito (abaixo de 2×)", () => {
+    // gaps 10 e 10 (mediana 10); seca atual 15 dias → 1,5× (< 2×)
+    const h = currentDrySpellHeadline(
+      showGaps([g("2026-05-01"), g("2026-05-11"), g("2026-05-21")], {
+        now: "2026-06-05T12:00:00.000Z", // 21 mai → 05 jun = 15 dias
+      }),
+    );
+    expect(h.ratio).toBe(1.5);
+    expect(h.show).toBe(false);
+  });
+
+  it("não dispara quando já há um gig firme à frente (seca por terminar)", () => {
+    // seca alta, mas um CONFIRMED futuro → daysUntilNext != null → suprime
+    const r = showGaps(
+      [
+        g("2026-01-01"),
+        g("2026-04-01"), // recorde: hiato de 90 dias
+        g("2026-04-11"),
+        g("2026-04-21"),
+        g("2026-05-01"),
+        g("2026-07-01", "CONFIRMED"), // próximo gig agendado
+      ],
+      { now: NOW },
+    );
+    expect(r.daysUntilNext).not.toBeNull();
+    expect(currentDrySpellHeadline(r).show).toBe(false);
+  });
+
+  it("dispara (não crítico) com seca fora do comum abaixo do recorde", () => {
+    // mediana 10; recorde 90; seca atual 45 dias → 4,5× o hábito, mas 0,5× o recorde
+    const r = showGaps(
+      [
+        g("2026-01-01"),
+        g("2026-04-01"), // hiato 90 (recorde)
+        g("2026-04-11"),
+        g("2026-04-21"),
+        g("2026-05-01"),
+      ],
+      { now: NOW }, // 01 mai → 15 jun = 45 dias
+    );
+    const h = currentDrySpellHeadline(r);
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(false);
+    expect(h.days).toBe(45);
+    expect(h.ratio).toBe(4.5);
+    expect(h.typicalDays).toBe(10);
+    expect(h.vsLongest).toBe(0.5);
+  });
+
+  it("escala para crítico quando a seca iguala/supera o recorde", () => {
+    // mediana 10; recorde 30; seca atual 115 dias → supera o recorde
+    const r = showGaps(
+      [g("2026-01-01"), g("2026-01-31"), g("2026-02-10"), g("2026-02-20")],
+      { now: NOW }, // 20 fev → 15 jun = 115 dias
+    );
+    const h = currentDrySpellHeadline(r);
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(true);
+    expect(h.vsLongest).not.toBeNull();
+    expect(h.vsLongest! >= 1).toBe(true);
+  });
+
+  it("aceita um limiar injetado", () => {
+    // seca 1,5× o hábito: não dispara no padrão (2×), dispara com limiar 1,5×
+    const r = showGaps([g("2026-05-01"), g("2026-05-11"), g("2026-05-21")], {
+      now: "2026-06-05T12:00:00.000Z",
+    });
+    expect(currentDrySpellHeadline(r).show).toBe(false);
+    expect(currentDrySpellHeadline(r, 1.5).show).toBe(true);
+  });
+
+  it("expõe o limiar padrão de seca fora do comum", () => {
+    expect(DRY_SPELL_UNUSUAL_RATIO).toBe(2);
   });
 });
