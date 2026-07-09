@@ -381,6 +381,16 @@ export interface ShowGapsReport {
    * não há gig passado (só futuros agendados ou nenhum gig).
    */
   currentGapDays: number | null;
+  /**
+   * Quantas vezes o espaçamento típico (mediana) a seca atual já representa —
+   * ex.: `2` = a seca atual é o dobro do intervalo mediano entre gigs;
+   * arredondado a uma casa decimal. Contextualiza `currentGapDays`: distingue
+   * uma espera rotineira de uma seca fora do comum. `null` quando não há seca
+   * atual (sem gig passado) ou não há espaçamento típico confiável
+   * (`showDays < MIN_SHOW_GAP_SAMPLE` ou mediana 0 — a UI já marca esse caso
+   * como amostra pequena).
+   */
+  currentGapVsTypical: number | null;
   /** Dias de hoje até o próximo gig FUTURO agendado; null se nada à frente. */
   daysUntilNext: number | null;
 }
@@ -462,15 +472,28 @@ export function showGaps<T extends ShowGapShowLike>(
     }
   }
 
+  const medianGapDays = leadMedian(gapDays);
+
+  // Seca atual em múltiplos do espaçamento típico — só quando há seca atual e a
+  // mediana é confiável (amostra >= MIN_SHOW_GAP_SAMPLE, mediana > 0), para não
+  // dividir por uma mediana frágil de um ou dois hiatos.
+  const currentGapVsTypical =
+    currentGapDays != null &&
+    medianGapDays > 0 &&
+    showDays >= MIN_SHOW_GAP_SAMPLE
+      ? Math.round((currentGapDays / medianGapDays) * 10) / 10
+      : null;
+
   return {
     gaps,
     showDays,
     longest: gaps.length > 0 ? gaps[0] : null,
-    medianGapDays: leadMedian(gapDays),
+    medianGapDays,
     averageGapDays,
     firstDay,
     lastDay,
     currentGapDays,
+    currentGapVsTypical,
     daysUntilNext,
   };
 }

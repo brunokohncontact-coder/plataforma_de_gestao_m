@@ -8912,3 +8912,42 @@ contexto, decisão, justificativa e alternativas consideradas.
   ver D6); **nenhuma dependência nova**.
 - **Nota de concorrência:** número **D262** escolhido como o próximo livre após o D261 (Sessão 266). Se
   uma PR paralela reivindicar D262, renumerar para o próximo livre no merge.
+
+## 2026-07-09 — D263: Seca atual contextualizada pelo espaçamento típico (`currentGapVsTypical`) (Sessão 268)
+- **Contexto:** o relatório de hiatos (`showGaps`/D262) já mostra a **seca atual** em dias (desde o
+  último gig passado) e o **espaçamento típico** (mediana entre gigs), mas os dois números vivem
+  lado a lado sem se relacionarem. Uma seca de 25 dias é rotina para quem faz um gig por mês e é
+  seca fora do comum para quem toca toda semana — o número absoluto não distingue. Faltava
+  contextualizar a MAGNITUDE da seca contra o hábito do próprio músico.
+- **Decisão:** campo `currentGapVsTypical: number | null` em `ShowGapsReport`, computado em `showGaps`
+  como `currentGapDays / medianGapDays` arredondado a uma casa decimal (quantas vezes a mediana a
+  seca atual já representa). Na página `/shows/hiatos`, banner de leitura `CurrentGapReading` abaixo
+  dos stats, colorido por severidade.
+- **Justificativa / escolhas discutíveis:**
+  - **`null` fora da amostra confiável.** O múltiplo só é devolvido quando há seca atual
+    (`currentGapDays != null`) **e** a mediana é confiável (`medianGapDays > 0` **e** `showDays >=
+    MIN_SHOW_GAP_SAMPLE` = 3, o mesmo limiar de "amostra pequena" que a página já sinaliza). Dividir
+    por uma mediana frágil de um ou dois hiatos daria um múltiplo enganoso.
+  - **Múltiplo na lógica pura, limiares de severidade na UI.** A função pura devolve só o número; os
+    cortes que viram "esticada" (1,5×) ou "fora do comum" (2×) são de APRESENTAÇÃO e vivem no
+    componente (mesma disciplina de não enfiar número mágico de UI na lógica). Faixas: 🌵 vermelho
+    "Seca fora do comum … Boa hora para prospectar" (≥2×), ⏳ âmbar "Espera esticada" (≥1,5×), cinza
+    "no ritmo de sempre" (≥1×), 🎸 esmeralda "Dentro do ritmo" (<1×).
+  - **Derivado, não novo I/O.** Sai de dois campos que `showGaps` já devolvia — zero consulta, zero
+    migração, zero dependência nova; enriquece uma leitura existente.
+  - **Respeita os adiamentos da D262.** Sem nudge no Painel (o Painel já é denso e a leitura se
+    sobrepõe aos fins de semana livres), sem `?ano=` (uma seca cruza a virada do ano) e sem PROPOSED
+    (proposta em aberto ainda pode cair).
+- **Alternativas consideradas:** relacionar a seca atual à MAIOR seca já vivida em vez da mediana
+  (descartado: a maior seca é um outlier histórico, um teto raro; a mediana é o hábito, a régua
+  certa para "isto está fora do normal?"); levar o múltiplo ao CSV (adiado: o CSV é por-hiato, uma
+  linha por seca — o múltiplo é um escalar da seca ATUAL, sem lugar natural na tabela).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`, 0 erros) e lint (`next lint`, 0 avisos)
+  verdes; **1499 testes** (`vitest run`, +4 puros de `showGaps`); smoke (`next start`) → `/shows/hiatos`
+  307→/login (auth-gated, sem 500) + render autenticado (cookie forjado com o `AUTH_SECRET` de dev,
+  3 gigs PLAYED espaçados 10 dias, o último 25 dias atrás) confirmou o banner "🌵 Seca fora do comum:
+  sua espera atual (25 dias) já é 2,5× o espaçamento típico (10 dias entre gigs). Boa hora para
+  prospectar." `npm audit` **inalterado** vs. baseline (10 advisories, mesmos Next/postcss; ver D6);
+  **nenhuma dependência nova**.
+- **Nota de concorrência:** número **D263** escolhido como o próximo livre após o D262 (Sessão 267). Se
+  uma PR paralela reivindicar D263, renumerar para o próximo livre no merge.
