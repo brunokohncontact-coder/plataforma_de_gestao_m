@@ -2490,6 +2490,7 @@ describe("showGaps", () => {
     expect(r.firstDay).toBeNull();
     expect(r.lastDay).toBeNull();
     expect(r.currentGapDays).toBeNull();
+    expect(r.currentGapVsLongest).toBeNull();
     expect(r.daysUntilNext).toBeNull();
   });
 
@@ -2616,5 +2617,35 @@ describe("showGaps", () => {
     expect(r.medianGapDays).toBe(10);
     expect(r.currentGapDays).toBeNull();
     expect(r.currentGapVsTypical).toBeNull();
+    expect(r.currentGapVsLongest).toBeNull();
+  });
+
+  it("relaciona a seca atual ao recorde (múltiplos do maior hiato)", () => {
+    const r = showGaps(
+      // hiatos passados: 10 (01→11 mai) e 20 (11→31 mai) → recorde 20
+      [g("2026-05-01"), g("2026-05-11"), g("2026-05-31")],
+      { now: NOW }, // 15 jun → seca atual 15 dias
+    );
+    expect(r.longest?.days).toBe(20);
+    expect(r.currentGapDays).toBe(15); // 31 mai → 15 jun
+    expect(r.currentGapVsLongest).toBe(0.8); // 15 / 20
+  });
+
+  it("sinaliza recorde batido quando a seca atual supera o maior hiato", () => {
+    const r = showGaps(
+      // hiatos passados: 5 (01→06 abr) e 5 (06→11 abr) → recorde 5
+      [g("2026-04-01"), g("2026-04-06"), g("2026-04-11")],
+      { now: NOW }, // 15 jun → seca atual 65 dias, muito além do recorde
+    );
+    expect(r.longest?.days).toBe(5);
+    expect(r.currentGapDays).toBe(65); // 11 abr → 15 jun
+    expect(r.currentGapVsLongest).toBe(13); // 65 / 5 (inteiro, sem casa)
+  });
+
+  it("não relaciona com o recorde sem hiato passado (um único gig)", () => {
+    const r = showGaps([g("2026-06-05")], { now: NOW });
+    expect(r.longest).toBeNull();
+    expect(r.currentGapDays).toBe(10);
+    expect(r.currentGapVsLongest).toBeNull();
   });
 });

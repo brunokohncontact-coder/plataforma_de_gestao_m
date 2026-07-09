@@ -391,6 +391,16 @@ export interface ShowGapsReport {
    * como amostra pequena).
    */
   currentGapVsTypical: number | null;
+  /**
+   * Quantas vezes a MAIOR seca já registrada a seca atual representa — ex.:
+   * `1` = a espera atual igualou o recorde; `> 1` = já o superou (você nunca
+   * passou tanto tempo sem tocar); arredondado a uma casa decimal. Dimensão
+   * distinta de `currentGapVsTypical`: aquela mede contra o hábito (mediana),
+   * esta contra o extremo (o pior hiato já vivido). `null` quando não há seca
+   * atual (sem gig passado) ou nenhum hiato registrado (menos de dois dias de
+   * show, `longest` nulo).
+   */
+  currentGapVsLongest: number | null;
   /** Dias de hoje até o próximo gig FUTURO agendado; null se nada à frente. */
   daysUntilNext: number | null;
 }
@@ -473,6 +483,7 @@ export function showGaps<T extends ShowGapShowLike>(
   }
 
   const medianGapDays = leadMedian(gapDays);
+  const longest = gaps.length > 0 ? gaps[0] : null;
 
   // Seca atual em múltiplos do espaçamento típico — só quando há seca atual e a
   // mediana é confiável (amostra >= MIN_SHOW_GAP_SAMPLE, mediana > 0), para não
@@ -484,16 +495,25 @@ export function showGaps<T extends ShowGapShowLike>(
       ? Math.round((currentGapDays / medianGapDays) * 10) / 10
       : null;
 
+  // Seca atual em múltiplos do RECORDE (maior hiato já registrado) — só quando
+  // há seca atual e existe ao menos um hiato passado. Contextualiza a magnitude
+  // contra o próprio extremo do músico: ratio >= 1 é uma seca inédita.
+  const currentGapVsLongest =
+    currentGapDays != null && longest != null && longest.days > 0
+      ? Math.round((currentGapDays / longest.days) * 10) / 10
+      : null;
+
   return {
     gaps,
     showDays,
-    longest: gaps.length > 0 ? gaps[0] : null,
+    longest,
     medianGapDays,
     averageGapDays,
     firstDay,
     lastDay,
     currentGapDays,
     currentGapVsTypical,
+    currentGapVsLongest,
     daysUntilNext,
   };
 }

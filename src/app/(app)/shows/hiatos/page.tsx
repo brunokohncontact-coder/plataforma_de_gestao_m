@@ -140,6 +140,16 @@ export default async function ShowGapsPage() {
             />
           )}
 
+          {report.currentGapVsLongest != null &&
+            report.currentGapVsLongest >= RECORD_GAP_NEAR &&
+            report.longest != null && (
+              <RecordGapReading
+                ratio={report.currentGapVsLongest}
+                currentDays={report.currentGapDays ?? 0}
+                longestDays={report.longest.days}
+              />
+            )}
+
           {smallSample && (
             <div className="card border-amber-200 bg-amber-50 text-sm text-amber-800">
               Amostra pequena ({plural(report.showDays, "dia de show", "dias de show")}).
@@ -188,6 +198,13 @@ function formatRatio(n: number): string {
 }
 
 /**
+ * A partir de quantos múltiplos do recorde a leitura "seca vs. recorde" aparece.
+ * Limiar de APRESENTAÇÃO (0,9× — encostando no recorde): abaixo disso a seca
+ * atual ainda está longe do pior hiato já vivido e o aviso seria ruído.
+ */
+const RECORD_GAP_NEAR = 0.9;
+
+/**
  * Interpreta a seca atual em relação ao espaçamento típico. Os limiares (1,5× /
  * 2×) são de APRESENTAÇÃO — quando a espera vira "esticada" ou "fora do comum" —
  * e vivem aqui, não na lógica pura (que só devolve o múltiplo `currentGapVsTypical`).
@@ -233,6 +250,42 @@ function CurrentGapReading({
       "dia",
       "dias",
     )}, abaixo ${typical}.`;
+  }
+
+  return <div className={`card text-sm ${className}`}>{text}</div>;
+}
+
+/**
+ * Interpreta a seca atual contra o RECORDE (maior hiato já registrado). Dimensão
+ * distinta de `CurrentGapReading` (que mede contra o espaçamento típico/mediana):
+ * aqui o baseline é o extremo — o pior hiato já vivido pelo músico. Os limiares
+ * (≥ 1× recorde batido/igualado; ≥ 0,9× encostando) são de APRESENTAÇÃO e vivem
+ * na UI, não na lógica pura (que só devolve o múltiplo `currentGapVsLongest`).
+ */
+function RecordGapReading({
+  ratio,
+  currentDays,
+  longestDays,
+}: {
+  ratio: number;
+  currentDays: number;
+  longestDays: number;
+}) {
+  const record = `a sua maior seca já registrada (${plural(longestDays, "dia", "dias")})`;
+  const current = plural(currentDays, "dia", "dias");
+
+  let className: string;
+  let text: string;
+  if (ratio >= 1) {
+    className = "border-red-200 bg-red-50 text-red-800";
+    text = `🏜️ Recorde de seca: você nunca passou tanto tempo sem tocar. A espera atual (${current}) já ${
+      ratio > 1 ? "superou" : "igualou"
+    } ${record}. Priorize a prospecção.`;
+  } else {
+    className = "border-amber-200 bg-amber-50 text-amber-800";
+    text = `⚠️ Perto do recorde: a seca atual (${current}) está encostando em ${record} — ${formatRatio(
+      ratio,
+    )}× dela.`;
   }
 
   return <div className={`card text-sm ${className}`}>{text}</div>;
