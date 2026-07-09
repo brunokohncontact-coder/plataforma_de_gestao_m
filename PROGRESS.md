@@ -9,7 +9,21 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1545 testes** verdes após a **exportação CSV
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1551 testes** verdes após o **nudge no Painel
+"contratante recorrente passou a fechar em cima da hora"** (Sessão 277, D272 — fecha o "próximo possível" adiado na D270:
+a lógica pura `compareBookingLeadTimeByContact` (D196) já media, por contratante, quem passou a te fechar com mais folga /
+mais em cima da hora ano a ano, mas o sinal só vivia na tela dedicada `/shows/antecedencia/por-contratante`. Novo helper puro
+`contactBookingLeadTimeDropHeadline(comparison, minSample?, dropDays?, criticalDays?)` + tipo
+`ContactBookingLeadTimeDropHeadline<C>` + constantes `LEAD_TIME_DROP_DAYS`(=14, o dobro do `LEAD_TIME_TREND_EPSILON` do
+veredito do card) e `LEAD_TIME_DROP_CRITICAL_DAYS`(=30) em `src/lib/shows.ts` (espelho fiel de `contactConversionDropHeadline`
+no eixo da antecedência): destila o contratante de MAIOR perda de folga com amostra confiável — `leadTime.sample >=
+MIN_LEAD_TIME_SAMPLE` nas DUAS coortes — e queda mediana >= `dropDays`; `critical` quando >= `criticalDays`; `others` resume os
+demais no gate. Banner no `dashboard/page.tsx` (link `/shows/antecedencia/por-contratante?ano={ano}`) que CEDE A VEZ ao nudge
+absoluto (`bookingLeadTimeHeadline`) para no máximo um banner de folga por vez; reusa os shows já carregados (date+createdAt+
+contacts, zero I/O extra, `pickPayerContact` como eixo de contratante), zero regra de negócio nova, zero migração, zero
+dependência. **+6 testes** (`shows.test.ts`, `describe("contactBookingLeadTimeDropHeadline")`). Build/typecheck/lint verdes;
+smoke → dashboard autenticado 200 renderizando o banner com dados que disparam o gate ("… 5 dias … 40 dias a menos que em
+2025 (45 dias)", variante crítica); `npm audit` inalterado (10 advisories). Ver D272. Antes disso, a **exportação CSV
 da distribuição das secas** (Sessão 276, D271 — reverte a deferência "**Sem CSV próprio**" da D267 e fecha a última
 distribuição sem export: a seção "Distribuição das secas" de `/shows/hiatos` (`gapDistribution`, os hiatos repartidos nas
 5 faixas canônicas) já vivia na tela mas só as "Maiores secas" eram exportáveis. A D267 adiou o CSV por a distribuição ser
@@ -4505,9 +4519,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    **+13 testes.** Recorte por `?ano=`/`PeriodPicker` entregue na Sessão 274 (D269) e o **comparativo ano-a-ano por contratante**
    entregue na Sessão 275 (D270 — `compareBookingLeadTimeByContact` + `indexContactBookingLeadTimeChanges` + card "Quem mudou o
    ritmo de agenda" + coluna "vs. {ano-1}" na tabela e no CSV): fecha as duas alternativas então adiadas. A feature de
-   antecedência por contratante está em paridade total com o eixo de recebíveis (escopo + ano + comparativo YoY). Próximo possível,
-   se houver demanda: um nudge no Painel quando um contratante recorrente passa a fechar em cima da hora (espelho de
-   `contactConversionDropHeadline`/D252 no eixo da antecedência) — adiado por ora (o card já entrega o sinal na tela dedicada).
+   antecedência por contratante está em paridade total com o eixo de recebíveis (escopo + ano + comparativo YoY). O **nudge no
+   Painel quando um contratante recorrente passa a fechar em cima da hora** foi entregue na Sessão 277 (D272 —
+   `contactBookingLeadTimeDropHeadline` + banner no `dashboard/page.tsx`, espelho de `contactConversionDropHeadline` no eixo da
+   antecedência, cedendo a vez ao nudge absoluto `bookingLeadTimeHeadline`): fecha o "próximo possível" antes adiado. A feature de
+   antecedência por contratante agora tem tela dedicada + comparativo YoY + nudge no Painel — paridade total com a conversão.
    **Comparativo ano a ano do prazo de recebimento por contratante** entregue na Sessão 202 — `comparePaymentLagByContact` +
    `PaymentLagByContactComparison`/`ContactPaymentLagChange` em `src/lib/finance.ts` + card `PaymentLagMoversCard` "Quem mudou de
    ritmo" em `/shows/prazo-recebimento/por-contratante`: quem começou a te pagar mais rápido/devagar de um ano para o outro

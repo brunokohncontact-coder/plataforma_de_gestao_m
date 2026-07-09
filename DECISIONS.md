@@ -9320,3 +9320,49 @@ contexto, decisão, justificativa e alternativas consideradas.
   baseline (10 advisories; ver D6).
 - **Nota de concorrência:** número **D271** escolhido como o próximo livre após o D270 (Sessão 275). Se uma
   PR paralela reivindicar D271, renumerar para o próximo livre no merge.
+
+## 2026-07-09 — D272: Nudge no Painel quando um contratante recorrente passa a fechar em cima da hora
+- **Contexto:** o Painel já alerta que a agenda INTEIRA vem entrando em cima da hora em ABSOLUTO
+  (`bookingLeadTimeHeadline`/D185, mediana curta) e, no eixo da conversão, já destila QUAL contratante
+  específico esfriou ano a ano (`contactConversionDropHeadline`/D248). Faltava o simétrico no eixo da
+  antecedência: a lógica pura `compareBookingLeadTimeByContact` (D196) já media, por contratante, quem
+  passou a te fechar com mais folga / mais em cima da hora, mas o sinal só vivia na tela dedicada
+  `/shows/antecedencia/por-contratante` — o Painel não avisava "a Casa Recorrente, que te fechava com um
+  mês de folga, agora só chama em cima da hora", justamente a hora de renegociar prazo/pedir reserva
+  antecipada. A D270 apontou este nudge como "próximo possível" e o adiou ("o card já entrega o sinal na
+  tela dedicada").
+- **Decisão:** novo helper puro `contactBookingLeadTimeDropHeadline(comparison, minSample?, dropDays?,
+  criticalDays?)` + tipo `ContactBookingLeadTimeDropHeadline<C>` + constantes `LEAD_TIME_DROP_DAYS` (=14) e
+  `LEAD_TIME_DROP_CRITICAL_DAYS` (=30) em `src/lib/shows.ts` (espelho fiel de `contactConversionDropHeadline`
+  no eixo da antecedência): recebe um `BookingLeadTimeByContactComparison` já computado e destila o
+  contratante de MAIOR perda de folga com amostra confiável — `leadTime.sample >= MIN_LEAD_TIME_SAMPLE`
+  (=3) nas DUAS coortes — e queda mediana de ao menos `dropDays`; `critical` quando a queda chega a
+  `criticalDays`; `others` conta os demais contratantes que também passam no gate. Só a ponta de PIORA
+  (perda de folga) vira nudge; ganhar antecedência é boa notícia. Banner no `dashboard/page.tsx` (link
+  `/shows/antecedencia/por-contratante?ano={ano}`) que CEDE A VEZ ao nudge absoluto (`bookingLeadTimeHeadline`):
+  quando a agenda inteira já vem apertada, o Painel conta a história maior e o detalhe por contratante espera
+  o clique; este brilha quando a carteira segue com folga na média mas uma relação específica apertou.
+- **Justificativa:** reusa os shows JÁ carregados pelos outros nudges (date+createdAt+contacts, zero I/O
+  extra), zero regra de negócio nova (a comparação vive em `compareBookingLeadTimeByContact`, pura e testada),
+  zero migração, zero dependência nova. O gate (amostra confiável nas duas coortes + queda material) mantém
+  o nudge raro, como os irmãos. `pickPayerContact` é o mesmo eixo de contratante dos recebíveis.
+- **Piso de queda `LEAD_TIME_DROP_DAYS` = 14 dias:** o dobro de `LEAD_TIME_TREND_EPSILON` (=7, o limiar do
+  veredito do card), espelhando `CONVERSION_DROP_POINTS` (2× o epsilon do card): o Painel só alerta com uma
+  perda de folga material, não qualquer oscilação. `LEAD_TIME_DROP_CRITICAL_DAYS` = 30 (um mês de folga
+  perdida) escala para 🔴. **Hipótese** (como os demais limiares de nudge): quanto de perda de folga conta
+  como "material" e "crítico" varia por circuito/gênero — validar com músicos antes de virar premissa fixa.
+- **Alternativas consideradas:** (a) gate adicional exigindo que a mediana ATUAL seja curta em absoluto
+  (`<= LEAD_TIME_SHORT_DAYS`) — descartado: divergiria do irmão `contactConversionDropHeadline` (que mede só
+  a magnitude da queda) e adicionaria mais um limiar a validar; uma queda de 90→30 dias é acionável mesmo com
+  30 > 14. (b) não ceder ao nudge absoluto e deixar os dois banners coexistirem — descartado: o eixo é o
+  mesmo (antecedência) e dois banners de folga ao mesmo tempo adensam o Painel; o absoluto conta a história
+  maior. (c) manter só na tela dedicada (o adiamento da D270) — revertido: o análogo na conversão (D248) já
+  virou nudge, e um parceiro recorrente que aperta é sinal acionável que o músico não vê se não abrir a tela.
+- **DoD:** build de produção OK, typecheck (`tsc --noEmit`, 0 erros), lint (`next lint`, 0 avisos);
+  **1551 testes** (`vitest run`, +6: aponta o maior; ignora amostra fina e elege a maior confiável; conta
+  `others`; não dispara sem perda material; perda abaixo do piso não vira nudge; limiares injetáveis). Smoke
+  (`next start`) → dashboard autenticado 200 renderizando o banner "Casa Recorrente passou a fechar em cima
+  da hora … 5 dias … 40 dias a menos que em 2025 (45 dias)" (variante crítica) com dados que disparam o gate.
+  `npm audit` **inalterado** vs. baseline (10 advisories; ver D6).
+- **Nota de concorrência:** número **D272** escolhido como o próximo livre após o D271 (Sessão 276). Se uma
+  PR paralela reivindicar D272, renumerar para o próximo livre no merge.

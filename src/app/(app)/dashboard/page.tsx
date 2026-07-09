@@ -21,6 +21,7 @@ import {
   compareYearEndToPrevious,
   recurringExpenses,
   pendingFixedCosts,
+  filterShowsByYear,
   computeBreakEven,
   breakEvenHeadline,
   computeGoalProgress,
@@ -62,6 +63,9 @@ import {
   formatWeekendLabel,
   bookingLeadTime,
   bookingLeadTimeHeadline,
+  bookingLeadTimeByContact,
+  compareBookingLeadTimeByContact,
+  contactBookingLeadTimeDropHeadline,
   findStaleProposals,
   staleProposalsHeadline,
   proposalOutcomes,
@@ -398,6 +402,30 @@ export default async function DashboardPage() {
   const leadHeadline = bookingLeadTimeHeadline(
     bookingLeadTime(shows as LeadTimeShowLike[]),
   );
+
+  // Antecedência caindo COM UM CONTRATANTE (D196 no Painel): "quem, dos meus
+  // parceiros recorrentes, passou a me fechar em cima da hora?". Reaproveita os
+  // shows já carregados (date+createdAt+contacts, sem I/O extra): monta a
+  // antecedência por contratante deste ano e do anterior (pickPayerContact, o mesmo
+  // eixo dos recebíveis), compara e destila o parceiro de maior perda de folga com
+  // amostra confiável nas duas coortes (contactBookingLeadTimeDropHeadline resolve o
+  // gate). CEDE A VEZ ao nudge absoluto de antecedência (D185): quando a agenda
+  // inteira já vem em cima da hora, o Painel conta a história maior e o detalhe por
+  // contratante espera o clique; este brilha quando a carteira segue com folga na
+  // média mas uma relação específica apertou. O detalhe está em
+  // /shows/antecedencia/por-contratante.
+  const leadBooker = (s: (typeof shows)[number]) => {
+    const picked = pickPayerContact(s.contacts.map((cs) => cs.contact));
+    return picked ? { id: picked.id, name: picked.name } : null;
+  };
+  const leadDropHead = leadHeadline.show
+    ? null // o nudge absoluto já está no ar; cede a vez (evita banner duplo)
+    : contactBookingLeadTimeDropHeadline(
+        compareBookingLeadTimeByContact(
+          bookingLeadTimeByContact(filterShowsByYear(shows, currentYear), leadBooker),
+          bookingLeadTimeByContact(filterShowsByYear(shows, currentYear - 1), leadBooker),
+        ),
+      );
 
   // Seca atual (D262–D264): "faz tempo que não subo ao palco e nada está agendado?".
   // Reaproveita os shows já carregados (só date+status, sem I/O extra): showGaps mede
@@ -961,6 +989,42 @@ export default async function DashboardPage() {
           <span
             className={leadHeadline.critical ? "text-red-600" : "text-amber-600"}
           >
+            Ver →
+          </span>
+        </Link>
+      )}
+
+      {/* Um contratante recorrente passou a fechar em cima da hora (D196 no Painel):
+          cede a vez ao nudge absoluto acima; brilha quando a carteira segue com folga
+          na média mas uma relação específica apertou. */}
+      {leadDropHead?.show && leadDropHead.contact && (
+        <Link
+          href={`/shows/antecedencia/por-contratante?ano=${currentYear}`}
+          className={
+            "flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3 text-sm transition " +
+            (leadDropHead.critical
+              ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100")
+          }
+        >
+          <span className="font-semibold">
+            {leadDropHead.critical ? "🔴" : "📉"} {leadDropHead.contact.name} passou a fechar em cima da hora
+          </span>
+          <span>
+            Em {currentYear} fecha com <strong>{daysLabel(leadDropHead.currentMedianDays)}</strong> de
+            antecedência mediana (sobre {leadDropHead.sample}{" "}
+            {leadDropHead.sample === 1 ? "show" : "shows"}) —{" "}
+            <strong>{daysLabel(leadDropHead.dropDays)} a menos</strong> que em {currentYear - 1}{" "}
+            ({daysLabel(leadDropHead.previousMedianDays)})
+            {leadDropHead.others > 0 && (
+              <span className={leadDropHead.critical ? "text-red-600" : "text-amber-600"}>
+                {" "}
+                · +{leadDropHead.others}{" "}
+                {leadDropHead.others === 1 ? "contratante apertou" : "contratantes apertaram"}
+              </span>
+            )}
+          </span>
+          <span className={leadDropHead.critical ? "text-red-600" : "text-amber-600"}>
             Ver →
           </span>
         </Link>

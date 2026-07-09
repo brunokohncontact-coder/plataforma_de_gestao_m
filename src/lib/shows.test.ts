@@ -20,6 +20,7 @@ import {
   compareBookingLeadTimeByContact,
   indexContactBookingLeadTimeChanges,
   bookingLeadTimeHeadline,
+  contactBookingLeadTimeDropHeadline,
   summarizeMonthShows,
   summarizeWeekShows,
   buildDuplicatedShow,
@@ -2490,6 +2491,111 @@ describe("contactConversionDropHeadline", () => {
     expect(contactConversionDropHeadline(cmp, 3).show).toBe(true);
     // ponto crítico afrouxado torna a queda "crítica"
     expect(contactConversionDropHeadline(cmp, 3, 0.1, 0.5).critical).toBe(true);
+  });
+});
+
+describe("contactBookingLeadTimeDropHeadline", () => {
+  type BookerShow = LeadTimeShowLike & { bookerId: string | null; bookerName: string };
+  const bShow = (partial: Partial<BookerShow>): BookerShow => ({
+    ...leadShow({}),
+    bookerId: "c1",
+    bookerName: "Bar do Zé",
+    ...partial,
+  });
+  const getBooker = (s: BookerShow) =>
+    s.bookerId ? { id: s.bookerId, name: s.bookerName } : null;
+  // Um show do contratante no ano `year` com antecedência `days`.
+  const lead = (bookerId: string | null, name: string, year: number, days: number) =>
+    bShow({
+      bookerId,
+      bookerName: name,
+      createdAt: `${year}-01-01T00:00:00.000Z`,
+      date: new Date(Date.UTC(year, 0, 1 + days)).toISOString(),
+    });
+  const report = (shows: BookerShow[]) =>
+    bookingLeadTimeByContact<{ id: string; name: string }, BookerShow>(shows, getBooker);
+  // `n` shows do contratante naquele ano, todos com a mesma antecedência `days`
+  // (mediana estável e amostra confiável quando n >= MIN_LEAD_TIME_SAMPLE).
+  const many = (bookerId: string, name: string, year: number, days: number, n: number) =>
+    Array.from({ length: n }, () => lead(bookerId, name, year, days));
+  const headline = (cur: BookerShow[], prev: BookerShow[]) =>
+    contactBookingLeadTimeDropHeadline(compareBookingLeadTimeByContact(report(cur), report(prev)));
+
+  it("aponta o contratante que mais perdeu folga, com amostra confiável nas duas coortes", () => {
+    // Zé: 2025 mediana 40 → 2026 mediana 5 (−35 dias de folga); Ana melhora.
+    const h = headline(
+      [...many("ze", "Zé", 2026, 5, 3), ...many("ana", "Ana", 2026, 50, 3)],
+      [...many("ze", "Zé", 2025, 40, 3), ...many("ana", "Ana", 2025, 10, 3)],
+    );
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(true); // 35 dias >= 30 crítico
+    expect(h.contact?.id).toBe("ze");
+    expect(h.dropDays).toBe(35);
+    expect(h.currentMedianDays).toBe(5);
+    expect(h.previousMedianDays).toBe(40);
+    expect(h).toMatchObject({ sample: 3, others: 0 });
+  });
+
+  it("ignora quedas de amostra fina e elege a maior queda CONFIÁVEL", () => {
+    // Fina: perde 40 dias mas só 1 show em cada coorte → fora do gate.
+    // Sólida: 40→20 (−20 dias) com 3 shows em cada → é a eleita.
+    const h = headline(
+      [lead("fina", "Fina", 2026, 5), ...many("sol", "Sólida", 2026, 20, 3)],
+      [lead("fina", "Fina", 2025, 45), ...many("sol", "Sólida", 2025, 40, 3)],
+    );
+    expect(h.show).toBe(true);
+    expect(h.contact?.id).toBe("sol");
+    expect(h.dropDays).toBe(20);
+    expect(h.others).toBe(0); // a fina não conta (não passa no gate)
+  });
+
+  it("conta em `others` os demais contratantes que também perderam folga no gate", () => {
+    const h = headline(
+      [
+        ...many("ze", "Zé", 2026, 5, 3), // 45 → 5 (−40)
+        ...many("bar", "Bar", 2026, 10, 3), // 40 → 10 (−30)
+        ...many("ana", "Ana", 2026, 50, 3), // melhora
+      ],
+      [
+        ...many("ze", "Zé", 2025, 45, 3),
+        ...many("bar", "Bar", 2025, 40, 3),
+        ...many("ana", "Ana", 2025, 10, 3),
+      ],
+    );
+    expect(h.show).toBe(true);
+    expect(h.contact?.id).toBe("ze"); // maior queda no topo
+    expect(h.others).toBe(1); // Bar também passou no gate
+  });
+
+  it("não dispara quando ninguém tem perda material e confiável", () => {
+    const h = headline(
+      [...many("ze", "Zé", 2026, 50, 3), ...many("bar", "Bar", 2026, 20, 3)],
+      [...many("ze", "Zé", 2025, 20, 3), ...many("bar", "Bar", 2025, 22, 3)], // Zé melhora, Bar estável
+    );
+    expect(h.show).toBe(false);
+    expect(h.contact).toBeNull();
+    expect(h.dropDays).toBe(0);
+    expect(h.others).toBe(0);
+  });
+
+  it("uma perda pequena (abaixo do piso de 14 dias) não vira nudge", () => {
+    // 30 → 20 = −10 dias < LEAD_TIME_DROP_DAYS (14).
+    const h = headline(many("ze", "Zé", 2026, 20, 3), many("ze", "Zé", 2025, 30, 3));
+    expect(h.show).toBe(false);
+  });
+
+  it("respeita limiares injetáveis (amostra mínima / piso de dias / crítico)", () => {
+    // Zé: 40 → 20 (−20 dias), com só 2 shows em cada coorte.
+    const cmp = compareBookingLeadTimeByContact(
+      report(many("ze", "Zé", 2026, 20, 2)),
+      report(many("ze", "Zé", 2025, 40, 2)),
+    );
+    // amostra mínima 3 não passa (só 2 shows); mínima 2 passa
+    expect(contactBookingLeadTimeDropHeadline(cmp, 3).show).toBe(false);
+    expect(contactBookingLeadTimeDropHeadline(cmp, 2).show).toBe(true);
+    // −20 dias não é crítico no padrão (>= 30), mas vira crítico com piso afrouxado
+    expect(contactBookingLeadTimeDropHeadline(cmp, 2).critical).toBe(false);
+    expect(contactBookingLeadTimeDropHeadline(cmp, 2, 14, 15).critical).toBe(true);
   });
 });
 
