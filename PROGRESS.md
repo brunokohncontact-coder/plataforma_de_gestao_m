@@ -9,7 +9,18 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1535 testes** verdes após a **antecedência de
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1535 testes** verdes após o **recorte por ano
+na antecedência por contratante** (Sessão 274, D269 — a D268 entregou a antecedência por contratante mas SEM recorte por
+ano (adiado ali); a tela-mãe `/shows/antecedencia` já filtra por ano (D186). Agora a página e o export
+`/shows/antecedencia/por-contratante` aplicam o MESMO recorte: filtra os shows por ano (`filterShowsByYear`, D108)
+**antes** de `bookingLeadTimeByContact`, com os anos do seletor vindos de `bookingLeadTimeYears(rows, scope)` (só anos com
+antecedência mensurável no escopo ativo). Reusa o `PeriodPicker` compartilhado (`params={escopo:"firm"}`) e refatora o
+`ScopePicker` local para um `buildHref` que preserva ano+escopo — espelho do `buildHref` da tela-mãe; filename do CSV
+ganha o sufixo do ano (`antecedencia-por-contratante-2025-firmes.csv`). Zero regra nova, zero migração, zero dependência;
+testes **inalterados** (só recomposição de helpers já cobertos). Comparativo ano-a-ano por contratante segue adiado (o
+"passo maior": espelhar `comparePaymentLagByContact`/`indexContactPaymentLagChanges`). Build/typecheck/lint verdes; smoke
+→ `/login` 200, página e `/export` com `?ano=` 307→/login; `npm audit` inalterado (10 advisories). Ver D269. Antes disso, a
+**antecedência de
 agendamento por contratante** (Sessão 273, D268 — `bookingLeadTime` (D190) media a antecedência só no AGREGADO
 (`/shows/antecedencia`); não dizia DE QUEM vem o lead. Dois contratantes podem ter o mesmo faturamento e hábitos opostos:
 um te fecha meses antes (runway para prospectar/precificar) e outro só chama na véspera (agenda reativa). Novo helper puro

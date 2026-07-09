@@ -9182,3 +9182,45 @@ contexto, decisão, justificativa e alternativas consideradas.
   zero migração.
 - **Nota de concorrência:** número **D268** escolhido como o próximo livre após o D267 (Sessão 272). Se
   uma PR paralela reivindicar D268, renumerar para o próximo livre no merge.
+
+## 2026-07-09 — D269: Recorte por ano na antecedência por contratante (`?ano=` em `/shows/antecedencia/por-contratante`) (Sessão 274)
+- **Contexto:** a D268 entregou a antecedência por contratante mas **sem recorte por ano** (item
+  explicitamente adiado ali: "a tela-mãe tem `PeriodPicker`; aqui ficou de fora para manter a sessão
+  fechada"). A tela-mãe `/shows/antecedencia` já filtra por ano (D186, `bookingLeadTimeYears` +
+  `parseProfitYear` + `filterShowsByYear`), então a quebra por contratante ficava presa a "todos os
+  anos" — sem responder "quem me fechou com folga **em 2025**?". Hábitos de agendamento mudam ano a ano
+  (um contratante que fechava cedo passou a chamar em cima da hora), e a leitura anual é a mesma que o
+  eixo agregado e a rentabilidade por contratante já oferecem.
+- **Decisão:** aplicar o MESMO recorte por ano da tela-mãe à página e ao export por contratante. Filtra
+  os shows por ano (`filterShowsByYear`) **antes** de `bookingLeadTimeByContact` — que segue agnóstico ao
+  período, exatamente como a tela-mãe filtra antes de `bookingLeadTime`. Os anos do seletor vêm de
+  `bookingLeadTimeYears(rows, scope)` (só anos com antecedência mensurável no escopo ativo, para nunca
+  oferecer um ano vazio). Reusa o `PeriodPicker` compartilhado (com `params={escopo:"firm"}` para
+  preservar o escopo) e refatora o `ScopePicker` local para receber um `buildHref` que preserva
+  ano+escopo — espelho exato do `buildHref` da tela-mãe. Filename do CSV ganha o sufixo do ano
+  (`antecedencia-por-contratante-2025-firmes.csv`), igual ao export agregado.
+- **Justificativa:**
+  - **Zero regra nova, zero migração, zero dependência.** Só reordena "filtra por ano → agrega": os
+    helpers (`bookingLeadTimeYears`/`parseProfitYear`/`filterShowsByYear`) e o `PeriodPicker` já são
+    testados e usados por ~15 telas. `filterShowsByYear<S extends {date}>` preserva o tipo da linha com o
+    `include` de contatos intacto, então o `getBooker`/`pickPayerContact` seguem valendo.
+  - **Anos do escopo ativo (não de todos os shows).** `bookingLeadTimeYears` já respeita o escopo
+    (`all`/`firm`) e o gate de retroativos, então trocar de escopo pode reduzir a lista de anos — nunca
+    oferece um ano que renderiza a tela vazia, mesma disciplina da tela-mãe.
+  - **Paridade com o eixo agregado.** A antecedência por contratante agora tem exatamente os mesmos dois
+    eixos de recorte (escopo D190 + ano D186) que `/shows/antecedencia`, coerente com a expectativa de
+    "abrir a mesma leitura por contratante".
+- **Sem comparativo ano-a-ano por contratante (ainda adiado).** A tela-mãe tem `compareBookingLeadTime`
+  (mediana vs. ano anterior); a versão por contratante — espelhar
+  `comparePaymentLagByContact`/`indexContactPaymentLagChanges` no eixo da antecedência — continua sendo o
+  próximo passo maior. Esta sessão fecha só o recorte por ano (unidade pequena e funcional).
+- **Alternativas consideradas:** deep-link do comparativo ano-a-ano de uma vez — descartado por escopo
+  (é o "passo maior" com destilação de movers, merece sua própria sessão). Derivar os anos de TODOS os
+  shows (ignorando escopo) — descartado: ofereceria anos sem amostra mensurável no escopo ativo.
+- **DoD:** build de produção, typecheck (`tsc --noEmit`, 0 erros) e lint (`next lint`, 0 avisos) verdes;
+  **1535 testes** (`vitest run`, inalterado — nenhuma lógica de negócio nova, só recomposição de helpers
+  já cobertos); smoke (`next start`) → `/login` 200, `/shows/antecedencia/por-contratante?ano=2026` e
+  `/export?ano=2026&escopo=firm` 307→/login (auth-gated, sem 500). `npm audit` **inalterado** vs.
+  baseline (10 advisories; ver D6).
+- **Nota de concorrência:** número **D269** escolhido como o próximo livre após o D268 (Sessão 273). Se
+  uma PR paralela reivindicar D269, renumerar para o próximo livre no merge.
