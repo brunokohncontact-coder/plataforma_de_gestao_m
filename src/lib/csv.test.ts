@@ -41,6 +41,8 @@ import {
   GIG_SEASONALITY_COMPARISON_CSV_HEADERS,
   weekdayPerformanceToCsv,
   WEEKDAY_PERFORMANCE_CSV_HEADERS,
+  weekdayPerformanceComparisonToCsv,
+  WEEKDAY_PERFORMANCE_COMPARISON_CSV_HEADERS,
   feeDistributionToCsv,
   FEE_DISTRIBUTION_CSV_HEADERS,
   incomeMixToCsv,
@@ -166,6 +168,7 @@ import {
   buildDueAgenda,
   yearlyHistory,
   weekdayPerformance,
+  compareWeekdayPerformance,
   feeDistribution,
   showPipeline,
   incomeMix,
@@ -1425,6 +1428,76 @@ describe("gigSeasonalityComparisonToCsv", () => {
     const total = gigSeasonalityComparisonToCsv(comparison).split("\r\n")[13].split(";");
     expect(total[3]).toBe("-1");
     expect(total[4]).toBe("-3000,00");
+  });
+});
+
+describe("weekdayPerformanceComparisonToCsv", () => {
+  // `now` fixo no futuro para que todos os shows forjados contem como realizados.
+  const NOW = "2027-01-01T00:00:00.000Z";
+  const gig = (
+    over: Partial<ReceivableShowLike> = {},
+  ): ReceivableShowLike => ({
+    id: "s",
+    fee: 100000,
+    status: "PLAYED",
+    // 2026-03-06 é sexta-feira (weekday 5).
+    date: "2026-03-06T00:00:00.000Z",
+    ...over,
+  });
+  const compare = (current: ReceivableShowLike[], previous: ReceivableShowLike[]) =>
+    compareWeekdayPerformance(
+      weekdayPerformance(current, { now: new Date(NOW) }),
+      weekdayPerformance(previous, { now: new Date(NOW) }),
+    );
+
+  it("sempre emite as 7 linhas de dia + a linha Total mesmo sem shows", () => {
+    const csv = weekdayPerformanceComparisonToCsv(compare([], []));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(WEEKDAY_PERFORMANCE_COMPARISON_CSV_HEADERS.join(";"));
+    // cabeçalho + 7 dias + Total
+    expect(lines).toHaveLength(9);
+    // Dias sem shows nos dois anos: 0/0, deltas zerados, tendência "Estável".
+    expect(lines[1]).toBe("Domingo;0;0;0;0,00;Estável");
+    expect(lines[7]).toBe("Sábado;0;0;0;0,00;Estável");
+    // Total: colunas de contagem em branco, deltas zerados, sem tendência.
+    expect(lines[8]).toBe("Total;;;0;0,00;");
+  });
+
+  it("serializa contagem dos dois anos, deltas e tendência 'Subiu'", () => {
+    // Sexta (linha 6): 2 shows em 2026 (corrente) vs. 1 em 2025 (anterior) → subiu.
+    const comparison = compare(
+      [
+        gig({ date: "2026-03-06T00:00:00.000Z", fee: 100000 }),
+        gig({ date: "2026-03-20T00:00:00.000Z", fee: 200000 }),
+      ],
+      [gig({ date: "2025-03-07T00:00:00.000Z", fee: 100000 })],
+    );
+    const sexta = weekdayPerformanceComparisonToCsv(comparison).split("\r\n")[6].split(";");
+    expect(sexta[0]).toBe("Sexta");
+    expect(sexta[1]).toBe("1"); // shows do ano anterior
+    expect(sexta[2]).toBe("2"); // shows do ano corrente
+    expect(sexta[3]).toBe("+1"); // Δ shows assinado (2 - 1)
+    expect(sexta[4]).toBe("2000,00"); // 3000 - 1000
+    expect(sexta[5]).toBe("Subiu");
+    const total = weekdayPerformanceComparisonToCsv(comparison).split("\r\n")[8].split(";");
+    expect(total).toEqual(["Total", "", "", "+1", "2000,00", ""]);
+  });
+
+  it("registra deltas negativos com sinal e tendência 'Caiu'", () => {
+    // Domingo (linha 1) caiu de 2 shows (anterior) para 1 (corrente).
+    // 2026-03-01 e 2025-03-02/2025-03-09 são domingos.
+    const comparison = compare(
+      [gig({ date: "2026-03-01T00:00:00.000Z", fee: 100000 })],
+      [
+        gig({ date: "2025-03-02T00:00:00.000Z", fee: 200000 }),
+        gig({ date: "2025-03-09T00:00:00.000Z", fee: 200000 }),
+      ],
+    );
+    const domingo = weekdayPerformanceComparisonToCsv(comparison).split("\r\n")[1].split(";");
+    expect(domingo[0]).toBe("Domingo");
+    expect(domingo[3]).toBe("-1"); // 1 - 2
+    expect(domingo[4]).toBe("-3000,00"); // 1000 - 4000
+    expect(domingo[5]).toBe("Caiu");
   });
 });
 

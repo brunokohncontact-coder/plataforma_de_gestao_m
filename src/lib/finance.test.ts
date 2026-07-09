@@ -104,6 +104,9 @@ import {
   FEE_BANDS,
   weekdayPerformance,
   weekdaySplit,
+  compareWeekdayPerformance,
+  classifyWeekdayPerformanceDayChange,
+  type WeekdayPerformanceDayChange,
   WEEKEND_WEEKDAYS,
   gigSeasonality,
   compareGigSeasonality,
@@ -7390,6 +7393,161 @@ describe("classifyGigSeasonalityMonthChange", () => {
     // Menos shows mas faturou mais (trocou volume por cachê): a contagem manda → down.
     expect(
       classifyGigSeasonalityMonthChange(change({ countDelta: -1, feeDelta: 300_00 })),
+    ).toBe("down");
+  });
+});
+
+describe("compareWeekdayPerformance", () => {
+  const now = new Date("2027-06-15T12:00:00.000Z");
+
+  function gig(partial: Partial<ReceivableShowLike>): ReceivableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      // 2026-03-06 é uma sexta-feira (weekday 5).
+      date: "2026-03-06T20:00:00.000Z",
+      ...partial,
+    };
+  }
+
+  it("devolve 7 dias e destaca o dia que mais cresceu e o que mais caiu em shows", () => {
+    const current = weekdayPerformance(
+      [
+        // Sextas 2026: 3 shows (weekday 5)
+        gig({ id: "c-sex1", date: "2026-03-06T20:00:00.000Z" }),
+        gig({ id: "c-sex2", date: "2026-03-13T20:00:00.000Z" }),
+        gig({ id: "c-sex3", date: "2026-03-20T20:00:00.000Z" }),
+        // Domingo 2026: 1 show (weekday 0) — 2026-03-01 é domingo
+        gig({ id: "c-dom1", date: "2026-03-01T20:00:00.000Z" }),
+      ],
+      { now },
+    );
+    const previous = weekdayPerformance(
+      [
+        // Sexta 2025: 1 show → sexta cresceu +2 (2025-03-07 é sexta)
+        gig({ id: "p-sex1", date: "2025-03-07T20:00:00.000Z" }),
+        // Domingos 2025: 3 shows → domingo caiu −2 (2025-03-02 é domingo)
+        gig({ id: "p-dom1", date: "2025-03-02T20:00:00.000Z" }),
+        gig({ id: "p-dom2", date: "2025-03-09T20:00:00.000Z" }),
+        gig({ id: "p-dom3", date: "2025-03-16T20:00:00.000Z" }),
+      ],
+      { now },
+    );
+
+    const cmp = compareWeekdayPerformance(current, previous);
+    expect(cmp.days).toHaveLength(7);
+    expect(cmp.totalShowsDelta).toBe(0); // 4 vs 4
+    expect(cmp.biggestGain?.weekday).toBe(5); // sexta
+    expect(cmp.biggestGain?.countDelta).toBe(2);
+    expect(cmp.biggestDrop?.weekday).toBe(0); // domingo
+    expect(cmp.biggestDrop?.countDelta).toBe(-2);
+
+    // A linha da sexta reflete os dois lados e o delta de faturamento.
+    const sex = cmp.days[5];
+    expect(sex).toMatchObject({
+      currentCount: 3,
+      previousCount: 1,
+      countDelta: 2,
+      feeDelta: 200_00, // 300_00 − 100_00
+    });
+  });
+
+  it("sem base anterior: todo dia com show conta como ganho, nenhum como queda", () => {
+    const current = weekdayPerformance(
+      // 2026-03-07 é sábado (weekday 6)
+      [gig({ id: "c-sab", date: "2026-03-07T20:00:00.000Z" })],
+      { now },
+    );
+    const previous = weekdayPerformance([], { now });
+
+    const cmp = compareWeekdayPerformance(current, previous);
+    expect(cmp.totalShowsDelta).toBe(1);
+    expect(cmp.biggestGain?.weekday).toBe(6); // sábado
+    expect(cmp.biggestDrop).toBeNull();
+  });
+
+  it("períodos idênticos: sem movers e deltas zerados", () => {
+    const shows = [
+      gig({ id: "a", date: "2026-03-06T20:00:00.000Z", fee: 150_00 }),
+      gig({ id: "b", date: "2026-03-13T20:00:00.000Z", fee: 150_00 }),
+    ];
+    const previousShows = [
+      gig({ id: "pa", date: "2025-03-07T20:00:00.000Z", fee: 150_00 }),
+      gig({ id: "pb", date: "2025-03-14T20:00:00.000Z", fee: 150_00 }),
+    ];
+    const cmp = compareWeekdayPerformance(
+      weekdayPerformance(shows, { now }),
+      weekdayPerformance(previousShows, { now }),
+    );
+    expect(cmp.totalShowsDelta).toBe(0);
+    expect(cmp.totalFeeDelta).toBe(0);
+    expect(cmp.biggestGain).toBeNull();
+    expect(cmp.biggestDrop).toBeNull();
+    expect(cmp.days.every((d) => d.countDelta === 0 && d.feeDelta === 0)).toBe(true);
+  });
+
+  it("empate no nº de shows é desempatado pelo maior/menor delta de faturamento", () => {
+    // Terça e quinta crescem +1 show; terça troca por um cachê maior.
+    // 2026-03-03 = terça (2), 2026-03-05 = quinta (4).
+    const current = weekdayPerformance(
+      [
+        gig({ id: "c-ter", date: "2026-03-03T20:00:00.000Z", fee: 500_00 }),
+        gig({ id: "c-qui", date: "2026-03-05T20:00:00.000Z", fee: 120_00 }),
+      ],
+      { now },
+    );
+    const previous = weekdayPerformance([], { now });
+
+    const cmp = compareWeekdayPerformance(current, previous);
+    // Ambos +1 show; terça (feeDelta 500) vence o ganho, quinta (feeDelta 120) fica.
+    expect(cmp.biggestGain?.weekday).toBe(2); // terça
+    expect(cmp.biggestGain?.feeDelta).toBe(500_00);
+  });
+});
+
+describe("classifyWeekdayPerformanceDayChange", () => {
+  function change(
+    partial: Partial<WeekdayPerformanceDayChange>,
+  ): WeekdayPerformanceDayChange {
+    return {
+      weekday: 0,
+      label: "Domingo",
+      currentCount: 0,
+      previousCount: 0,
+      countDelta: 0,
+      currentTotalFee: 0,
+      previousTotalFee: 0,
+      feeDelta: 0,
+      ...partial,
+    };
+  }
+
+  it("ancora no nº de shows: mais shows → up, menos → down", () => {
+    expect(classifyWeekdayPerformanceDayChange(change({ countDelta: 2 }))).toBe("up");
+    expect(classifyWeekdayPerformanceDayChange(change({ countDelta: -1 }))).toBe(
+      "down",
+    );
+  });
+
+  it("com contagem empatada, o faturamento desempata", () => {
+    expect(
+      classifyWeekdayPerformanceDayChange(change({ countDelta: 0, feeDelta: 50_00 })),
+    ).toBe("up");
+    expect(
+      classifyWeekdayPerformanceDayChange(change({ countDelta: 0, feeDelta: -50_00 })),
+    ).toBe("down");
+  });
+
+  it("só é flat quando os dois deltas são zero", () => {
+    expect(
+      classifyWeekdayPerformanceDayChange(change({ countDelta: 0, feeDelta: 0 })),
+    ).toBe("flat");
+  });
+
+  it("a contagem tem prioridade sobre o faturamento", () => {
+    expect(
+      classifyWeekdayPerformanceDayChange(change({ countDelta: -1, feeDelta: 300_00 })),
     ).toBe("down");
   });
 });

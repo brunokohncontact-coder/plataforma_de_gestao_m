@@ -7750,6 +7750,137 @@ export function weekdaySplit(wp: WeekdayPerformance): WeekdaySplit {
   };
 }
 
+export interface WeekdayPerformanceDayChange {
+  /** Dia da semana: 0 = domingo .. 6 = sábado (UTC). */
+  weekday: number;
+  /** Rótulo longo ("Domingo", "Segunda"…). */
+  label: string;
+  /** Nº de shows deste dia da semana no período atual. */
+  currentCount: number;
+  /** Nº de shows deste dia da semana no período anterior. */
+  previousCount: number;
+  /** Variação do nº de shows (atual − anterior); pode ser negativa. */
+  countDelta: number;
+  /** Faturamento deste dia no período atual (centavos). */
+  currentTotalFee: number;
+  /** Faturamento deste dia no período anterior (centavos). */
+  previousTotalFee: number;
+  /** Variação do faturamento (atual − anterior, centavos); pode ser negativa. */
+  feeDelta: number;
+}
+
+export interface WeekdayPerformanceComparison {
+  /** Sempre 7 dias (domingo→sábado), inclusive os sem mudança. */
+  days: WeekdayPerformanceDayChange[];
+  /** Variação do nº total de shows (atual − anterior). */
+  totalShowsDelta: number;
+  /** Variação do faturamento total (atual − anterior, centavos). */
+  totalFeeDelta: number;
+  /**
+   * Dia que mais GANHOU shows (maior `countDelta > 0`; empate → maior `feeDelta`,
+   * depois dia mais cedo na semana); null se nenhum dia subiu.
+   */
+  biggestGain: WeekdayPerformanceDayChange | null;
+  /**
+   * Dia que mais PERDEU shows (menor `countDelta < 0`; empate → menor `feeDelta`,
+   * depois dia mais cedo na semana); null se nenhum dia caiu.
+   */
+  biggestDrop: WeekdayPerformanceDayChange | null;
+}
+
+/**
+ * Compara o **desempenho por dia da semana** entre dois períodos (tipicamente um
+ * ano × o ano anterior), dia a dia da semana, respondendo "em que dias da semana
+ * passei a tocar mais/menos do que no ano passado — a agenda migrou para outros
+ * dias?". Espelho fiel de `compareGigSeasonality` (D223) no eixo do dia da semana:
+ * em vez de despejar os 7 baldes na tela, destila os dois **movers** — o dia que
+ * mais cresceu e o que mais caiu em nº de shows — mantendo a tela enxuta; os 7
+ * `days` ficam disponíveis para quem quiser detalhar.
+ *
+ * Ancora no **nº de shows** (`count`), o eixo primário da página (o `busiest`), com
+ * o `feeDelta` como desempate — um dia que trocou um show barato por um caro, mesmo
+ * com `countDelta` empatado, vence. Puro, sem I/O: recebe dois `weekdayPerformance`
+ * já computados (cada um sobre os shows do seu período). O chamador decide quando
+ * exibir (tipicamente só com um ano específico e ambos os períodos com shows).
+ */
+export function compareWeekdayPerformance(
+  current: WeekdayPerformance,
+  previous: WeekdayPerformance,
+): WeekdayPerformanceComparison {
+  // Ambos os desempenhos trazem sempre os 7 dias em ordem (dom→sáb), então o
+  // índice `i` casa o mesmo dia da semana nos dois períodos — sem lookup.
+  const days: WeekdayPerformanceDayChange[] = current.days.map((cur, i) => {
+    const prev = previous.days[i];
+    return {
+      weekday: cur.weekday,
+      label: cur.label,
+      currentCount: cur.count,
+      previousCount: prev.count,
+      countDelta: cur.count - prev.count,
+      currentTotalFee: cur.totalFee,
+      previousTotalFee: prev.totalFee,
+      feeDelta: cur.totalFee - prev.totalFee,
+    };
+  });
+
+  // Iteramos dom→sáb exigindo `>`/`<` estrito no desempate, então o dia mais cedo
+  // na semana vence empates — mesma disciplina determinística do `pick` de
+  // `weekdayPerformance` e dos movers de `compareGigSeasonality`.
+  let biggestGain: WeekdayPerformanceDayChange | null = null;
+  let biggestDrop: WeekdayPerformanceDayChange | null = null;
+  for (const d of days) {
+    if (d.countDelta > 0) {
+      if (
+        biggestGain == null ||
+        d.countDelta > biggestGain.countDelta ||
+        (d.countDelta === biggestGain.countDelta && d.feeDelta > biggestGain.feeDelta)
+      ) {
+        biggestGain = d;
+      }
+    }
+    if (d.countDelta < 0) {
+      if (
+        biggestDrop == null ||
+        d.countDelta < biggestDrop.countDelta ||
+        (d.countDelta === biggestDrop.countDelta && d.feeDelta < biggestDrop.feeDelta)
+      ) {
+        biggestDrop = d;
+      }
+    }
+  }
+
+  return {
+    days,
+    totalShowsDelta: current.totalShows - previous.totalShows,
+    totalFeeDelta: current.totalFee - previous.totalFee,
+    biggestGain,
+    biggestDrop,
+  };
+}
+
+/** Tendência de um dia no comparativo por dia da semana: subiu, caiu ou estável. */
+export type WeekdayPerformanceDayTrend = "up" | "down" | "flat";
+
+/**
+ * Classifica um dia do comparativo (`WeekdayPerformanceDayChange`) em `up`/`down`/
+ * `flat`, para colorir a tabela de detalhe dos 7 dias de forma consistente com os
+ * **movers** de `compareWeekdayPerformance`: ancora no nº de shows (`countDelta`) e,
+ * com contagem empatada, usa o faturamento (`feeDelta`) como desempate — um dia que
+ * trocou um show barato por um caro conta como "subiu" mesmo sem mudar a contagem.
+ * Só é `flat` quando os dois deltas são zero. Puro, sem I/O. Espelho de
+ * `classifyGigSeasonalityMonthChange`.
+ */
+export function classifyWeekdayPerformanceDayChange(
+  change: WeekdayPerformanceDayChange,
+): WeekdayPerformanceDayTrend {
+  if (change.countDelta > 0) return "up";
+  if (change.countDelta < 0) return "down";
+  // Contagem empatada: o faturamento desempata, na mesma disciplina dos movers.
+  if (change.feeDelta > 0) return "up";
+  if (change.feeDelta < 0) return "down";
+  return "flat";
+}
+
 /** Rótulos longos dos meses (Janeiro..Dezembro), índice 0 = janeiro. */
 export const GIG_MONTH_LABELS: readonly string[] = [
   "Janeiro",

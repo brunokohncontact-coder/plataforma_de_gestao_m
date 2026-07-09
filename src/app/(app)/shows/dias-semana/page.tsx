@@ -5,12 +5,16 @@ import {
   weekdayPerformance,
   weekdayPerformanceYears,
   weekdaySplit,
+  compareWeekdayPerformance,
+  classifyWeekdayPerformanceDayChange,
   parseProfitYear,
   filterShowsByYear,
   WEEKDAY_SHORT,
   type ReceivableShowLike,
   type WeekdayStat,
   type WeekdaySplitBucket,
+  type WeekdayPerformanceComparison,
+  type WeekdayPerformanceDayTrend,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { PeriodPicker } from "@/components/PeriodPicker";
@@ -55,6 +59,22 @@ export default async function WeekdayPage({
   const wp = weekdayPerformance(shows);
   const split = weekdaySplit(wp);
   const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
+
+  // Comparativo ano a ano dos "movers" da semana: só com um ano específico
+  // selecionado e ambos os períodos com shows realizados. O ano anterior sai do
+  // mesmo acervo já carregado (zero I/O extra), recortado por `filterShowsByYear`.
+  // Espelha `/shows/sazonalidade` no eixo do dia da semana.
+  let comparison: WeekdayPerformanceComparison | null = null;
+  if (yearFilter !== "all") {
+    const prevShows: ReceivableShowLike[] = filterShowsByYear(
+      rows,
+      yearFilter - 1,
+    ).map((s) => ({ id: s.id, fee: s.fee, status: s.status, date: s.date }));
+    const prevWp = weekdayPerformance(prevShows);
+    if (wp.totalShows > 0 && prevWp.totalShows > 0) {
+      comparison = compareWeekdayPerformance(wp, prevWp);
+    }
+  }
 
   // Escala das barras: maior cachê médio entre os dias com shows.
   const peakAvg = Math.max(1, ...wp.days.map((d) => d.avgFee));
@@ -146,6 +166,15 @@ export default async function WeekdayPage({
               }
             />
           </div>
+
+          {/* Comparativo ano a ano — os dias que mais mudaram */}
+          {comparison && yearFilter !== "all" && (
+            <WeekdayComparison
+              comparison={comparison}
+              year={yearFilter}
+              previousYear={yearFilter - 1}
+            />
+          )}
 
           {/* Fim de semana × dias de semana */}
           <section className="card">
@@ -267,6 +296,215 @@ export default async function WeekdayPage({
             realizados aparecem zerados para você ver as lacunas da agenda.
           </p>
         </>
+      )}
+    </div>
+  );
+}
+
+function signedShows(delta: number): string {
+  const abs = Math.abs(delta);
+  const noun = abs === 1 ? "show" : "shows";
+  if (delta > 0) return `+${abs} ${noun}`;
+  if (delta < 0) return `−${abs} ${noun}`;
+  return `0 ${noun}`;
+}
+
+function signedMoney(delta: number): string {
+  const sign = delta > 0 ? "+" : delta < 0 ? "−" : "";
+  return `${sign}${formatMoney(Math.abs(delta))}`;
+}
+
+function trendTone(trend: WeekdayPerformanceDayTrend): string {
+  if (trend === "up") return "text-emerald-600";
+  if (trend === "down") return "text-red-600";
+  return "text-gray-400";
+}
+
+/**
+ * Card do comparativo ano a ano: os dois movers (dia que mais cresceu / mais caiu
+ * em nº de shows) e, recolhido, a tabela dos 7 dias. Espelho do `SeasonComparison`
+ * de `/shows/sazonalidade`. Reusa o `comparison` já computado (zero I/O extra).
+ */
+function WeekdayComparison({
+  comparison,
+  year,
+  previousYear,
+}: {
+  comparison: WeekdayPerformanceComparison;
+  year: number;
+  previousYear: number;
+}) {
+  const { biggestGain, biggestDrop, totalShowsDelta, totalFeeDelta } = comparison;
+  const totalTone =
+    totalShowsDelta > 0
+      ? "text-emerald-600"
+      : totalShowsDelta < 0
+        ? "text-red-600"
+        : "text-gray-500";
+
+  return (
+    <section className="card">
+      <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="font-semibold">
+          Semana {year} vs. {previousYear}
+        </h2>
+        <div className="flex items-center gap-3">
+          <span className={"text-sm font-semibold " + totalTone}>
+            {signedShows(totalShowsDelta)} · {signedMoney(totalFeeDelta)}
+          </span>
+          <a
+            href={`/shows/dias-semana/comparativo/export?ano=${year}`}
+            className="text-xs text-gray-500 hover:text-gray-900 hover:underline"
+            download
+          >
+            ⬇ CSV
+          </a>
+        </div>
+      </div>
+      <p className="mb-4 text-xs text-gray-500">
+        Em que dias da semana você agendou mais ou menos shows do que no ano
+        anterior — se a agenda migrou de dia, onde há espaço para preencher.
+      </p>
+
+      {!biggestGain && !biggestDrop ? (
+        <p className="text-sm text-gray-500">
+          Os dois anos têm a mesma distribuição de shows por dia da semana — nenhum
+          dia subiu ou caiu.
+        </p>
+      ) : (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <MoverCard
+              label="Dia que mais cresceu"
+              change={biggestGain}
+              tone="emerald"
+            />
+            <MoverCard label="Dia que mais caiu" change={biggestDrop} tone="red" />
+          </div>
+          <WeekdayComparisonDetail
+            comparison={comparison}
+            year={year}
+            previousYear={previousYear}
+          />
+        </>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Detalhe opcional (recolhido por padrão) com os 7 dias do comparativo. Os movers
+ * acima entregam o sinal; esta tabela é para quem quiser conferir dia a dia sem
+ * sair da tela. Reusa os `days` já computados por `compareWeekdayPerformance`.
+ */
+function WeekdayComparisonDetail({
+  comparison,
+  year,
+  previousYear,
+}: {
+  comparison: WeekdayPerformanceComparison;
+  year: number;
+  previousYear: number;
+}) {
+  return (
+    <details className="mt-4 border-t pt-3">
+      <summary className="cursor-pointer text-sm font-medium text-gray-600 hover:text-gray-900">
+        Ver os 7 dias
+      </summary>
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b text-left text-xs uppercase tracking-wide text-gray-500">
+              <th className="pb-2 pr-3 font-medium">Dia</th>
+              <th className="pb-2 px-3 text-right font-medium">Shows {previousYear}</th>
+              <th className="pb-2 px-3 text-right font-medium">Shows {year}</th>
+              <th className="pb-2 px-3 text-right font-medium">Δ shows</th>
+              <th className="pb-2 pl-3 text-right font-medium">Δ faturamento</th>
+            </tr>
+          </thead>
+          <tbody>
+            {comparison.days.map((d) => {
+              const trend = classifyWeekdayPerformanceDayChange(d);
+              const empty = d.currentCount === 0 && d.previousCount === 0;
+              return (
+                <tr
+                  key={d.weekday}
+                  className={
+                    "border-b last:border-0 " + (empty ? "text-gray-400" : "")
+                  }
+                >
+                  <td className="py-2 pr-3 font-medium">{d.label}</td>
+                  <td className="py-2 px-3 text-right text-gray-500">
+                    {d.previousCount === 0 ? "—" : d.previousCount}
+                  </td>
+                  <td className="py-2 px-3 text-right text-gray-500">
+                    {d.currentCount === 0 ? "—" : d.currentCount}
+                  </td>
+                  <td className={"py-2 px-3 text-right font-medium " + trendTone(trend)}>
+                    {d.countDelta === 0 ? "—" : signedShows(d.countDelta)}
+                  </td>
+                  <td className={"py-2 pl-3 text-right " + trendTone(trend)}>
+                    {d.feeDelta === 0 ? "—" : signedMoney(d.feeDelta)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="border-t font-medium">
+              <td className="pt-2 pr-3">Total</td>
+              <td className="pt-2 px-3" />
+              <td className="pt-2 px-3" />
+              <td className="pt-2 px-3 text-right text-gray-600">
+                {comparison.totalShowsDelta === 0
+                  ? "—"
+                  : signedShows(comparison.totalShowsDelta)}
+              </td>
+              <td className="pt-2 pl-3 text-right text-gray-600">
+                {comparison.totalFeeDelta === 0
+                  ? "—"
+                  : signedMoney(comparison.totalFeeDelta)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </details>
+  );
+}
+
+function MoverCard({
+  label,
+  change,
+  tone,
+}: {
+  label: string;
+  change: WeekdayPerformanceComparison["biggestGain"];
+  tone: "emerald" | "red";
+}) {
+  const valueTone = tone === "emerald" ? "text-emerald-600" : "text-red-600";
+  return (
+    <div className="rounded-lg border border-gray-100 p-3">
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+        {label}
+      </p>
+      {change ? (
+        <>
+          <p className="mt-1 text-lg font-bold text-gray-900">{change.label}</p>
+          <p className={"mt-0.5 text-sm font-semibold " + valueTone}>
+            {signedShows(change.countDelta)}
+            <span className="ml-1 font-normal text-gray-400">
+              ({change.previousCount} → {change.currentCount})
+            </span>
+          </p>
+          <p className="mt-0.5 text-xs text-gray-500">
+            Faturamento {signedMoney(change.feeDelta)}
+          </p>
+        </>
+      ) : (
+        <p className="mt-1 text-sm text-gray-400">
+          Nenhum dia {tone === "emerald" ? "subiu" : "caiu"}.
+        </p>
       )}
     </div>
   );

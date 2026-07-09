@@ -37,6 +37,9 @@ import {
   type GigCadence,
   type WeekdayPerformance,
   type WeekdayStat,
+  type WeekdayPerformanceComparison,
+  type WeekdayPerformanceDayTrend,
+  classifyWeekdayPerformanceDayChange,
   type FeeDistribution,
   type FeeTrend,
   type CashFlowMonth,
@@ -1490,6 +1493,68 @@ export function weekdayPerformanceToCsv(
     centsToCsvAmount(wp.totalFee),
     "",
     "",
+    "",
+  ]);
+  return toCsv(out, delimiter);
+}
+
+export const WEEKDAY_PERFORMANCE_COMPARISON_CSV_HEADERS = [
+  "Dia",
+  "Shows (ano anterior)",
+  "Shows (ano corrente)",
+  "Δ shows",
+  "Δ faturamento (R$)",
+  "Tendência",
+] as const;
+
+/** Rótulo pt-BR da tendência de um dia no comparativo, espelhando a cor da UI. */
+const WEEKDAY_PERFORMANCE_TREND_LABELS: Record<WeekdayPerformanceDayTrend, string> = {
+  up: "Subiu",
+  down: "Caiu",
+  flat: "Estável",
+};
+
+/**
+ * Serializa o comparativo ano a ano do desempenho por dia da semana
+ * (`compareWeekdayPerformance`) em CSV, pronto para download — espelha a tabela
+ * "Ver os 7 dias" do card "Semana {ano} vs. {ano-1}" de `/shows/dias-semana`.
+ * Espelho fiel de `gigSeasonalityComparisonToCsv` (D223) no eixo do dia da semana:
+ * uma linha por dia (sempre os 7, dom→sáb, inclusive dias sem shows nos dois anos,
+ * para revelar onde a agenda migrou de dia) com o nº de shows de cada ano, a
+ * variação do nº de shows, a variação do faturamento e a tendência (Subiu / Caiu /
+ * Estável), seguida de uma linha "Total".
+ *
+ * Diferente da UI (que mostra "—" nos dias/deltas vazios), o CSV registra 0 e 0,00
+ * para ficar legível por máquina. A coluna "Tendência" replica a cor da tabela
+ * on-screen reusando `classifyWeekdayPerformanceDayChange` (ancora no nº de shows,
+ * com o faturamento de desempate). Os deltas saem assinados (`+`/`-`), o faturamento
+ * via `centsToCsvAmount`. As colunas de nº de shows do Total ficam em branco (o
+ * valor é a variação, como na UI); a tendência do Total também. Os anos concretos
+ * vão no nome do arquivo, não nos cabeçalhos (mesma convenção de
+ * `gigSeasonalityComparisonToCsv`/`yearPaceToCsv`). Convenção pt-BR (";" e decimal
+ * com vírgula). Pura.
+ */
+export function weekdayPerformanceComparisonToCsv(
+  comparison: WeekdayPerformanceComparison,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(WEEKDAY_PERFORMANCE_COMPARISON_CSV_HEADERS)];
+  for (const d of comparison.days) {
+    out.push([
+      d.label,
+      String(d.previousCount),
+      String(d.currentCount),
+      csvSignedCount(d.countDelta),
+      centsToCsvAmount(d.feeDelta),
+      WEEKDAY_PERFORMANCE_TREND_LABELS[classifyWeekdayPerformanceDayChange(d)],
+    ]);
+  }
+  out.push([
+    "Total",
+    "",
+    "",
+    csvSignedCount(comparison.totalShowsDelta),
+    centsToCsvAmount(comparison.totalFeeDelta),
     "",
   ]);
   return toCsv(out, delimiter);

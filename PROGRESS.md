@@ -9,7 +9,25 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1551 testes** verdes após o **nudge no Painel
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1562 testes** verdes após o **comparativo ano a
+ano do desempenho por dia da semana** (Sessão 278, D273 — fecha a última tela de distribuição de shows sem comparativo YoY:
+`/shows/dias-semana` (`weekdayPerformance`/D205) já filtrava por ano (`?ano=`) e exportava CSV, mas — ao contrário da irmã
+`/shows/sazonalidade` (`compareGigSeasonality`/D223) — não dizia "em que dias da semana você passou a tocar mais/menos do que
+no ano passado". Novo helper puro `compareWeekdayPerformance(current, previous)` + tipos `WeekdayPerformanceComparison`/
+`WeekdayPerformanceDayChange` + `classifyWeekdayPerformanceDayChange` (+ tipo `WeekdayPerformanceDayTrend`) em
+`src/lib/finance.ts` (espelho fiel de `compareGigSeasonality`/`classifyGigSeasonalityMonthChange` no eixo do dia da semana):
+casa os 7 dias (dom→sáb) dos dois períodos por índice, destila os dois **movers** — o dia que mais cresceu e o que mais caiu
+em nº de shows (ancora no `count`, `feeDelta` de desempate; dia mais cedo na semana vence empate) — e mantém os 7 `days`
+para o detalhe. CSV `weekdayPerformanceComparisonToCsv` + `WEEKDAY_PERFORMANCE_COMPARISON_CSV_HEADERS` em `src/lib/csv.ts`
+(espelho de `gigSeasonalityComparisonToCsv`: 7 linhas dom→sáb inclusive dias zerados + linha `Total`, deltas assinados,
+tendência Subiu/Caiu/Estável). Card "Semana {ano} vs. {ano-1}" na página `dias-semana/page.tsx` (movers + `<details>` com os 7
+dias + link `⬇ CSV`) só quando `?ano=` está setado e ambos os anos têm shows; rota `/shows/dias-semana/comparativo/export`
+(irmã de `/shows/sazonalidade/comparativo/export`, mesmo gate → 404 sem ano/sem shows nos dois anos). Reusa os shows **já
+carregados** (recorte do ano anterior por `filterShowsByYear`, zero I/O extra), zero regra de negócio nova, zero migração,
+zero dependência. **+11 testes** (`finance.test.ts`: `compareWeekdayPerformance` +4 / `classifyWeekdayPerformanceDayChange`
++4, espelhando os da sazonalidade; `csv.test.ts`: `weekdayPerformanceComparisonToCsv` +3). Build/typecheck/lint
+verdes; smoke → `/login` 200, `/shows/dias-semana` e `/shows/dias-semana/comparativo/export?ano=2026` 307→/login (auth-gated,
+sem 500); `npm audit` inalterado (10 advisories). Ver D273. Antes disso, o **nudge no Painel
 "contratante recorrente passou a fechar em cima da hora"** (Sessão 277, D272 — fecha o "próximo possível" adiado na D270:
 a lógica pura `compareBookingLeadTimeByContact` (D196) já media, por contratante, quem passou a te fechar com mais folga /
 mais em cima da hora ano a ano, mas o sinal só vivia na tela dedicada `/shows/antecedencia/por-contratante`. Novo helper puro
