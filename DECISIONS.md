@@ -9129,3 +9129,56 @@ contexto, decisão, justificativa e alternativas consideradas.
   zero migração.
 - **Nota de concorrência:** número **D267** escolhido como o próximo livre após o D266 (Sessão 271). Se
   uma PR paralela reivindicar D267, renumerar para o próximo livre no merge.
+
+## 2026-07-09 — D268: Antecedência de agendamento por contratante (`bookingLeadTimeByContact` + `/shows/antecedencia/por-contratante`) (Sessão 273)
+- **Contexto:** `bookingLeadTime` (D190) já media com quanta antecedência os shows entram na agenda, mas
+  só no AGREGADO (`/shows/antecedencia`) — não dizia DE QUEM vem o lead. Dois contratantes podem ter o
+  mesmo faturamento e hábitos de agendamento opostos: um te fecha meses antes (dá runway para prospectar,
+  precificar, encaixar a agenda) e outro só chama na véspera (agenda reativa, correria). O eixo "por
+  contratante" já existia nos recebíveis (`paymentLagByContact`/D194, quem paga rápido/devagar), mas não
+  na antecedência.
+- **Decisão:** novo helper puro `bookingLeadTimeByContact(shows, getBooker, scope)` + tipos
+  `BookingLeadTimeByContact`/`ContactBookingLeadTimeRow`/`LeadTimeShowReading` em `src/lib/shows.ts`.
+  Atribui cada show ao seu contratante via `getBooker` (a página usa `pickPayerContact`, o MESMO eixo de
+  "quem responde pelo show" dos recebíveis) e roda `bookingLeadTime` sobre a sublista de cada grupo —
+  herdando escopo, mediana, faixas e confiabilidade sem reimplementar a regra. `overall` roda
+  `bookingLeadTime` sobre a lista inteira (o número da tela-mãe). Nova página
+  `/shows/antecedencia/por-contratante` (seletor de escopo, destaques geral/folga/em-cima-da-hora, tabela
+  ordenada + detalhe por contratante) + rota de export CSV (`bookingLeadTimeByContactToCsv` em
+  `src/lib/csv.ts`) + entrada no hub de relatórios (`reports.ts`) + link "Por contratante →" na tela-mãe.
+- **Justificativa:**
+  - **Reaproveita `bookingLeadTime` por grupo (zero regra duplicada).** A mediana, as faixas, o gate de
+    retroativos e a confiabilidade (`reliable` ≥ `MIN_LEAD_TIME_SAMPLE`) vêm do helper já testado; o
+    byContact só particiona os shows e agrega. `overall` é literalmente `bookingLeadTime(shows, scope)`.
+  - **`pickPayerContact` como eixo, espelhando `paymentLagByContact`.** "Quem te fechou o show" é o mesmo
+    contato responsável que já move os recebíveis — coerência entre as duas leituras por contratante e um
+    grupo `null` "Sem contratante" para shows sem contato vinculado (sempre por último).
+  - **Ordena do MENOR lead mediano ao maior (o mais em cima da hora primeiro).** A ponta que dói lidera a
+    tabela — o contratante que exige correria é o que o músico precisa gerenciar (renegociar prazo, cobrar
+    antecedência), mesma disciplina "problema primeiro" de `paymentLagByContact` (mais lento no topo).
+  - **Destaques só entre amostra confiável (`reliable`).** `mostLeadTime`/`leastLeadTime` ignoram
+    contratantes com 1–2 shows, para o card não celebrar/acusar um único show de sorte; a tabela ainda
+    lista todos (com a mediana gateada a "—" abaixo de `MIN_LEAD_TIME_SAMPLE`, igual à tela-mãe).
+  - **Escopo `all`/`firm` preservado (D190).** O seletor "Todos os shows × Só confirmados/realizados" da
+    tela-mãe continua valendo aqui, repassado a cada `bookingLeadTime` por grupo.
+- **Sem recorte por ano/comparativo ano-a-ano (deliberado, adiado).** A tela-mãe tem `PeriodPicker` +
+  `compareBookingLeadTime`; o `paymentLagByContact` tem o comparativo por contratante. Aqui ficou de fora
+  para manter a sessão fechada e funcional; é o próximo passo natural (espelhar
+  `comparePaymentLagByContact`/`indexContactPaymentLagChanges` no eixo da antecedência).
+- **Alternativas consideradas:** contar por RELAÇÃO (um show com N contatos conta N vezes, como
+  `proposalOutcomesByContact`) — descartado: a antecedência é um atributo do agendamento do show, não de
+  cada contato; um único responsável (`pickPayerContact`) evita dupla contagem e casa com os recebíveis.
+  Ponderar a mediana pelo cachê (como `paymentLagByContact` pondera pelo valor) — não aplicado: a
+  tela-mãe mede a antecedência sem peso de cachê (por show), e o byContact herda esse critério; o cachê
+  entra só como coluna informativa (`totalFee`). CSV com linha "Total" — omitido (o
+  `paymentLagByContactToCsv` também não tem; o total geral vive no destaque `overall`).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`, 0 erros) e lint (`next lint`, 0 avisos) verdes;
+  **1535 testes** (`vitest run`, +8 puros de `bookingLeadTimeByContact` em `shows.test.ts` — vazia;
+  agrupamento + reuso da mediana; ordenação menor→maior lead com `null` por último; soma de `share`;
+  destaques só confiáveis; readings maior→menor lead ignorando retroativos; escopo `firm`; e +5 de
+  `bookingLeadTimeByContactToCsv` em `csv.test.ts`); smoke (`next start`) → `/login` 200,
+  `/shows/antecedencia/por-contratante` e `/export` 307→/login (auth-gated, sem 500). `npm audit`
+  **inalterado** vs. baseline (10 advisories, mesmos Next/postcss; ver D6); **nenhuma dependência nova**,
+  zero migração.
+- **Nota de concorrência:** número **D268** escolhido como o próximo livre após o D267 (Sessão 272). Se
+  uma PR paralela reivindicar D268, renumerar para o próximo livre no merge.

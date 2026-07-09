@@ -145,6 +145,14 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "⏳",
       },
       {
+        title: "Antecedência por contratante",
+        href: "/shows/antecedencia/por-contratante",
+        description:
+          "Quem te fecha com folga e quem só chama em cima da hora — a antecedência quebrada por contratante.",
+        subtopic: "Agenda & pipeline",
+        icon: "⌛",
+      },
+      {
         title: "Praças para revisitar",
         href: "/shows/cidades/revisitar",
         description:
