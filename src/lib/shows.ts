@@ -1185,6 +1185,210 @@ export function bookingLeadTimeByContact<
   };
 }
 
+// ── Comparativo ano a ano da antecedência por contratante ─────────────────────
+// Espelha `comparePaymentLagByContact`/`indexContactPaymentLagChanges` (D194/D195)
+// no eixo da antecedência: casa os contratantes entre dois períodos (o ano
+// selecionado × o anterior) para revelar quem passou a te fechar com MAIS folga /
+// quem começou a chamar em cima da hora, além de quem entrou e quem sumiu da
+// carteira. Ao contrário do prazo de recebimento (descer o prazo é a melhora),
+// aqui **subir** a antecedência é a melhora (mais runway para prospectar/precificar).
+// O veredito ancora na antecedência **MEDIANA** — o mesmo eixo por que a página
+// ordena e destaca (`mostLeadTime`/`leastLeadTime`) e por que o comparativo
+// agregado da tela-mãe (`compareBookingLeadTime`) decide a tendência, reusando o
+// mesmo `LEAD_TIME_TREND_EPSILON` (=7 dias). Puro e determinístico.
+
+/**
+ * Variação da antecedência de UM contratante entre dois períodos (o ano
+ * selecionado × o anterior). Espelha `ContactPaymentLagChange` no eixo da
+ * antecedência. `medianDaysDelta` positivo = o contratante passou a te fechar
+ * com **mais** folga (melhora); negativo = mais em cima da hora (piora).
+ */
+export interface ContactBookingLeadTimeChange<
+  C,
+  S extends LeadTimeShowLike = LeadTimeShowLike,
+> {
+  /** Contratante comparado — sempre identificado (o grupo "sem contratante" fica de fora). */
+  contact: C;
+  /** Linha do contratante no período atual. */
+  current: ContactBookingLeadTimeRow<C, S>;
+  /** Linha do contratante no período anterior. */
+  previous: ContactBookingLeadTimeRow<C, S>;
+  /**
+   * Variação da antecedência MEDIANA (atual − anterior, em dias). Positivo =
+   * fechando com mais folga agora; negativo = mais em cima da hora. Ancora o
+   * veredito (o mesmo eixo por que a página ordena/destaca).
+   */
+  medianDaysDelta: number;
+  /** Variação da antecedência MÉDIA (atual − anterior, em dias) — só informativo. */
+  avgDaysDelta: number;
+  /**
+   * Direção do hábito de agendamento do contratante, pela variação da **mediana**
+   * contra `LEAD_TIME_TREND_EPSILON`:
+   * - "improved": a mediana subiu além do limiar (fecha com mais folga);
+   * - "worsened": caiu além do limiar (fecha mais em cima da hora);
+   * - "stable": dentro do limiar (ruído).
+   */
+  trend: "improved" | "worsened" | "stable";
+}
+
+export interface BookingLeadTimeByContactComparison<
+  C,
+  S extends LeadTimeShowLike = LeadTimeShowLike,
+> {
+  /**
+   * Contratantes presentes nos DOIS períodos, com a variação da antecedência.
+   * Ordenados da maior piora à maior melhora (quem passou a fechar mais em cima
+   * da hora primeiro), para o "mover" de cima do card ser o que mais merece atenção.
+   */
+  changes: ContactBookingLeadTimeChange<C, S>[];
+  /** Quem mais ganhou folga (variação de mediana mais positiva entre os "improved"). */
+  biggestImprovement: ContactBookingLeadTimeChange<C, S> | null;
+  /** Quem mais perdeu folga (variação de mediana mais negativa entre os "worsened"). */
+  biggestWorsening: ContactBookingLeadTimeChange<C, S> | null;
+  /** Contratantes que só fecharam show mensurável no período atual (novos na carteira). */
+  newContacts: ContactBookingLeadTimeRow<C, S>[];
+  /** Contratantes que fecharam no anterior mas não no atual (sumiram da carteira). */
+  droppedContacts: ContactBookingLeadTimeRow<C, S>[];
+}
+
+/**
+ * Compara a **antecedência por contratante** entre dois períodos (atual ×
+ * anterior), casando os contratantes por `contact.id`. Para cada um presente nos
+ * dois períodos devolve a variação da antecedência (quem passou a fechar com mais
+ * folga / mais em cima da hora); os que aparecem só num período viram
+ * `newContacts`/`droppedContacts`.
+ *
+ * Pura, sem I/O: recebe dois `bookingLeadTimeByContact` já computados (cada um
+ * sobre os shows do seu período). Ao contrário do prazo de recebimento (descer é
+ * melhora), aqui **subir** a antecedência é a melhora — mais runway de agenda,
+ * como no comparativo agregado da tela-mãe (`compareBookingLeadTime`/D188).
+ *
+ * O veredito por contratante ancora na **mediana** (`leadTime.medianDays`), o
+ * mesmo eixo por que a página ordena e destaca e por que o comparativo agregado
+ * decide a tendência; reusa `LEAD_TIME_TREND_EPSILON` (=7 dias) como limiar. Por
+ * contratante a amostra costuma ser pequena, então o chamador tipicamente marca os
+ * destaques abaixo de `MIN_LEAD_TIME_SAMPLE` como amostra fina (como faz o irmão
+ * `comparePaymentLagByContact`). O chamador decide quando exibir (tipicamente só
+ * com um ano específico e ambos os períodos com amostra mensurável).
+ */
+export function compareBookingLeadTimeByContact<
+  C extends { id: string },
+  S extends LeadTimeShowLike,
+>(
+  current: BookingLeadTimeByContact<C, S>,
+  previous: BookingLeadTimeByContact<C, S>,
+): BookingLeadTimeByContactComparison<C, S> {
+  const prevById = new Map<string, ContactBookingLeadTimeRow<C, S>>();
+  for (const r of previous.rows) {
+    if (r.contact) prevById.set(r.contact.id, r);
+  }
+
+  const currentIds = new Set<string>();
+  const changes: ContactBookingLeadTimeChange<C, S>[] = [];
+  const newContacts: ContactBookingLeadTimeRow<C, S>[] = [];
+
+  for (const cur of current.rows) {
+    if (!cur.contact) continue; // grupo "sem contratante" não é comparável
+    currentIds.add(cur.contact.id);
+    const prev = prevById.get(cur.contact.id);
+    if (!prev) {
+      newContacts.push(cur);
+      continue;
+    }
+    const medianDaysDelta = cur.leadTime.medianDays - prev.leadTime.medianDays;
+    changes.push({
+      contact: cur.contact,
+      current: cur,
+      previous: prev,
+      medianDaysDelta,
+      avgDaysDelta: cur.leadTime.avgDays - prev.leadTime.avgDays,
+      trend:
+        medianDaysDelta >= LEAD_TIME_TREND_EPSILON
+          ? "improved"
+          : medianDaysDelta <= -LEAD_TIME_TREND_EPSILON
+            ? "worsened"
+            : "stable",
+    });
+  }
+
+  const droppedContacts = previous.rows.filter(
+    (r): r is ContactBookingLeadTimeRow<C, S> & { contact: C } =>
+      !!r.contact && !currentIds.has(r.contact.id),
+  );
+
+  // Maior piora no topo (perda de folga primeiro): variação de mediana asc;
+  // empate estável pelo id.
+  changes.sort(
+    (a, b) =>
+      a.medianDaysDelta - b.medianDaysDelta ||
+      a.contact.id.localeCompare(b.contact.id),
+  );
+
+  let biggestImprovement: ContactBookingLeadTimeChange<C, S> | null = null;
+  let biggestWorsening: ContactBookingLeadTimeChange<C, S> | null = null;
+  for (const c of changes) {
+    if (
+      c.trend === "improved" &&
+      (!biggestImprovement || c.medianDaysDelta > biggestImprovement.medianDaysDelta)
+    ) {
+      biggestImprovement = c;
+    }
+    if (
+      c.trend === "worsened" &&
+      (!biggestWorsening || c.medianDaysDelta < biggestWorsening.medianDaysDelta)
+    ) {
+      biggestWorsening = c;
+    }
+  }
+
+  return { changes, biggestImprovement, biggestWorsening, newContacts, droppedContacts };
+}
+
+/**
+ * Situação de uma linha da tabela por contratante (período atual) frente ao
+ * período anterior, para a coluna "vs. {ano-1}" (espelha
+ * `ContactPaymentLagRowStatus`/D195):
+ * - "changed": o contratante existia nos dois períodos — traz a variação da antecedência;
+ * - "new": só apareceu no período atual (começou a fechar agora);
+ * - "none": o grupo "sem contratante" (não é comparável).
+ */
+export type ContactBookingLeadTimeRowStatus<
+  C,
+  S extends LeadTimeShowLike = LeadTimeShowLike,
+> =
+  | { kind: "changed"; change: ContactBookingLeadTimeChange<C, S> }
+  | { kind: "new" }
+  | { kind: "none" };
+
+/**
+ * Casa cada linha da tabela por contratante (período atual) com sua situação no
+ * comparativo `compareBookingLeadTimeByContact`, indexando por `contact.id` para o
+ * consumidor resolver a coluna "vs. {ano-1}" em O(1) — sem repetir a varredura na
+ * apresentação. Puro: recebe o comparativo já computado e devolve uma função de
+ * lookup. Um contratante presente nos dois períodos vira "changed"; um que só está
+ * no atual (em `newContacts`) vira "new"; qualquer outro id (incluindo o grupo sem
+ * contratante) vira "none". Espelha `indexContactPaymentLagChanges`.
+ */
+export function indexContactBookingLeadTimeChanges<
+  C extends { id: string },
+  S extends LeadTimeShowLike,
+>(
+  comparison: BookingLeadTimeByContactComparison<C, S>,
+): (contactId: string | null | undefined) => ContactBookingLeadTimeRowStatus<C, S> {
+  const changedById = new Map<string, ContactBookingLeadTimeChange<C, S>>();
+  for (const c of comparison.changes) changedById.set(c.contact.id, c);
+  const newIds = new Set<string>();
+  for (const r of comparison.newContacts) if (r.contact) newIds.add(r.contact.id);
+
+  return (contactId) => {
+    if (!contactId) return { kind: "none" };
+    const change = changedById.get(contactId);
+    if (change) return { kind: "changed", change };
+    if (newIds.has(contactId)) return { kind: "new" };
+    return { kind: "none" };
+  };
+}
+
 /**
  * Antecedência mediana (em dias) a partir da qual a agenda é considerada
  * apertada — "fecha shows em cima da hora". Duas semanas de folga é o piso

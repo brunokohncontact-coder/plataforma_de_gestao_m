@@ -4,8 +4,11 @@ import { prisma } from "@/lib/prisma";
 import {
   bookingLeadTimeByContact,
   bookingLeadTimeYears,
+  compareBookingLeadTimeByContact,
+  indexContactBookingLeadTimeChanges,
   parseLeadTimeScope,
   type LeadTimeShowLike,
+  type ContactBookingLeadTimeRowStatus,
 } from "@/lib/shows";
 import { parseProfitYear, filterShowsByYear } from "@/lib/finance";
 import { pickPayerContact } from "@/lib/billing";
@@ -50,18 +53,49 @@ export async function GET(req: NextRequest) {
     scope,
   );
 
+  // Comparativo ano a ano por contratante (D196), espelhando a página: só com um
+  // ano específico e ambos os períodos com amostra mensurável. Quando existe, a
+  // planilha ganha a coluna "vs. {ano-1}"; senão fica idêntica à histórica.
+  type BookerContact = { id: string; name: string };
+  let rowStatus:
+    | ((id: string | null | undefined) => ContactBookingLeadTimeRowStatus<BookerContact>)
+    | null = null;
+  let previousYear: number | null = null;
+  if (yearFilter !== "all") {
+    const prev = yearFilter - 1;
+    const previousReport = bookingLeadTimeByContact(
+      filterShowsByYear(rows, prev) as (LeadTimeShowLike & ShowRow)[],
+      getBooker as (s: LeadTimeShowLike & ShowRow) => BookerContact | null,
+      scope,
+    );
+    if (report.sample > 0 && previousReport.sample > 0) {
+      const comparison = compareBookingLeadTimeByContact(report, previousReport);
+      if (comparison.changes.length > 0) {
+        rowStatus = indexContactBookingLeadTimeChanges(comparison);
+        previousYear = prev;
+      }
+    }
+  }
+
   const csv = bookingLeadTimeByContactToCsv(
-    report.rows.map((r) => ({
-      contact: r.contact ? { name: r.contact.name } : null,
-      sample: r.leadTime.sample,
-      medianDays: r.leadTime.medianDays,
-      avgDays: r.leadTime.avgDays,
-      shortestDays: r.leadTime.shortestDays,
-      longestDays: r.leadTime.longestDays,
-      reliable: r.leadTime.reliable,
-      share: r.share,
-      totalFee: r.totalFee,
-    })),
+    report.rows.map((r) => {
+      const status = rowStatus?.(r.contact?.id);
+      return {
+        contact: r.contact ? { name: r.contact.name } : null,
+        sample: r.leadTime.sample,
+        medianDays: r.leadTime.medianDays,
+        avgDays: r.leadTime.avgDays,
+        shortestDays: r.leadTime.shortestDays,
+        longestDays: r.leadTime.longestDays,
+        reliable: r.leadTime.reliable,
+        share: r.share,
+        totalFee: r.totalFee,
+        medianDaysDelta: status?.kind === "changed" ? status.change.medianDaysDelta : null,
+        isNew: status?.kind === "new",
+      };
+    }),
+    undefined,
+    previousYear,
   );
 
   // BOM UTF-8 para preservar acentuação ao abrir no Excel.

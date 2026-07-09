@@ -9,7 +9,25 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1535 testes** verdes após o **recorte por ano
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1543 testes** verdes após o **comparativo ano a
+ano da antecedência por contratante** (Sessão 275, D270 — fecha o "passo maior" adiado nas D268/D269: quem passou a te
+fechar com MAIS folga / mais em cima da hora de um ano para o outro. Espelha `comparePaymentLagByContact`/
+`indexContactPaymentLagChanges` (D194/D195) no eixo da antecedência. Novo em `src/lib/shows.ts`:
+`compareBookingLeadTimeByContact(current, previous)` + `indexContactBookingLeadTimeChanges(comparison)` + tipos
+`ContactBookingLeadTimeChange`/`BookingLeadTimeByContactComparison`/`ContactBookingLeadTimeRowStatus` — casa por
+`contact.id` dois `bookingLeadTimeByContact` (ano atual × anterior, mesmo escopo), devolve as variações (`changes`), os
+extremos (`biggestImprovement`/`biggestWorsening`) e quem entrou/sumiu (`newContacts`/`droppedContacts`). Ao contrário do
+prazo de recebimento (descer é melhora), aqui **subir** a antecedência é a melhora (mais runway) — `medianDaysDelta` positivo
+= "improved", `changes` da maior piora ao topo; ancora na MEDIANA (o eixo por que a página ordena/destaca e o comparativo
+agregado decide a tendência), reusando `LEAD_TIME_TREND_EPSILON`(=7). Página `/shows/antecedencia/por-contratante` ganha o
+card "Quem mudou o ritmo de agenda · {ano} vs. {ano-1}" (espelho de `PaymentLagMoversCard`, marca amostra pequena <
+`MIN_LEAD_TIME_SAMPLE`) + coluna "vs. {ano-1}" na tabela + nota de rodapé, tudo gated ao ano específico com ambos os
+períodos medindo antecedência. Export CSV ganha a coluna opcional "vs. {ano-1} (dias)" (via `previousYear` em
+`bookingLeadTimeByContactToCsv`, padrão do `paymentLagByContactToCsv`). Reusa os shows já carregados (recorte por `date`,
+D108) e `pickPayerContact` — zero I/O novo, zero migração, zero dependência. **+8 testes** (4 de
+`compareBookingLeadTimeByContact`, 2 de `indexContactBookingLeadTimeChanges`, 2 de CSV com/sem `previousYear`).
+Build/typecheck/lint verdes; smoke → `/login` 200, página e `/export` com `?ano=2026&escopo=firm` 307→/login; `npm audit`
+inalterado (10 advisories). Ver D270. Antes disso, o **recorte por ano
 na antecedência por contratante** (Sessão 274, D269 — a D268 entregou a antecedência por contratante mas SEM recorte por
 ano (adiado ali); a tela-mãe `/shows/antecedencia` já filtra por ano (D186). Agora a página e o export
 `/shows/antecedencia/por-contratante` aplicam o MESMO recorte: filtra os shows por ano (`filterShowsByYear`, D108)
@@ -4471,9 +4489,12 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    mediano ao maior, "Sem contratante" por último; destaques só entre amostra confiável) + página `/shows/antecedencia/por-contratante`
    (seletor de escopo, destaques + tabela + detalhe) + export `bookingLeadTimeByContactToCsv` + entrada no hub + link na tela-mãe:
    quem te fecha com folga × quem só chama em cima da hora. Espelho de `paymentLagByContact` (D194) no eixo da antecedência, ver D268.
-   **+13 testes.** Próximo possível para esta feature: (a) recorte por `?ano=`/`PeriodPicker` + comparativo ano-a-ano por contratante
-   (adiado nesta sessão — espelhar `comparePaymentLagByContact`/`indexContactPaymentLagChanges` no eixo da antecedência); (b) coluna
-   "vs. {ano-1}" na tabela (dependeria de (a)).
+   **+13 testes.** Recorte por `?ano=`/`PeriodPicker` entregue na Sessão 274 (D269) e o **comparativo ano-a-ano por contratante**
+   entregue na Sessão 275 (D270 — `compareBookingLeadTimeByContact` + `indexContactBookingLeadTimeChanges` + card "Quem mudou o
+   ritmo de agenda" + coluna "vs. {ano-1}" na tabela e no CSV): fecha as duas alternativas então adiadas. A feature de
+   antecedência por contratante está em paridade total com o eixo de recebíveis (escopo + ano + comparativo YoY). Próximo possível,
+   se houver demanda: um nudge no Painel quando um contratante recorrente passa a fechar em cima da hora (espelho de
+   `contactConversionDropHeadline`/D252 no eixo da antecedência) — adiado por ora (o card já entrega o sinal na tela dedicada).
    **Comparativo ano a ano do prazo de recebimento por contratante** entregue na Sessão 202 — `comparePaymentLagByContact` +
    `PaymentLagByContactComparison`/`ContactPaymentLagChange` em `src/lib/finance.ts` + card `PaymentLagMoversCard` "Quem mudou de
    ritmo" em `/shows/prazo-recebimento/por-contratante`: quem começou a te pagar mais rápido/devagar de um ano para o outro

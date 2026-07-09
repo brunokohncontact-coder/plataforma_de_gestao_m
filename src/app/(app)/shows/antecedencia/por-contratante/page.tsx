@@ -4,10 +4,16 @@ import { prisma } from "@/lib/prisma";
 import {
   bookingLeadTimeByContact,
   bookingLeadTimeYears,
+  compareBookingLeadTimeByContact,
+  indexContactBookingLeadTimeChanges,
   parseLeadTimeScope,
   MIN_LEAD_TIME_SAMPLE,
+  LEAD_TIME_TREND_EPSILON,
   type BookingLeadTimeScope,
   type LeadTimeShowLike,
+  type BookingLeadTimeByContactComparison,
+  type ContactBookingLeadTimeChange,
+  type ContactBookingLeadTimeRowStatus,
 } from "@/lib/shows";
 import { parseProfitYear, filterShowsByYear, type ProfitYearFilter } from "@/lib/finance";
 import { pickPayerContact } from "@/lib/billing";
@@ -133,6 +139,34 @@ export default async function BookingLeadTimeByContactPage({
     getBooker as (s: LeadTimeShowLike & ShowRow) => BookerContact | null,
     scope,
   );
+
+  // Comparativo por contratante {ano} × {ano-1}: quem passou a te fechar com mais
+  // folga / mais em cima da hora (D196 — fecha o "passo maior" adiado nas D268/D269,
+  // espelhando comparePaymentLagByContact/D194). Só com um ano específico e ambos os
+  // períodos com amostra mensurável — senão "ganhou/perdeu folga" enganaria. Reusa os
+  // mesmos shows já carregados (recorte por `date`, D108) sob o MESMO escopo, sem nova
+  // consulta. O veredito por contratante ancora na mediana, o eixo por que a página
+  // ordena e destaca.
+  let comparison: BookingLeadTimeByContactComparison<BookerContact> | null = null;
+  let previousYear = 0;
+  if (yearFilter !== "all") {
+    previousYear = yearFilter - 1;
+    const previousReport = bookingLeadTimeByContact(
+      filterShowsByYear(rows, previousYear) as (LeadTimeShowLike & ShowRow)[],
+      getBooker as (s: LeadTimeShowLike & ShowRow) => BookerContact | null,
+      scope,
+    );
+    if (report.sample > 0 && previousReport.sample > 0) {
+      const c = compareBookingLeadTimeByContact(report, previousReport);
+      // Só vale exibir se há de fato algum contratante nos dois períodos.
+      if (c.changes.length > 0) comparison = c;
+    }
+  }
+
+  // Lookup por `contact.id` para a coluna "vs. {ano-1}" da tabela: casa cada linha
+  // (período atual) com sua variação, ou marca "novo"/"—" (D196). Reusa o mesmo
+  // comparativo já computado — zero lógica pura nova na página.
+  const rowStatus = comparison ? indexContactBookingLeadTimeChanges(comparison) : null;
 
   // Monta uma query preservando ano+escopo (para o export, o ScopePicker e o
   // PeriodPicker). Omite o padrão de cada eixo (ano="all", escopo="all") para
@@ -271,6 +305,14 @@ export default async function BookingLeadTimeByContactPage({
             </div>
           </div>
 
+          {comparison && (
+            <LeadTimeMoversCard
+              comparison={comparison}
+              currentYear={yearFilter as number}
+              previousYear={previousYear}
+            />
+          )}
+
           {/* Por contratante, do mais em cima da hora ao de maior folga */}
           <section className="card overflow-x-auto p-0">
             <table className="w-full text-sm">
@@ -279,6 +321,9 @@ export default async function BookingLeadTimeByContactPage({
                   <th className="px-4 py-3 font-medium">Contratante</th>
                   <th className="px-4 py-3 text-right font-medium">Shows</th>
                   <th className="px-4 py-3 text-right font-medium">Antec. mediana</th>
+                  {rowStatus && (
+                    <th className="px-4 py-3 text-right font-medium">vs. {previousYear}</th>
+                  )}
                   <th className="px-4 py-3 text-right font-medium">Antec. média</th>
                   <th className="px-4 py-3 text-right font-medium">Menor–maior</th>
                   <th className="px-4 py-3 text-right font-medium">Cachê</th>
@@ -311,6 +356,14 @@ export default async function BookingLeadTimeByContactPage({
                         medianDays={r.leadTime.medianDays}
                       />
                     </td>
+                    {rowStatus && (
+                      <td className="px-4 py-3 text-right">
+                        <LeadTimeRowDelta
+                          status={rowStatus(r.contact?.id)}
+                          year={previousYear}
+                        />
+                      </td>
+                    )}
                     <td className="px-4 py-3 text-right text-gray-500">
                       {daysLabel(r.leadTime.avgDays)}
                     </td>
@@ -393,9 +446,169 @@ export default async function BookingLeadTimeByContactPage({
             demais e fica &quot;—&quot;. Shows sem contato vinculado caem em &quot;Sem
             contratante&quot;. Lançamentos retroativos (registrados depois da data do show) e
             cancelados não entram.
+            {rowStatus && (
+              <>
+                {" "}
+                A coluna <strong>vs. {previousYear}</strong> mostra a variação da antecedência
+                mediana de cada contratante frente ao ano anterior —{" "}
+                <span className="text-emerald-600">verde</span> passou a fechar com mais folga,{" "}
+                <span className="text-red-600">vermelho</span> passou a chamar mais em cima da hora,
+                &quot;novo&quot; começou a fechar só neste ano.
+              </>
+            )}
           </p>
         </>
       )}
     </div>
+  );
+}
+
+/** Variação da antecedência em dias com sinal (ex.: 12 → "+12 dias", -1 → "−1 dia"). */
+function signedDaysLabel(delta: number): string {
+  if (delta === 0) return "0 dias";
+  const abs = Math.abs(delta);
+  return `${delta > 0 ? "+" : "−"}${abs} ${abs === 1 ? "dia" : "dias"}`;
+}
+
+/**
+ * Célula da coluna "vs. {ano-1}" na tabela por contratante: a variação da
+ * antecedência mediana deste contratante frente ao ano anterior
+ * (`indexContactBookingLeadTimeChanges`, D196). Subir a antecedência é melhora
+ * (verde, fecha com mais folga); descer é piora (vermelho, mais em cima da hora);
+ * dentro do limiar é estável (cinza). Quem só apareceu neste ano vira "novo"; o
+ * grupo sem contratante e quem não é comparável ficam em "—".
+ */
+function LeadTimeRowDelta({
+  status,
+  year,
+}: {
+  status: ContactBookingLeadTimeRowStatus<BookerContact>;
+  year: number;
+}) {
+  if (status.kind === "new") {
+    return (
+      <span className="text-xs text-gray-400" title={`Começou a fechar depois de ${year}`}>
+        novo
+      </span>
+    );
+  }
+  if (status.kind === "none") {
+    return <span className="text-gray-300">—</span>;
+  }
+  const { medianDaysDelta, trend } = status.change;
+  const tone =
+    trend === "improved"
+      ? "text-emerald-600"
+      : trend === "worsened"
+        ? "text-red-600"
+        : "text-gray-500";
+  return <span className={"font-medium " + tone}>{signedDaysLabel(medianDaysDelta)}</span>;
+}
+
+/** Um lado do card de "movers": quem ganhou ou quem perdeu folga de agenda. */
+function MoverBlock({
+  title,
+  change,
+  tone,
+}: {
+  title: string;
+  change: ContactBookingLeadTimeChange<BookerContact> | null;
+  tone: "improved" | "worsened";
+}) {
+  const valueClass = tone === "improved" ? "text-emerald-600" : "text-red-600";
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{title}</p>
+      {change ? (
+        <>
+          <p className="mt-1 truncate font-medium text-gray-900">{change.contact.name}</p>
+          <p className={"mt-1 text-lg font-bold " + valueClass}>
+            {signedDaysLabel(change.medianDaysDelta)}
+          </p>
+          <p className="text-xs text-gray-400">
+            {daysLabel(change.previous.leadTime.medianDays)} →{" "}
+            {daysLabel(change.current.leadTime.medianDays)}
+          </p>
+        </>
+      ) : (
+        <p className="mt-1 text-sm text-gray-400">
+          Nenhum contratante {tone === "improved" ? "ganhou" : "perdeu"} mais de{" "}
+          {LEAD_TIME_TREND_EPSILON} dias de folga
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Card "Quem mudou o ritmo de agenda {ano} vs. {ano-1}": destaca o contratante que
+ * mais ganhou folga (passou a te fechar com mais antecedência) e o que mais perdeu
+ * (passou a chamar em cima da hora) frente ao ano anterior
+ * (`compareBookingLeadTimeByContact`, D196). Ao contrário do prazo de recebimento,
+ * aqui **subir** a antecedência é a melhora — mais runway para prospectar e
+ * precificar. Fecha o rodapé com os contratantes que entraram e sumiram da carteira
+ * neste ano. Espelho de `PaymentLagMoversCard` no eixo da antecedência.
+ */
+function LeadTimeMoversCard({
+  comparison,
+  currentYear,
+  previousYear,
+}: {
+  comparison: BookingLeadTimeByContactComparison<BookerContact>;
+  currentYear: number;
+  previousYear: number;
+}) {
+  const { biggestImprovement, biggestWorsening, changes, newContacts, droppedContacts } =
+    comparison;
+  const smallSample = [biggestImprovement, biggestWorsening].some(
+    (c) =>
+      c &&
+      (c.current.leadTime.sample < MIN_LEAD_TIME_SAMPLE ||
+        c.previous.leadTime.sample < MIN_LEAD_TIME_SAMPLE),
+  );
+  return (
+    <section className="card space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+          Quem mudou o ritmo de agenda · {currentYear} vs. {previousYear}
+        </p>
+        <span className="text-xs text-gray-400">
+          {changes.length}{" "}
+          {changes.length === 1 ? "contratante comparável" : "contratantes comparáveis"}
+        </span>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <MoverBlock title="Passou a fechar com folga" change={biggestImprovement} tone="improved" />
+        <MoverBlock title="Passou a chamar em cima da hora" change={biggestWorsening} tone="worsened" />
+      </div>
+      {(newContacts.length > 0 || droppedContacts.length > 0) && (
+        <p className="text-xs text-gray-400">
+          {newContacts.length > 0 && (
+            <>
+              {newContacts.length}{" "}
+              {newContacts.length === 1
+                ? "contratante começou a fechar"
+                : "contratantes começaram a fechar"}{" "}
+              em {currentYear}
+            </>
+          )}
+          {newContacts.length > 0 && droppedContacts.length > 0 && " · "}
+          {droppedContacts.length > 0 && (
+            <>
+              {droppedContacts.length}{" "}
+              {droppedContacts.length === 1 ? "fechou" : "fecharam"} em {previousYear} mas não em{" "}
+              {currentYear}
+            </>
+          )}
+          .
+        </p>
+      )}
+      {smallSample && (
+        <p className="text-xs text-gray-400">
+          Amostra pequena em ao menos um dos destaques — poucos shows tornam a comparação da
+          mediana sensível a casos isolados.
+        </p>
+      )}
+    </section>
   );
 }

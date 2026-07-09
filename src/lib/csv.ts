@@ -3748,6 +3748,17 @@ export interface BookingLeadTimeByContactCsvRow {
   share: number;
   /** Cachê somado dos shows mensuráveis do contratante (centavos). */
   totalFee: number;
+  /**
+   * Situação da linha frente ao período anterior, para a coluna opcional
+   * "vs. {ano-1}" (espelha `ContactBookingLeadTimeRowStatus`/D196): variação da
+   * antecedência MEDIANA (atual − anterior, dias; positivo = passou a fechar com
+   * mais folga) quando o contratante existe nos dois períodos. Só entra na saída
+   * quando o serializador recebe `previousYear`; deixe `undefined`/`null` para as
+   * linhas não comparáveis (grupo sem contratante, ou quando não há recorte por ano).
+   */
+  medianDaysDelta?: number | null;
+  /** `true` quando o contratante só apareceu no período atual ("novo" na coluna). */
+  isNew?: boolean;
 }
 
 /**
@@ -3760,14 +3771,26 @@ export interface BookingLeadTimeByContactCsvRow {
  * branco (mesma regra de apresentação da UI). A ordem das linhas é preservada (a
  * página ordena do menor lead mediano ao maior, "Sem contratante" por último).
  * Irmão de `paymentLagByContactToCsv` no eixo da antecedência. Pura.
+ *
+ * Quando `previousYear` é informado (recorte por ano com comparativo, D196), a
+ * planilha ganha uma última coluna "vs. {previousYear} (dias)" espelhando a coluna
+ * da página: variação assinada da antecedência mediana para quem existe nos dois
+ * períodos (positivo = passou a fechar com mais folga), "novo" para quem só apareceu
+ * no ano atual (`isNew`) e em branco para as linhas não comparáveis (grupo sem
+ * contratante / `medianDaysDelta` ausente). Sem `previousYear`, a saída é idêntica à
+ * histórica (8 colunas).
  */
 export function bookingLeadTimeByContactToCsv(
   rows: BookingLeadTimeByContactCsvRow[],
   delimiter = DEFAULT_DELIMITER,
+  previousYear?: number | null,
 ): string {
-  const out: string[][] = [Array.from(BOOKING_LEAD_TIME_BY_CONTACT_CSV_HEADERS)];
+  const withTrend = previousYear != null;
+  const header = Array.from(BOOKING_LEAD_TIME_BY_CONTACT_CSV_HEADERS) as string[];
+  if (withTrend) header.push(`vs. ${previousYear} (dias)`);
+  const out: string[][] = [header];
   for (const row of rows) {
-    out.push([
+    const cols = [
       row.contact ? row.contact.name : "Sem contratante",
       String(row.sample),
       row.reliable ? String(row.medianDays) : "",
@@ -3776,7 +3799,17 @@ export function bookingLeadTimeByContactToCsv(
       row.longestDays == null ? "" : String(row.longestDays),
       csvShare(row.share),
       centsToCsvAmount(row.totalFee),
-    ]);
+    ];
+    if (withTrend) {
+      cols.push(
+        row.isNew
+          ? "novo"
+          : row.medianDaysDelta != null
+            ? csvSignedDays(row.medianDaysDelta)
+            : "",
+      );
+    }
+    out.push(cols);
   }
   return toCsv(out, delimiter);
 }
