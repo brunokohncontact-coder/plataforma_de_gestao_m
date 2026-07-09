@@ -34,6 +34,9 @@ import {
   cashBurnHeadline,
   yearToDatePace,
   yearToDatePaceHeadline,
+  feeDistribution,
+  compareFeeDistribution,
+  feeDropHeadline,
   rankContactsByProfit,
   clientConcentration,
   clientConcentrationHeadline,
@@ -309,6 +312,21 @@ export default async function DashboardPage() {
   // (yearToDatePaceHeadline → verdict "behind"); com ritmo bom/em linha ou sem base de
   // comparação o aviso seria ruído. O detalhe completo está em /financas/ritmo-do-ano.
   const ytdPaceHeadline = yearToDatePaceHeadline(yearToDatePace(txs));
+
+  // Queda do cachê típico (D274): "meu show mediano passou a pagar menos que no ano
+  // passado?". Reaproveita os shows já carregados: recorta por ano UTC (D108) e roda
+  // a mesma distribuição por faixa da tela /shows/faixas-de-cache sobre o ano corrente
+  // e o anterior, comparando o cachê MEDIANO (compareFeeDistribution/D187). Vira nudge
+  // só quando o preço típico de fato CAIU com amostra confiável nos dois anos
+  // (feeDropHeadline → trend "down" + ≥ FEE_DROP_MIN_SAMPLE shows priced cada) — uma
+  // erosão de preço é um risco acionável (revisar tabela/mix de contratantes); um cachê
+  // subindo é boa notícia e não precisa de banner. O detalhe está em /shows/faixas-de-cache.
+  const feeDropHead = feeDropHeadline(
+    compareFeeDistribution(
+      feeDistribution(filterShowsByYear(shows, currentYear) as ReceivableShowLike[]),
+      feeDistribution(filterShowsByYear(shows, currentYear - 1) as ReceivableShowLike[]),
+    ),
+  );
 
   // Concentração de clientes (D109): "quanto da minha receita depende de poucos
   // contratantes?". Reaproveita os shows (com contatos) e transações já carregados;
@@ -830,6 +848,38 @@ export default async function DashboardPage() {
             do mesmo ponto de {ytdPaceHeadline.lastYear} ({formatMoney(ytdPaceHeadline.lastYearIncome)}).
           </span>
           <span className={ytdPaceHeadline.critical ? "text-red-600" : "text-amber-600"}>Ver →</span>
+        </Link>
+      )}
+
+      {/* Queda do cachê típico (D274): o show mediano passou a pagar menos que no ano
+          passado — só aparece quando o preço típico de fato caiu (com amostra confiável).
+          Escala para vermelho quando a mediana afunda 25% ou mais. */}
+      {feeDropHead.show && (
+        <Link
+          href={`/shows/faixas-de-cache?ano=${currentYear}`}
+          className={
+            "flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3 text-sm transition " +
+            (feeDropHead.critical
+              ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100")
+          }
+        >
+          <span className="font-semibold">
+            {feeDropHead.critical ? "🔴" : "🔻"} Cachê típico em queda
+          </span>
+          <span>
+            O show mediano de {currentYear} paga{" "}
+            <strong>{formatMoney(feeDropHead.currentMedian)}</strong>
+            {feeDropHead.pct !== null && (
+              <>
+                {" "}
+                — <strong>{Math.round(Math.abs(feeDropHead.pct) * 100)}% abaixo</strong>
+              </>
+            )}{" "}
+            do típico de {currentYear - 1} ({formatMoney(feeDropHead.previousMedian)}). Hora de
+            revisar a tabela e o mix de contratantes.
+          </span>
+          <span className={feeDropHead.critical ? "text-red-600" : "text-amber-600"}>Ver →</span>
         </Link>
       )}
 

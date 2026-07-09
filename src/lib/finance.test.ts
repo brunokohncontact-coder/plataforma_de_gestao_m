@@ -97,6 +97,7 @@ import {
   feeDistribution,
   feeDistributionYears,
   compareFeeDistribution,
+  feeDropHeadline,
   premiumBandShare,
   type FeeDistribution,
   weekdayPerformanceYears,
@@ -6766,6 +6767,80 @@ describe("compareFeeDistribution", () => {
     const dist = distOf(6_000_00, 6_000_00, 1_000_00, 1_000_00); // 2 de 4 premium
     expect(premiumBandShare(dist)).toBeCloseTo(0.5, 5);
     expect(premiumBandShare(feeDistribution([], { now }))).toBe(0); // vazio → 0
+  });
+});
+
+describe("feeDropHeadline", () => {
+  const now = new Date("2026-06-15T12:00:00.000Z");
+
+  function gig(partial: Partial<ReceivableShowLike>): ReceivableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-01-10T20:00:00.000Z",
+      ...partial,
+    };
+  }
+
+  function distOf(...fees: number[]): FeeDistribution {
+    return feeDistribution(
+      fees.map((fee, i) => gig({ id: `g${i}`, fee })),
+      { now },
+    );
+  }
+
+  it("mediana caindo materialmente com amostra confiável → show, não crítico", () => {
+    const current = distOf(800_00, 800_00, 800_00); // mediana 800
+    const previous = distOf(1_000_00, 1_000_00, 1_000_00); // mediana 1.000
+    const head = feeDropHeadline(compareFeeDistribution(current, previous));
+    expect(head.show).toBe(true);
+    expect(head.critical).toBe(false); // 800/1000 = 0,8 > 0,75
+    expect(head.currentMedian).toBe(800_00);
+    expect(head.previousMedian).toBe(1_000_00);
+    expect(head.medianFeeDelta).toBe(-200_00);
+    expect(head.pct).toBeCloseTo(-0.2, 5);
+    expect(head.currentShows).toBe(3);
+    expect(head.previousShows).toBe(3);
+  });
+
+  it("queda de 25% ou mais → crítico", () => {
+    const current = distOf(700_00, 700_00, 700_00); // mediana 700
+    const previous = distOf(1_000_00, 1_000_00, 1_000_00); // mediana 1.000
+    const head = feeDropHeadline(compareFeeDistribution(current, previous));
+    expect(head.show).toBe(true);
+    expect(head.critical).toBe(true); // 700/1000 = 0,7 ≤ 0,75
+  });
+
+  it("cachê mediano subindo → não vira nudge", () => {
+    const current = distOf(1_200_00, 1_200_00, 1_200_00);
+    const previous = distOf(1_000_00, 1_000_00, 1_000_00);
+    const head = feeDropHeadline(compareFeeDistribution(current, previous));
+    expect(head.show).toBe(false);
+    expect(head.critical).toBe(false);
+  });
+
+  it("variação dentro do limiar (estável) → não vira nudge", () => {
+    const current = distOf(1_020_00, 1_020_00, 1_020_00); // +R$ 20 (< piso R$ 50)
+    const previous = distOf(1_000_00, 1_000_00, 1_000_00);
+    const head = feeDropHeadline(compareFeeDistribution(current, previous));
+    expect(head.show).toBe(false);
+  });
+
+  it("amostra fina em um dos anos suprime o nudge mesmo com queda material", () => {
+    const current = distOf(600_00, 600_00); // só 2 shows (< FEE_DROP_MIN_SAMPLE)
+    const previous = distOf(1_000_00, 1_000_00, 1_000_00);
+    const head = feeDropHeadline(compareFeeDistribution(current, previous));
+    expect(head.show).toBe(false);
+    // Ainda reporta os fatos para quem quiser o detalhe.
+    expect(head.currentShows).toBe(2);
+    expect(head.previousShows).toBe(3);
+  });
+
+  it("limiares parametrizáveis: minSample maior barra o nudge", () => {
+    const current = distOf(700_00, 700_00, 700_00);
+    const previous = distOf(1_000_00, 1_000_00, 1_000_00);
+    expect(feeDropHeadline(compareFeeDistribution(current, previous), 5).show).toBe(false);
   });
 });
 
