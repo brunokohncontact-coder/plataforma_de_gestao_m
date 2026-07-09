@@ -129,6 +129,20 @@ export async function requestPasswordResetAction(
     return { success: RESET_REQUEST_MESSAGE };
   }
 
+  // Limpeza oportunista: apaga os tokens já mortos desta conta (consumidos ou
+  // expirados) que também já saíram da janela do rate-limit — os "podáveis" de
+  // `isResetTokenPrunable`. Evita que a tabela acumule tokens inúteis sem um job
+  // agendado (o container é efêmero), sem afetar a contagem anti-abuso nem os
+  // tokens ainda válidos. Escopo por usuário: barato e movido pela atividade.
+  const windowStart = resetRequestWindowStart(now);
+  await prisma.passwordResetToken.deleteMany({
+    where: {
+      userId: user.id,
+      createdAt: { lt: windowStart },
+      OR: [{ usedAt: { not: null } }, { expiresAt: { lte: now } }],
+    },
+  });
+
   const rawToken = generateResetToken();
 
   // Invalida pedidos anteriores ainda pendentes desta conta (marca como usados),

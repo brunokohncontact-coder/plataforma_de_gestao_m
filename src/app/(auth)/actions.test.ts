@@ -142,6 +142,81 @@ describe("requestPasswordResetAction", () => {
     const result = await requestPasswordResetAction({}, requestForm("musico@example.com"));
     expect(result.devResetLink).toBeTruthy(); // não barrado: os antigos não contam
   });
+
+  it("apaga tokens mortos e antigos ao pedir um novo link (limpeza oportunista)", async () => {
+    const user = await createUser("musico@example.com", "senha-original");
+    const now = Date.now();
+    const old = new Date(now - (RESET_REQUEST_WINDOW_MINUTES + 5) * 60 * 1000);
+    const recent = new Date(now - 5 * 60 * 1000);
+    const future = new Date(now + 60 * 60 * 1000);
+
+    // A: consumido e antigo (fora da janela) → podável, será apagado.
+    await prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: hashResetToken("morto-usado-antigo"),
+        expiresAt: future,
+        usedAt: old,
+        createdAt: old,
+      },
+    });
+    // B: expirado (não usado) e antigo → podável, será apagado.
+    await prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: hashResetToken("morto-expirado-antigo"),
+        expiresAt: old, // já expirou
+        createdAt: old,
+      },
+    });
+    // C: consumido mas RECENTE (dentro da janela do rate-limit) → preservado.
+    await prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: hashResetToken("morto-usado-recente"),
+        expiresAt: future,
+        usedAt: recent,
+        createdAt: recent,
+      },
+    });
+
+    const result = await requestPasswordResetAction({}, requestForm("musico@example.com"));
+    expect(result.devResetLink).toBeTruthy();
+
+    // Os dois antigos e mortos sumiram; o recente e o novo token permanecem.
+    expect(
+      await prisma.passwordResetToken.findUnique({
+        where: { tokenHash: hashResetToken("morto-usado-antigo") },
+      }),
+    ).toBeNull();
+    expect(
+      await prisma.passwordResetToken.findUnique({
+        where: { tokenHash: hashResetToken("morto-expirado-antigo") },
+      }),
+    ).toBeNull();
+    expect(
+      await prisma.passwordResetToken.findUnique({
+        where: { tokenHash: hashResetToken("morto-usado-recente") },
+      }),
+    ).not.toBeNull();
+    // Sobram: C (recente preservado) + o novo token criado agora.
+    expect(await prisma.passwordResetToken.count()).toBe(2);
+  });
+
+  it("não apaga o token válido pendente ao pedir um novo (apenas o invalida)", async () => {
+    // Um token ainda utilizável não é podável: a limpeza não o toca; a
+    // invalidação de pendentes (updateMany) o marca como usado, sem apagar.
+    const user = await createUser("musico@example.com", "senha-original");
+    const first = await requestPasswordResetAction({}, requestForm("musico@example.com"));
+    expect(first.devResetLink).toBeTruthy();
+
+    await requestPasswordResetAction({}, requestForm("musico@example.com"));
+
+    // O primeiro token continua no banco (invalidado, não apagado): recente.
+    const all = await prisma.passwordResetToken.findMany({ where: { userId: user.id } });
+    expect(all.length).toBe(2);
+    expect(all.filter((t) => t.usedAt === null).length).toBe(1);
+  });
 });
 
 describe("resetPasswordAction", () => {

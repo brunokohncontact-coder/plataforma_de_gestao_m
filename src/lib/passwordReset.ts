@@ -79,3 +79,27 @@ export function resetRequestWindowStart(now: Date): Date {
 export function isPasswordResetRateLimited(recentRequestCount: number): boolean {
   return recentRequestCount >= RESET_REQUEST_MAX_PER_WINDOW;
 }
+
+/** Estado mínimo de um token persistido para decidir se já pode ser apagado. */
+export interface PrunableResetTokenState extends ResetTokenState {
+  createdAt: Date;
+}
+
+/**
+ * Um token de redefinição é "podável" (seguro de apagar do banco) quando não
+ * pode mais servir a nada: (1) já não é utilizável — consumido (`usedAt != null`)
+ * ou expirado (`now >= expiresAt`) — E (2) já saiu da janela do rate-limit
+ * (`createdAt` anterior a `resetRequestWindowStart(now)`), de modo que removê-lo
+ * não altera a contagem anti-abuso de pedidos recentes (ver
+ * `isPasswordResetRateLimited`). Puro; `now` injetável. Base para a limpeza
+ * oportunista de tokens mortos no pedido de um novo link. Ver DECISIONS.md (D266).
+ */
+export function isResetTokenPrunable(
+  token: PrunableResetTokenState,
+  now: Date,
+): boolean {
+  const stillCountsForRateLimit =
+    token.createdAt.getTime() >= resetRequestWindowStart(now).getTime();
+  if (stillCountsForRateLimit) return false;
+  return !isResetTokenUsable(token, now);
+}
