@@ -6,6 +6,7 @@ import {
   isResetTokenUsable,
   resetRequestWindowStart,
   isPasswordResetRateLimited,
+  isResetTokenPrunable,
   RESET_TOKEN_TTL_MINUTES,
   RESET_REQUEST_WINDOW_MINUTES,
   RESET_REQUEST_MAX_PER_WINDOW,
@@ -99,5 +100,66 @@ describe("isPasswordResetRateLimited", () => {
 
   it("segue barrando acima do máximo", () => {
     expect(isPasswordResetRateLimited(RESET_REQUEST_MAX_PER_WINDOW + 5)).toBe(true);
+  });
+});
+
+describe("isResetTokenPrunable", () => {
+  const now = new Date("2026-07-08T12:00:00.000Z");
+  const future = new Date("2026-07-08T13:00:00.000Z");
+  // Fora da janela do rate-limit (mais antigo que RESET_REQUEST_WINDOW_MINUTES).
+  const oldCreated = new Date(
+    now.getTime() - (RESET_REQUEST_WINDOW_MINUTES + 5) * 60 * 1000,
+  );
+  // Dentro da janela do rate-limit.
+  const recentCreated = new Date(
+    now.getTime() - (RESET_REQUEST_WINDOW_MINUTES - 5) * 60 * 1000,
+  );
+  const expiredAt = new Date(now.getTime() - 1000); // já expirou
+
+  it("token consumido e fora da janela é podável", () => {
+    expect(
+      isResetTokenPrunable(
+        { usedAt: oldCreated, expiresAt: future, createdAt: oldCreated },
+        now,
+      ),
+    ).toBe(true);
+  });
+
+  it("token expirado (não usado) e fora da janela é podável", () => {
+    expect(
+      isResetTokenPrunable(
+        { usedAt: null, expiresAt: expiredAt, createdAt: oldCreated },
+        now,
+      ),
+    ).toBe(true);
+  });
+
+  it("token morto mas AINDA na janela do rate-limit NÃO é podável", () => {
+    // Consumido, porém recente: ainda conta para o anti-abuso — não apagar.
+    expect(
+      isResetTokenPrunable(
+        { usedAt: recentCreated, expiresAt: future, createdAt: recentCreated },
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  it("token ainda utilizável nunca é podável, mesmo se antigo", () => {
+    expect(
+      isResetTokenPrunable(
+        { usedAt: null, expiresAt: future, createdAt: oldCreated },
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  it("no limite exato da janela ainda conta (comparação estrita), não poda", () => {
+    const atWindowStart = resetRequestWindowStart(now);
+    expect(
+      isResetTokenPrunable(
+        { usedAt: atWindowStart, expiresAt: future, createdAt: atWindowStart },
+        now,
+      ),
+    ).toBe(false);
   });
 });

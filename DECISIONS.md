@@ -9045,3 +9045,42 @@ contexto, decisão, justificativa e alternativas consideradas.
   D6); **nenhuma dependência nova**.
 - **Nota de concorrência:** número **D265** escolhido como o próximo livre após o D264 (Sessão 269). Se
   uma PR paralela reivindicar D265, renumerar para o próximo livre no merge.
+
+## 2026-07-09 — D266: Limpeza oportunista de tokens de redefinição mortos (`isResetTokenPrunable` + `deleteMany` no pedido) (Sessão 271)
+- **Contexto:** cada pedido de "esqueci a senha" cria um `PasswordResetToken` (D259) e invalida os
+  pendentes anteriores marcando-os como usados; o resgate também consome o seu. Nada, porém, **apagava**
+  esses tokens mortos — consumidos ou expirados —, então a tabela só cresce. O container é efêmero e não
+  há job agendado; era o "próximo possível (d): limpeza periódica de tokens expirados" listado no
+  PROGRESS. Fazer a limpeza **de forma oportunista** no próprio pedido de um novo link resolve sem
+  infraestrutura de cron.
+- **Decisão:** novo helper puro `isResetTokenPrunable(token, now)` em `src/lib/passwordReset.ts` (+ tipo
+  `PrunableResetTokenState = ResetTokenState & { createdAt }`): um token é **podável** (seguro de apagar)
+  quando (1) já não é utilizável — `!isResetTokenUsable`, i.e. consumido ou expirado — **E** (2) já saiu
+  da janela do rate-limit (`createdAt < resetRequestWindowStart(now)`), de modo que removê-lo **não**
+  altera a contagem anti-abuso (`isPasswordResetRateLimited`). `requestPasswordResetAction` ganha um
+  `prisma.passwordResetToken.deleteMany` **escopado ao usuário** que espelha o predicado em SQL
+  (`createdAt < windowStart` E `usedAt != null` OU `expiresAt <= now`), rodado só após o rate-limit
+  passar e antes de criar o novo token.
+- **Justificativa:**
+  - **Duas condições, não uma.** Apagar por "morto" apenas romperia o rate-limit: um token recém-usado
+    dentro da janela ainda **conta** como pedido para o anti-abuso (D260). A gate por `createdAt` fora da
+    janela garante que só some o que já não pesa em nenhuma contabilidade.
+  - **Nunca toca token válido pendente.** Um pendente ainda utilizável não é podável; segue sendo
+    **invalidado** (não apagado) pelo `updateMany` que já existia — comportamento da D259 preservado.
+  - **Lógica pura testável, filtro espelhado.** A regra (o predicado) vive em `passwordReset.ts`, pura e
+    determinística com `now` injetável; o `deleteMany` é só a tradução do mesmo predicado para o banco.
+  - **Escopo por usuário, movido por atividade.** Barato (usa o índice `@@index([userId])`) e sem varredura
+    global; a tabela se mantém enxuta na cadência natural dos pedidos, sem cron.
+- **Alternativas consideradas:** job/cron periódico (descartado: container efêmero, sem agendador — o
+  gatilho oportunista cobre o caso sem infra); apagar **todo** token morto sem a gate de janela
+  (descartado: quebraria o rate-limit da D260); varrer **todos** os usuários a cada pedido (descartado:
+  caro e desnecessário — o dono do e-mail é quem acumula os próprios tokens); apagar também no resgate
+  (`resetPasswordAction`) (não aplicado: o pedido já é o ponto natural e frequente; manter um só lugar).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`, 0 erros) e lint (`next lint`, 0 avisos) verdes;
+  **1516 testes** (`vitest run`, +7: 5 puros de `isResetTokenPrunable` em `passwordReset.test.ts` + 2 de
+  integração em `actions.test.ts` — apaga mortos-e-antigos preservando o recente e o novo; não apaga o
+  válido pendente, só o invalida); smoke (`next start`) → `/login` e `/esqueci-senha` 200. `npm audit`
+  **inalterado** vs. baseline (10 advisories, mesmos Next/postcss; ver D6); **nenhuma dependência nova**,
+  zero migração (usa colunas já existentes).
+- **Nota de concorrência:** número **D266** escolhido como o próximo livre após o D265 (Sessão 270). Se
+  uma PR paralela reivindicar D266, renumerar para o próximo livre no merge.
