@@ -55,6 +55,8 @@ import {
   GIG_CADENCE_CSV_HEADERS,
   showGapsToCsv,
   SHOW_GAPS_CSV_HEADERS,
+  gapDistributionToCsv,
+  GAP_DISTRIBUTION_CSV_HEADERS,
   feeTrendToCsv,
   FEE_TREND_CSV_HEADERS,
   clientRetentionToCsv,
@@ -145,6 +147,7 @@ import {
   proposalOutcomesByContact,
   findStaleProposals,
   showGaps,
+  gapDistribution,
   type ConflictShowLike,
   type LeadTimeShowLike,
   type StaleProposalShowLike,
@@ -2057,6 +2060,38 @@ describe("showGapsToCsv", () => {
     expect(lines).toHaveLength(3); // cabeçalho + 2 hiatos
     expect(lines[1]).toBe("2026-01-11;2026-02-10;30");
     expect(lines[2]).toBe("2026-01-01;2026-01-11;10");
+  });
+});
+
+describe("gapDistributionToCsv", () => {
+  const NOW = "2026-06-15T12:00:00.000Z";
+  const g = (date: string, status: string = "PLAYED") => ({ date, status });
+
+  it("todas as 5 faixas + Total zerado quando não há hiatos", () => {
+    const dist = gapDistribution(showGaps([g("2026-06-05")], { now: NOW }));
+    const lines = gapDistributionToCsv(dist).split("\r\n");
+    expect(lines[0]).toBe(GAP_DISTRIBUTION_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(7); // cabeçalho + 5 faixas + Total
+    // Faixas sempre presentes (mesmo zeradas), da mais curta à mais longa.
+    expect(lines[1]).toBe("Até 1 semana;0;0%");
+    expect(lines[5]).toBe("Mais de 2 meses;0;0%");
+    expect(lines[6]).toBe("Total;0;");
+  });
+
+  it("uma linha por faixa (inclusive zeradas) com contagem e participação + Total", () => {
+    // Hiatos de 5, 10 e 40 dias → uma seca em três faixas distintas.
+    const report = showGaps(
+      [g("2026-01-01"), g("2026-01-06"), g("2026-01-16"), g("2026-02-25")],
+      { now: NOW },
+    );
+    const lines = gapDistributionToCsv(gapDistribution(report)).split("\r\n");
+    expect(lines).toHaveLength(7);
+    expect(lines[1]).toBe("Até 1 semana;1;33%"); // gap de 5
+    expect(lines[2]).toBe("1 a 2 semanas;1;33%"); // gap de 10
+    expect(lines[3]).toBe("2 a 4 semanas;0;0%"); // vazia, não pula degrau
+    expect(lines[4]).toBe("1 a 2 meses;1;33%"); // gap de 40
+    expect(lines[5]).toBe("Mais de 2 meses;0;0%");
+    expect(lines[6]).toBe("Total;3;"); // participação do Total em branco
   });
 });
 

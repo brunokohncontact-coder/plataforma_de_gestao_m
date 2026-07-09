@@ -315,7 +315,16 @@ function GapDistributionSection({ distribution }: { distribution: GapDistributio
   const peak = Math.max(1, ...distribution.buckets.map((b) => b.count));
   return (
     <section className="card">
-      <h2 className="mb-1 font-semibold">Distribuição das secas</h2>
+      <div className="mb-1 flex items-center justify-between gap-3">
+        <h2 className="font-semibold">Distribuição das secas</h2>
+        <a
+          href="/shows/hiatos/distribuicao/export"
+          className="btn-secondary text-xs"
+          download
+        >
+          ⬇ CSV
+        </a>
+      </div>
       <p className="mb-4 text-xs text-gray-500">
         Como os {plural(distribution.total, "hiato", "hiatos")} entre gigs se
         repartem por duração. Uma cadência regular concentra tudo nas faixas
