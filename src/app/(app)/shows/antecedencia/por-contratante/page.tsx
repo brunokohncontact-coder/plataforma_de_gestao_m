@@ -3,15 +3,18 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   bookingLeadTimeByContact,
+  bookingLeadTimeYears,
   parseLeadTimeScope,
   MIN_LEAD_TIME_SAMPLE,
   type BookingLeadTimeScope,
   type LeadTimeShowLike,
 } from "@/lib/shows";
+import { parseProfitYear, filterShowsByYear, type ProfitYearFilter } from "@/lib/finance";
 import { pickPayerContact } from "@/lib/billing";
 import { CONTACT_ROLE_LABELS, type ContactRole } from "@/lib/domain";
 import { formatMoney } from "@/lib/money";
 import { formatDate } from "@/lib/format";
+import { PeriodPicker } from "@/components/PeriodPicker";
 
 export const dynamic = "force-dynamic";
 
@@ -49,9 +52,16 @@ const SCOPE_OPTIONS: { value: BookingLeadTimeScope; label: string }[] = [
 /**
  * Seletor de escopo da amostra (D190): "Todos os shows" (não cancelados, inclui
  * propostas) × "Só confirmados/realizados" (compromissos firmes). Espelha o
- * `ScopePicker` da tela-mãe `/shows/antecedencia`. Server component puro.
+ * `ScopePicker` da tela-mãe `/shows/antecedencia`, preservando o ano ativo em
+ * cada link via `buildHref`. Server component puro.
  */
-function ScopePicker({ active }: { active: BookingLeadTimeScope }) {
+function ScopePicker({
+  active,
+  buildHref,
+}: {
+  active: BookingLeadTimeScope;
+  buildHref: (over?: { scope?: BookingLeadTimeScope }) => string;
+}) {
   const base = "rounded-full px-3 py-1 text-sm font-medium transition-colors";
   const on = "bg-brand-600 text-white";
   const off = "bg-gray-100 text-gray-600 hover:bg-gray-200";
@@ -61,11 +71,7 @@ function ScopePicker({ active }: { active: BookingLeadTimeScope }) {
       {SCOPE_OPTIONS.map((opt) => (
         <Link
           key={opt.value}
-          href={
-            opt.value === "all"
-              ? "/shows/antecedencia/por-contratante"
-              : `/shows/antecedencia/por-contratante?escopo=${opt.value}`
-          }
+          href={buildHref({ scope: opt.value })}
           className={base + " " + (active === opt.value ? on : off)}
           aria-current={active === opt.value ? "page" : undefined}
         >
@@ -107,6 +113,15 @@ export default async function BookingLeadTimeByContactPage({
 
   const scope = parseLeadTimeScope(searchParams?.escopo);
 
+  // Recorte por período (ano), reaproveitando os helpers da D108 e espelhando a
+  // tela-mãe `/shows/antecedencia` (D186). Os anos do seletor vêm só dos shows
+  // com antecedência mensurável no escopo ativo (`bookingLeadTimeYears`), para
+  // não oferecer um ano que renderiza vazio. Filtra-se os registros ANTES de
+  // `bookingLeadTimeByContact`, que segue agnóstico ao recorte por ano.
+  const availableYears = bookingLeadTimeYears(rows, scope);
+  const yearFilter = parseProfitYear(searchParams?.ano, availableYears);
+  const periodRows = filterShowsByYear(rows, yearFilter);
+
   type ShowRow = (typeof rows)[number];
   const getBooker = (show: ShowRow): BookerContact | null => {
     const picked = pickPayerContact(show.contacts.map((cs) => cs.contact));
@@ -114,13 +129,36 @@ export default async function BookingLeadTimeByContactPage({
   };
 
   const report = bookingLeadTimeByContact(
-    rows as (LeadTimeShowLike & ShowRow)[],
+    periodRows as (LeadTimeShowLike & ShowRow)[],
     getBooker as (s: LeadTimeShowLike & ShowRow) => BookerContact | null,
     scope,
   );
 
+  // Monta uma query preservando ano+escopo (para o export, o ScopePicker e o
+  // PeriodPicker). Omite o padrão de cada eixo (ano="all", escopo="all") para
+  // manter as URLs limpas. Espelha o `buildHref` da tela-mãe.
+  const buildHref = (over: { scope?: BookingLeadTimeScope; year?: ProfitYearFilter } = {}): string => {
+    const nextScope = over.scope ?? scope;
+    const nextYear = over.year ?? yearFilter;
+    const q = new URLSearchParams();
+    if (nextYear !== "all") q.set("ano", String(nextYear));
+    if (nextScope !== "all") q.set("escopo", nextScope);
+    const qs = q.toString();
+    return qs ? `/shows/antecedencia/por-contratante?${qs}` : "/shows/antecedencia/por-contratante";
+  };
+  const exportHref = (() => {
+    const q = new URLSearchParams();
+    if (yearFilter !== "all") q.set("ano", String(yearFilter));
+    if (scope === "firm") q.set("escopo", "firm");
+    const qs = q.toString();
+    return qs
+      ? `/shows/antecedencia/por-contratante/export?${qs}`
+      : "/shows/antecedencia/por-contratante/export";
+  })();
+
   const scopeLabel =
     scope === "firm" ? "só shows confirmados/realizados" : "todos os shows não cancelados";
+  const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
 
   return (
     <div className="space-y-6">
@@ -137,13 +175,7 @@ export default async function BookingLeadTimeByContactPage({
         </div>
         <div className="flex flex-wrap gap-2">
           {report.rows.length > 0 && (
-            <a
-              href={`/shows/antecedencia/por-contratante/export${
-                scope === "firm" ? "?escopo=firm" : ""
-              }`}
-              className="btn-secondary text-sm"
-              download
-            >
+            <a href={exportHref} className="btn-secondary text-sm" download>
               ⬇ CSV
             </a>
           )}
@@ -153,21 +185,32 @@ export default async function BookingLeadTimeByContactPage({
         </div>
       </div>
 
-      <ScopePicker active={scope} />
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+        <ScopePicker active={scope} buildHref={buildHref} />
+        {availableYears.length > 0 && (
+          <PeriodPicker
+            years={availableYears}
+            active={yearFilter}
+            basePath="/shows/antecedencia/por-contratante"
+            ariaLabel="Período da antecedência"
+            params={scope === "firm" ? { escopo: "firm" } : undefined}
+          />
+        )}
+      </div>
 
       {report.sample === 0 ? (
         <div className="card text-center text-gray-500">
           <p>
-            Ainda não há shows com antecedência mensurável ({scopeLabel}) para medir por
-            contratante.
+            Ainda não há shows com antecedência mensurável ({scopeLabel}
+            {yearFilter === "all" ? "" : `, ${periodLabel}`}) para medir por contratante.
           </p>
           <p className="mt-1 text-sm">
             A antecedência compara quando o show entrou na agenda com a data em que acontece —
             lançamentos retroativos e cancelados não entram.
           </p>
-          {scope === "firm" && (
+          {(scope === "firm" || yearFilter !== "all") && (
             <Link
-              href="/shows/antecedencia/por-contratante"
+              href={buildHref({ scope: "all", year: "all" })}
               className="mt-3 inline-block text-brand-700 hover:underline"
             >
               Ver todos os shows
@@ -189,6 +232,7 @@ export default async function BookingLeadTimeByContactPage({
                 {report.contactCount}{" "}
                 {report.contactCount === 1 ? "contratante" : "contratantes"} · {report.sample}{" "}
                 {report.sample === 1 ? "show mensurável" : "shows mensuráveis"}
+                {yearFilter === "all" ? "" : ` · ${periodLabel}`}
               </p>
             </div>
             <div className="card">
