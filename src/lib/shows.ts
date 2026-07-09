@@ -587,6 +587,87 @@ export function currentDrySpellHeadline(
   };
 }
 
+// ── Distribuição das secas por faixa ────────────────────────────────────────
+// `showGaps` (D262) já dá os MAIORES hiatos (a cauda) e o espaçamento TÍPICO
+// (mediana/média, o centro), mas não a FORMA da distribuição: o músico com 30
+// gigs por ano e o com uma temporada de bursts seguida de meses parados podem
+// ter a mesma mediana e o mesmo recorde — o que os separa é como os hiatos se
+// repartem. Este helper reparte os hiatos já computados em faixas canônicas
+// (contagem + participação), o mesmo recorte que `feeDistribution`/`bookingLeadTime`
+// fazem no eixo de cachê/antecedência. Distingue uma cadência regular ("quase
+// tudo até 2 semanas") de um padrão de festa-ou-fome ("metade dos intervalos
+// passa de um mês"). Deriva do relatório já pronto — zero I/O, zero regra nova.
+
+/** Uma faixa de duração de hiato (ex.: "1 a 2 semanas") e quantos caem nela. */
+export interface GapBucket {
+  /** Rótulo legível da faixa. */
+  label: string;
+  /** Limite inferior em dias (inclusivo). */
+  minDays: number;
+  /** Limite superior em dias (inclusivo), ou null para "sem teto". */
+  maxDays: number | null;
+  /** Hiatos cuja duração cai nesta faixa. */
+  count: number;
+  /** Participação da faixa no total de hiatos (0..1). */
+  share: number;
+}
+
+/** Repartição dos hiatos entre gigs por faixa de duração. */
+export interface GapDistribution {
+  /** Faixas na ordem canônica (curta → longa). */
+  buckets: GapBucket[];
+  /** Total de hiatos repartidos (== `report.gaps.length`). */
+  total: number;
+  /** A faixa com mais hiatos (a "cara" da agenda); null sem hiatos. */
+  busiest: GapBucket | null;
+}
+
+/** Faixas de duração de hiato (dias), da mais curta à mais longa. */
+const GAP_BUCKET_DEFS: { label: string; minDays: number; maxDays: number | null }[] = [
+  { label: "Até 1 semana", minDays: 1, maxDays: 7 },
+  { label: "1 a 2 semanas", minDays: 8, maxDays: 14 },
+  { label: "2 a 4 semanas", minDays: 15, maxDays: 30 },
+  { label: "1 a 2 meses", minDays: 31, maxDays: 60 },
+  { label: "Mais de 2 meses", minDays: 61, maxDays: null },
+];
+
+/**
+ * Reparte os hiatos de um `ShowGapsReport` já computado nas faixas canônicas de
+ * duração (contagem + participação por faixa). Cada hiato tem `days >= 1` (dias
+ * corridos entre dois dias-de-show distintos), então nenhum escapa das faixas. A
+ * `busiest` é a faixa com mais hiatos (desempate: a mais curta, pela ordem
+ * canônica) — a "cara" da cadência do músico. Pura; não faz I/O nem muta a
+ * entrada.
+ */
+export function gapDistribution(report: ShowGapsReport): GapDistribution {
+  const buckets: GapBucket[] = GAP_BUCKET_DEFS.map((def) => ({
+    ...def,
+    count: 0,
+    share: 0,
+  }));
+
+  for (const gap of report.gaps) {
+    const bucket = buckets.find(
+      (b) => gap.days >= b.minDays && (b.maxDays == null || gap.days <= b.maxDays),
+    );
+    if (bucket) bucket.count += 1;
+  }
+
+  const total = report.gaps.length;
+  if (total > 0) {
+    for (const b of buckets) b.share = b.count / total;
+  }
+
+  // Faixa mais cheia; empate resolvido pela mais curta (ordem canônica), via
+  // `>` estrito na varredura. Null quando não há hiato algum.
+  let busiest: GapBucket | null = null;
+  for (const b of buckets) {
+    if (b.count > 0 && (busiest == null || b.count > busiest.count)) busiest = b;
+  }
+
+  return { buckets, total, busiest };
+}
+
 // ── Antecedência de agendamento (booking lead time) ─────────────────────────
 // Quantos dias de antecedência, na prática, você fecha os shows: a diferença
 // (em dias UTC) entre quando o show entrou na agenda (`createdAt`) e a data em

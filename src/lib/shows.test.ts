@@ -53,6 +53,7 @@ import {
   MIN_SHOW_GAP_SAMPLE,
   currentDrySpellHeadline,
   DRY_SPELL_UNUSUAL_RATIO,
+  gapDistribution,
   type ConflictShowLike,
   type StaleProposalShowLike,
   type LeadTimeShowLike,
@@ -2649,6 +2650,111 @@ describe("showGaps", () => {
     expect(r.longest).toBeNull();
     expect(r.currentGapDays).toBe(10);
     expect(r.currentGapVsLongest).toBeNull();
+  });
+});
+
+describe("gapDistribution", () => {
+  const NOW = "2026-06-15T12:00:00.000Z";
+  const g = (date: string, status: string = "PLAYED") => ({ date, status });
+
+  it("devolve todas as faixas zeradas e busiest nulo sem hiatos", () => {
+    const d = gapDistribution(showGaps([], { now: NOW }));
+    expect(d.total).toBe(0);
+    expect(d.busiest).toBeNull();
+    expect(d.buckets).toHaveLength(5);
+    expect(d.buckets.every((b) => b.count === 0 && b.share === 0)).toBe(true);
+    // ordem canônica curta → longa preservada
+    expect(d.buckets.map((b) => b.label)).toEqual([
+      "Até 1 semana",
+      "1 a 2 semanas",
+      "2 a 4 semanas",
+      "1 a 2 meses",
+      "Mais de 2 meses",
+    ]);
+    // a última faixa não tem teto
+    expect(d.buckets[4].maxDays).toBeNull();
+  });
+
+  it("um único gig (sem hiato) mantém tudo zerado", () => {
+    const d = gapDistribution(showGaps([g("2026-06-05")], { now: NOW }));
+    expect(d.total).toBe(0);
+    expect(d.busiest).toBeNull();
+  });
+
+  it("reparte cada hiato na sua faixa e soma a participação a 1", () => {
+    // hiatos: 5 (01→06), 10 (06→16), 20 (16 jun → 06 jul), 40 (06 jul → 15 ago)
+    const d = gapDistribution(
+      showGaps(
+        [
+          g("2026-06-01"),
+          g("2026-06-06"),
+          g("2026-06-16"),
+          g("2026-07-06", "CONFIRMED"),
+          g("2026-08-15", "CONFIRMED"),
+        ],
+        { now: NOW },
+      ),
+    );
+    expect(d.total).toBe(4);
+    const byLabel = Object.fromEntries(d.buckets.map((b) => [b.label, b.count]));
+    expect(byLabel["Até 1 semana"]).toBe(1); // 5 dias
+    expect(byLabel["1 a 2 semanas"]).toBe(1); // 10 dias
+    expect(byLabel["2 a 4 semanas"]).toBe(1); // 20 dias
+    expect(byLabel["1 a 2 meses"]).toBe(1); // 40 dias
+    expect(byLabel["Mais de 2 meses"]).toBe(0);
+    // participação soma ~1 (cada faixa 0.25)
+    expect(d.buckets.reduce((s, b) => s + b.share, 0)).toBeCloseTo(1, 10);
+    expect(d.buckets.find((b) => b.label === "Até 1 semana")?.share).toBeCloseTo(0.25, 10);
+  });
+
+  it("respeita os limites inclusivos das faixas (7, 8, 14, 15…)", () => {
+    // hiatos de 7 e 8 dias caem em faixas vizinhas (limite inclusivo)
+    const d = gapDistribution(
+      showGaps([g("2026-06-01"), g("2026-06-08"), g("2026-06-16")], { now: NOW }),
+    );
+    // 01→08 = 7 (Até 1 semana), 08→16 = 8 (1 a 2 semanas)
+    const byLabel = Object.fromEntries(d.buckets.map((b) => [b.label, b.count]));
+    expect(byLabel["Até 1 semana"]).toBe(1);
+    expect(byLabel["1 a 2 semanas"]).toBe(1);
+  });
+
+  it("busiest é a faixa mais cheia", () => {
+    // três hiatos de ~10 dias (1 a 2 semanas) e um de 40 (1 a 2 meses)
+    const d = gapDistribution(
+      showGaps(
+        [
+          g("2026-04-01"),
+          g("2026-04-11"),
+          g("2026-04-21"),
+          g("2026-05-01"),
+          g("2026-06-10", "CONFIRMED"),
+        ],
+        { now: NOW },
+      ),
+    );
+    expect(d.busiest?.label).toBe("1 a 2 semanas");
+    expect(d.busiest?.count).toBe(3);
+  });
+
+  it("desempata busiest pela faixa mais curta (ordem canônica)", () => {
+    // um hiato de 5 dias (Até 1 semana) e um de 20 (2 a 4 semanas): empate 1×1
+    const d = gapDistribution(
+      showGaps([g("2026-06-01"), g("2026-06-06"), g("2026-06-26", "CONFIRMED")], {
+        now: NOW,
+      }),
+    );
+    expect(d.busiest?.count).toBe(1);
+    expect(d.busiest?.label).toBe("Até 1 semana");
+  });
+
+  it("classifica hiatos longos na faixa sem teto", () => {
+    // hiato único de 100 dias
+    const d = gapDistribution(
+      showGaps([g("2026-03-01"), g("2026-06-09", "CONFIRMED")], { now: NOW }),
+    );
+    expect(d.total).toBe(1);
+    expect(d.busiest?.label).toBe("Mais de 2 meses");
+    expect(d.buckets[4].count).toBe(1);
   });
 });
 
