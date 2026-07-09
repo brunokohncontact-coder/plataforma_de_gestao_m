@@ -8951,3 +8951,47 @@ contexto, decisão, justificativa e alternativas consideradas.
   **nenhuma dependência nova**.
 - **Nota de concorrência:** número **D263** escolhido como o próximo livre após o D262 (Sessão 267). Se
   uma PR paralela reivindicar D263, renumerar para o próximo livre no merge.
+
+## 2026-07-09 — D264: Seca atual contextualizada pelo RECORDE (`currentGapVsLongest`) (Sessão 269)
+- **Contexto:** o relatório de hiatos já mede a seca atual contra o **hábito** (mediana, `currentGapVsTypical`/D263).
+  Falta a outra ponta: a seca atual contra o **extremo** — o pior hiato já vivido pelo músico. São
+  perguntas distintas: "isto está fora do normal?" (D263) vs. "eu já fiquei tanto tempo assim sem
+  tocar?" (aqui). Bater o próprio recorde de seca é um alarme de prospecção mais forte e categórico do
+  que "2× o de sempre" — é território inédito.
+- **Decisão:** campo `currentGapVsLongest: number | null` em `ShowGapsReport`, computado em `showGaps`
+  como `currentGapDays / longest.days` arredondado a uma casa decimal (quantas vezes o recorde a seca
+  atual representa). `null` sem seca atual (`currentGapDays == null`) ou sem hiato passado (`longest ==
+  null` — menos de dois dias-de-show). Na página `/shows/hiatos`, leitura `RecordGapReading` **abaixo**
+  do `CurrentGapReading`, exibida só na cauda (`>= RECORD_GAP_NEAR` = 0,9×): 🏜️ vermelho "Recorde de
+  seca … já superou/igualou a sua maior seca" (≥1×), ⚠️ âmbar "Perto do recorde … encostando" (≥0,9×).
+- **Justificativa / escolhas discutíveis:**
+  - **Por que reabrir o que a D263 descartou.** A D263 rejeitou relacionar a seca ao maior hiato
+    *como régua do "isto é anormal?"* — e com razão: a maior seca é um teto-outlier, ruim para medir o
+    dia-a-dia. Esta decisão NÃO usa o recorde como régua do cotidiano; usa-o como **alarme de recorde**,
+    e só na cauda (≥0,9×). Fora da cauda a leitura nem aparece, então o problema que a D263 apontou
+    (outlier virando régua do normal) não se materializa. A pergunta "estou batendo meu recorde de
+    seca?" é distinta de "estou fora do meu ritmo?" e ambas cabem — a primeira em vermelho categórico,
+    a segunda em gradiente por severidade.
+  - **Múltiplo na lógica pura, limiar de apresentação na UI.** Igual à D263: `showGaps` devolve só o
+    número; o corte de 0,9× (quando "encostar no recorde" merece nota) é de APRESENTAÇÃO e vive no
+    componente (`RECORD_GAP_NEAR`).
+  - **Derivado, não novo I/O.** Sai de `currentGapDays` e `longest`, ambos já computados por `showGaps`
+    — zero consulta, zero migração, zero dependência nova.
+  - **Sem divisão frágil.** Diferente da mediana (que exige `MIN_SHOW_GAP_SAMPLE`), o recorde é um único
+    hiato concreto: basta existir (`longest != null`, i.e. ≥ 2 dias-de-show) e `longest.days > 0` (sempre
+    ≥ 1 entre dias distintos) para a divisão ser honesta. Não há "recorde frágil" a mascarar.
+  - **Respeita os adiamentos da D262/D263.** Sem nudge no Painel, sem `?ano=` (a seca cruza a virada do
+    ano), sem PROPOSED; o múltiplo é escalar da seca ATUAL e não entra no CSV por-hiato (mesma razão da
+    D263).
+- **Alternativas consideradas:** não fazer, deixando a D263 como única leitura (descartado: "vs. hábito"
+  e "vs. recorde" respondem perguntas diferentes; bater o recorde é sinal categórico que a mediana
+  dilui); exibir sempre, com gradiente completo como o `CurrentGapReading` (descartado: fora da cauda o
+  recorde é ruído — é justamente a crítica da D263; por isso o corte em 0,9×); levar `currentGapVsLongest`
+  ao CSV (adiado: escalar da seca atual, sem lugar na tabela por-hiato).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`, 0 erros) e lint (`next lint`, 0 avisos) verdes;
+  **1502 testes** (`vitest run`, +3 puros de `showGaps`: 15/20 → 0,8×; 65/5 → 13× recorde batido; `null`
+  sem hiato passado); smoke (`next start`) → `/login` 200 e `/shows/hiatos` 307→/login (auth-gated, sem
+  500). `npm audit` **inalterado** vs. baseline (mesmos advisories Next/postcss; ver D6); **nenhuma
+  dependência nova**.
+- **Nota de concorrência:** número **D264** escolhido como o próximo livre após o D263 (Sessão 268). Se
+  uma PR paralela reivindicar D264, renumerar para o próximo livre no merge.
