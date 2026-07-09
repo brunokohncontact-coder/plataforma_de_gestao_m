@@ -9366,3 +9366,50 @@ contexto, decisão, justificativa e alternativas consideradas.
   `npm audit` **inalterado** vs. baseline (10 advisories; ver D6).
 - **Nota de concorrência:** número **D272** escolhido como o próximo livre após o D271 (Sessão 276). Se uma
   PR paralela reivindicar D272, renumerar para o próximo livre no merge.
+
+## 2026-07-09 — D273: Comparativo ano a ano do desempenho por dia da semana
+- **Contexto:** as três telas de distribuição de shows (sazonalidade, dias da semana, faixas de cachê) e
+  todas filtram por ano (`?ano=`) e exportam CSV. A sazonalidade já tinha o **comparativo ano a ano**
+  (`compareGigSeasonality`/D223 — "em que meses você agendou mais/menos shows do que no ano passado", com
+  os dois movers na tela + a tabela dos 12 meses + o CSV do comparativo). Dias da semana
+  (`weekdayPerformance`/D205) era a irmã que ainda não respondia o simétrico: "em que dias da semana você
+  passou a tocar mais/menos — a agenda migrou de dia?". É um sinal acionável — se as sextas esfriaram e as
+  quintas encheram, há espaço para preencher ou renegociar; se o fim de semana concentrou ainda mais, a
+  precificação da semana pode subir.
+- **Decisão:** novo helper puro `compareWeekdayPerformance(current, previous)` + tipos
+  `WeekdayPerformanceComparison`/`WeekdayPerformanceDayChange` + `classifyWeekdayPerformanceDayChange`
+  (+ `WeekdayPerformanceDayTrend`) em `src/lib/finance.ts`, **espelho fiel** de `compareGigSeasonality`/
+  `classifyGigSeasonalityMonthChange` no eixo do dia da semana: recebe dois `weekdayPerformance` já
+  computados (um por período), casa os 7 dias (dom→sáb) por índice — as duas estruturas trazem sempre os 7
+  dias em ordem — e destila os dois **movers**: o dia que mais cresceu e o que mais caiu em nº de shows.
+  Ancora no `count` (o eixo primário da tela, o `busiest`), com o `feeDelta` de desempate (um dia que trocou
+  um show barato por um caro conta); o dia mais cedo na semana vence empate estrito, mesma disciplina do
+  `pick` de `weekdayPerformance`. Os 7 `days` ficam disponíveis para o detalhe. CSV
+  `weekdayPerformanceComparisonToCsv` + `WEEKDAY_PERFORMANCE_COMPARISON_CSV_HEADERS` em `src/lib/csv.ts`
+  (espelho de `gigSeasonalityComparisonToCsv`: 7 linhas dom→sáb inclusive dias zerados, deltas assinados,
+  faturamento via `centsToCsvAmount`, coluna Tendência Subiu/Caiu/Estável, linha `Total`). Card "Semana
+  {ano} vs. {ano-1}" na página `dias-semana/page.tsx` (os dois movers + `<details>` "Ver os 7 dias" + link
+  `⬇ CSV`), exibido só quando `?ano=` está setado e ambos os anos têm shows realizados — o mesmo gate da
+  sazonalidade. Rota `/shows/dias-semana/comparativo/export` irmã de `/shows/sazonalidade/comparativo/export`
+  (mesmo gate → 404 sem ano concreto ou sem shows nos dois anos).
+- **Justificativa:** reusa os shows **já carregados** pela página (o ano anterior sai do mesmo acervo por
+  `filterShowsByYear`, zero I/O extra), zero regra de negócio nova (a agregação vive em `weekdayPerformance`,
+  pura e testada), zero migração, zero dependência nova. Espelhar a sazonalidade ponto a ponto mantém as duas
+  telas de distribuição lendo igual (mesma forma de card, mesmo CSV, mesma rota de export) e reaproveita
+  padrões já validados em vez de inventar um novo.
+- **Alternativas consideradas:** (a) despejar os 7 dias comparados direto na tabela principal em vez dos
+  movers — descartado pelo mesmo motivo da D214(b) na sazonalidade: adensaria a tela; o `<details>` já dá o
+  detalhe a quem quiser. (b) um nudge no Painel quando a agenda migra de dia — adiado: diferente da
+  antecedência/conversão (onde "esfriou" é risco de receita), migrar de sexta para quinta não é
+  necessariamente ruim, então o sinal é exploratório e vive melhor na tela dedicada; reavaliar se surgir
+  demanda. (c) ancorar o mover no faturamento em vez do nº de shows — descartado: a página inteira ancora no
+  volume de shows (`busiest`), e o `feeDelta` já entra como desempate, exatamente como na sazonalidade.
+- **DoD:** build de produção OK (rota `/shows/dias-semana/comparativo/export` no manifesto), typecheck
+  (`tsc --noEmit`, 0 erros), lint (`next lint`, 0 avisos); **1562 testes** (`vitest run`, +11:
+  `compareWeekdayPerformance` +4 — 7 dias + movers, sem base anterior, períodos idênticos, empate por
+  faturamento; `classifyWeekdayPerformanceDayChange` +4; `weekdayPerformanceComparisonToCsv` +3 — 7 linhas +
+  Total sem shows, "Subiu" com deltas, "Caiu" com deltas negativos). Smoke (`next start`) → `/login` 200,
+  `/shows/dias-semana` e `/shows/dias-semana/comparativo/export?ano=2026` 307→/login (auth-gated, sem 500).
+  `npm audit` **inalterado** vs. baseline (10 advisories; ver D6).
+- **Nota de concorrência:** número **D273** escolhido como o próximo livre após o D272 (Sessão 277). Se uma
+  PR paralela reivindicar D273, renumerar para o próximo livre no merge.
