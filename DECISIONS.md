@@ -9084,3 +9084,48 @@ contexto, decisão, justificativa e alternativas consideradas.
   zero migração (usa colunas já existentes).
 - **Nota de concorrência:** número **D266** escolhido como o próximo livre após o D265 (Sessão 270). Se
   uma PR paralela reivindicar D266, renumerar para o próximo livre no merge.
+
+## 2026-07-09 — D267: Distribuição das secas por faixa na página de hiatos (`gapDistribution` + seção em `/shows/hiatos`) (Sessão 272)
+- **Contexto:** `showGaps` (D262) já dava os MAIORES hiatos (a cauda, tabela "Maiores secas") e o
+  espaçamento TÍPICO (mediana/média, o centro), além da seca atual contextualizada (D263/D264). Faltava
+  a FORMA da distribuição: dois músicos podem ter a mesma mediana e o mesmo recorde e agendas muito
+  diferentes — um com cadência regular (quase todos os intervalos curtos) e outro festa-ou-fome (bursts
+  seguidos de meses parados). A tabela "Maiores secas" lista tudo, mas não resume o padrão num relance.
+- **Decisão:** novo helper puro `gapDistribution(report)` + tipos `GapBucket`/`GapDistribution` em
+  `src/lib/shows.ts` que reparte os hiatos já computados (`report.gaps`) em 5 faixas canônicas de duração
+  (Até 1 semana / 1 a 2 semanas / 2 a 4 semanas / 1 a 2 meses / Mais de 2 meses), com contagem +
+  participação por faixa e a faixa mais cheia (`busiest`, desempate pela mais curta). Nova seção
+  "Distribuição das secas" em `/shows/hiatos` (uma barra por faixa, destaque na `busiest`), exibida só
+  com ≥ 2 hiatos (com 1 seria uma barra só, sem forma a mostrar). Deriva do `ShowGapsReport` já pronto —
+  zero I/O extra, zero consulta nova.
+- **Justificativa:**
+  - **Recebe o relatório pronto, como `currentDrySpellHeadline`.** A repartição é derivada de `report.gaps`
+    (já ordenados/medidos); a página já chama `showGaps`. Nenhuma segunda passada sobre o banco.
+  - **Espelha `feeDistribution`/`bookingLeadTime` no eixo de duração.** Mesmo recorte por faixas
+    (label/minDays/maxDays/count/share) que o app já usa em cachê e antecedência; faixas em dias corridos,
+    limites inclusivos, última sem teto. Nada de vocabulário novo de UI.
+  - **Faixas em passos naturais de agenda.** Semana / quinzena / mês / bimestre — a granularidade em que um
+    músico pensa a própria cadência. `gap.days >= 1` sempre (dias-de-show distintos), então nenhum hiato
+    escapa das faixas.
+  - **`busiest` desempata pela mais curta.** Varredura com `>` estrito na ordem canônica: num empate de
+    contagem, a faixa mais curta ("melhor cadência") é a "cara" reportada — leitura otimista e determinística.
+  - **Gate ≥ 2 hiatos na UI, não na lógica.** A pura reparte qualquer relatório (inclusive vazio, tudo
+    zerado/`busiest` nulo); a decisão de EXIBIR (≥ 2, para haver forma) é de apresentação e vive na página.
+- **Sem CSV próprio (deliberado).** O `showGapsToCsv` (D262) já exporta a lista de hiatos com `days`, da
+  qual qualquer repartição é derivável numa planilha; um CSV de distribuição seria redundante (mesma
+  disciplina que deixou os *readings* inline `CurrentGapReading`/`RecordGapReading` sem download).
+- **Alternativas consideradas:** nova página dedicada + entrada no hub (descartado: é um resumo da mesma
+  agenda de hiatos, cabe como seção da página-mãe, não um relatório à parte); faixas em número de dias
+  arbitrário (descartado: semana/quinzena/mês/bimestre são os passos que o músico já usa); somar cachê por
+  faixa como em `bookingLeadTime` (não aplicado: o hiato é ausência de gig, não tem cachê associado — a
+  métrica natural é contagem/participação); exibir sempre, mesmo com 1 hiato (descartado: uma barra só a
+  100% não mostra distribuição, só ruído).
+- **DoD:** build de produção, typecheck (`tsc --noEmit`, 0 erros) e lint (`next lint`, 0 avisos) verdes;
+  **1523 testes** (`vitest run`, +7 puros de `gapDistribution` em `shows.test.ts` — vazio zerado/`busiest`
+  nulo; ordem canônica e faixa sem teto; repartição com soma da participação a 1; limites inclusivos
+  7/8; `busiest` na faixa mais cheia; desempate pela mais curta; hiato longo na faixa sem teto); smoke
+  (`next start`) → `/login` 200, `/shows/hiatos` 307→/login (auth-gated, sem 500). `npm audit`
+  **inalterado** vs. baseline (10 advisories, mesmos Next/postcss; ver D6); **nenhuma dependência nova**,
+  zero migração.
+- **Nota de concorrência:** número **D267** escolhido como o próximo livre após o D266 (Sessão 271). Se
+  uma PR paralela reivindicar D267, renumerar para o próximo livre no merge.

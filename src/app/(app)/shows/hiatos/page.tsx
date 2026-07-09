@@ -3,9 +3,12 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   showGaps,
+  gapDistribution,
   MIN_SHOW_GAP_SAMPLE,
   type ShowGapShowLike,
   type ShowGap,
+  type GapBucket,
+  type GapDistribution,
 } from "@/lib/shows";
 import { MONTH_NAMES_LONG } from "@/lib/calendar";
 
@@ -37,6 +40,7 @@ export default async function ShowGapsPage() {
   }));
 
   const report = showGaps(shows);
+  const distribution = gapDistribution(report);
   const smallSample = report.showDays < MIN_SHOW_GAP_SAMPLE;
 
   return (
@@ -156,6 +160,10 @@ export default async function ShowGapsPage() {
               O espaçamento típico fica mais confiável a partir de{" "}
               {MIN_SHOW_GAP_SAMPLE} dias de show.
             </div>
+          )}
+
+          {distribution.total >= 2 && (
+            <GapDistributionSection distribution={distribution} />
           )}
 
           {report.gaps.length > 0 && (
@@ -289,6 +297,84 @@ function RecordGapReading({
   }
 
   return <div className={`card text-sm ${className}`}>{text}</div>;
+}
+
+/** 0.42 → "42%" (participação inteira, pt-BR). */
+function formatShare(share: number): string {
+  return `${Math.round(share * 100)}%`;
+}
+
+/**
+ * Distribuição das secas por faixa de duração — a FORMA da agenda, além dos
+ * extremos (Maiores secas) e do centro (Espaçamento típico). Uma barra por faixa
+ * com a contagem e a participação; destaca a faixa mais cheia (`busiest`), a
+ * "cara" da cadência. A lógica de repartição vive em `gapDistribution` (pura);
+ * aqui é só apresentação.
+ */
+function GapDistributionSection({ distribution }: { distribution: GapDistribution }) {
+  const peak = Math.max(1, ...distribution.buckets.map((b) => b.count));
+  return (
+    <section className="card">
+      <h2 className="mb-1 font-semibold">Distribuição das secas</h2>
+      <p className="mb-4 text-xs text-gray-500">
+        Como os {plural(distribution.total, "hiato", "hiatos")} entre gigs se
+        repartem por duração. Uma cadência regular concentra tudo nas faixas
+        curtas; muitos intervalos longos revelam um padrão de festa-ou-fome.
+        {distribution.busiest && (
+          <>
+            {" "}
+            A maior parte cai em <strong>{distribution.busiest.label.toLowerCase()}</strong>.
+          </>
+        )}
+      </p>
+      <ul className="space-y-2">
+        {distribution.buckets.map((bucket) => (
+          <GapBucketRow
+            key={bucket.label}
+            bucket={bucket}
+            peak={peak}
+            highlight={bucket.label === distribution.busiest?.label}
+          />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function GapBucketRow({
+  bucket,
+  peak,
+  highlight,
+}: {
+  bucket: GapBucket;
+  peak: number;
+  highlight: boolean;
+}) {
+  const width =
+    bucket.count > 0 ? Math.max(2, Math.round((bucket.count / peak) * 100)) : 0;
+  return (
+    <li className="flex items-center gap-3 text-sm">
+      <span className="w-32 shrink-0 text-gray-600">{bucket.label}</span>
+      <span className="relative flex h-4 flex-1 items-center overflow-hidden rounded bg-gray-100">
+        {width > 0 && (
+          <span
+            className={`h-full rounded ${highlight ? "bg-brand-500" : "bg-brand-300"}`}
+            style={{ width: `${width}%` }}
+          />
+        )}
+      </span>
+      <span className="w-24 shrink-0 text-right tabular-nums text-gray-700">
+        {bucket.count > 0 ? (
+          <>
+            {plural(bucket.count, "seca", "secas")}{" "}
+            <span className="text-gray-400">({formatShare(bucket.share)})</span>
+          </>
+        ) : (
+          <span className="text-gray-300">—</span>
+        )}
+      </span>
+    </li>
+  );
 }
 
 function GapRow({ gap, peak }: { gap: ShowGap; peak: number }) {

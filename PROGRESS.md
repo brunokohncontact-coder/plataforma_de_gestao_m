@@ -9,7 +9,24 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1516 testes** verdes após a **limpeza
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1523 testes** verdes após a **distribuição
+das secas por faixa** no relatório de hiatos (Sessão 272, D267 — `showGaps` (D262) já dava a CAUDA (maiores hiatos) e o
+CENTRO (mediana/média); faltava a FORMA da distribuição — dois músicos com a mesma mediana e o mesmo recorde podem ter
+agendas muito diferentes (cadência regular × festa-ou-fome), e a tabela "Maiores secas" lista tudo mas não resume o padrão
+num relance. Novo helper puro `gapDistribution(report)` + tipos `GapBucket`/`GapDistribution` em `src/lib/shows.ts`: reparte
+os hiatos JÁ computados (`report.gaps`) em 5 faixas canônicas de duração (Até 1 semana / 1 a 2 semanas / 2 a 4 semanas /
+1 a 2 meses / Mais de 2 meses), com contagem + participação por faixa e a faixa mais cheia `busiest` (desempate pela mais
+curta, via `>` estrito na ordem canônica). Espelha `feeDistribution`/`bookingLeadTime` no eixo de duração (mesmo shape
+label/minDays/maxDays/count/share, limites inclusivos, última sem teto). Nova seção "Distribuição das secas" em
+`/shows/hiatos` (uma barra por faixa + destaque na `busiest`), exibida só com ≥ 2 hiatos (com 1 seria uma barra a 100%,
+sem forma). Deriva do `ShowGapsReport` já pronto — **zero I/O extra**, zero consulta nova, zero migração, zero dependência
+nova. **Sem CSV próprio** (deliberado: `showGapsToCsv`/D262 já exporta a lista de hiatos com `days`, da qual a distribuição
+é derivável — igual aos readings inline `CurrentGapReading`/`RecordGapReading`, sem download). **+7 testes** (`shows.test.ts`,
+`describe("gapDistribution")`: vazio zerado/`busiest` nulo; ordem canônica e faixa sem teto; repartição com soma da
+participação a 1; limites inclusivos 7/8; `busiest` na faixa mais cheia; desempate pela mais curta; hiato longo na faixa
+sem teto). Build OK, typecheck 0 erros, lint 0 avisos; smoke (`next start`) → `/login` 200, `/shows/hiatos` 307→/login
+(auth-gated, sem 500). `npm audit` inalterado vs. baseline (10 advisories, mesmos Next/postcss da D6; nenhuma dependência
+nova). Ver D267. Antes, a **limpeza
 oportunista de tokens de redefinição mortos** (Sessão 271, D266 — `isResetTokenPrunable` em `src/lib/passwordReset.ts`
 + `deleteMany` escopado ao usuário em `requestPasswordResetAction`: ao pedir um novo link de "esqueci a senha", apaga os
 tokens já mortos — consumidos/expirados — e antigos (fora da janela do rate-limit) da própria conta, mantendo a tabela
@@ -3865,10 +3882,18 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    (múltiplo da mediana, `null` sem seca atual ou com amostra pequena) em `ShowGapsReport`/`showGaps` +
    banner de leitura `CurrentGapReading` em `/shows/hiatos` (🌵/⏳/cinza/🎸 pelos limiares de APRESENTAÇÃO 1,5×/2×),
    contextualizando a MAGNITUDE da seca contra o hábito do próprio músico, ver D263.
+   **Seca atual contextualizada pelo RECORDE** entregue na Sessão 269 — campo `currentGapVsLongest` em
+   `ShowGapsReport`/`showGaps` + leitura `RecordGapReading` (🏜️/⚠️, ≥0,9×) em `/shows/hiatos`, ver D264.
+   **Nudge de seca atual no Painel** entregue na Sessão 270 — `currentDrySpellHeadline` + banner 🟠/🔴 em
+   `dashboard/page.tsx` (só fora do comum ≥2× E sem gig firme à frente), ver D265 (fecha o item (b) adiado).
+   **Distribuição das secas por faixa** entregue na Sessão 272 — `gapDistribution(report)` + tipos
+   `GapBucket`/`GapDistribution` em `src/lib/shows.ts` (reparte os hiatos em 5 faixas canônicas de duração —
+   semana/quinzena/mês/bimestre — com contagem/participação + `busiest`; espelho de `feeDistribution`/`bookingLeadTime`)
+   + seção "Distribuição das secas" em `/shows/hiatos` (barras por faixa, só com ≥ 2 hiatos), a FORMA da agenda além
+   dos extremos e do centro. **+7 testes**, sem CSV próprio (a lista de hiatos já é exportada), ver D267.
    Próximo possível — (a) recorte por `?ano=`/`PeriodPicker` (adiado: uma seca cruza a virada do ano, o corte por
-   ano fragmentaria o hiato); (b) um nudge no Painel quando a seca atual passa de um limiar (adiado: o Painel já é
-   denso e a leitura de "há quanto tempo não toco" se sobrepõe aos fins de semana livres/`findOpenWeekends`); (c)
-   incluir PROPOSED como "seca provável" à frente (adiado: proposta em aberto ainda pode cair, ruído); (d) levar o
+   ano fragmentaria o hiato); ~~(b) um nudge no Painel quando a seca atual passa de um limiar~~ (entregue, D265);
+   (c) incluir PROPOSED como "seca provável" à frente (adiado: proposta em aberto ainda pode cair, ruído); (d) levar o
    mesmo múltiplo `currentGapVsTypical` ao CSV (adiado na D263: o CSV é por-hiato; o múltiplo é um escalar da seca
    ATUAL, sem lugar natural na tabela — caberia só um cabeçalho/rodapé, ruído).
 2b. **Funil de propostas — evoluções** (entregue na Sessão 51, `/shows/funil` + `showPipeline`,
