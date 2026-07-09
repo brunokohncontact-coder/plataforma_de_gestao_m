@@ -518,6 +518,75 @@ export function showGaps<T extends ShowGapShowLike>(
   };
 }
 
+// ── Nudge de seca atual no Painel ───────────────────────────────────────────
+// `showGaps` (D262) já mede a seca atual e a contextualiza pelo hábito
+// (`currentGapVsTypical`, D263) e pelo recorde (`currentGapVsLongest`, D264),
+// mas só na página `/shows/hiatos`. O Painel não avisava, num relance, "faz
+// tempo que você não sobe ao palco e NADA está agendado" — justamente a hora de
+// prospectar. Este helper destila `showGaps` num nudge, espelho dos headlines
+// irmãos (`bookingLeadTimeHeadline`, `staleProposalsHeadline`…): a regra de
+// EXIBIÇÃO vive num helper puro, testável, e o nudge só dispara quando morde.
+
+/**
+ * Quantas vezes o espaçamento típico a seca atual precisa alcançar para virar
+ * nudge no Painel. Espelha o limiar de APRESENTAÇÃO "fora do comum" da página
+ * `/shows/hiatos` (2×): abaixo disso a espera é rotina do próprio hábito e o
+ * aviso seria ruído, não alerta.
+ */
+export const DRY_SPELL_UNUSUAL_RATIO = 2;
+
+/** Manchete de seca atual para o Painel (nudge de "vá prospectar"). */
+export interface CurrentDrySpellHeadline {
+  /**
+   * True quando o nudge deve aparecer: seca fora do comum (`>= unusualRatio` o
+   * espaçamento típico) **e** nada firme à frente (`daysUntilNext == null`) —
+   * com um gig já agendado a seca está por terminar e prospectar não é a ação.
+   */
+  show: boolean;
+  /** True quando a seca atual já igualou/superou o RECORDE (nunca ficou tanto tempo sem tocar). */
+  critical: boolean;
+  /** Dias sem tocar — a seca atual (0 quando não há seca a mostrar). */
+  days: number;
+  /** Quantas vezes o espaçamento típico (mediana) a seca já representa (0 sem leitura). */
+  ratio: number;
+  /** Espaçamento típico (mediana, dias) — a base da comparação. */
+  typicalDays: number;
+  /** Quantas vezes o RECORDE a seca representa; `null` sem hiato passado. */
+  vsLongest: number | null;
+}
+
+/**
+ * Decide se o Painel deve alertar que a seca atual está fora do comum e nada
+ * está agendado — o eco de `showGaps` no dashboard, espelho de
+ * `bookingLeadTimeHeadline` no eixo de continuidade da agenda. Recebe um
+ * `showGaps` já computado e não faz I/O. `show` só quando a seca atual é
+ * confiável e **fora do comum** (`currentGapVsTypical >= unusualRatio`, o que já
+ * exige amostra de mediana confiável — ver D263) **e** não há gig firme à frente
+ * (`daysUntilNext == null`); `critical` quando a seca já igualou/superou o
+ * recorde (`currentGapVsLongest >= 1`, D264). Fica raro (mesma disciplina de
+ * gate dos nudges irmãos). Pura.
+ */
+export function currentDrySpellHeadline(
+  report: ShowGapsReport,
+  unusualRatio: number = DRY_SPELL_UNUSUAL_RATIO,
+): CurrentDrySpellHeadline {
+  const ratio = report.currentGapVsTypical;
+  const vsLongest = report.currentGapVsLongest;
+  const show =
+    report.currentGapDays != null &&
+    report.daysUntilNext == null &&
+    ratio != null &&
+    ratio >= unusualRatio;
+  return {
+    show,
+    critical: show && vsLongest != null && vsLongest >= 1,
+    days: report.currentGapDays ?? 0,
+    ratio: ratio ?? 0,
+    typicalDays: report.medianGapDays,
+    vsLongest,
+  };
+}
+
 // ── Antecedência de agendamento (booking lead time) ─────────────────────────
 // Quantos dias de antecedência, na prática, você fecha os shows: a diferença
 // (em dias UTC) entre quando o show entrou na agenda (`createdAt`) e a data em

@@ -70,10 +70,13 @@ import {
   proposalOutcomesByContact,
   compareContactProposalOutcomes,
   contactConversionDropHeadline,
+  showGaps,
+  currentDrySpellHeadline,
   type ConflictShowLike,
   type LeadTimeShowLike,
   type StaleProposalShowLike,
   type ProposalOutcomeShowLike,
+  type ShowGapShowLike,
 } from "@/lib/shows";
 import {
   cancellationByContact,
@@ -395,6 +398,14 @@ export default async function DashboardPage() {
   const leadHeadline = bookingLeadTimeHeadline(
     bookingLeadTime(shows as LeadTimeShowLike[]),
   );
+
+  // Seca atual (D262–D264): "faz tempo que não subo ao palco e nada está agendado?".
+  // Reaproveita os shows já carregados (só date+status, sem I/O extra): showGaps mede
+  // a seca atual e a contextualiza pelo hábito (mediana) e pelo recorde, e o nudge só
+  // aparece quando a espera é fora do comum (≥ 2× o espaçamento típico) E não há gig
+  // firme à frente — aí prospectar é a ação. Escala para vermelho quando a seca já
+  // igualou/superou o recorde. O detalhe completo está em /shows/hiatos.
+  const drySpell = currentDrySpellHeadline(showGaps(shows as ShowGapShowLike[]));
 
   // Propostas paradas (D240): "quais propostas em aberto pedem uma decisão agora?".
   // Reaproveita os shows já carregados (zero I/O extra): findStaleProposals varre os
@@ -951,6 +962,37 @@ export default async function DashboardPage() {
             className={leadHeadline.critical ? "text-red-600" : "text-amber-600"}
           >
             Ver →
+          </span>
+        </Link>
+      )}
+
+      {/* Seca atual fora do comum e nada agendado (D262–D264): faz tempo que você
+          não sobe ao palco — bem além do seu espaçamento típico — e não há gig
+          firme à frente. Só dispara na cauda (≥ 2× o hábito) e vira vermelho
+          quando a seca já igualou/superou o recorde. Detalhe em /shows/hiatos. */}
+      {drySpell.show && (
+        <Link
+          href="/shows/hiatos"
+          className={
+            "flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3 text-sm transition " +
+            (drySpell.critical
+              ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100")
+          }
+        >
+          <span className="font-semibold">
+            {drySpell.critical ? "🔴" : "🟠"} Faz {daysLabel(drySpell.days)} que você não toca
+          </span>
+          <span>
+            {drySpell.critical
+              ? "Você nunca ficou tanto tempo sem show — "
+              : "Seca fora do comum — "}
+            <strong>{formatRatio(drySpell.ratio)}×</strong> o intervalo típico de{" "}
+            {daysLabel(drySpell.typicalDays)} entre gigs, e nada está agendado. Boa hora
+            para prospectar.
+          </span>
+          <span className={drySpell.critical ? "text-red-600" : "text-amber-600"}>
+            Prospectar →
           </span>
         </Link>
       )}
@@ -1710,6 +1752,11 @@ function daysLabel(days: number): string {
   if (days < 0) return `${Math.abs(days)} dias adiantado`;
   if (days === 0) return "no mesmo dia";
   return `${days} ${days === 1 ? "dia" : "dias"}`;
+}
+
+/** 2,5 → "2,5"; 2 → "2" (vírgula decimal pt-BR, sem casa quando inteiro). */
+function formatRatio(n: number): string {
+  return n.toLocaleString("pt-BR", { maximumFractionDigits: 1 });
 }
 
 /**
