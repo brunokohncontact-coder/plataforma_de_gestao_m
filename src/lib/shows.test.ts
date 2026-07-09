@@ -17,6 +17,8 @@ import {
   compareBookingLeadTime,
   compareBookingLeadTimeScopes,
   bookingLeadTimeByContact,
+  compareBookingLeadTimeByContact,
+  indexContactBookingLeadTimeChanges,
   bookingLeadTimeHeadline,
   summarizeMonthShows,
   summarizeWeekShows,
@@ -994,6 +996,136 @@ describe("bookingLeadTimeByContact", () => {
     expect(c1.shows.map((s) => s.leadDays)).toEqual([30, 20]);
     expect(r.overall.sample).toBe(2);
     expect(r.overall.medianDays).toBe(bookingLeadTime(shows, "firm").medianDays);
+  });
+});
+
+describe("compareBookingLeadTimeByContact", () => {
+  type BookerShow = LeadTimeShowLike & { bookerId: string | null; bookerName: string };
+  const bShow = (partial: Partial<BookerShow>): BookerShow => ({
+    ...leadShow({}),
+    bookerId: "c1",
+    bookerName: "Bar do Zé",
+    ...partial,
+  });
+  const getBooker = (s: BookerShow) =>
+    s.bookerId ? { id: s.bookerId, name: s.bookerName } : null;
+  // Um show do contratante `bookerId` no ano `year` com antecedência `days`.
+  const lead = (bookerId: string | null, name: string, year: number, days: number) =>
+    bShow({
+      bookerId,
+      bookerName: name,
+      createdAt: `${year}-01-01T00:00:00.000Z`,
+      date: new Date(Date.UTC(year, 0, 1 + days)).toISOString(),
+    });
+  const report = (shows: BookerShow[]) =>
+    bookingLeadTimeByContact<{ id: string; name: string }, BookerShow>(shows, getBooker);
+
+  it("casa por id e marca 'improved' quando o contratante passa a fechar com mais folga", () => {
+    // 2025: mediana 5; 2026: mediana 40 → +35 (subir a antecedência é melhora).
+    const cur = report([lead("ze", "Zé", 2026, 40), lead("ze", "Zé", 2026, 40), lead("ze", "Zé", 2026, 40)]);
+    const prev = report([lead("ze", "Zé", 2025, 5), lead("ze", "Zé", 2025, 5), lead("ze", "Zé", 2025, 5)]);
+    const c = compareBookingLeadTimeByContact(cur, prev);
+    expect(c.changes).toHaveLength(1);
+    expect(c.changes[0].contact.id).toBe("ze");
+    expect(c.changes[0].medianDaysDelta).toBe(35);
+    expect(c.changes[0].trend).toBe("improved");
+    expect(c.biggestImprovement?.contact.id).toBe("ze");
+    expect(c.biggestWorsening).toBeNull();
+    expect(c.newContacts).toEqual([]);
+    expect(c.droppedContacts).toEqual([]);
+  });
+
+  it("marca 'worsened' quando perde folga e 'stable' dentro do limiar", () => {
+    const worse = compareBookingLeadTimeByContact(
+      report([lead("ze", "Zé", 2026, 5)]),
+      report([lead("ze", "Zé", 2025, 40)]),
+    );
+    expect(worse.changes[0].medianDaysDelta).toBe(-35);
+    expect(worse.changes[0].trend).toBe("worsened");
+    expect(worse.biggestWorsening?.contact.id).toBe("ze");
+    expect(worse.biggestImprovement).toBeNull();
+
+    // Variação de 3 dias (< LEAD_TIME_TREND_EPSILON = 7) → estável.
+    const stable = compareBookingLeadTimeByContact(
+      report([lead("ze", "Zé", 2026, 13)]),
+      report([lead("ze", "Zé", 2025, 10)]),
+    );
+    expect(stable.changes[0].medianDaysDelta).toBe(3);
+    expect(stable.changes[0].trend).toBe("stable");
+    expect(stable.biggestImprovement).toBeNull();
+    expect(stable.biggestWorsening).toBeNull();
+  });
+
+  it("particiona novos e sumidos e ignora o grupo sem contratante", () => {
+    const cur = report([
+      lead("ze", "Zé", 2026, 20),
+      lead("novo", "Novo", 2026, 10),
+      lead(null, "", 2026, 15), // sem contratante → não comparável
+    ]);
+    const prev = report([lead("ze", "Zé", 2025, 30), lead("antigo", "Antigo", 2025, 40)]);
+    const c = compareBookingLeadTimeByContact(cur, prev);
+    expect(c.changes.map((x) => x.contact.id)).toEqual(["ze"]); // só quem está nos dois
+    expect(c.newContacts.map((x) => x.contact?.id)).toEqual(["novo"]);
+    expect(c.droppedContacts.map((x) => x.contact?.id)).toEqual(["antigo"]);
+  });
+
+  it("ordena as variações da maior piora à maior melhora e escolhe os extremos", () => {
+    // ganhou: 5 → 60 (+55, melhora); perdeu: 60 → 5 (−55, piora).
+    const cur = report([lead("ganhou", "Ganhou", 2026, 60), lead("perdeu", "Perdeu", 2026, 5)]);
+    const prev = report([lead("ganhou", "Ganhou", 2025, 5), lead("perdeu", "Perdeu", 2025, 60)]);
+    const c = compareBookingLeadTimeByContact(cur, prev);
+    // Piora (−55) no topo, melhora (+55) embaixo.
+    expect(c.changes.map((x) => x.contact.id)).toEqual(["perdeu", "ganhou"]);
+    expect(c.biggestWorsening?.contact.id).toBe("perdeu");
+    expect(c.biggestImprovement?.contact.id).toBe("ganhou");
+  });
+});
+
+describe("indexContactBookingLeadTimeChanges", () => {
+  type BookerShow = LeadTimeShowLike & { bookerId: string | null; bookerName: string };
+  const bShow = (partial: Partial<BookerShow>): BookerShow => ({
+    ...leadShow({}),
+    bookerId: "c1",
+    bookerName: "Bar do Zé",
+    ...partial,
+  });
+  const getBooker = (s: BookerShow) =>
+    s.bookerId ? { id: s.bookerId, name: s.bookerName } : null;
+  const lead = (bookerId: string | null, name: string, year: number, days: number) =>
+    bShow({
+      bookerId,
+      bookerName: name,
+      createdAt: `${year}-01-01T00:00:00.000Z`,
+      date: new Date(Date.UTC(year, 0, 1 + days)).toISOString(),
+    });
+  const report = (shows: BookerShow[]) =>
+    bookingLeadTimeByContact<{ id: string; name: string }, BookerShow>(shows, getBooker);
+
+  it("resolve 'changed' com a variação para quem está nos dois períodos", () => {
+    const cur = report([lead("ze", "Zé", 2026, 40)]);
+    const prev = report([lead("ze", "Zé", 2025, 5)]);
+    const lookup = indexContactBookingLeadTimeChanges(compareBookingLeadTimeByContact(cur, prev));
+    const status = lookup("ze");
+    expect(status.kind).toBe("changed");
+    if (status.kind === "changed") {
+      expect(status.change.medianDaysDelta).toBe(35);
+      expect(status.change.trend).toBe("improved");
+    }
+  });
+
+  it("resolve 'new' para quem só existe no atual e 'none' para sem-contratante/desconhecido", () => {
+    const cur = report([
+      lead("ze", "Zé", 2026, 20),
+      lead("novo", "Novo", 2026, 10),
+      lead(null, "", 2026, 15),
+    ]);
+    const prev = report([lead("ze", "Zé", 2025, 30)]);
+    const lookup = indexContactBookingLeadTimeChanges(compareBookingLeadTimeByContact(cur, prev));
+    expect(lookup("novo").kind).toBe("new");
+    expect(lookup(null).kind).toBe("none");
+    expect(lookup(undefined).kind).toBe("none");
+    expect(lookup("fantasma").kind).toBe("none");
+    expect(lookup("ze").kind).toBe("changed");
   });
 });
 

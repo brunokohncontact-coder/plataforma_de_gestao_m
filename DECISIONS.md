@@ -9224,3 +9224,54 @@ contexto, decisão, justificativa e alternativas consideradas.
   baseline (10 advisories; ver D6).
 - **Nota de concorrência:** número **D269** escolhido como o próximo livre após o D268 (Sessão 273). Se
   uma PR paralela reivindicar D269, renumerar para o próximo livre no merge.
+
+---
+
+## 2026-07-09 — D270: Comparativo ano a ano da antecedência por contratante (`compareBookingLeadTimeByContact` + card "Quem mudou o ritmo de agenda" em `/shows/antecedencia/por-contratante`) (Sessão 275)
+- **Contexto:** a antecedência por contratante (D268) ganhou o recorte por ano (D269), mas ainda não
+  respondia "quem passou a te fechar com mais folga / mais em cima da hora de um ano para o outro". A
+  tela-mãe `/shows/antecedencia` já tem o comparativo agregado (`compareBookingLeadTime`/D188, mediana ×
+  ano anterior) e o eixo dos recebíveis já tinha o comparativo POR contratante (`comparePaymentLagByContact`
+  /D194 + card "Quem mudou de ritmo"/D195 + coluna "vs. {ano-1}"/D196). Faltava o espelho desse "passo
+  maior" no eixo da antecedência — o próximo passo explicitamente adiado nas D268/D269.
+- **Decisão:** espelhar `comparePaymentLagByContact`/`indexContactPaymentLagChanges` no eixo da
+  antecedência. Novo em `src/lib/shows.ts`: `compareBookingLeadTimeByContact(current, previous)` +
+  `indexContactBookingLeadTimeChanges(comparison)` + tipos `ContactBookingLeadTimeChange`,
+  `BookingLeadTimeByContactComparison`, `ContactBookingLeadTimeRowStatus`. Recebe dois
+  `bookingLeadTimeByContact` já computados (o ano atual × o anterior, cada um sobre os shows do seu período
+  sob o MESMO escopo), casa por `contact.id` e devolve as variações (`changes`), os extremos
+  (`biggestImprovement`/`biggestWorsening`) e quem entrou/sumiu (`newContacts`/`droppedContacts`). Na página:
+  card "Quem mudou o ritmo de agenda · {ano} vs. {ano-1}" (espelho de `PaymentLagMoversCard`) + coluna
+  "vs. {ano-1}" na tabela + nota de rodapé, tudo gated ao ano específico com ambos os períodos medindo
+  antecedência. Export CSV ganha a coluna opcional "vs. {ano-1} (dias)" (mesmo padrão do
+  `paymentLagByContactToCsv`, via `previousYear` opcional em `bookingLeadTimeByContactToCsv`).
+- **Justificativa:**
+  - **Subir é a melhora (não descer).** Ao contrário do prazo de recebimento (o cachê entrar mais cedo é
+    bom → descer melhora), aqui **subir** a antecedência é a melhora — mais runway para prospectar e
+    precificar. Então `medianDaysDelta = atual − anterior` positivo = "improved"; a ordenação dos `changes`
+    é da maior piora (delta mais negativo) no topo, e os extremos invertem o sinal do irmão de recebíveis.
+    Idêntico à direção do comparativo agregado da tela-mãe (`compareBookingLeadTime`/D188).
+  - **Âncora na MEDIANA, não na média.** O irmão `comparePaymentLagByContact` ancora na média ponderada
+    "porque é o eixo por que a página ordena e destaca". Aplicando o MESMO princípio: a página de
+    antecedência ordena e destaca (`mostLeadTime`/`leastLeadTime`) pela **mediana**, e o comparativo
+    agregado também decide a tendência pela mediana — então o espelho fiel ancora na mediana, reusando
+    `LEAD_TIME_TREND_EPSILON` (=7 dias), o mesmo limiar do comparativo agregado.
+  - **Amostra pequena sinalizada, não filtrada.** Como o irmão, inclui todos os contratantes comparáveis
+    (não filtra por `reliable`) e o card marca "amostra pequena" quando um dos destaques tem menos que
+    `MIN_LEAD_TIME_SAMPLE` shows num dos períodos — a mediana por pagador é ruidosa com 1–2 shows.
+  - **Zero I/O novo, zero migração, zero dependência.** Reusa os shows já carregados sob o recorte por
+    `date` (D108) e o mesmo `pickPayerContact`; a lógica nova é pura e determinística, coberta por testes.
+- **Alternativas consideradas:** ancorar na média (como o irmão de recebíveis) — descartado: a média não é
+  o eixo por que ESTA página ordena/destaca, quebraria a coerência com os destaques e o comparativo
+  agregado. Filtrar os `changes` por `reliable` — descartado: some com contratantes reais e diverge do
+  irmão; melhor incluir e sinalizar. Adiar o CSV do comparativo (como se fez na D195→D196 para recebíveis)
+  — descartado: a coluna já é o mesmo padrãozinho testado, entregá-la junto mantém paridade total com o
+  eixo de recebíveis numa só sessão.
+- **DoD:** build de produção, typecheck (`tsc --noEmit`, 0 erros) e lint (`next lint`, 0 avisos) verdes;
+  **1543 testes** (`vitest run`, +8: 4 de `compareBookingLeadTimeByContact`, 2 de
+  `indexContactBookingLeadTimeChanges`, 2 de `bookingLeadTimeByContactToCsv` com/sem `previousYear`); smoke
+  (`next start`) → `/login` 200, `/shows/antecedencia/por-contratante?ano=2026` e
+  `/export?ano=2026&escopo=firm` 307→/login (auth-gated, sem 500). `npm audit` **inalterado** vs. baseline
+  (10 advisories; ver D6).
+- **Nota de concorrência:** número **D270** escolhido como o próximo livre após o D269 (Sessão 274). Se
+  uma PR paralela reivindicar D270, renumerar para o próximo livre no merge.

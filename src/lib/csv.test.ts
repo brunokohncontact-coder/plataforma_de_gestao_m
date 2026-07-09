@@ -4212,4 +4212,30 @@ describe("bookingLeadTimeByContactToCsv", () => {
     expect(lines[1].startsWith("Primeiro;")).toBe(true);
     expect(lines[2].startsWith("Segundo;")).toBe(true);
   });
+
+  it("sem previousYear, saída idêntica à histórica (8 colunas, sem coluna de comparativo)", () => {
+    const csv = bookingLeadTimeByContactToCsv([row({ medianDaysDelta: 12, isNew: false })]);
+    const header = csv.split("\r\n")[0];
+    expect(header).toBe(BOOKING_LEAD_TIME_BY_CONTACT_CSV_HEADERS.join(";"));
+    expect(csv.split("\r\n")[1].split(";")).toHaveLength(8);
+  });
+
+  it("com previousYear ganha a coluna 'vs. {ano}' com variação assinada da mediana", () => {
+    const csv = bookingLeadTimeByContactToCsv(
+      [
+        row({ contact: { name: "Ganhou folga" }, medianDaysDelta: 12 }),
+        row({ contact: { name: "Perdeu folga" }, medianDaysDelta: -8 }),
+        row({ contact: { name: "Novato" }, isNew: true }),
+        row({ contact: null, medianDaysDelta: null }), // sem contratante → em branco
+      ],
+      undefined,
+      2025,
+    );
+    const lines = csv.split("\r\n");
+    expect(lines[0].endsWith(";vs. 2025 (dias)")).toBe(true);
+    expect(lines[1].split(";").at(-1)).toBe("+12");
+    expect(lines[2].split(";").at(-1)).toBe("-8");
+    expect(lines[3].split(";").at(-1)).toBe("novo");
+    expect(lines[4].split(";").at(-1)).toBe(""); // não comparável
+  });
 });
