@@ -9,7 +9,26 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1523 testes** verdes após a **distribuição
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1535 testes** verdes após a **antecedência de
+agendamento por contratante** (Sessão 273, D268 — `bookingLeadTime` (D190) media a antecedência só no AGREGADO
+(`/shows/antecedencia`); não dizia DE QUEM vem o lead. Dois contratantes podem ter o mesmo faturamento e hábitos opostos:
+um te fecha meses antes (runway para prospectar/precificar) e outro só chama na véspera (agenda reativa). Novo helper puro
+`bookingLeadTimeByContact(shows, getBooker, scope)` + tipos `BookingLeadTimeByContact`/`ContactBookingLeadTimeRow`/
+`LeadTimeShowReading` em `src/lib/shows.ts`: atribui cada show ao contratante via `getBooker` (a página usa
+`pickPayerContact`, o mesmo eixo dos recebíveis) e roda `bookingLeadTime` sobre a sublista de cada grupo — herda escopo,
+mediana, faixas e confiabilidade sem duplicar regra; `overall` = `bookingLeadTime(shows, scope)` (o número da tela-mãe).
+Ordena do MENOR lead mediano ao maior (o mais "em cima da hora" primeiro, a ponta que dói), com "Sem contratante"
+(`pickPayerContact` nulo) por último; destaques `mostLeadTime`/`leastLeadTime` só entre amostra confiável
+(`reliable` ≥ `MIN_LEAD_TIME_SAMPLE`) para não celebrar/acusar 1–2 shows. Nova página
+`/shows/antecedencia/por-contratante` (seletor de escopo `all`/`firm` da D190, destaques + tabela + detalhe por
+contratante) + export CSV (`bookingLeadTimeByContactToCsv` em `src/lib/csv.ts`) + entrada no hub (`reports.ts`) + link
+"Por contratante →" na tela-mãe. Escopo por ora **sem recorte por ano nem comparativo ano-a-ano** (adiado: o próximo passo
+é espelhar `comparePaymentLagByContact`/`indexContactPaymentLagChanges` no eixo da antecedência). Zero migração, zero
+dependência nova. **+13 testes** (`shows.test.ts` +8: vazia; agrupamento + reuso da mediana; ordenação menor→maior lead com
+`null` por último; soma de `share`; destaques só confiáveis; readings maior→menor lead ignorando retroativos; escopo
+`firm`; `csv.test.ts` +5 de `bookingLeadTimeByContactToCsv`). Build OK, typecheck 0 erros, lint 0 avisos; smoke
+(`next start`) → `/login` 200, `/shows/antecedencia/por-contratante` e `/export` 307→/login (auth-gated, sem 500).
+`npm audit` inalterado vs. baseline (10 advisories, mesmos Next/postcss da D6). Ver D268. Antes, a **distribuição
 das secas por faixa** no relatório de hiatos (Sessão 272, D267 — `showGaps` (D262) já dava a CAUDA (maiores hiatos) e o
 CENTRO (mediana/média); faltava a FORMA da distribuição — dois músicos com a mesma mediana e o mesmo recorde podem ter
 agendas muito diferentes (cadência regular × festa-ou-fome), e a tabela "Maiores secas" lista tudo mas não resume o padrão
@@ -4435,6 +4454,15 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    Próximo possível para esta feature: (a) recorte por `?ano=`/`PeriodPicker` (entregue, D186); (b) restringir a amostra a
    CONFIRMED+PLAYED (compromissos firmes) como visão alternativa (entregue, D190); (c) nudge no Painel se a antecedência mediana cair
    a um piso curto (entregue, D189).
+   **Antecedência por contratante** entregue na Sessão 273 — `bookingLeadTimeByContact(shows, getBooker, scope)` + tipos
+   `BookingLeadTimeByContact`/`ContactBookingLeadTimeRow`/`LeadTimeShowReading` em `src/lib/shows.ts` (roda `bookingLeadTime` por grupo
+   de contratante via `pickPayerContact`, o eixo dos recebíveis; `overall` = a leitura da carteira inteira; ordena do menor lead
+   mediano ao maior, "Sem contratante" por último; destaques só entre amostra confiável) + página `/shows/antecedencia/por-contratante`
+   (seletor de escopo, destaques + tabela + detalhe) + export `bookingLeadTimeByContactToCsv` + entrada no hub + link na tela-mãe:
+   quem te fecha com folga × quem só chama em cima da hora. Espelho de `paymentLagByContact` (D194) no eixo da antecedência, ver D268.
+   **+13 testes.** Próximo possível para esta feature: (a) recorte por `?ano=`/`PeriodPicker` + comparativo ano-a-ano por contratante
+   (adiado nesta sessão — espelhar `comparePaymentLagByContact`/`indexContactPaymentLagChanges` no eixo da antecedência); (b) coluna
+   "vs. {ano-1}" na tabela (dependeria de (a)).
    **Comparativo ano a ano do prazo de recebimento por contratante** entregue na Sessão 202 — `comparePaymentLagByContact` +
    `PaymentLagByContactComparison`/`ContactPaymentLagChange` em `src/lib/finance.ts` + card `PaymentLagMoversCard` "Quem mudou de
    ritmo" em `/shows/prazo-recebimento/por-contratante`: quem começou a te pagar mais rápido/devagar de um ano para o outro

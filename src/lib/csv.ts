@@ -3708,3 +3708,75 @@ export function bookingLeadTimeToCsv(
   ]);
   return toCsv(out, delimiter);
 }
+
+// ── Antecedência de agendamento por contratante ─────────────────────────────
+
+export const BOOKING_LEAD_TIME_BY_CONTACT_CSV_HEADERS = [
+  "Contratante",
+  "Shows",
+  "Antecedência mediana (dias)",
+  "Antecedência média (dias)",
+  "Menor (dias)",
+  "Maior (dias)",
+  "Participação (%)",
+  "Cachê (R$)",
+] as const;
+
+/**
+ * Forma mínima de uma linha de antecedência por contratante para a exportação
+ * (desacoplada de `ContactBookingLeadTimeRow` de `@/lib/shows`, que carrega os
+ * shows inteiros). É a visão de `/shows/antecedencia/por-contratante`: uma linha
+ * por contratante com o nº de shows mensuráveis, a antecedência mediana/média (em
+ * dias) e os extremos, a participação na amostra e o cachê somado.
+ */
+export interface BookingLeadTimeByContactCsvRow {
+  /** Contratante do grupo; `null` agrega os shows sem contato vinculado. */
+  contact: { name: string } | null;
+  /** Shows com antecedência mensurável do contratante. */
+  sample: number;
+  /** Antecedência mediana (dias). */
+  medianDays: number;
+  /** Antecedência média (dias). */
+  avgDays: number;
+  /** Menor antecedência observada (dias); `null` se amostra vazia. */
+  shortestDays: number | null;
+  /** Maior antecedência observada (dias); `null` se amostra vazia. */
+  longestDays: number | null;
+  /** Amostra confiável (>= MIN_LEAD_TIME_SAMPLE): gate da mediana na saída. */
+  reliable: boolean;
+  /** Participação na amostra mensurável total (0..1). */
+  share: number;
+  /** Cachê somado dos shows mensuráveis do contratante (centavos). */
+  totalFee: number;
+}
+
+/**
+ * Serializa a antecedência de agendamento por contratante em CSV, pronto para
+ * download. Uma linha por contratante, espelhando a tabela de
+ * `/shows/antecedencia/por-contratante`: nº de shows, antecedência mediana e
+ * média (dias inteiros), menor/maior e participação na amostra + cachê somado.
+ * O grupo "Sem contratante" (`contact: null`) sai com nome fixo. A antecedência
+ * mediana só sai quando a amostra é confiável (`reliable`) — abaixo disso fica em
+ * branco (mesma regra de apresentação da UI). A ordem das linhas é preservada (a
+ * página ordena do menor lead mediano ao maior, "Sem contratante" por último).
+ * Irmão de `paymentLagByContactToCsv` no eixo da antecedência. Pura.
+ */
+export function bookingLeadTimeByContactToCsv(
+  rows: BookingLeadTimeByContactCsvRow[],
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(BOOKING_LEAD_TIME_BY_CONTACT_CSV_HEADERS)];
+  for (const row of rows) {
+    out.push([
+      row.contact ? row.contact.name : "Sem contratante",
+      String(row.sample),
+      row.reliable ? String(row.medianDays) : "",
+      String(row.avgDays),
+      row.shortestDays == null ? "" : String(row.shortestDays),
+      row.longestDays == null ? "" : String(row.longestDays),
+      csvShare(row.share),
+      centsToCsvAmount(row.totalFee),
+    ]);
+  }
+  return toCsv(out, delimiter);
+}

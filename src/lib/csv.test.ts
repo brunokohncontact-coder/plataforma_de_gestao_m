@@ -129,6 +129,9 @@ import {
   TAX_RESERVE_CSV_HEADERS,
   bookingLeadTimeToCsv,
   BOOKING_LEAD_TIME_CSV_HEADERS,
+  bookingLeadTimeByContactToCsv,
+  BOOKING_LEAD_TIME_BY_CONTACT_CSV_HEADERS,
+  type BookingLeadTimeByContactCsvRow,
   staleProposalsToCsv,
   STALE_PROPOSALS_CSV_HEADERS,
 } from "./csv";
@@ -4150,5 +4153,63 @@ describe("bookingLeadTimeToCsv", () => {
     expect(lines[3]).toBe("1 a 3 meses;31;90;0;0%;0,00");
     expect(lines[4]).toBe("Mais de 3 meses;91;;1;33%;300,00");
     expect(lines[5]).toBe("Total;;;3;;600,00");
+  });
+});
+
+describe("bookingLeadTimeByContactToCsv", () => {
+  const row = (
+    over: Partial<BookingLeadTimeByContactCsvRow> = {},
+  ): BookingLeadTimeByContactCsvRow => ({
+    contact: { name: "Bar do Zé" },
+    sample: 4,
+    medianDays: 20,
+    avgDays: 22,
+    shortestDays: 5,
+    longestDays: 60,
+    reliable: true,
+    share: 0.5,
+    totalFee: 400_00,
+    ...over,
+  });
+
+  it("só o cabeçalho quando não há linhas", () => {
+    const csv = bookingLeadTimeByContactToCsv([]);
+    expect(csv).toBe(BOOKING_LEAD_TIME_BY_CONTACT_CSV_HEADERS.join(";"));
+  });
+
+  it("uma linha por contratante com mediana, média, extremos, participação e cachê", () => {
+    const csv = bookingLeadTimeByContactToCsv([row()]);
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(BOOKING_LEAD_TIME_BY_CONTACT_CSV_HEADERS.join(";"));
+    expect(lines[1]).toBe("Bar do Zé;4;20;22;5;60;50%;400,00");
+  });
+
+  it("mediana em branco quando a amostra não é confiável", () => {
+    const csv = bookingLeadTimeByContactToCsv([
+      row({ sample: 1, reliable: false, medianDays: 200, avgDays: 200, shortestDays: 200, longestDays: 200 }),
+    ]);
+    const cols = csv.split("\r\n")[1].split(";");
+    expect(cols[2]).toBe(""); // mediana suprimida
+    expect(cols[3]).toBe("200"); // média sai
+  });
+
+  it("grupo sem contratante sai com nome fixo e extremos vazios quando nulos", () => {
+    const csv = bookingLeadTimeByContactToCsv([
+      row({ contact: null, sample: 0, reliable: false, shortestDays: null, longestDays: null, totalFee: 0, share: 0 }),
+    ]);
+    const cols = csv.split("\r\n")[1].split(";");
+    expect(cols[0]).toBe("Sem contratante");
+    expect(cols[4]).toBe(""); // menor
+    expect(cols[5]).toBe(""); // maior
+  });
+
+  it("preserva a ordem das linhas recebidas", () => {
+    const csv = bookingLeadTimeByContactToCsv([
+      row({ contact: { name: "Primeiro" } }),
+      row({ contact: { name: "Segundo" } }),
+    ]);
+    const lines = csv.split("\r\n");
+    expect(lines[1].startsWith("Primeiro;")).toBe(true);
+    expect(lines[2].startsWith("Segundo;")).toBe(true);
   });
 });

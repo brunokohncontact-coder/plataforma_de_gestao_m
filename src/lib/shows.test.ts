@@ -16,6 +16,7 @@ import {
   parseLeadTimeScope,
   compareBookingLeadTime,
   compareBookingLeadTimeScopes,
+  bookingLeadTimeByContact,
   bookingLeadTimeHeadline,
   summarizeMonthShows,
   summarizeWeekShows,
@@ -868,6 +869,131 @@ describe("compareBookingLeadTimeScopes", () => {
     expect(cmp.openProposalCount).toBe(2);
     expect(Math.abs(cmp.medianDaysDelta)).toBeLessThan(LEAD_TIME_TREND_EPSILON);
     expect(cmp.gap).toBe("similar");
+  });
+});
+
+describe("bookingLeadTimeByContact", () => {
+  type BookerShow = LeadTimeShowLike & { bookerId: string | null; bookerName: string };
+  const bShow = (partial: Partial<BookerShow>): BookerShow => ({
+    ...leadShow({}),
+    bookerId: "c1",
+    bookerName: "Bar do Zé",
+    ...partial,
+  });
+  const getBooker = (s: BookerShow) =>
+    s.bookerId ? { id: s.bookerId, name: s.bookerName } : null;
+  // createdAt fixo; a data `lead` dias depois dá uma antecedência de `lead` dias.
+  const lead = (bookerId: string | null, name: string, days: number, over: Partial<BookerShow> = {}) =>
+    bShow({
+      bookerId,
+      bookerName: name,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      date: new Date(Date.UTC(2026, 0, 1 + days)).toISOString(),
+      ...over,
+    });
+
+  it("amostra vazia: sem linhas, destaques nulos, overall zerado", () => {
+    const r = bookingLeadTimeByContact<{ id: string; name: string }, BookerShow>([], getBooker);
+    expect(r.rows).toEqual([]);
+    expect(r.contactCount).toBe(0);
+    expect(r.sample).toBe(0);
+    expect(r.mostLeadTime).toBeNull();
+    expect(r.leastLeadTime).toBeNull();
+    expect(r.overall.sample).toBe(0);
+  });
+
+  it("agrupa por contratante e cada linha reusa bookingLeadTime (mediana bate)", () => {
+    const shows = [
+      lead("c1", "Bar do Zé", 10),
+      lead("c1", "Bar do Zé", 20),
+      lead("c1", "Bar do Zé", 30),
+      lead("c2", "Festival X", 90),
+    ];
+    const r = bookingLeadTimeByContact(shows, getBooker);
+    expect(r.contactCount).toBe(2);
+    expect(r.sample).toBe(4);
+    const c1 = r.rows.find((x) => x.contact?.id === "c1")!;
+    expect(c1.leadTime.sample).toBe(3);
+    expect(c1.leadTime.medianDays).toBe(20);
+    expect(c1.leadTime.medianDays).toBe(bookingLeadTime(shows.filter((s) => s.bookerId === "c1")).medianDays);
+    // overall = a leitura da carteira inteira (tela-mãe)
+    expect(r.overall.sample).toBe(4);
+    expect(r.overall.medianDays).toBe(bookingLeadTime(shows).medianDays);
+  });
+
+  it("ordena do menor lead mediano ao maior (mais em cima da hora primeiro); sem-contratante por último", () => {
+    const shows = [
+      lead("c1", "Fecha com folga", 60),
+      lead("c1", "Fecha com folga", 60),
+      lead("c1", "Fecha com folga", 60),
+      lead("c2", "Em cima da hora", 3),
+      lead("c2", "Em cima da hora", 3),
+      lead("c2", "Em cima da hora", 3),
+      lead(null, "", 15),
+    ];
+    const r = bookingLeadTimeByContact(shows, getBooker);
+    expect(r.rows.map((x) => x.contact?.id ?? "__none__")).toEqual(["c2", "c1", "__none__"]);
+    expect(r.rows[r.rows.length - 1].contact).toBeNull();
+    expect(r.leastLeadTime?.contact?.id).toBe("c2");
+    expect(r.mostLeadTime?.contact?.id).toBe("c1");
+  });
+
+  it("participação (share) soma ~1 sobre a amostra total, incluindo sem-contratante", () => {
+    const shows = [
+      lead("c1", "A", 10),
+      lead("c2", "B", 20),
+      lead(null, "", 30),
+    ];
+    const r = bookingLeadTimeByContact(shows, getBooker);
+    const total = r.rows.reduce((s, x) => s + x.share, 0);
+    expect(total).toBeCloseTo(1, 6);
+    expect(r.rows.every((x) => Math.abs(x.share - x.leadTime.sample / 3) < 1e-9)).toBe(true);
+  });
+
+  it("destaques só consideram contratantes com amostra confiável (>= MIN_LEAD_TIME_SAMPLE)", () => {
+    const shows = [
+      // c1: 1 show com lead altíssimo, mas amostra fina → fora do destaque
+      lead("c1", "Uma vez só", 200),
+      // c2: 3 shows curtos, confiável
+      lead("c2", "Regular", 5),
+      lead("c2", "Regular", 6),
+      lead("c2", "Regular", 7),
+    ];
+    const r = bookingLeadTimeByContact(shows, getBooker);
+    expect(r.mostLeadTime?.contact?.id).toBe("c2");
+    expect(r.leastLeadTime?.contact?.id).toBe("c2");
+    // c1 aparece na tabela, mas nunca vira destaque (amostra não confiável).
+    expect(r.rows.some((x) => x.contact?.id === "c1")).toBe(true);
+  });
+
+  it("readings do grupo vêm do maior lead ao menor e ignoram retroativos", () => {
+    const shows = [
+      lead("c1", "A", 5),
+      lead("c1", "A", 40),
+      // retroativo: createdAt depois da data → não entra na amostra nem nos readings
+      bShow({ bookerId: "c1", bookerName: "A", createdAt: "2026-03-01T00:00:00.000Z", date: "2026-02-01T00:00:00.000Z" }),
+    ];
+    const r = bookingLeadTimeByContact(shows, getBooker);
+    const c1 = r.rows.find((x) => x.contact?.id === "c1")!;
+    expect(c1.shows.map((s) => s.leadDays)).toEqual([40, 5]);
+    expect(c1.leadTime.retroactiveCount).toBe(1);
+    expect(c1.leadTime.sample).toBe(2);
+    expect(c1.totalFee).toBe(2 * 100_00);
+  });
+
+  it("escopo 'firm' restringe a amostra (só CONFIRMED/PLAYED) e casa com o overall", () => {
+    const shows = [
+      lead("c1", "A", 10, { status: "PROPOSED" }),
+      lead("c1", "A", 20, { status: "CONFIRMED" }),
+      lead("c1", "A", 30, { status: "PLAYED" }),
+      lead("c1", "A", 40, { status: "CANCELLED" }),
+    ];
+    const r = bookingLeadTimeByContact(shows, getBooker, "firm");
+    const c1 = r.rows.find((x) => x.contact?.id === "c1")!;
+    expect(c1.leadTime.sample).toBe(2);
+    expect(c1.shows.map((s) => s.leadDays)).toEqual([30, 20]);
+    expect(r.overall.sample).toBe(2);
+    expect(r.overall.medianDays).toBe(bookingLeadTime(shows, "firm").medianDays);
   });
 });
 

@@ -1020,6 +1020,171 @@ export function compareBookingLeadTimeScopes(
   };
 }
 
+// ── Antecedência de agendamento por contratante ───────────────────────────────
+// Enquanto `bookingLeadTime` (D190) mede com quanta antecedência os shows entram
+// na agenda no AGREGADO, esta quebra a mesma leitura POR contratante — quem te
+// fecha com folga (dá runway para prospectar/precificar) × quem só chama em cima
+// da hora (agenda reativa, correria). Espelha `paymentLagByContact` (D194) no eixo
+// da antecedência: reaproveita `bookingLeadTime` por grupo (mesma regra de escopo,
+// mediana e faixas — sem duplicar a lógica), atribuindo cada show ao seu
+// contratante via um `getBooker` (tipicamente `pickPayerContact`, o mesmo eixo de
+// "quem responde pelo show" dos recebíveis). Pura e determinística.
+
+/** Um show na leitura de antecedência por contratante, com o lead já resolvido. */
+export interface LeadTimeShowReading<S> {
+  show: S;
+  /** Antecedência do show em dias (>= 0; retroativos não entram aqui). */
+  leadDays: number;
+}
+
+/** Linha da antecedência por contratante: o contato + a sua leitura de antecedência. */
+export interface ContactBookingLeadTimeRow<
+  C,
+  S extends LeadTimeShowLike = LeadTimeShowLike,
+> {
+  /** Contratante do grupo; `null` agrega os shows sem contato vinculado. */
+  contact: C | null;
+  /** Leitura de antecedência restrita aos shows deste contratante (reusa `bookingLeadTime`). */
+  leadTime: BookingLeadTime;
+  /** Cachê somado dos shows com antecedência mensurável do contratante (centavos). */
+  totalFee: number;
+  /** Participação do contratante na amostra mensurável total (0..1). */
+  share: number;
+  /** Shows mensuráveis do contratante, do maior lead ao menor (empate pela data desc). */
+  shows: LeadTimeShowReading<S>[];
+}
+
+/** Antecedência de agendamento agregada por contratante. */
+export interface BookingLeadTimeByContact<
+  C,
+  S extends LeadTimeShowLike = LeadTimeShowLike,
+> {
+  /**
+   * Grupos por contratante, do MENOR lead mediano ao maior (o mais "em cima da
+   * hora" primeiro — a ponta que dói); o grupo `null` (sem contratante) vai
+   * sempre por último.
+   */
+  rows: ContactBookingLeadTimeRow<C, S>[];
+  /** Nº de contratantes identificados (exclui o grupo `null`). */
+  contactCount: number;
+  /** Shows com antecedência mensurável somando todos os grupos. */
+  sample: number;
+  /** Leitura da carteira inteira (o mesmo número da tela-mãe `/shows/antecedencia`). */
+  overall: BookingLeadTime;
+  /**
+   * Contratante que te fecha com MAIS antecedência (maior lead mediano), entre os
+   * grupos identificados com amostra confiável (`reliable`); `null` se nenhum
+   * alcança o piso. Restringe à amostra confiável para o destaque não celebrar
+   * um único show de sorte.
+   */
+  mostLeadTime: ContactBookingLeadTimeRow<C, S> | null;
+  /** Contratante que te fecha em cima da hora (menor lead mediano), mesmo critério de confiança. */
+  leastLeadTime: ContactBookingLeadTimeRow<C, S> | null;
+}
+
+/** Antecedência (dias UTC inteiros) de um show; negativo = lançamento retroativo. */
+function leadDaysOf(s: LeadTimeShowLike): number {
+  return Math.round(
+    (leadUtcMidnight(s.date) - leadUtcMidnight(s.createdAt)) / DAY_MS,
+  );
+}
+
+/**
+ * Antecedência de agendamento por contratante. Para cada contato (via
+ * `getBooker`; `null` cai no grupo "sem contratante") monta a sublista dos seus
+ * shows e roda `bookingLeadTime` sobre ela — herdando escopo, mediana, faixas e
+ * confiabilidade sem reimplementar a regra. `overall` roda `bookingLeadTime` sobre
+ * a lista inteira (o número da tela-mãe). Os grupos saem ordenados do MENOR lead
+ * mediano ao maior (o mais "em cima da hora" primeiro), com o grupo `null` por
+ * último; dentro de cada grupo os shows vêm do maior lead ao menor. Os destaques
+ * `mostLeadTime`/`leastLeadTime` só consideram grupos identificados e confiáveis
+ * (`reliable`), para não elevar amostras de 1–2 shows. Pura.
+ */
+export function bookingLeadTimeByContact<
+  C extends { id: string },
+  S extends LeadTimeShowLike,
+>(
+  shows: S[],
+  getBooker: (show: S) => C | null,
+  scope: BookingLeadTimeScope = "all",
+): BookingLeadTimeByContact<C, S> {
+  interface Group {
+    contact: C | null;
+    shows: S[];
+  }
+  const NO_CONTACT = " "; // chave reservada para o grupo sem contratante
+  const groups = new Map<string, Group>();
+
+  for (const s of shows) {
+    const contact = getBooker(s);
+    const key = contact ? contact.id : NO_CONTACT;
+    const g = groups.get(key) ?? { contact, shows: [] };
+    g.shows.push(s);
+    groups.set(key, g);
+  }
+
+  const rows: ContactBookingLeadTimeRow<C, S>[] = [];
+  for (const g of groups.values()) {
+    const leadTime = bookingLeadTime(g.shows, scope);
+    // Readings dos shows mensuráveis (no escopo, lead >= 0), do maior lead ao menor.
+    const readings: LeadTimeShowReading<S>[] = g.shows
+      .filter((s) => leadShowInScope(s.status, scope) && leadDaysOf(s) >= 0)
+      .map((s) => ({ show: s, leadDays: leadDaysOf(s) }))
+      .sort(
+        (a, b) =>
+          b.leadDays - a.leadDays ||
+          leadUtcMidnight(b.show.date) - leadUtcMidnight(a.show.date),
+      );
+    rows.push({
+      contact: g.contact,
+      leadTime,
+      totalFee: readings.reduce((sum, r) => sum + r.show.fee, 0),
+      share: 0, // preenchido depois, quando a amostra total é conhecida
+      shows: readings,
+    });
+  }
+
+  const sample = rows.reduce((sum, r) => sum + r.leadTime.sample, 0);
+  for (const r of rows) {
+    r.share = sample > 0 ? r.leadTime.sample / sample : 0;
+  }
+
+  // Menor lead mediano → maior (o mais em cima da hora primeiro); grupos sem
+  // amostra mensurável ao fim; o grupo sem contratante sempre por último.
+  rows.sort((a, b) => {
+    if (!a.contact !== !b.contact) return a.contact ? -1 : 1;
+    if ((a.leadTime.sample === 0) !== (b.leadTime.sample === 0)) {
+      return a.leadTime.sample === 0 ? 1 : -1;
+    }
+    return (
+      a.leadTime.medianDays - b.leadTime.medianDays ||
+      b.leadTime.sample - a.leadTime.sample ||
+      (a.contact?.id ?? "").localeCompare(b.contact?.id ?? "")
+    );
+  });
+
+  const reliableIdentified = rows.filter((r) => r.contact && r.leadTime.reliable);
+  let mostLeadTime: ContactBookingLeadTimeRow<C, S> | null = null;
+  let leastLeadTime: ContactBookingLeadTimeRow<C, S> | null = null;
+  for (const r of reliableIdentified) {
+    if (!mostLeadTime || r.leadTime.medianDays > mostLeadTime.leadTime.medianDays) {
+      mostLeadTime = r;
+    }
+    if (!leastLeadTime || r.leadTime.medianDays < leastLeadTime.leadTime.medianDays) {
+      leastLeadTime = r;
+    }
+  }
+
+  return {
+    rows,
+    contactCount: rows.filter((r) => r.contact).length,
+    sample,
+    overall: bookingLeadTime(shows, scope),
+    mostLeadTime,
+    leastLeadTime,
+  };
+}
+
 /**
  * Antecedência mediana (em dias) a partir da qual a agenda é considerada
  * apertada — "fecha shows em cima da hora". Duas semanas de folga é o piso

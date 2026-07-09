@@ -187,6 +187,16 @@ export default async function BookingLeadTimePage({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={
+              scope === "firm"
+                ? "/shows/antecedencia/por-contratante?escopo=firm"
+                : "/shows/antecedencia/por-contratante"
+            }
+            className="btn-secondary text-sm"
+          >
+            Por contratante →
+          </Link>
           {lead.sample > 0 && (
             <a
               href={buildHref("/shows/antecedencia/export")}
