@@ -1446,6 +1446,117 @@ export function bookingLeadTimeHeadline(
   };
 }
 
+// ── Manchete de antecedência POR CONTRATANTE para o Painel (quem passou a fechar em cima da hora?) ──
+// Enquanto `bookingLeadTimeHeadline` (D185/D189) alerta que a agenda INTEIRA vem
+// entrando em cima da hora (mediana curta em ABSOLUTO), este destila QUAL
+// contratante recorrente passou a te fechar com materialmente MENOS antecedência de
+// um ano para o outro — o eco de `compareBookingLeadTimeByContact` (D196) no
+// dashboard, irmão no eixo da antecedência de `contactConversionDropHeadline`
+// (D248, eixo da conversão). É mais acionável (diz DE QUEM renegociar prazo/pedir
+// reserva antecipada) e pega o caso que o nudge absoluto perde: a carteira segue com
+// folga na média, mas um parceiro específico começou a chamar em cima da hora.
+// Reusa o mesmo gate de confiança dos destaques irmãos (amostra ≥ `MIN_LEAD_TIME_SAMPLE`
+// nas DUAS coortes) e um piso de queda material (≥ `LEAD_TIME_DROP_DAYS`, o dobro do
+// `LEAD_TIME_TREND_EPSILON` do veredito do card — o Painel só alerta com uma perda de
+// folga de fato relevante, não qualquer variação). Só a ponta de PIORA (perda de
+// folga) vira nudge; ganhar antecedência é boa notícia. Pura, sem I/O.
+
+/**
+ * Queda mínima da antecedência mediana (em dias) para o nudge por contratante
+ * disparar. Duas semanas — o dobro de `LEAD_TIME_TREND_EPSILON` (=7, o limiar do
+ * veredito do card): espelha `CONVERSION_DROP_POINTS` (2× o epsilon do card) para
+ * o Painel só alertar com uma perda de folga material, não qualquer oscilação.
+ */
+export const LEAD_TIME_DROP_DAYS = 14;
+/** Queda da antecedência mediana (em dias) que escala o nudge para crítico (um mês de folga perdida). */
+export const LEAD_TIME_DROP_CRITICAL_DAYS = 30;
+
+/** Manchete de antecedência por contratante para o Painel (nudge de perda de folga ano a ano). */
+export interface ContactBookingLeadTimeDropHeadline<C> {
+  /** True quando o nudge deve aparecer (um contratante com queda confiável e material). */
+  show: boolean;
+  /** True quando a queda desse contratante entra na faixa crítica (≥ `criticalDays`). */
+  critical: boolean;
+  /** O contratante que mais perdeu folga (dentre os que passam no gate), ou `null`. */
+  contact: C | null;
+  /** Queda da antecedência mediana em dias (anterior − atual); ≥ 0 quando `show`. */
+  dropDays: number;
+  /** Antecedência mediana do contratante na coorte atual (dias). */
+  currentMedianDays: number;
+  /** Antecedência mediana do contratante na coorte anterior (dias). */
+  previousMedianDays: number;
+  /** Shows mensuráveis do contratante na coorte atual (a amostra da mediana). */
+  sample: number;
+  /**
+   * Quantos OUTROS contratantes também passaram no gate de queda material e
+   * confiável (para o banner: "+N esfriaram"). 0 quando só um qualifica.
+   */
+  others: number;
+}
+
+/**
+ * Decide se o Painel deve alertar que UM contratante específico passou a te fechar
+ * shows com materialmente menos antecedência de um ano para o outro — o eco de
+ * `compareBookingLeadTimeByContact` (D196) no dashboard, irmão por-contratante de
+ * `bookingLeadTimeHeadline` no eixo relativo e espelho de
+ * `contactConversionDropHeadline` (D248) no eixo da antecedência. Recebe um
+ * comparativo já computado (dois `bookingLeadTimeByContact`, cada um sobre a coorte
+ * do seu ano) e não faz I/O.
+ *
+ * Varre os `changes` (já ordenados da maior piora à maior melhora) e escolhe o
+ * contratante de MAIOR perda de folga que ainda tenha amostra confiável — ao menos
+ * `minSample` shows mensuráveis em CADA coorte, para a mediana não se apoiar em 1–2
+ * shows — e queda de ao menos `dropDays`. `critical` quando essa queda chega a
+ * `criticalDays` ou mais; `others` conta quantos outros contratantes também
+ * passariam no mesmo gate (o banner os resume). Como os nudges irmãos, só a ponta de
+ * PIORA vira alerta e o gate o mantém raro. Pura.
+ */
+export function contactBookingLeadTimeDropHeadline<C extends { id: string; name: string }>(
+  comparison: BookingLeadTimeByContactComparison<C>,
+  minSample: number = MIN_LEAD_TIME_SAMPLE,
+  dropDays: number = LEAD_TIME_DROP_DAYS,
+  criticalDays: number = LEAD_TIME_DROP_CRITICAL_DAYS,
+): ContactBookingLeadTimeDropHeadline<C> {
+  const qualifies = (c: ContactBookingLeadTimeChange<C>): boolean => {
+    const reliable =
+      c.current.leadTime.sample >= minSample &&
+      c.previous.leadTime.sample >= minSample;
+    return reliable && -c.medianDaysDelta >= dropDays;
+  };
+
+  // `changes` já vem ordenado por `medianDaysDelta` asc (maior perda de folga
+  // primeiro), então o primeiro que passa no gate é o de maior queda.
+  const worst = comparison.changes.find(qualifies) ?? null;
+  if (!worst) {
+    return {
+      show: false,
+      critical: false,
+      contact: null,
+      dropDays: 0,
+      currentMedianDays: 0,
+      previousMedianDays: 0,
+      sample: 0,
+      others: 0,
+    };
+  }
+
+  const drop = -worst.medianDaysDelta;
+  const others = comparison.changes.reduce(
+    (n, c) => (c !== worst && qualifies(c) ? n + 1 : n),
+    0,
+  );
+  return {
+    show: true,
+    critical: drop >= criticalDays,
+    contact: worst.contact,
+    dropDays: drop,
+    currentMedianDays: worst.current.leadTime.medianDays,
+    previousMedianDays: worst.previous.leadTime.medianDays,
+    sample: worst.current.leadTime.sample,
+    others,
+  };
+}
+
 // ── Resumo do mês exibido no calendário ─────────────────────────────────────
 // O calendário (`/shows/calendario`) mostra a grade do mês mas não responde, num
 // relance, "quanto este mês vale?" — quantos shows tenho, quanto de cachê já está
