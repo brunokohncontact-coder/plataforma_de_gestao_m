@@ -9,7 +9,20 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1543 testes** verdes após o **comparativo ano a
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1545 testes** verdes após a **exportação CSV
+da distribuição das secas** (Sessão 276, D271 — reverte a deferência "**Sem CSV próprio**" da D267 e fecha a última
+distribuição sem export: a seção "Distribuição das secas" de `/shows/hiatos` (`gapDistribution`, os hiatos repartidos nas
+5 faixas canônicas) já vivia na tela mas só as "Maiores secas" eram exportáveis. A D267 adiou o CSV por a distribuição ser
+"derivável" da lista de hiatos, mas todos os relatórios de distribuição irmãos (cachê/sazonalidade/dias-da-semana) já têm o
+seu, e obrigar o músico a montar a tabela dinâmica na planilha é atrito. Novo `gapDistributionToCsv(dist)` + `GAP_DISTRIBUTION_CSV_HEADERS` (`Faixa`/`Secas`/`% das secas`)
+em `src/lib/csv.ts` (espelho fiel de `feeDistributionToCsv`: uma linha por faixa inclusive as zeradas → `0`/`0%` para o
+"formato da cadência" não pular degraus + linha `Total` com participação em branco) + rota `/shows/hiatos/distribuicao/export`
+(irmã de `/shows/hiatos/export`, mesma consulta enxuta `date`+`status`, BOM UTF-8, nome `hiatos-distribuicao.csv`) + um
+segundo botão "⬇ CSV" no cabeçalho da própria seção "Distribuição das secas" (o CSV do topo segue sendo o das "Maiores
+secas"). Zero regra de negócio nova (a repartição vive em `gapDistribution`, pura e testada), zero I/O extra, zero migração,
+zero dependência. **+2 testes** (distribuição vazia → 5 faixas zeradas + `Total;0;`; três faixas distintas → contagem/
+participação inclusive zeradas + `Total;3;`). Build/typecheck/lint verdes; smoke → `/login` 200, página e `/export`
+307→/login; `npm audit` inalterado (10 advisories). Ver D271. Antes disso, o **comparativo ano a
 ano da antecedência por contratante** (Sessão 275, D270 — fecha o "passo maior" adiado nas D268/D269: quem passou a te
 fechar com MAIS folga / mais em cima da hora de um ano para o outro. Espelha `comparePaymentLagByContact`/
 `indexContactPaymentLagChanges` (D194/D195) no eixo da antecedência. Novo em `src/lib/shows.ts`:

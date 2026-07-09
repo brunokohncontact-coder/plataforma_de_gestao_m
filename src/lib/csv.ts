@@ -93,6 +93,7 @@ import type {
   StaleProposalsReport,
   StaleProposalUrgency,
   ShowGapsReport,
+  GapDistribution,
 } from "./shows";
 import {
   summarizeMonthShows,
@@ -1829,6 +1830,35 @@ export function showGapsToCsv(
   for (const gap of report.gaps) {
     out.push([gap.fromDay, gap.toDay, String(gap.days)]);
   }
+  return toCsv(out, delimiter);
+}
+
+export const GAP_DISTRIBUTION_CSV_HEADERS = [
+  "Faixa",
+  "Secas",
+  "% das secas",
+] as const;
+
+/**
+ * Serializa a distribuição das secas por faixa de duração (`gapDistribution`) em
+ * CSV, pronto para download. Espelha a seção "Distribuição das secas" de
+ * `/shows/hiatos`: uma linha por faixa (sempre as 5 de `GAP_BUCKET_DEFS`, da mais
+ * curta à mais longa, inclusive faixas zeradas, para o "formato da cadência" não
+ * pular degraus) com o nº de hiatos e a participação no total, seguida de uma
+ * linha "Total". Diferente da UI (que mostra "—" nas faixas vazias), o CSV
+ * registra 0 e 0% para ficar legível por máquina. A participação do Total fica
+ * em branco (é sempre 100% por construção). Irmão de `feeDistributionToCsv`
+ * (mesmo eixo faixa/balde → linhas + Total). Pura.
+ */
+export function gapDistributionToCsv(
+  dist: GapDistribution,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(GAP_DISTRIBUTION_CSV_HEADERS)];
+  for (const b of dist.buckets) {
+    out.push([b.label, String(b.count), csvShare(b.share)]);
+  }
+  out.push(["Total", String(dist.total), ""]);
   return toCsv(out, delimiter);
 }
 

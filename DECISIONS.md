@@ -9275,3 +9275,48 @@ contexto, decisão, justificativa e alternativas consideradas.
   (10 advisories; ver D6).
 - **Nota de concorrência:** número **D270** escolhido como o próximo livre após o D269 (Sessão 274). Se
   uma PR paralela reivindicar D270, renumerar para o próximo livre no merge.
+
+---
+
+## 2026-07-09 — D271: Exportação CSV da distribuição das secas em `/shows/hiatos` (`gapDistributionToCsv` + rota `/shows/hiatos/distribuicao/export`) (Sessão 276)
+- **Contexto:** a página `/shows/hiatos` mostra duas leituras dos hiatos entre gigs: a tabela "Maiores
+  secas" (a cauda) e a seção "Distribuição das secas" (a FORMA — `gapDistribution`/D267, PR #300, os
+  hiatos repartidos nas 5 faixas canônicas de `GAP_BUCKET_DEFS`). Só a primeira era exportável em CSV
+  (`showGapsToCsv` + `/shows/hiatos/export`); a distribuição só existia na tela. Todos os relatórios de
+  distribuição irmãos (cachê `feeDistributionToCsv`/`/shows/faixas-de-cache`, sazonalidade, dias-da-semana)
+  têm o seu CSV — a distribuição das secas era a exceção. A D267 deixou-a **deliberadamente sem CSV próprio**,
+  por a repartição ser "derivável" da lista de hiatos (`showGapsToCsv` já exporta cada `days`). Esta decisão
+  reverte essa deferência.
+- **Decisão:** adicionar `gapDistributionToCsv(dist)` + `GAP_DISTRIBUTION_CSV_HEADERS` (`Faixa` / `Secas` /
+  `% das secas`) em `src/lib/csv.ts`, espelho fiel de `feeDistributionToCsv`: uma linha por faixa (sempre
+  as 5, inclusive as zeradas, para o "formato da cadência" não pular degraus) + linha `Total`. Nova rota
+  `/shows/hiatos/distribuicao/export` (irmã de `/shows/hiatos/export`, mesma consulta enxuta só de
+  `date`+`status`, `showGaps`→`gapDistribution`→`gapDistributionToCsv`, BOM UTF-8, nome
+  `hiatos-distribuicao.csv`) e um segundo botão "⬇ CSV" no cabeçalho da própria seção "Distribuição das
+  secas" (ao lado do título), não no topo da página — o CSV do topo continua sendo o das "Maiores secas".
+- **Justificativa:**
+  - **Paridade tela↔CSV.** A seção de distribuição já vivia na tela; o CSV a torna analisável/ordenável na
+    planilha, fechando a última distribuição sem export. Segue o mesmo contrato do irmão de cachê: faixas
+    zeradas viram `0`/`0%` (o "—" é só da UI, ilegível por máquina) e a participação do `Total` fica em
+    branco (é 100% por construção).
+  - **Botão na seção, não no topo.** Como a página tem duas tabelas distintas (secas × distribuição), cada
+    uma ganha o seu "⬇ CSV" ancorado ao seu próprio conteúdo — evita um único botão ambíguo e espelha como
+    seções com dados próprios ganham export próprio (ex.: comparativos com `/export` dedicado).
+  - **Rota separada, não parâmetro.** Preferi uma rota irmã a um `?dados=distribuicao` na rota existente:
+    cada CSV do repo é uma tabela limpa e uma rota, e a nesting `distribuicao/export` segue o precedente de
+    `por-contratante/export`. Zero regra de negócio nova (a repartição vive em `gapDistribution`, pura e já
+    testada), zero I/O extra, zero migração, zero dependência.
+- **Alternativas consideradas:** anexar a distribuição ao mesmo CSV das "Maiores secas" como uma segunda
+  seção — descartado: nenhum CSV do repo mistura duas tabelas de shapes diferentes num arquivo; quebraria a
+  convenção "um CSV, uma tabela". Um `?dados=` na rota existente — descartado pela mesma razão (rota =
+  tabela). Recorte por ano no CSV — não se aplica: `showGaps` mede hiatos entre dias-de-show consecutivos
+  ao longo de TODA a história (recortar por ano fragmentaria os intervalos que cruzam o ano-novo), então a
+  distribuição, como a página, é multi-ano por design.
+- **DoD:** build de produção (rota `/shows/hiatos/distribuicao/export` no manifesto), typecheck
+  (`tsc --noEmit`, 0 erros) e lint (`next lint`, 0 avisos) verdes; **1545 testes** (`vitest run`, +2:
+  distribuição vazia → 5 faixas zeradas + `Total;0;`; três faixas distintas → contagem/participação por
+  faixa inclusive zeradas + `Total;3;`); smoke (`next start`) → `/login` 200, `/shows/hiatos` e
+  `/shows/hiatos/distribuicao/export` 307→/login (auth-gated, sem 500). `npm audit` **inalterado** vs.
+  baseline (10 advisories; ver D6).
+- **Nota de concorrência:** número **D271** escolhido como o próximo livre após o D270 (Sessão 275). Se uma
+  PR paralela reivindicar D271, renumerar para o próximo livre no merge.
