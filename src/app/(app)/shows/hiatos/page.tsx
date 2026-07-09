@@ -132,6 +132,14 @@ export default async function ShowGapsPage() {
             />
           </div>
 
+          {report.currentGapVsTypical != null && (
+            <CurrentGapReading
+              ratio={report.currentGapVsTypical}
+              currentDays={report.currentGapDays ?? 0}
+              medianDays={report.medianGapDays}
+            />
+          )}
+
           {smallSample && (
             <div className="card border-amber-200 bg-amber-50 text-sm text-amber-800">
               Amostra pequena ({plural(report.showDays, "dia de show", "dias de show")}).
@@ -172,6 +180,62 @@ export default async function ShowGapsPage() {
       )}
     </div>
   );
+}
+
+/** 2.5 → "2,5", 2 → "2" (vírgula decimal pt-BR, sem casa quando inteiro). */
+function formatRatio(n: number): string {
+  return (Number.isInteger(n) ? String(n) : n.toFixed(1)).replace(".", ",");
+}
+
+/**
+ * Interpreta a seca atual em relação ao espaçamento típico. Os limiares (1,5× /
+ * 2×) são de APRESENTAÇÃO — quando a espera vira "esticada" ou "fora do comum" —
+ * e vivem aqui, não na lógica pura (que só devolve o múltiplo `currentGapVsTypical`).
+ */
+function CurrentGapReading({
+  ratio,
+  currentDays,
+  medianDays,
+}: {
+  ratio: number;
+  currentDays: number;
+  medianDays: number;
+}) {
+  const typical = `o espaçamento típico (${plural(medianDays, "dia", "dias")} entre gigs)`;
+
+  let className: string;
+  let text: string;
+  if (ratio >= 2) {
+    className = "border-red-200 bg-red-50 text-red-800";
+    text = `🌵 Seca fora do comum: sua espera atual (${plural(
+      currentDays,
+      "dia",
+      "dias",
+    )}) já é ${formatRatio(ratio)}× ${typical}. Boa hora para prospectar.`;
+  } else if (ratio >= 1.5) {
+    className = "border-amber-200 bg-amber-50 text-amber-800";
+    text = `⏳ Espera esticada: a seca atual (${plural(
+      currentDays,
+      "dia",
+      "dias",
+    )}) está ${formatRatio(ratio)}× ${typical}.`;
+  } else if (ratio >= 1) {
+    className = "border-gray-200 bg-gray-50 text-gray-700";
+    text = `A espera atual (${plural(
+      currentDays,
+      "dia",
+      "dias",
+    )}) está no ritmo de sempre — ${formatRatio(ratio)}× ${typical}.`;
+  } else {
+    className = "border-emerald-200 bg-emerald-50 text-emerald-800";
+    text = `🎸 Dentro do ritmo: você tocou há ${plural(
+      currentDays,
+      "dia",
+      "dias",
+    )}, abaixo ${typical}.`;
+  }
+
+  return <div className={`card text-sm ${className}`}>{text}</div>;
 }
 
 function GapRow({ gap, peak }: { gap: ShowGap; peak: number }) {

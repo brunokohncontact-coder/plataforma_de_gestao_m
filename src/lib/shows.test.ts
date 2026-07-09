@@ -2574,4 +2574,47 @@ describe("showGaps", () => {
   it("expõe o limiar mínimo de amostra", () => {
     expect(MIN_SHOW_GAP_SAMPLE).toBeGreaterThanOrEqual(2);
   });
+
+  it("relaciona a seca atual ao espaçamento típico (múltiplos da mediana)", () => {
+    const r = showGaps(
+      [g("2026-05-01"), g("2026-05-11"), g("2026-05-21")],
+      { now: NOW },
+    );
+    expect(r.showDays).toBe(3);
+    expect(r.medianGapDays).toBe(10); // gaps 10 e 10
+    expect(r.currentGapDays).toBe(25); // 21 mai → 15 jun
+    expect(r.currentGapVsTypical).toBe(2.5); // 25 / 10
+  });
+
+  it("arredonda o múltiplo da mediana a uma casa decimal", () => {
+    const r = showGaps(
+      [g("2026-06-01"), g("2026-06-04"), g("2026-06-07")],
+      { now: NOW },
+    );
+    expect(r.medianGapDays).toBe(3); // gaps 3 e 3
+    expect(r.currentGapDays).toBe(8); // 07 → 15 jun
+    expect(r.currentGapVsTypical).toBe(2.7); // 8 / 3 = 2.666… → 2.7
+  });
+
+  it("não relaciona com amostra pequena (mediana frágil)", () => {
+    const r = showGaps([g("2026-06-01"), g("2026-06-05")], { now: NOW });
+    expect(r.showDays).toBe(2); // abaixo de MIN_SHOW_GAP_SAMPLE
+    expect(r.currentGapDays).toBe(10);
+    expect(r.currentGapVsTypical).toBeNull();
+  });
+
+  it("não relaciona sem seca atual (só gigs futuros)", () => {
+    const r = showGaps(
+      [
+        g("2026-07-01", "CONFIRMED"),
+        g("2026-07-11", "CONFIRMED"),
+        g("2026-07-21", "CONFIRMED"),
+      ],
+      { now: NOW },
+    );
+    expect(r.showDays).toBe(3);
+    expect(r.medianGapDays).toBe(10);
+    expect(r.currentGapDays).toBeNull();
+    expect(r.currentGapVsTypical).toBeNull();
+  });
 });
