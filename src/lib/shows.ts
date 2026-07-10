@@ -2048,16 +2048,32 @@ export interface ProposalDeliberationByContact<C> {
  * `overall` roda o mesmo motor sobre as relações achatadas (por relação, como o
  * funil por contratante). Ordena da menor mediana à maior (decide rápido primeiro),
  * com maior amostra, nome pt-BR e id como desempate. Pura e determinística — não
- * depende de "agora". Ver D275.
+ * depende de "agora".
+ *
+ * Com `opts.year` (ano UTC) recorta às propostas que ENTRARAM no funil naquele ano
+ * — o mesmo eixo de coorte de `proposalOutcomes`/D243 (primeiro `toStatus ===
+ * PROPOSED`), não a data do show —, espelhando o recorte de
+ * `proposalOutcomesByContact`. Filtra os shows de cada contratante antes de
+ * `funnelStageDurations`, mantendo o motor agnóstico ao recorte. Ver D275/D276.
  */
 export function proposalDeliberationByContact<C extends { id: string; name: string }>(
   items: ContactProposalDeliberationItem<C>[],
+  opts: ProposalOutcomesOptions = {},
 ): ProposalDeliberationByContact<C> {
+  const year = opts.year ?? "all";
+  const inYear = (show: ProposalDeliberationShowLike): boolean => {
+    if (year === "all") return true;
+    const proposedAt = firstProposedAt(show.statusEvents);
+    return proposedAt !== null && new Date(proposedAt).getUTCFullYear() === year;
+  };
+  const scope = (shows: ProposalDeliberationShowLike[]): ProposalDeliberationShowLike[] =>
+    year === "all" ? shows : shows.filter(inYear);
+
   const rows: ContactProposalDeliberationRow<C>[] = [];
   let totalSamples = 0;
 
   for (const { contact, shows } of items) {
-    const stat = funnelStageDurations(shows).stages.find((s) => s.status === "PROPOSED");
+    const stat = funnelStageDurations(scope(shows)).stages.find((s) => s.status === "PROPOSED");
     if (!stat) continue; // nenhuma proposta decidida deste contratante → fora da lista
     totalSamples += stat.count;
     rows.push({ contact, stat, reliable: stat.count >= MIN_DELIBERATION_SAMPLE, share: 0 });
@@ -2077,7 +2093,7 @@ export function proposalDeliberationByContact<C extends { id: string; name: stri
   });
 
   const overall =
-    funnelStageDurations(items.flatMap((i) => i.shows)).stages.find(
+    funnelStageDurations(scope(items.flatMap((i) => i.shows))).stages.find(
       (s) => s.status === "PROPOSED",
     ) ?? null;
 

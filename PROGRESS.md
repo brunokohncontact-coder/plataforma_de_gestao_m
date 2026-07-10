@@ -9,7 +9,23 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1578 testes** verdes após o **tempo de decisão da
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1580 testes** verdes após o **recorte por ano no
+tempo de decisão por contratante** (Sessão 281, D276 — fecha o adiamento explícito da D275 ("recorte por `?ano=`"): a
+deliberação por contratante (`/shows/funil/tempo-em-etapa/por-contratante`, D275) media a etapa PROPOSED somando TODAS as
+propostas de todos os tempos, sem seletor de período — ao contrário da irmã do mesmo funil `/shows/funil/conversao/contratantes`
+(D247), que já recorta por ano da proposta. Agora `proposalDeliberationByContact(items, opts?)` aceita `opts.year` (ano UTC da
+ENTRADA da proposta no funil, o mesmo eixo de coorte de `proposalOutcomes`/D243 — primeiro `toStatus === PROPOSED`, não a data
+do show): filtra os shows de cada contratante por `firstProposedAt` **antes** de `funnelStageDurations`, mantendo o motor puro
+agnóstico ao recorte; o `overall` por relação segue o mesmo recorte. Reusa `ProposalOutcomesOptions` (já `{ year? }`) — zero
+tipo novo. Página e export ganham o `?ano=`: `availableYears = proposalOutcomeYears(allShows)` (reuso literal do eixo da
+conversão, sem novo helper de anos), `parseProfitYear` + `PeriodPicker` (`basePath` da própria rota, espelho de
+conversao/contratantes), subtítulo com o período, empty-state honesto por ano, filename do CSV com sufixo do ano
+(`tempo-decisao-por-contratante-2026.csv`). Zero migração, zero I/O extra (recorta o mesmo acervo já carregado), zero
+dependência. **+2 testes** (`shows.test.ts`, `describe("proposalDeliberationByContact")`: recorta por ano da entrada da proposta
+— `all`/2026/2025 com contagens e medianas distintas + `overall` recortado; contratante sem proposta no ano sai da lista).
+Build/typecheck/lint verdes; smoke → `/login` 200, página e `/export?ano=2026` 307→/login (auth-gated, sem 500); `npm audit`
+inalterado (10 advisories). Adiado (o "passo maior", espelho D270/D248): comparativo YoY por contratante {ano}×{ano-1} na
+deliberação + coluna "vs. {ano-1}". Ver D276. Antes disso, o **tempo de decisão da
 proposta por contratante** (Sessão 280, D275 — leva o eixo por contratante à deliberação do funil: o "Tempo em cada etapa"
 (`funnelStageDurations`/D235, `/shows/funil/tempo-em-etapa`) media a velocidade típica de travessia somando TODOS os shows, mas
 não dizia DE QUEM a proposta demora a sair da mesa — os eixos por contratante já existiam para recebíveis
