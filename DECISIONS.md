@@ -9495,3 +9495,46 @@ contexto, decisão, justificativa e alternativas consideradas.
   (10 advisories; ver D6).
 - **Nota de concorrência:** número **D275** escolhido como o próximo livre após o D274 (Sessão 278). Se
   uma PR paralela reivindicar D275, renumerar para o próximo livre no merge.
+
+## 2026-07-10 — D277: Nudge no Painel do contratante mais lento a decidir (`slowDeliberatorHeadline` + banner em `dashboard/page.tsx`)
+- **Contexto:** `proposalDeliberationByContact` (D275) já sabe QUEM te deixa mais tempo com a proposta na
+  mesa (o campo `slowest` — o contratante de maior mediana de deliberação entre os confiáveis), mas esse
+  sinal só vivia na página dedicada `/shows/funil/tempo-em-etapa/por-contratante`; o Painel não avisava.
+  Uma deliberação que se arrasta é tão acionável quanto a conversão caindo (D248 no Painel) ou a
+  antecedência encolhendo (D272): se um parceiro leva semanas para decidir, suas propostas ficam reféns
+  dele — vale cobrar a decisão / combinar prazo de resposta. A D275 adiou explicitamente este nudge.
+- **Decisão:** adicionar `slowDeliberatorHeadline(report, slowRatio?, minDays?, criticalRatio?)` +
+  `SlowDeliberatorHeadline<C>` + constantes `DELIBERATION_SLOW_RATIO`(=2), `DELIBERATION_SLOW_CRITICAL_RATIO`(=3)
+  e `DELIBERATION_SLOW_MIN_DAYS`(=7) em `src/lib/shows.ts` (espelho dos headlines irmãos por-contratante
+  `contactBookingLeadTimeDropHeadline`/`contactConversionDropHeadline`). Recebe um relatório já computado,
+  parte do `slowest` (que já exige >1 contratante confiável, senão o "mais lento" seria trivial) e só vira
+  nudge quando a mediana dele é materialmente pior que a TÍPICA da carteira: ao menos `slowRatio`× o
+  mediano geral (`report.overall.medianDays`) **E** ao menos `minDays` dias em ABSOLUTO (para "2× de 1 dia"
+  não alertar). `critical` (🔴 vs 🐌) quando o ritmo chega a `criticalRatio`× o típico. Sem um mediano
+  geral positivo não há base de comparação (o gate não dispara). Banner no `dashboard/page.tsx` (link
+  `/shows/funil/tempo-em-etapa/por-contratante`) reaproveitando o MESMO pivô show×contato já montado para o
+  nudge de conversão por contratante (D248) — as shows carregam `statusEvents`, o único campo que a
+  deliberação precisa — zero I/O extra, zero regra de negócio nova, zero migração, zero dependência.
+- **Justificativa:** o `slowest` já era um destaque na tela dedicada; levá-lo ao Painel fecha o adiamento
+  da D275 e mantém a disciplina dos nudges irmãos (só a ponta ruim vira alerta; gate relativo + absoluto o
+  mantém raro). O gate relativo (vs. mediano geral) é o mesmo eixo de `currentDrySpellHeadline` (razão vs.
+  típico); o piso absoluto de 7 dias evita alarme num funil que já decide em horas.
+- **Alternativas consideradas:** (a) gate por diferença absoluta de dias (como `contactBookingLeadTimeDropHeadline`,
+  ≥ N dias) — descartado: a deliberação "lenta" é relativa ao ritmo da carteira (um funil que decide em 2
+  dias e outro em 3 semanas têm "lento" diferentes); a razão vs. típico transporta melhor. (b) ceder a vez
+  a outro nudge de pipeline (como `leadDropHead` cede a `leadHeadline`) — desnecessário: este mede a
+  deliberação típica de um parceiro, ortogonal aos nudges de conversão/antecedência/propostas-paradas, e o
+  gate duplo já o mantém raro. (c) usar a média em vez da mediana — descartado: a mediana já é a leitura
+  principal do relatório (resistente a um outlier).
+- **DoD:** build de produção OK, typecheck (`tsc --noEmit`, 0 erros), lint (`next lint`, 0 avisos);
+  **1585 testes** (`vitest run`, +7 de `slowDeliberatorHeadline`: sem >1 confiável não dispara; típico
+  nulo não dispara; < 2× o típico não dispara (gate relativo); ≥ 2× mas < 7 dias não dispara (piso
+  absoluto); 2,5× ≥ 7 dias dispara não-crítico com contato/mediana/razão/amostra corretos; ≥ 3× vira
+  crítico; `slowRatio` parametrizável barra o caso-limite). Smoke (`next start`) → `/login` 200,
+  `/dashboard` e `/shows/funil/tempo-em-etapa/por-contratante` 307→/login (auth-gated, sem 500). `npm
+  audit` **inalterado** vs. baseline (10 advisories; ver D6).
+- **Nota de concorrência:** número **D277** escolhido deixando o **D276** para a PR paralela #309 (recorte
+  por ano no tempo de decisão por contratante), que já o reivindica. Se o merge divergir, renumerar para o
+  próximo livre. O helper não colide com #309: aquela PR muda a assinatura de `proposalDeliberationByContact`
+  (adiciona `opts?` opcional), e a chamada do Painel aqui (`proposalDeliberationByContact(items)`) permanece
+  compatível.

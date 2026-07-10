@@ -79,6 +79,8 @@ import {
   contactConversionDropHeadline,
   showGaps,
   currentDrySpellHeadline,
+  proposalDeliberationByContact,
+  slowDeliberatorHeadline,
   type ConflictShowLike,
   type LeadTimeShowLike,
   type StaleProposalShowLike,
@@ -519,6 +521,18 @@ export default async function DashboardPage() {
           proposalOutcomesByContact(conversionContactItems, { year: currentYear - 1 }),
         ),
       );
+
+  // Contratante mais lento a decidir (D275 no Painel): "quem me deixa mais tempo
+  // com a proposta na mesa?". Reaproveita o MESMO pivô show×contato já montado para
+  // a conversão por contratante (as shows carregam statusEvents, o único campo que a
+  // deliberação precisa — zero I/O extra): proposalDeliberationByContact roda o motor
+  // de tempo-em-etapa por contratante e destila o `slowest`, e slowDeliberatorHeadline
+  // só vira nudge quando a mediana dele é materialmente pior que a típica da carteira
+  // (≥ 2× o mediano geral E ≥ 7 dias em absoluto). Escala para vermelho a ≥ 3× o
+  // típico. O detalhe está em /shows/funil/tempo-em-etapa/por-contratante.
+  const slowDeliberator = slowDeliberatorHeadline(
+    proposalDeliberationByContact(conversionContactItems),
+  );
 
   // Oportunidade de rebooking (D229): a praça mais esquecida que vale um retorno —
   // cidade onde já toquei (com lastro, ≥ 2 shows), nada agendado adiante e há > 90
@@ -1151,6 +1165,37 @@ export default async function DashboardPage() {
             )}
           </span>
           <span className={staleHeadline.critical ? "text-red-600" : "text-amber-600"}>
+            Ver →
+          </span>
+        </Link>
+      )}
+
+      {/* Contratante mais lento a decidir (D275/D277): quem deixa suas propostas
+          mais tempo na mesa que o típico da carteira — vale cobrar a decisão. Só
+          dispara quando a mediana dele é ≥ 2× o mediano geral E ≥ 7 dias em
+          absoluto; vermelho a ≥ 3× o típico. Detalhe em
+          /shows/funil/tempo-em-etapa/por-contratante. */}
+      {slowDeliberator.show && slowDeliberator.contact && (
+        <Link
+          href="/shows/funil/tempo-em-etapa/por-contratante"
+          className={
+            "flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3 text-sm transition " +
+            (slowDeliberator.critical
+              ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100")
+          }
+        >
+          <span className="font-semibold">
+            {slowDeliberator.critical ? "🔴" : "🐌"} {slowDeliberator.contact.name} demora a decidir
+          </span>
+          <span>
+            Leva <strong>{daysLabel(slowDeliberator.medianDays)}</strong> em mediana para
+            decidir suas propostas (sobre {slowDeliberator.sample}{" "}
+            {slowDeliberator.sample === 1 ? "decisão" : "decisões"}) —{" "}
+            <strong>{formatRatio(slowDeliberator.ratio)}× o típico</strong> de{" "}
+            {daysLabel(slowDeliberator.typicalDays)} da carteira. Vale cobrar a decisão.
+          </span>
+          <span className={slowDeliberator.critical ? "text-red-600" : "text-amber-600"}>
             Ver →
           </span>
         </Link>

@@ -2094,6 +2094,97 @@ export function proposalDeliberationByContact<C extends { id: string; name: stri
   return { rows, contactCount: rows.length, overall, totalSamples, slowest };
 }
 
+// ── Nudge do Painel: o contratante mais lento a decidir ──────────────────────
+// `proposalDeliberationByContact` (D275) já sabe QUEM te deixa mais tempo com a
+// proposta na mesa (o `slowest`), mas esse sinal só vivia na página dedicada
+// `/shows/funil/tempo-em-etapa/por-contratante`. Uma deliberação que se arrasta é
+// tão acionável quanto a conversão caindo (D248) ou a antecedência encolhendo
+// (D272): se um parceiro leva semanas para decidir, propostas suas ficam reféns
+// dele — vale cobrar a decisão / propor prazo. Este helper destila o relatório num
+// nudge, espelho dos headlines irmãos por-contratante: parte do `slowest` (que já
+// exige >1 contratante confiável) e só morde quando a demora dele é materialmente
+// pior que a TÍPICA da carteira, em termos relativos E absolutos. Pura, sem I/O.
+
+/**
+ * Fator mínimo sobre a deliberação TÍPICA da carteira para o Painel destacar um
+ * contratante lento. 2× o mediano geral — abaixo disso a demora dele é a própria
+ * rotina do funil e o aviso viraria ruído (mesma disciplina de `DRY_SPELL_UNUSUAL_RATIO`).
+ */
+export const DELIBERATION_SLOW_RATIO = 2;
+/** Fator que escala o nudge para crítico (o contratante decide num ritmo ≥ 3× o típico). */
+export const DELIBERATION_SLOW_CRITICAL_RATIO = 3;
+/**
+ * Piso absoluto (dias) da mediana do contratante para o nudge disparar. Sem ele,
+ * "2× de 1 dia = 2 dias" viraria alerta — a demora precisa ser material em ABSOLUTO
+ * além de relativa. Uma semana: o mesmo horizonte sensato de "proposta parada há tempo".
+ */
+export const DELIBERATION_SLOW_MIN_DAYS = 7;
+
+/** Manchete do contratante mais lento a decidir, para o Painel (nudge de "cobre a decisão"). */
+export interface SlowDeliberatorHeadline<C> {
+  /** True quando o nudge deve aparecer (um contratante confiável decide bem mais devagar que o típico). */
+  show: boolean;
+  /** True quando o ritmo dele chega a `criticalRatio`× o típico (outlier de deliberação). */
+  critical: boolean;
+  /** O contratante mais lento (o `slowest` do relatório) quando dispara, ou `null`. */
+  contact: C | null;
+  /** Mediana de dias que as propostas dele passam na mesa antes da decisão. */
+  medianDays: number;
+  /** Deliberação típica da carteira (mediana geral, dias) — a base da comparação. */
+  typicalDays: number;
+  /** Quantas vezes o típico a mediana dele representa (`medianDays / typicalDays`). */
+  ratio: number;
+  /** Decisões cronometradas do contratante (a amostra da mediana dele). */
+  sample: number;
+}
+
+/**
+ * Decide se o Painel deve destacar o contratante que mais te deixa esperando uma
+ * decisão — o eco de `proposalDeliberationByContact` (D275) no dashboard, irmão de
+ * `contactBookingLeadTimeDropHeadline`/`contactConversionDropHeadline` no eixo da
+ * deliberação. Recebe um relatório já computado e não faz I/O.
+ *
+ * Parte do `slowest` (que já exige >1 contratante confiável, senão o "mais lento"
+ * seria trivial) e só vira nudge quando a mediana dele é materialmente pior que a
+ * TÍPICA da carteira: ao menos `slowRatio`× o mediano geral **e** ao menos `minDays`
+ * em ABSOLUTO (para "2× de 1 dia" não alertar). `critical` quando o ritmo chega a
+ * `criticalRatio`× o típico. Sem um mediano geral positivo não há base de comparação
+ * (o gate não dispara). Como os nudges irmãos, só a ponta ruim vira alerta e o gate
+ * o mantém raro. Pura.
+ */
+export function slowDeliberatorHeadline<C extends { id: string; name: string }>(
+  report: ProposalDeliberationByContact<C>,
+  slowRatio: number = DELIBERATION_SLOW_RATIO,
+  minDays: number = DELIBERATION_SLOW_MIN_DAYS,
+  criticalRatio: number = DELIBERATION_SLOW_CRITICAL_RATIO,
+): SlowDeliberatorHeadline<C> {
+  const slowest = report.slowest;
+  const typical = report.overall?.medianDays ?? 0;
+  if (!slowest || typical <= 0) {
+    return {
+      show: false,
+      critical: false,
+      contact: null,
+      medianDays: 0,
+      typicalDays: 0,
+      ratio: 0,
+      sample: 0,
+    };
+  }
+  const median = slowest.stat.medianDays;
+  const ratio = median / typical;
+  const show = median >= minDays && ratio >= slowRatio;
+  return {
+    show,
+    critical: show && ratio >= criticalRatio,
+    contact: show ? slowest.contact : null,
+    medianDays: median,
+    typicalDays: typical,
+    ratio,
+    sample: slowest.stat.count,
+  };
+}
+
 // ── Conversão real proposta → realizado (coorte, pela linha do tempo) ─────────
 // A "taxa de concretização" do funil (`showPipeline`) é um retrato do estado
 // ATUAL: dos shows que hoje estão PLAYED ou CANCELLED, quantos foram tocados. Ela
