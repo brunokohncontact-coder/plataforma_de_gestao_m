@@ -9,7 +9,13 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1585 testes** verdes após o **nudge no Painel do
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1587 testes** verdes após a **consolidação da PR
+paralela #309 (D276, recorte por ano no tempo de decisão por contratante) na `main`** (Sessão 283 — a #309 ficara com conflito
+(`dirty`) contra a `main` após o merge de D277 (#310); esta sessão rebaseou o commit da #309 sobre a `main` atual, resolveu os
+conflitos só nos docs (PROGRESS/DECISIONS — o código auto-mergeou limpo: `slowDeliberatorHeadline` de D277 e o `opts.year` de
+D276 são ortogonais em `shows.ts`) e reordenou as entradas D276→D277 numérica/cronologicamente. DoD verde: build/typecheck/lint,
+1587 testes (1585 de D277 + 2 de D276), smoke → `/login` 200 e `/shows/funil/tempo-em-etapa/por-contratante?ano=2026` 307→/login,
+`npm audit` inalterado (10 advisories)). Antes disso, o **nudge no Painel do
 contratante mais lento a decidir** (Sessão 282, D277 — fecha o adiamento explícito da D275 "nudge no Painel para o contratante
 mais lento": `proposalDeliberationByContact` (D275) já sabia QUEM te deixa mais tempo com a proposta na mesa (o campo `slowest`),
 mas o sinal só vivia na página `/shows/funil/tempo-em-etapa/por-contratante`. Uma deliberação que se arrasta é tão acionável
