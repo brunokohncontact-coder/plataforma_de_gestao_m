@@ -2388,6 +2388,118 @@ export function slowDeliberatorHeadline<C extends { id: string; name: string }>(
   };
 }
 
+// ── Manchete de deliberação POR CONTRATANTE para o Painel (quem passou a decidir mais devagar?) ──
+// Enquanto `slowDeliberatorHeadline` (D277) destaca quem, HOJE, decide bem mais
+// devagar que a TÍPICA da carteira (retrato absoluto vs. mediano geral), este destila
+// QUAL contratante recorrente passou a te deixar materialmente MAIS tempo com a
+// proposta na mesa de um ano para o outro — o eco de `compareProposalDeliberationByContact`
+// (D278) no dashboard, espelho de `contactPaymentLagRiseHeadline` (D279) e
+// `contactBookingLeadTimeDropHeadline` (D272) no eixo da deliberação. Pega o caso que o
+// nudge absoluto perde: a carteira decide num ritmo saudável na média, mas um parceiro
+// específico começou a arrastar a decisão. Reusa o gate de confiança dos irmãos
+// (amostra ≥ `MIN_DELIBERATION_SAMPLE` nas DUAS coortes) e um piso de piora material
+// (≥ `DELIBERATION_RISE_DAYS`, o dobro do `DELIBERATION_TREND_EPSILON` do veredito do
+// card). Ancora na MEDIANA — o mesmo eixo por que a página ordena/destaca e o comparativo
+// decide a tendência. Só a ponta de PIORA (decisão mais lenta) vira nudge; acelerar a
+// decisão é boa notícia. Pura, sem I/O.
+
+/**
+ * Alta mínima da deliberação mediana (em dias) para o nudge por contratante
+ * disparar. Uma semana — o dobro de `DELIBERATION_TREND_EPSILON` (=3, o limiar do
+ * veredito do card): espelha a regra "2× o epsilon do card" de `LEAD_TIME_DROP_DAYS`
+ * e `PAYMENT_LAG_RISE_DAYS` para o Painel só alertar com uma piora material, não
+ * qualquer oscilação. Menor que os irmãos (14) porque a deliberação costuma ser mais
+ * curta que o prazo de recebimento ou a antecedência de agenda.
+ */
+export const DELIBERATION_RISE_DAYS = 6;
+/** Alta da deliberação mediana (em dias) que escala o nudge para crítico (duas semanas a mais na mesa). */
+export const DELIBERATION_RISE_CRITICAL_DAYS = 14;
+
+/** Manchete de deliberação por contratante para o Painel (nudge de decisão mais lenta ano a ano). */
+export interface ContactDeliberationRiseHeadline<C> {
+  /** True quando o nudge deve aparecer (um contratante com piora confiável e material). */
+  show: boolean;
+  /** True quando a piora desse contratante entra na faixa crítica (≥ `criticalDays`). */
+  critical: boolean;
+  /** O contratante que mais desacelerou a decisão (dentre os que passam no gate), ou `null`. */
+  contact: C | null;
+  /** Aumento da deliberação mediana em dias (atual − anterior); ≥ 0 quando `show`. */
+  riseDays: number;
+  /** Deliberação mediana do contratante na coorte atual (dias). */
+  currentMedianDays: number;
+  /** Deliberação mediana do contratante na coorte anterior (dias). */
+  previousMedianDays: number;
+  /** Decisões cronometradas do contratante na coorte atual (a amostra da mediana). */
+  sample: number;
+  /**
+   * Quantos OUTROS contratantes também passaram no gate de piora material e
+   * confiável (para o banner: "+N desaceleraram"). 0 quando só um qualifica.
+   */
+  others: number;
+}
+
+/**
+ * Decide se o Painel deve alertar que UM contratante específico passou a demorar
+ * materialmente MAIS para decidir uma proposta de um ano para o outro — o eco de
+ * `compareProposalDeliberationByContact` (D278) no dashboard, irmão por-contratante de
+ * `slowDeliberatorHeadline` no eixo absoluto e espelho de `contactPaymentLagRiseHeadline`
+ * (D279)/`contactBookingLeadTimeDropHeadline` (D272) no eixo da deliberação. Recebe um
+ * comparativo já computado (dois `proposalDeliberationByContact`, cada um sobre a coorte
+ * do seu ano) e não faz I/O.
+ *
+ * Varre os `changes` (já ordenados da maior piora à maior melhora, por `medianDaysDelta`
+ * desc) e escolhe o contratante de MAIOR alta de deliberação que ainda tenha amostra
+ * confiável — ao menos `minSample` decisões cronometradas em CADA coorte, para a mediana
+ * não se apoiar em 1–2 propostas — e alta de ao menos `riseDays` dias. `critical` quando
+ * essa alta chega a `criticalDays` ou mais; `others` conta quantos outros contratantes
+ * também passariam no mesmo gate (o banner os resume). Como os nudges irmãos, só a ponta de
+ * PIORA vira alerta e o gate o mantém raro. Ancora na MEDIANA, como o comparativo. Pura.
+ */
+export function contactDeliberationRiseHeadline<C extends { id: string; name: string }>(
+  comparison: ProposalDeliberationByContactComparison<C>,
+  minSample: number = MIN_DELIBERATION_SAMPLE,
+  riseDays: number = DELIBERATION_RISE_DAYS,
+  criticalDays: number = DELIBERATION_RISE_CRITICAL_DAYS,
+): ContactDeliberationRiseHeadline<C> {
+  const qualifies = (c: ContactProposalDeliberationChange<C>): boolean => {
+    const reliable =
+      c.current.stat.count >= minSample && c.previous.stat.count >= minSample;
+    return reliable && c.medianDaysDelta >= riseDays;
+  };
+
+  // `changes` já vem ordenado por `medianDaysDelta` desc (maior piora de decisão
+  // primeiro), então o primeiro que passa no gate é o de maior alta.
+  const worst = comparison.changes.find(qualifies) ?? null;
+  if (!worst) {
+    return {
+      show: false,
+      critical: false,
+      contact: null,
+      riseDays: 0,
+      currentMedianDays: 0,
+      previousMedianDays: 0,
+      sample: 0,
+      others: 0,
+    };
+  }
+
+  const rise = worst.medianDaysDelta;
+  const others = comparison.changes.reduce(
+    (n, c) => (c !== worst && qualifies(c) ? n + 1 : n),
+    0,
+  );
+  return {
+    show: true,
+    critical: rise >= criticalDays,
+    contact: worst.contact,
+    riseDays: rise,
+    currentMedianDays: worst.current.stat.medianDays,
+    previousMedianDays: worst.previous.stat.medianDays,
+    sample: worst.current.stat.count,
+    others,
+  };
+}
+
 // ── Conversão real proposta → realizado (coorte, pela linha do tempo) ─────────
 // A "taxa de concretização" do funil (`showPipeline`) é um retrato do estado
 // ATUAL: dos shows que hoje estão PLAYED ou CANCELLED, quantos foram tocados. Ela

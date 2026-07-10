@@ -44,6 +44,9 @@ import {
   indexContactProposalDeliberationChanges,
   DELIBERATION_TREND_EPSILON,
   slowDeliberatorHeadline,
+  contactDeliberationRiseHeadline,
+  DELIBERATION_RISE_DAYS,
+  DELIBERATION_RISE_CRITICAL_DAYS,
   proposalOutcomes,
   proposalOutcomeYears,
   proposalOutcomesByContact,
@@ -2115,6 +2118,181 @@ describe("slowDeliberatorHeadline", () => {
     ]);
     expect(slowDeliberatorHeadline(r).show).toBe(true); // default slowRatio=2
     expect(slowDeliberatorHeadline(r, 3).show).toBe(false); // exige ≥ 3×
+  });
+});
+
+describe("contactDeliberationRiseHeadline", () => {
+  const ev = (
+    fromStatus: string | null,
+    toStatus: string,
+    createdAt: string,
+  ): StatusEventLike => ({ fromStatus, toStatus, createdAt });
+
+  /** Proposta que entrou em `year` e ficou `days` dias na mesa antes de sair. */
+  const decidedInYear = (year: number, days: number) => {
+    const start = Date.parse(`${year}-06-01T00:00:00.000Z`);
+    return {
+      statusEvents: [
+        ev(null, "PROPOSED", new Date(start).toISOString()),
+        ev("PROPOSED", "CONFIRMED", new Date(start + days * 86400000).toISOString()),
+      ],
+    };
+  };
+  const c = (id: string, name: string) => ({ id, name, role: "CONTRACTOR" });
+  const reportFor = (
+    items: Parameters<typeof proposalDeliberationByContact>[0],
+    year: number,
+  ) => proposalDeliberationByContact(items, { year });
+  const compareYears = (items: Parameters<typeof proposalDeliberationByContact>[0]) =>
+    compareProposalDeliberationByContact(reportFor(items, 2026), reportFor(items, 2025));
+
+  it("aponta o contratante que mais desacelerou a decisão com amostra confiável (crítico)", () => {
+    // Beto sobe a mediana de 4 → 20 (+16 ≥ crítico 14); Ana melhora (não conta).
+    const items = [
+      {
+        contact: c("beto", "Beto"),
+        shows: [
+          decidedInYear(2025, 2),
+          decidedInYear(2025, 4),
+          decidedInYear(2025, 6),
+          decidedInYear(2026, 18),
+          decidedInYear(2026, 20),
+          decidedInYear(2026, 22),
+        ],
+      },
+      {
+        contact: c("ana", "Ana"),
+        shows: [
+          decidedInYear(2025, 18),
+          decidedInYear(2025, 20),
+          decidedInYear(2025, 22),
+          decidedInYear(2026, 2),
+          decidedInYear(2026, 4),
+          decidedInYear(2026, 6),
+        ],
+      },
+    ];
+    const h = contactDeliberationRiseHeadline(compareYears(items));
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(true); // +16 ≥ 14
+    expect(h.contact?.id).toBe("beto");
+    expect(h.riseDays).toBe(16);
+    expect(h.currentMedianDays).toBe(20);
+    expect(h.previousMedianDays).toBe(4);
+    expect(h.sample).toBe(3);
+    expect(h.others).toBe(0);
+  });
+
+  it("dispara não-crítico entre o piso e o limiar crítico", () => {
+    // Beto sobe a mediana de 4 → 12 (+8: ≥ 6 dispara, < 14 não é crítico).
+    const items = [
+      {
+        contact: c("beto", "Beto"),
+        shows: [
+          decidedInYear(2025, 2),
+          decidedInYear(2025, 4),
+          decidedInYear(2025, 6),
+          decidedInYear(2026, 10),
+          decidedInYear(2026, 12),
+          decidedInYear(2026, 14),
+        ],
+      },
+    ];
+    const h = contactDeliberationRiseHeadline(compareYears(items));
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(false);
+    expect(h.riseDays).toBe(8);
+  });
+
+  it("ignora pioras de amostra fina e elege a maior confiável, contando o resto em others", () => {
+    const items = [
+      // Beto: amostra confiável (3 em cada ano), +8 → qualifica.
+      {
+        contact: c("beto", "Beto"),
+        shows: [
+          decidedInYear(2025, 2),
+          decidedInYear(2025, 4),
+          decidedInYear(2025, 6),
+          decidedInYear(2026, 10),
+          decidedInYear(2026, 12),
+          decidedInYear(2026, 14),
+        ],
+      },
+      // Caio: também confiável, +10 (piora maior que Beto) → é o "worst".
+      {
+        contact: c("caio", "Caio"),
+        shows: [
+          decidedInYear(2025, 1),
+          decidedInYear(2025, 3),
+          decidedInYear(2025, 5),
+          decidedInYear(2026, 11),
+          decidedInYear(2026, 13),
+          decidedInYear(2026, 15),
+        ],
+      },
+      // Dora: piora enorme mas amostra fina (2 shows/ano < 3) → não conta.
+      {
+        contact: c("dora", "Dora"),
+        shows: [
+          decidedInYear(2025, 1),
+          decidedInYear(2025, 1),
+          decidedInYear(2026, 40),
+          decidedInYear(2026, 40),
+        ],
+      },
+    ];
+    const h = contactDeliberationRiseHeadline(compareYears(items));
+    expect(h.show).toBe(true);
+    expect(h.contact?.id).toBe("caio"); // maior piora confiável no topo
+    expect(h.riseDays).toBe(10);
+    expect(h.others).toBe(1); // Beto também passa; Dora (fina) não
+  });
+
+  it("não dispara sem piora material (variação abaixo do piso)", () => {
+    // Beto sobe só +4 (< 6): rotina, não vira nudge.
+    const items = [
+      {
+        contact: c("beto", "Beto"),
+        shows: [
+          decidedInYear(2025, 8),
+          decidedInYear(2025, 10),
+          decidedInYear(2025, 12),
+          decidedInYear(2026, 12),
+          decidedInYear(2026, 14),
+          decidedInYear(2026, 16),
+        ],
+      },
+    ];
+    const h = contactDeliberationRiseHeadline(compareYears(items));
+    expect(h.show).toBe(false);
+    expect(h.contact).toBeNull();
+    expect(h.riseDays).toBe(0);
+  });
+
+  it("respeita limiares injetáveis (piso e crítico parametrizáveis)", () => {
+    // Beto: +8. Com piso default (6) dispara; com piso 10 não passa.
+    const items = [
+      {
+        contact: c("beto", "Beto"),
+        shows: [
+          decidedInYear(2025, 2),
+          decidedInYear(2025, 4),
+          decidedInYear(2025, 6),
+          decidedInYear(2026, 10),
+          decidedInYear(2026, 12),
+          decidedInYear(2026, 14),
+        ],
+      },
+    ];
+    const cmp = compareYears(items);
+    expect(contactDeliberationRiseHeadline(cmp).show).toBe(true); // piso 6
+    expect(contactDeliberationRiseHeadline(cmp, MIN_DELIBERATION_SAMPLE, 10).show).toBe(false);
+    // Com crítico rebaixado a 8, o mesmo +8 vira crítico.
+    expect(
+      contactDeliberationRiseHeadline(cmp, MIN_DELIBERATION_SAMPLE, DELIBERATION_RISE_DAYS, 8).critical,
+    ).toBe(true);
+    // Sanidade: as constantes exportadas mantêm a relação piso < crítico.
+    expect(DELIBERATION_RISE_DAYS).toBeLessThan(DELIBERATION_RISE_CRITICAL_DAYS);
   });
 });
 
