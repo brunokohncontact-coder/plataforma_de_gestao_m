@@ -105,6 +105,7 @@ import {
   summarizeWeekShows,
   compareContactProposalOutcomes,
   indexContactProposalConversionChanges,
+  stageTimeConcentration,
 } from "./shows";
 
 const DEFAULT_DELIMITER = ";";
@@ -2563,6 +2564,7 @@ export const STAGE_DURATIONS_CSV_HEADERS = [
   "Média (dias)",
   "Mín (dias)",
   "Máx (dias)",
+  "% do percurso",
 ] as const;
 
 /**
@@ -2580,6 +2582,14 @@ export const STAGE_DURATIONS_CSV_HEADERS = [
  * etapa), como a participação em branco de `pipelineToCsv`. Sem amostra
  * (`totalSamples === 0`) sai só cabeçalho + Total zerado. Mesma convenção pt-BR
  * dos irmãos (delimitador ";"). Pura.
+ *
+ * A coluna "% do percurso" espelha a da tela (`stageTimeConcentration`/D283): o
+ * naco do tempo TÍPICO de travessia que fica em cada etapa (mediana da etapa ÷
+ * soma das medianas de todas as etapas) — onde o funil consome tempo, ordenável
+ * na planilha. Mesmo eixo de composição da coluna "Participação (%)" da irmã
+ * `proposalDeliberationByContactToCsv`. Sem medianas positivas
+ * (`totalMedianDays === 0`) fica em branco por linha (o "—" da tela) e o "Total"
+ * fica sempre em branco (não há naco honesto do agregado). Ver D284.
  *
  * Quando `previousYear` é informado (recorte por ano com comparativo, D282), a
  * planilha ganha uma última coluna "vs. {previousYear} (dias)" espelhando a coluna
@@ -2599,6 +2609,11 @@ export function stageDurationsToCsv(
   const header = Array.from(STAGE_DURATIONS_CSV_HEADERS) as string[];
   if (withTrend) header.push(`vs. ${previousYear} (dias)`);
   const out: string[][] = [header];
+  // Composição do tempo (D283): naco de cada etapa sobre a soma das medianas,
+  // derivado das MESMAS medianas já serializadas — zero regra nova. Em branco
+  // quando não há mediana positiva (o "—" da tela).
+  const concentration = stageTimeConcentration(durations);
+  const shareByStatus = new Map(concentration.shares.map((s) => [s.status, s.share]));
   for (const stage of durations.stages) {
     const cols = [
       showStatusLabel(stage.status),
@@ -2607,6 +2622,9 @@ export function stageDurationsToCsv(
       String(stage.averageDays),
       String(stage.shortestDays),
       String(stage.longestDays),
+      concentration.totalMedianDays > 0
+        ? csvShare(shareByStatus.get(stage.status) ?? 0)
+        : "",
     ];
     if (withTrend) {
       const status = rowStatus ? rowStatus(stage.status) : { kind: "none" as const };
@@ -2620,7 +2638,7 @@ export function stageDurationsToCsv(
     }
     out.push(cols);
   }
-  const total = ["Total", String(durations.totalSamples), "", "", "", ""];
+  const total = ["Total", String(durations.totalSamples), "", "", "", "", ""];
   if (withTrend) total.push("");
   out.push(total);
   return toCsv(out, delimiter);

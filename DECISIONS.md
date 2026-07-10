@@ -9839,3 +9839,40 @@ contexto, decisão, justificativa e alternativas consideradas.
   307→/login (auth-gated, sem 500). `npm audit` **inalterado** vs. baseline (10 advisories; ver D6).
 - **Nota de concorrência:** número **D283** escolhido como o próximo livre após o D282 (Sessão 288). Se
   uma PR paralela reivindicar D283, renumerar para o próximo livre no merge.
+
+## 2026-07-10 — D284: Coluna "% do percurso" no CSV do tempo em cada etapa (`stageDurationsToCsv`)
+- **Contexto:** a D283 (Sessão 289) deu à tela `/shows/funil/tempo-em-etapa` a leitura de COMPOSIÇÃO do
+  tempo (`stageTimeConcentration`): de todo o tempo típico de travessia do funil, que naco fica em cada
+  etapa (mediana da etapa ÷ soma das medianas). Virou card de destaque + coluna "% do percurso" na tabela
+  "Detalhe". Mas o CSV do mesmo relatório (`stageDurationsToCsv`) NÃO ganhou a coluna — a própria D283
+  listou isso como "próximo possível". Ficava a assimetria: a planilha exportada não espelhava a tabela
+  que exporta.
+- **Decisão:** `STAGE_DURATIONS_CSV_HEADERS` ganha a coluna fixa "% do percurso" (7ª, após "Máx (dias)"),
+  e `stageDurationsToCsv` a preenche por linha com o naco da etapa (`csvShare`, inteiro com "%"), derivado
+  do MESMO `stageTimeConcentration(durations)` da tela — zero regra de negócio nova, zero I/O, zero
+  dependência. Em branco por linha quando não há mediana positiva (`totalMedianDays === 0`, o "—" da tela)
+  e sempre em branco no "Total" (não há naco honesto do agregado, como as colunas de dias do Total). A
+  coluna opcional "vs. {ano-1} (dias)" do comparativo (D282) segue anexada DEPOIS da nova, na 8ª posição.
+- **Justificativa:** reverte o adiamento D283(c) por um motivo forte: a irmã direta
+  `proposalDeliberationByContactToCsv` (D275) JÁ carrega uma coluna "Participação (%)" derivada do mesmo
+  jeito (participação sobre um total), assim como `pipelineToCsv`/`proposalConversionToCsv` exportam a
+  participação além das contagens cruas. O precedente da própria base é que a leitura de composição PERTENCE
+  ao CSV — a planilha fica auto-explicativa e ordenável pelo gargalo de tempo, sem o consumidor ter de
+  recomputar o share. A ressalva "saída travada byte a byte por testes" da D283 era razão para CUIDADO,
+  não para não fazer: os testes byte a byte foram atualizados junto.
+- **Alternativas consideradas:** (a) manter só as medianas cruas e deixar o share para o consumidor
+  recompor (a posição D283(c)) — descartado pelo precedente das irmãs e pela paridade tela↔planilha.
+  (b) emitir "0%" em vez de branco quando `totalMedianDays === 0` — descartado: branco é a convenção deste
+  arquivo para "sem valor honesto" (as colunas de dias do Total, a participação em branco de `pipelineToCsv`)
+  e espelha o "—" da tela; "0%" seria um número enganoso num denominador zero. (c) posicionar a coluna
+  entre "Mediana" e "Média" para casar a ordem VISUAL da tela — descartado: as colunas de apresentação do
+  CSV são anexadas ao fim das cruas (como a "Participação (%)" da irmã fica após "Máx"), preservando a
+  estabilidade das colunas base já consumidas.
+- **DoD:** build de produção OK, typecheck (`tsc --noEmit`, 0 erros), lint (`next lint`, 0 avisos);
+  **1618 testes** (`vitest run`, +1 líquido em `csv.test.ts`: 3 testes de `stageDurationsToCsv` atualizados
+  para a 7ª coluna — sem amostra/Total em branco, naco 40%/60% por etapa, etapa única 100%, comparativo
+  com % + vs.{ano-1} — e 1 novo: "% em branco por linha quando não há mediana positiva"). Smoke
+  (`next start`) → `/login` 200, `/shows/funil/tempo-em-etapa` e `/export?ano=2026` 307→/login (auth-gated,
+  sem 500). `npm audit` **inalterado** vs. baseline (10 advisories; ver D6).
+- **Nota de concorrência:** número **D284** escolhido como o próximo livre após o D283 (Sessão 289). Se
+  uma PR paralela reivindicar D284, renumerar para o próximo livre no merge.

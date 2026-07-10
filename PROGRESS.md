@@ -9,7 +9,25 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1617 testes** verdes após o
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1618 testes** verdes após a
+**coluna "% do percurso" no CSV do tempo em cada etapa** (Sessão 290, D284 — fecha o "próximo possível"
+que a própria D283 deixou explícito: a tela `/shows/funil/tempo-em-etapa` ganhou na Sessão 289 a leitura
+de COMPOSIÇÃO do tempo (`stageTimeConcentration`) como card + coluna "% do percurso" na tabela, mas o
+CSV do mesmo relatório (`stageDurationsToCsv`) NÃO espelhava a coluna. Agora `STAGE_DURATIONS_CSV_HEADERS`
+ganha a coluna fixa "% do percurso" (7ª, após "Máx (dias)") e `stageDurationsToCsv` a preenche por linha
+com o naco da etapa (`csvShare`, derivado do MESMO `stageTimeConcentration(durations)` da tela — zero
+regra nova, zero I/O), em branco por linha sem mediana positiva (`totalMedianDays === 0`, o "—" da tela) e
+sempre em branco no "Total"; a coluna opcional "vs. {ano-1} (dias)" do comparativo (D282) segue anexada
+DEPOIS, na 8ª. Motivo forte para reverter o adiamento D283(c): a irmã direta
+`proposalDeliberationByContactToCsv` (D275) já carrega uma coluna "Participação (%)" derivada do mesmo
+jeito, assim como `pipelineToCsv`/`proposalConversionToCsv` exportam a participação — o precedente da base
+é que a composição PERTENCE ao CSV (planilha auto-explicativa e ordenável pelo gargalo de tempo). **+1
+teste líquido** (`csv.test.ts`: 3 testes de `stageDurationsToCsv` atualizados para a 7ª coluna — sem
+amostra/Total em branco; naco 40%/60% por etapa; etapa única 100%; comparativo com % + vs.{ano-1} — e 1
+novo: "% em branco por linha quando não há mediana positiva"). Build/typecheck/lint verdes; smoke →
+`/login` 200, `/shows/funil/tempo-em-etapa` e `/export?ano=2026` 307→/login (auth-gated, sem 500); `npm
+audit` inalterado (10 advisories). A planilha exportada agora está em paridade total com a tabela que
+exporta. Ver D284. Antes disso, **1617 testes** verdes após o
 **"onde o tempo se concentra" no funil** (Sessão 289, D283 — dá à tela-mãe do tempo em cada etapa
 (`/shows/funil/tempo-em-etapa`) a leitura de COMPOSIÇÃO que faltava: de todo o tempo que um show leva
 atravessando o funil, ONDE ele se concentra? Helper puro novo `stageTimeConcentration(durations)` +
@@ -27,9 +45,8 @@ vazios + dominant nulo; cada etapa vira fração da soma na ordem canônica + do
 empate elege a primeira etapa do funil; etapa com mediana zero fica com share zero mas não some; todas
 as medianas zero → shares zerados + dominant nulo sem divisão por zero). Build/typecheck/lint verdes;
 smoke → `/login` 200, `/shows/funil/tempo-em-etapa` e `?ano=2026` 307→/login (auth-gated, sem 500);
-`npm audit` inalterado (10 advisories). Adiado: somar a coluna "% do percurso" também ao CSV
-(`stageDurationsToCsv`) — o CSV já carrega as medianas cruas e a saída está travada byte a byte por
-testes; o share é, como as barras, uma leitura de apresentação. Ver D283. Antes disso, **1612 testes**
+`npm audit` inalterado (10 advisories). ~~Adiado: somar a coluna "% do percurso" também ao CSV
+(`stageDurationsToCsv`)~~ (entregue na Sessão 290, D284). Ver D283. Antes disso, **1612 testes**
 verdes após o
 **comparativo ano a ano por etapa do funil na tela-mãe** (Sessão 288, D282 — fecha o "passo maior" adiado na D281:
 a tela-mãe do tempo em cada etapa (`/shows/funil/tempo-em-etapa`) já recortava por ano (`?ano=`, D281), mas não sabia
