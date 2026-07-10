@@ -9,7 +9,26 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1578 testes** verdes após o **tempo de decisão da
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1585 testes** verdes após o **nudge no Painel do
+contratante mais lento a decidir** (Sessão 282, D277 — fecha o adiamento explícito da D275 "nudge no Painel para o contratante
+mais lento": `proposalDeliberationByContact` (D275) já sabia QUEM te deixa mais tempo com a proposta na mesa (o campo `slowest`),
+mas o sinal só vivia na página `/shows/funil/tempo-em-etapa/por-contratante`. Uma deliberação que se arrasta é tão acionável
+quanto a conversão caindo (D248) ou a antecedência encolhendo (D272) — se um parceiro leva semanas para decidir, suas propostas
+ficam reféns dele. Novo helper puro `slowDeliberatorHeadline(report, slowRatio?, minDays?, criticalRatio?)` + tipo
+`SlowDeliberatorHeadline<C>` + constantes `DELIBERATION_SLOW_RATIO`(=2), `DELIBERATION_SLOW_CRITICAL_RATIO`(=3) e
+`DELIBERATION_SLOW_MIN_DAYS`(=7) em `src/lib/shows.ts` (espelho dos headlines irmãos por-contratante
+`contactBookingLeadTimeDropHeadline`/`contactConversionDropHeadline`): parte do `slowest` (que já exige >1 contratante confiável)
+e só vira nudge quando a mediana dele é materialmente pior que a TÍPICA da carteira — ao menos 2× o mediano geral
+(`report.overall.medianDays`) **E** ao menos 7 dias em ABSOLUTO (para "2× de 1 dia" não alertar); `critical` (🔴 vs 🐌) a ≥ 3×.
+Banner no `dashboard/page.tsx` (link `/shows/funil/tempo-em-etapa/por-contratante`) reaproveitando o MESMO pivô show×contato já
+montado para o nudge de conversão por contratante (D248) — as shows carregam `statusEvents`, o único campo que a deliberação
+precisa — zero I/O extra, zero regra de negócio nova, zero migração, zero dependência. **+7 testes** (`shows.test.ts`,
+`describe("slowDeliberatorHeadline")`: sem >1 confiável não dispara; típico nulo não dispara; < 2× o típico não dispara (gate
+relativo); ≥ 2× mas < 7 dias não dispara (piso absoluto); 2,5× ≥ 7 dias dispara não-crítico com contato/mediana/razão/amostra;
+≥ 3× vira crítico; `slowRatio` parametrizável barra o caso-limite). Build/typecheck/lint verdes; smoke → `/login` 200,
+`/dashboard` e `/shows/funil/tempo-em-etapa/por-contratante` 307→/login (auth-gated, sem 500); `npm audit` inalterado (10
+advisories). Ver D277. Nota de concorrência: D276 deixado para a PR paralela #309 (recorte por ano no tempo de decisão por
+contratante); o helper não colide com ela. Antes disso, o **tempo de decisão da
 proposta por contratante** (Sessão 280, D275 — leva o eixo por contratante à deliberação do funil: o "Tempo em cada etapa"
 (`funnelStageDurations`/D235, `/shows/funil/tempo-em-etapa`) media a velocidade típica de travessia somando TODOS os shows, mas
 não dizia DE QUEM a proposta demora a sair da mesa — os eixos por contratante já existiam para recebíveis

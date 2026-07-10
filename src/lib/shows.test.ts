@@ -40,6 +40,7 @@ import {
   funnelStageDurations,
   proposalDeliberationByContact,
   MIN_DELIBERATION_SAMPLE,
+  slowDeliberatorHeadline,
   proposalOutcomes,
   proposalOutcomeYears,
   proposalOutcomesByContact,
@@ -1785,6 +1786,115 @@ describe("proposalDeliberationByContact", () => {
     ]);
     expect(twoReliable.slowest?.contact.id).toBe("2");
     expect(twoReliable.slowest?.stat.medianDays).toBe(30);
+  });
+});
+
+describe("slowDeliberatorHeadline", () => {
+  const ev = (
+    fromStatus: string | null,
+    toStatus: string,
+    createdAt: string,
+  ): StatusEventLike => ({ fromStatus, toStatus, createdAt });
+
+  /** Um show cuja proposta ficou `days` dias na mesa antes de virar confirmação. */
+  const decided = (days: number) => ({
+    statusEvents: [
+      ev(null, "PROPOSED", "2026-01-01T00:00:00.000Z"),
+      ev(
+        "PROPOSED",
+        "CONFIRMED",
+        new Date(Date.parse("2026-01-01T00:00:00.000Z") + days * 86400000).toISOString(),
+      ),
+    ],
+  });
+  const c = (id: string, name: string) => ({ id, name, role: "CONTRACTOR" });
+  const report = (items: { contact: ReturnType<typeof c>; shows: ReturnType<typeof decided>[] }[]) =>
+    proposalDeliberationByContact(items);
+
+  it("não dispara sem mais de um contratante confiável (slowest nulo)", () => {
+    const h = slowDeliberatorHeadline(
+      report([{ contact: c("1", "Ana"), shows: [decided(20), decided(20), decided(20)] }]),
+    );
+    expect(h.show).toBe(false);
+    expect(h.contact).toBeNull();
+    expect(h.ratio).toBe(0);
+  });
+
+  it("não dispara quando a deliberação típica da carteira é nula", () => {
+    // Cluster dominante decide no mesmo dia → mediana geral 0, sem base de comparação.
+    const h = slowDeliberatorHeadline(
+      report([
+        { contact: c("fast", "Rápido"), shows: [decided(0), decided(0), decided(0), decided(0), decided(0)] },
+        { contact: c("slow", "Lento"), shows: [decided(10), decided(10), decided(10)] },
+      ]),
+    );
+    expect(h.typicalDays).toBe(0);
+    expect(h.show).toBe(false);
+  });
+
+  it("não dispara quando o mais lento não chega a 2× o típico (gate relativo)", () => {
+    // pool [8,8,8,10,10,10] → mediana geral 9; lento 10 → 1,11× (< 2×).
+    const h = slowDeliberatorHeadline(
+      report([
+        { contact: c("fast", "Rápido"), shows: [decided(8), decided(8), decided(8)] },
+        { contact: c("slow", "Lento"), shows: [decided(10), decided(10), decided(10)] },
+      ]),
+    );
+    expect(h.show).toBe(false);
+    expect(h.ratio).toBeCloseTo(10 / 9);
+  });
+
+  it("não dispara quando é ≥ 2× o típico mas curto em absoluto (< 7 dias)", () => {
+    // pool [1,1,1,1,1,5,5,5] → mediana geral 1; lento 5 → 5× o típico, mas 5 < 7 dias.
+    const h = slowDeliberatorHeadline(
+      report([
+        { contact: c("fast", "Rápido"), shows: [decided(1), decided(1), decided(1), decided(1), decided(1)] },
+        { contact: c("slow", "Lento"), shows: [decided(5), decided(5), decided(5)] },
+      ]),
+    );
+    expect(h.ratio).toBe(5);
+    expect(h.medianDays).toBe(5);
+    expect(h.show).toBe(false);
+  });
+
+  it("dispara não-crítico quando é materialmente lento (≥ 2× o típico e ≥ 7 dias)", () => {
+    // pool [4,4,4,4,4,10,10,10] → mediana geral 4; lento 10 → 2,5× (≥2, <3).
+    const h = slowDeliberatorHeadline(
+      report([
+        { contact: c("fast", "Rápido"), shows: [decided(4), decided(4), decided(4), decided(4), decided(4)] },
+        { contact: c("slow", "Lento"), shows: [decided(10), decided(10), decided(10)] },
+      ]),
+    );
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(false);
+    expect(h.contact?.id).toBe("slow");
+    expect(h.medianDays).toBe(10);
+    expect(h.typicalDays).toBe(4);
+    expect(h.ratio).toBeCloseTo(2.5);
+    expect(h.sample).toBe(3);
+  });
+
+  it("escala para crítico quando chega a 3× o típico", () => {
+    // pool [2,2,2,2,2,9,9,9] → mediana geral 2; lento 9 → 4,5× (≥3).
+    const h = slowDeliberatorHeadline(
+      report([
+        { contact: c("fast", "Rápido"), shows: [decided(2), decided(2), decided(2), decided(2), decided(2)] },
+        { contact: c("slow", "Lento"), shows: [decided(9), decided(9), decided(9)] },
+      ]),
+    );
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(true);
+    expect(h.ratio).toBeCloseTo(4.5);
+  });
+
+  it("respeita um slowRatio parametrizável mais exigente", () => {
+    // Mesmo caso de 2,5× do teste não-crítico: com slowRatio=3 não passa no gate.
+    const r = report([
+      { contact: c("fast", "Rápido"), shows: [decided(4), decided(4), decided(4), decided(4), decided(4)] },
+      { contact: c("slow", "Lento"), shows: [decided(10), decided(10), decided(10)] },
+    ]);
+    expect(slowDeliberatorHeadline(r).show).toBe(true); // default slowRatio=2
+    expect(slowDeliberatorHeadline(r, 3).show).toBe(false); // exige ≥ 3×
   });
 });
 
