@@ -3,11 +3,13 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   funnelStageDurations,
+  stageTimeConcentration,
   proposalOutcomeYears,
   compareFunnelStageDurations,
   indexStageDurationChanges,
   STAGE_DURATION_TREND_EPSILON,
   type StageDurationStat,
+  type StageTimeShare,
   type ProposalOutcomeShowLike,
   type FunnelStageDurationsComparison,
   type StageDurationChange,
@@ -28,6 +30,11 @@ type SearchParams = { [key: string]: string | string[] | undefined };
 /** Dias inteiros como texto pt-BR ("1 dia" / "N dias"). */
 function daysLabel(n: number): string {
   return `${n} ${n === 1 ? "dia" : "dias"}`;
+}
+
+/** Participação (0..1) como percentual inteiro ("25%"), convenção das telas irmãs. */
+function pctLabel(share: number): string {
+  return `${Math.round(share * 100)}%`;
 }
 
 export default async function StageDurationsPage({
@@ -87,6 +94,14 @@ export default async function StageDurationsPage({
   // (período atual) com sua variação, ou marca "nova"/"—" (D282). Reusa o mesmo
   // comparativo já computado — zero lógica pura nova na página.
   const rowStatus = comparison ? indexStageDurationChanges(comparison) : null;
+
+  // Onde o tempo se concentra: cada etapa como fração da soma das medianas — o
+  // gargalo de tempo do funil num relance (D283). Derivado das MESMAS medianas já
+  // exibidas (zero consulta, zero regra nova); a etapa dominante vira destaque e o
+  // share vira coluna "% do percurso" na tabela.
+  const concentration = stageTimeConcentration(durations);
+  const shareByStatus = new Map(concentration.shares.map((s) => [s.status, s.share]));
+
   const exportHref =
     yearFilter === "all"
       ? "/shows/funil/tempo-em-etapa/export"
@@ -162,6 +177,10 @@ export default async function StageDurationsPage({
             aberto) não entra na conta.
           </p>
 
+          {concentration.dominant && (
+            <TimeConcentrationCard dominant={concentration.dominant} />
+          )}
+
           {comparison && (
             <StageMoversCard
               comparison={comparison}
@@ -190,6 +209,7 @@ export default async function StageDurationsPage({
                   {rowStatus && (
                     <th className="py-2 px-3 text-right font-medium">vs. {previousYear}</th>
                   )}
+                  <th className="py-2 px-3 text-right font-medium">% do percurso</th>
                   <th className="py-2 px-3 text-right font-medium">Média</th>
                   <th className="py-2 px-3 text-right font-medium">Mín</th>
                   <th className="py-2 pl-3 text-right font-medium">Máx</th>
@@ -228,6 +248,11 @@ export default async function StageDurationsPage({
                         </td>
                       )}
                       <td className="py-2 px-3 text-right tabular-nums text-gray-600">
+                        {concentration.totalMedianDays > 0
+                          ? pctLabel(shareByStatus.get(stage.status) ?? 0)
+                          : "—"}
+                      </td>
+                      <td className="py-2 px-3 text-right tabular-nums text-gray-600">
                         {daysLabel(stage.averageDays)}
                       </td>
                       <td className="py-2 px-3 text-right tabular-nums text-gray-500">
@@ -244,6 +269,8 @@ export default async function StageDurationsPage({
             <p className="mt-3 text-xs text-gray-400">
               A mediana é a leitura principal (resistente a um caso fora da curva); a média fica
               como referência. Cada etapa soma tanto as saídas por avanço quanto por cancelamento.
+              A coluna <strong>% do percurso</strong> mostra o naco do tempo típico de travessia que
+              fica em cada etapa (mediana da etapa ÷ soma das medianas) — onde o funil consome tempo.
               {rowStatus && (
                 <>
                   {" "}
@@ -259,6 +286,28 @@ export default async function StageDurationsPage({
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Card "Onde o tempo se concentra": a etapa que sozinha responde pelo maior naco do
+ * tempo típico de percurso do funil (a etapa dominante de `stageTimeConcentration`,
+ * D283) — o gargalo de tempo num relance. Composição das medianas (o mesmo espírito
+ * de fontes de renda / composição de despesas), não a mediana do percurso inteiro.
+ */
+function TimeConcentrationCard({ dominant }: { dominant: StageTimeShare }) {
+  const label = SHOW_STATUS_LABELS[dominant.status as ShowStatus] ?? dominant.status;
+  return (
+    <section className="card border-l-4 border-brand-400">
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+        Onde o tempo se concentra
+      </p>
+      <p className="mt-1 text-sm text-gray-700">
+        A etapa <strong>{label}</strong> concentra{" "}
+        <strong className="text-brand-700">{pctLabel(dominant.share)}</strong> do tempo típico de
+        percurso do funil (mediana de {daysLabel(dominant.medianDays)}) — é o maior gargalo de tempo.
+      </p>
+    </section>
   );
 }
 

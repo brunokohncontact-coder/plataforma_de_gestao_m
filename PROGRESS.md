@@ -9,7 +9,28 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1612 testes** verdes após o
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1617 testes** verdes após o
+**"onde o tempo se concentra" no funil** (Sessão 289, D283 — dá à tela-mãe do tempo em cada etapa
+(`/shows/funil/tempo-em-etapa`) a leitura de COMPOSIÇÃO que faltava: de todo o tempo que um show leva
+atravessando o funil, ONDE ele se concentra? Helper puro novo `stageTimeConcentration(durations)` +
+tipos `StageTimeShare`/`StageTimeConcentration` em `src/lib/shows.ts`: cada etapa como fração da SOMA
+das medianas de todas as etapas (ordem canônica preservada), com `totalMedianDays` (denominador) e
+`dominant` (a etapa de maior naco — o maior gargalo de tempo; empate resolve pela primeira do funil,
+comparação estrita; `totalMedianDays === 0` → shares zerados + `dominant` nulo, sem divisão por zero).
+A página ganha o card "Onde o tempo se concentra" (etapa dominante + percentual + mediana) e a coluna
+"% do percurso" na tabela "Detalhe" ("—" sem mediana positiva). É a mesma leitura de participação já
+consolidada no app (`incomeMix`/`expenseMix`/`clientConcentration`), agora no eixo do TEMPO do funil, e
+a peça de destaque que faltava (as telas irmãs do funil já têm cards de destaque). Derivado das MESMAS
+medianas já carregadas/exibidas — zero consulta, zero regra de negócio nova, zero migração, zero
+dependência. **+5 testes** (`shows.test.ts`, `describe("stageTimeConcentration")`: sem amostra → shares
+vazios + dominant nulo; cada etapa vira fração da soma na ordem canônica + dominante = maior naco;
+empate elege a primeira etapa do funil; etapa com mediana zero fica com share zero mas não some; todas
+as medianas zero → shares zerados + dominant nulo sem divisão por zero). Build/typecheck/lint verdes;
+smoke → `/login` 200, `/shows/funil/tempo-em-etapa` e `?ano=2026` 307→/login (auth-gated, sem 500);
+`npm audit` inalterado (10 advisories). Adiado: somar a coluna "% do percurso" também ao CSV
+(`stageDurationsToCsv`) — o CSV já carrega as medianas cruas e a saída está travada byte a byte por
+testes; o share é, como as barras, uma leitura de apresentação. Ver D283. Antes disso, **1612 testes**
+verdes após o
 **comparativo ano a ano por etapa do funil na tela-mãe** (Sessão 288, D282 — fecha o "passo maior" adiado na D281:
 a tela-mãe do tempo em cada etapa (`/shows/funil/tempo-em-etapa`) já recortava por ano (`?ano=`, D281), mas não sabia
 comparar {ano}×{ano-1} POR ETAPA — o espelho, no eixo do funil inteiro, do que a filha por contratante já tinha

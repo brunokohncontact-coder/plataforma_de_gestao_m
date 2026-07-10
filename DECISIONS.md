@@ -9798,3 +9798,44 @@ contexto, decisão, justificativa e alternativas consideradas.
   baseline (10 advisories; ver D6).
 - **Nota de concorrência:** número **D282** escolhido como o próximo livre após o D281 (Sessão 287). Se
   uma PR paralela reivindicar D282, renumerar para o próximo livre no merge.
+
+## 2026-07-10 — D283: "Onde o tempo se concentra" no funil (`stageTimeConcentration` + card + coluna "% do percurso")
+- **Contexto:** a tela-mãe do tempo em cada etapa (`/shows/funil/tempo-em-etapa`,
+  `funnelStageDurations`/D235) já reporta a mediana de permanência POR etapa, com recorte por ano
+  (D281) e comparativo YoY (D282). Mas respondia só "quanto tempo cada etapa leva", nunca "de todo o
+  tempo que um show leva atravessando o funil, ONDE esse tempo se concentra?" — a leitura de
+  COMPOSIÇÃO que aponta o gargalo de tempo num relance. As barras da página já sugerem proporção
+  (largura = mediana ÷ maior mediana), mas nada nomeava a etapa dominante nem dava o percentual.
+- **Decisão:** helper puro novo `stageTimeConcentration(durations)` + tipos `StageTimeShare`/
+  `StageTimeConcentration` em `src/lib/shows.ts`: para cada etapa, sua mediana como fração da SOMA das
+  medianas de todas as etapas (preservando a ordem canônica do funil), com `totalMedianDays` (o
+  denominador) e `dominant` (a etapa de maior naco — o maior gargalo de tempo; empate resolve pela
+  primeira na ordem do funil, comparação estrita). Sem medianas positivas (`totalMedianDays === 0`)
+  devolve shares zerados e `dominant` nulo (sem divisão por zero). A página ganha o card "Onde o tempo
+  se concentra" (a etapa dominante + o percentual + a mediana) e a coluna "% do percurso" na tabela
+  "Detalhe" (mediana da etapa ÷ soma das medianas, "—" quando não há mediana positiva). Derivado das
+  MESMAS medianas já carregadas/exibidas — zero consulta, zero regra de negócio nova, zero migração,
+  zero dependência.
+- **Justificativa:** é a mesma leitura de composição/participação já consolidada no app (`incomeMix`,
+  `expenseMix`, `clientConcentration`), agora no eixo do TEMPO do funil, e a peça que faltava para a
+  página ter um destaque (as telas irmãs do funil já têm cards de destaque). Nomeia o gargalo de tempo
+  de forma honesta e acionável: PROPOSED dominando = propostas ficam paradas antes da decisão (hora de
+  cobrar resposta); CONFIRMED dominando = a maior parte da espera é entre confirmar e o show (esperado).
+- **Alternativas consideradas:** (a) chamar de "mediana do percurso inteiro" — descartado: a mediana do
+  todo NÃO se recompõe das medianas por etapa; a leitura é de composição (share), não uma mediana
+  agregada, e o texto/JSDoc deixa isso explícito. (b) destacar a etapa de MAIOR mediana absoluta como
+  "gargalo" sem o share — descartado: o share (naco do percurso) é mais informativo que o valor cru e
+  já embute a comparação com as demais etapas. (c) somar a coluna "% do percurso" também ao CSV
+  (`stageDurationsToCsv`) — adiado nesta sessão: o CSV já carrega as medianas cruas (o share é
+  derivável pelo consumidor) e a saída está travada byte a byte por testes; o share é, como as barras,
+  uma leitura de apresentação. Fica como próximo possível (coluna sempre-presente + atualização dos
+  testes de `stageDurationsToCsv`).
+- **DoD:** build de produção OK, typecheck (`tsc --noEmit`, 0 erros), lint (`next lint`, 0 avisos);
+  **1617 testes** (`vitest run`, +5 em `shows.test.ts`, `describe("stageTimeConcentration")`: sem
+  amostra → shares vazios + dominant nulo; cada etapa vira fração da soma das medianas na ordem canônica
+  + dominante = maior naco; empate elege a primeira etapa do funil; etapa com mediana zero fica com
+  share zero mas não some da composição; todas as medianas zero → shares zerados + dominant nulo sem
+  divisão por zero). Smoke (`next start`) → `/login` 200, `/shows/funil/tempo-em-etapa` e `?ano=2026`
+  307→/login (auth-gated, sem 500). `npm audit` **inalterado** vs. baseline (10 advisories; ver D6).
+- **Nota de concorrência:** número **D283** escolhido como o próximo livre após o D282 (Sessão 288). Se
+  uma PR paralela reivindicar D283, renumerar para o próximo livre no merge.

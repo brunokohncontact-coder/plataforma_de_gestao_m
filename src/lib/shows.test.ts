@@ -38,6 +38,7 @@ import {
   MIN_LEAD_TIME_SAMPLE,
   buildStatusTimeline,
   funnelStageDurations,
+  stageTimeConcentration,
   compareFunnelStageDurations,
   indexStageDurationChanges,
   proposalDeliberationByContact,
@@ -1740,6 +1741,93 @@ describe("funnelStageDurations", () => {
     expect(y26.stages).toEqual([]);
     expect(y26.totalSamples).toBe(0);
     expect(y26.showCount).toBe(0);
+  });
+});
+
+describe("stageTimeConcentration", () => {
+  const ev = (
+    fromStatus: string | null,
+    toStatus: string,
+    createdAt: string,
+  ): StatusEventLike => ({ fromStatus, toStatus, createdAt });
+
+  it("sem amostra devolve shares vazios e dominant nulo", () => {
+    const c = stageTimeConcentration(funnelStageDurations([]));
+    expect(c.shares).toEqual([]);
+    expect(c.totalMedianDays).toBe(0);
+    expect(c.dominant).toBeNull();
+  });
+
+  it("cada etapa vira fração da soma das medianas, na ordem canônica do funil", () => {
+    // PROPOSED 4 dias, CONFIRMED 12 dias → soma 16; shares 0.25 e 0.75.
+    const durations = funnelStageDurations([
+      {
+        statusEvents: [
+          ev(null, "PROPOSED", "2026-01-01T00:00:00.000Z"),
+          ev("PROPOSED", "CONFIRMED", "2026-01-05T00:00:00.000Z"), // 4 dias em PROPOSED
+          ev("CONFIRMED", "PLAYED", "2026-01-17T00:00:00.000Z"), // 12 dias em CONFIRMED
+        ],
+      },
+    ]);
+    const c = stageTimeConcentration(durations);
+    expect(c.totalMedianDays).toBe(16);
+    expect(c.shares.map((s) => s.status)).toEqual(["PROPOSED", "CONFIRMED"]);
+    expect(c.shares[0].share).toBeCloseTo(0.25, 5);
+    expect(c.shares[1].share).toBeCloseTo(0.75, 5);
+    // O maior naco (CONFIRMED) é o gargalo de tempo.
+    expect(c.dominant?.status).toBe("CONFIRMED");
+  });
+
+  it("empate no share elege a primeira etapa na ordem do funil (comparação estrita)", () => {
+    // PROPOSED e CONFIRMED com a mesma mediana (5 dias) → shares 0.5/0.5.
+    const durations = funnelStageDurations([
+      {
+        statusEvents: [
+          ev(null, "PROPOSED", "2026-02-01T00:00:00.000Z"),
+          ev("PROPOSED", "CONFIRMED", "2026-02-06T00:00:00.000Z"), // 5 dias em PROPOSED
+          ev("CONFIRMED", "PLAYED", "2026-02-11T00:00:00.000Z"), // 5 dias em CONFIRMED
+        ],
+      },
+    ]);
+    const c = stageTimeConcentration(durations);
+    expect(c.shares[0].share).toBeCloseTo(0.5, 5);
+    expect(c.shares[1].share).toBeCloseTo(0.5, 5);
+    expect(c.dominant?.status).toBe("PROPOSED");
+  });
+
+  it("etapa com mediana zero fica com share zero mas não some da composição", () => {
+    // Duas transições no mesmo dia (0 dias em PROPOSED) + 6 dias em CONFIRMED.
+    const durations = funnelStageDurations([
+      {
+        statusEvents: [
+          ev(null, "PROPOSED", "2026-03-01T00:00:00.000Z"),
+          ev("PROPOSED", "CONFIRMED", "2026-03-01T00:00:00.000Z"), // 0 dias em PROPOSED
+          ev("CONFIRMED", "PLAYED", "2026-03-07T00:00:00.000Z"), // 6 dias em CONFIRMED
+        ],
+      },
+    ]);
+    const c = stageTimeConcentration(durations);
+    expect(c.totalMedianDays).toBe(6);
+    const proposed = c.shares.find((s) => s.status === "PROPOSED");
+    expect(proposed?.medianDays).toBe(0);
+    expect(proposed?.share).toBe(0);
+    expect(c.dominant?.status).toBe("CONFIRMED");
+  });
+
+  it("todas as medianas zero: shares zerados e dominant nulo (sem divisão por zero)", () => {
+    const durations = funnelStageDurations([
+      {
+        statusEvents: [
+          ev(null, "PROPOSED", "2026-04-01T00:00:00.000Z"),
+          ev("PROPOSED", "CONFIRMED", "2026-04-01T00:00:00.000Z"), // 0 dias em PROPOSED
+        ],
+      },
+    ]);
+    const c = stageTimeConcentration(durations);
+    expect(c.totalMedianDays).toBe(0);
+    expect(c.shares).toHaveLength(1);
+    expect(c.shares[0].share).toBe(0);
+    expect(c.dominant).toBeNull();
   });
 });
 
