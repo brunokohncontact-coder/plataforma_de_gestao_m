@@ -9876,3 +9876,60 @@ contexto, decisão, justificativa e alternativas consideradas.
   sem 500). `npm audit` **inalterado** vs. baseline (10 advisories; ver D6).
 - **Nota de concorrência:** número **D284** escolhido como o próximo livre após o D283 (Sessão 289). Se
   uma PR paralela reivindicar D284, renumerar para o próximo livre no merge.
+
+## 2026-07-10 — D285: Nudge de gargalo de TEMPO no funil no Painel (`stageTimeBottleneckHeadline`)
+- **Contexto:** a D283 (Sessão 289) deu à tela `/shows/funil/tempo-em-etapa` a leitura de COMPOSIÇÃO do
+  tempo (`stageTimeConcentration`): de todo o tempo típico de travessia do funil, que naco fica em cada
+  etapa, e QUAL etapa é o gargalo (`dominant`). Mas essa leitura vivia só na página — o Painel não avisava,
+  num relance, quando o percurso até o palco empaca na DECISÃO da proposta (a etapa PROPOSED concentrando o
+  grosso do tempo), justamente o gargalo mais acionável ("cobrar resposta mais cedo"). Os nudges de proposta
+  que já existiam atacam OUTROS ângulos: `staleProposalsHeadline` (D240) aponta propostas paradas AGORA (por
+  deal, presente); `slowDeliberatorHeadline` (D275) e `contactDeliberationRiseHeadline` (D278) apontam QUEM
+  decide devagar / passou a decidir mais devagar (por contratante). Faltava a leitura ESTRUTURAL da carteira
+  inteira — a composição HISTÓRICA do tempo — no Painel.
+- **Decisão:** helper puro novo `stageTimeBottleneckHeadline(durations, minShare?, criticalShare?, minShows?)`
+  + tipo `StageTimeBottleneckHeadline` + constantes `STAGE_BOTTLENECK_SHARE`(=0.5, o piso de disparo, a
+  MAIORIA do percurso),  `STAGE_BOTTLENECK_CRITICAL_SHARE`(=0.7, o crítico) e `STAGE_BOTTLENECK_MIN_SHOWS`(=4,
+  amostra confiável, mesma escala de `CONVERSION_DROP_MIN_DECIDED`) em `src/lib/shows.ts`. Recebe uma
+  `funnelStageDurations` já computada (dela extrai a composição via `stageTimeConcentration` e a amostra via
+  `showCount`) e não faz I/O. `show` só quando a etapa DOMINANTE do tempo é **PROPOSED**, sua fatia é
+  ≥ `minShare` e `showCount ≥ minShows`; `critical` quando a fatia ≥ `criticalShare`. Fora do caso PROPOSED
+  não dispara (mas os campos informativos `share`/`medianDays` seguem reportando a fatia de PROPOSED). No
+  `dashboard/page.tsx`: computa a partir dos shows JÁ carregados (os `statusEvents` vêm na consulta — zero
+  I/O extra) e **CEDE A VEZ** aos nudges concretos da mesma família (`staleHeadline.show ||
+  slowDeliberator.show || deliberationRiseHead?.show`), banner "⏳/🔴 O funil empaca na decisão" (fatia %,
+  mediana em PROPOSED, percurso típico total, amostra) linkando `/shows/funil/tempo-em-etapa`.
+- **Justificativa:** SÓ a etapa PROPOSED é acionável — a própria D283 explicita: "PROPOSED dominando =
+  propostas ficam paradas antes da decisão (hora de cobrar resposta); CONFIRMED dominando = a maior parte da
+  espera é entre confirmar e o show (esperado)". Alertar sobre CONFIRMED seria ruído (nada a fazer); PLAYED/
+  CANCELLED são terminais e sequer aparecem como etapa de ORIGEM em `funnelStageDurations`. É a mesma leitura
+  de participação/composição já consolidada no app (`clientConcentrationHeadline`/`geoConcentrationHeadline`),
+  agora no eixo do TEMPO do funil, com o mesmo gate de composição (piso de participação + amostra confiável).
+  A cessão de vez aos nudges concretos da decisão segue a disciplina anti-banner-duplo já usada em
+  `contactConversionDropHeadline` (cede a `proposalConversionHeadline`) e `contactDeliberationRiseHeadline`
+  (cede a `slowDeliberatorHeadline`): quando algo concreto (proposta parada hoje, contratante específico
+  lento) já conta o problema, o recado estrutural espera o clique; ele brilha quando nada está parado hoje e
+  ninguém em especial arrasta, mas a carteira, de cima, gasta o percurso todo na decisão.
+- **Alternativas consideradas:** (a) disparar para QUALQUER etapa dominante (inclusive CONFIRMED) — descartado:
+  CONFIRMED dominando é esperado e não acionável, viraria ruído. (b) não ceder a vez e sempre mostrar o banner
+  estrutural — descartado: duplicaria o recado quando `staleProposals`/`slowDeliberator` já estão no ar, contra
+  a disciplina de Painel enxuto. (c) usar o valor ABSOLUTO da mediana de PROPOSED (ex.: "> 14 dias") como gate
+  em vez da fatia — descartado: o eixo desta leitura é COMPOSIÇÃO (onde o tempo se concentra), não a duração
+  crua (que já tem a tabela da página e o `slowDeliberator` por contratante); a fatia embute a comparação com
+  as demais etapas. (d) mínimo de amostra por número de TRANSIÇÕES em vez de `showCount` — descartado:
+  `showCount` (shows que contribuíram) é a medida honesta de "isto é um hábito da carteira, não 1–2 casos",
+  espelhando os gates de amostra dos nudges irmãos.
+- **DoD:** build de produção OK, typecheck (`tsc --noEmit`, 0 erros), lint (`next lint`, 0 avisos);
+  **1626 testes** (`vitest run`, +8 em `shows.test.ts`, `describe("stageTimeBottleneckHeadline")`: sem amostra
+  → não dispara; PROPOSED dominante + amostra confiável → dispara (share 2/3, não crítico); fatia ≥ 0.7 →
+  crítico; gargalo em CONFIRMED → não dispara mas reporta a fatia de PROPOSED; amostra < mínimo → não dispara;
+  empate 50/50 → dispara (limiar inclusivo, dominância a PROPOSED); limiares customizados de share; constantes
+  de calibração). Smoke (`next start`) → `/login` 200, `/dashboard` e `/shows/funil/tempo-em-etapa` 307→/login
+  (auth-gated, sem 500). `npm audit` **inalterado** vs. baseline (10 advisories; ver D6).
+- **Hipótese a validar (humano):** os limiares `STAGE_BOTTLENECK_SHARE`(=0.5) e
+  `STAGE_BOTTLENECK_CRITICAL_SHARE`(=0.7) — que fatia do tempo de percurso concentrada na decisão conta como
+  "gargalo material" vs. "crítico" — e o piso de amostra `STAGE_BOTTLENECK_MIN_SHOWS`(=4) são **heurísticas**,
+  não medidas com uso real. A distribuição natural do tempo por etapa num funil saudável varia por circuito/
+  gênero. Validar com músicos antes de virar premissa fixa.
+- **Nota de concorrência:** número **D285** escolhido como o próximo livre após o D284 (Sessão 290). Se
+  uma PR paralela reivindicar D285, renumerar para o próximo livre no merge.

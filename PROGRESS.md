@@ -9,7 +9,30 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1618 testes** verdes após a
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1626 testes** verdes após o
+**nudge de gargalo de tempo no funil no Painel** (Sessão 291, D285 — leva ao Painel a leitura de
+COMPOSIÇÃO do tempo do funil (`stageTimeConcentration`/D283): quando a etapa PROPOSED concentra a MAIOR
+fatia (≥ 50%) do tempo típico de percurso até o palco — as propostas passam o grosso do caminho apenas
+esperando decisão —, um banner "⏳ O funil empaca na decisão" surge com a fatia %, a mediana em PROPOSED,
+o percurso típico total e a amostra, linkando `/shows/funil/tempo-em-etapa`. Helper puro novo
+`stageTimeBottleneckHeadline(durations, minShare?, criticalShare?, minShows?)` + tipo
+`StageTimeBottleneckHeadline` + constantes `STAGE_BOTTLENECK_SHARE`(=0.5)/`STAGE_BOTTLENECK_CRITICAL_SHARE`(=0.7)/
+`STAGE_BOTTLENECK_MIN_SHOWS`(=4) em `src/lib/shows.ts`: recebe uma `funnelStageDurations` já computada (dela
+extrai a composição e a amostra `showCount`), dispara SÓ quando a etapa DOMINANTE do tempo é PROPOSED (gargalo
+em CONFIRMED = espera esperada entre confirmar e o show → não dispara; PLAYED/CANCELLED são terminais e nem
+aparecem como origem), a fatia ≥ `minShare` e a amostra é confiável (`showCount ≥ minShows`); `critical` (🔴)
+quando a fatia ≥ `criticalShare`. É a mesma leitura de participação de `clientConcentrationHeadline`/
+`geoConcentrationHeadline`, agora no eixo do TEMPO do funil. Distinto dos irmãos de proposta:
+`staleProposalsHeadline` (propostas paradas AGORA, por deal) e `slowDeliberatorHeadline` (QUEM decide devagar,
+por contratante); por ser a história ESTRUTURAL e mais lenta, CEDE A VEZ a eles (e a `contactDeliberationRiseHeadline`)
+no `dashboard/page.tsx` para não duplicar banner. Reaproveita os shows JÁ carregados pelos outros nudges
+(os `statusEvents` já vêm na consulta — zero I/O extra), zero regra de negócio nova, zero migração, zero
+dependência. **+8 testes** (`shows.test.ts`, `describe("stageTimeBottleneckHeadline")`: sem amostra → não
+dispara; PROPOSED dominante + amostra confiável → dispara (share 2/3, não crítico); fatia ≥ 0.7 → crítico;
+gargalo em CONFIRMED → não dispara mas ainda reporta a fatia de PROPOSED; amostra < mínimo → não dispara;
+empate 50/50 → dispara (limiar inclusivo, dominância a PROPOSED); limiares customizados de share; constantes).
+Build/typecheck/lint verdes; smoke → `/login` 200, `/dashboard` e `/shows/funil/tempo-em-etapa` 307→/login
+(auth-gated, sem 500); `npm audit` inalterado (10 advisories). Ver D285. Antes disso, **1618 testes** verdes após a
 **coluna "% do percurso" no CSV do tempo em cada etapa** (Sessão 290, D284 — fecha o "próximo possível"
 que a própria D283 deixou explícito: a tela `/shows/funil/tempo-em-etapa` ganhou na Sessão 289 a leitura
 de COMPOSIÇÃO do tempo (`stageTimeConcentration`) como card + coluna "% do percurso" na tabela, mas o
@@ -4838,5 +4861,10 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   `RESET_REQUEST_WINDOW_MINUTES`=60 min são **hipóteses** — quantos pedidos de link por hora contam como
   uso legítimo vs. abuso não foi medido com uso real. Validar antes de virar premissa fixa. Falta ainda o
   eixo por IP (a server action não lê o IP do request) — somar quando houver provedor de e-mail/borda real.
+- **Gargalo de tempo no funil (D285)**: os limiares `STAGE_BOTTLENECK_SHARE`=0.5 (fatia do tempo de
+  percurso concentrada na etapa PROPOSED para o nudge disparar), `STAGE_BOTTLENECK_CRITICAL_SHARE`=0.7 (fatia
+  que vira crítico) e `STAGE_BOTTLENECK_MIN_SHOWS`=4 (amostra confiável de shows) são **hipóteses** — a
+  distribuição natural do tempo por etapa num funil saudável varia por circuito/gênero. Validar com músicos
+  antes de virar premissa fixa.
 - **Segurança em produção**: definir `AUTH_SECRET` forte e migrar para PostgreSQL antes
   de qualquer deploy real. Revisar advisories do Next (D6) e planejar upgrade p/ Next 15+.
