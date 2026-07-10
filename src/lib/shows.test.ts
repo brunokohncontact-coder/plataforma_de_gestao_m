@@ -1682,6 +1682,63 @@ describe("funnelStageDurations", () => {
     ]);
     expect(r.stages.map((s) => s.status)).toEqual(["PROPOSED", "CONFIRMED"]);
   });
+
+  it("recorta por ano da entrada da proposta (opts.year), incl. all/2026/2025", () => {
+    const shows = [
+      // proposta ENTROU em 2025; decidiu em 2 dias
+      {
+        statusEvents: [
+          ev(null, "PROPOSED", "2025-06-01T00:00:00.000Z"),
+          ev("PROPOSED", "CONFIRMED", "2025-06-03T00:00:00.000Z"),
+        ],
+      },
+      // proposta ENTROU em 2026; decidiu em 8 dias
+      {
+        statusEvents: [
+          ev(null, "PROPOSED", "2026-06-01T00:00:00.000Z"),
+          ev("PROPOSED", "CONFIRMED", "2026-06-09T00:00:00.000Z"),
+        ],
+      },
+    ];
+    // "all" agrega os dois: mediana de [2,8] = 5
+    const all = funnelStageDurations(shows);
+    expect(all.stages.find((s) => s.status === "PROPOSED")!).toMatchObject({
+      count: 2,
+      medianDays: 5,
+    });
+    // 2026 pega só a proposta de 2026 (8 dias)
+    const y26 = funnelStageDurations(shows, { year: 2026 });
+    expect(y26.stages.find((s) => s.status === "PROPOSED")!).toMatchObject({
+      count: 1,
+      medianDays: 8,
+    });
+    expect(y26.showCount).toBe(1);
+    // 2025 pega só a de 2025 (2 dias)
+    const y25 = funnelStageDurations(shows, { year: 2025 });
+    expect(y25.stages.find((s) => s.status === "PROPOSED")!).toMatchObject({
+      count: 1,
+      medianDays: 2,
+    });
+  });
+
+  it("recorte por ano ignora shows sem entrada em PROPOSED (fora da coorte), mas os conta em all", () => {
+    const shows = [
+      // nasceu já CONFIRMED (sem coorte de proposta), transita em 2026
+      {
+        statusEvents: [
+          ev(null, "CONFIRMED", "2026-01-01T00:00:00.000Z"),
+          ev("CONFIRMED", "PLAYED", "2026-01-05T00:00:00.000Z"), // 4 dias em CONFIRMED
+        ],
+      },
+    ];
+    // sem recorte, a transição de CONFIRMED conta
+    expect(funnelStageDurations(shows).totalSamples).toBe(1);
+    // com recorte por ano, o show sem entrada em PROPOSED sai da coorte → vazio
+    const y26 = funnelStageDurations(shows, { year: 2026 });
+    expect(y26.stages).toEqual([]);
+    expect(y26.totalSamples).toBe(0);
+    expect(y26.showCount).toBe(0);
+  });
 });
 
 describe("proposalDeliberationByContact", () => {

@@ -9705,3 +9705,46 @@ contexto, decisão, justificativa e alternativas consideradas.
   **inalterado** vs. baseline (10 advisories; ver D6).
 - **Nota de concorrência:** número **D280** escolhido como o próximo livre após o D279 (Sessão 286). Se uma
   PR paralela reivindicar D280, renumerar para o próximo livre no merge.
+
+## 2026-07-10 — D281: Recorte por ano (`?ano=`) no tempo em cada etapa do funil (`funnelStageDurations` com `opts.year`)
+- **Contexto:** a página-mãe do tempo de travessia do funil, `/shows/funil/tempo-em-etapa`
+  (`funnelStageDurations`/D235), media a permanência típica em cada etapa somando TODAS as
+  propostas de todos os tempos, sem seletor de período — ao contrário das telas irmãs do MESMO
+  funil, que já recortam pela coorte da proposta: `/shows/funil/conversao` (`proposalOutcomes`/D243)
+  e a própria filha `/shows/funil/tempo-em-etapa/por-contratante` (`proposalDeliberationByContact`
+  com `opts.year`/D276). Sem recorte, não dava para responder "minhas etapas ficaram mais rápidas
+  ou mais lentas de um ano para o outro?" na tela-mãe, embora a filha já soubesse fazê-lo por
+  contratante. Um descompasso de paridade herdado — a filha nasceu com `?ano=`, a mãe não.
+- **Decisão:** `funnelStageDurations(shows, opts?)` passa a aceitar `opts.year` (reusa
+  `ProposalOutcomesOptions`, sem tipo novo), recortando os shows pela ENTRADA da proposta no funil
+  (primeiro `toStatus === PROPOSED` via `firstProposedAt`) ANTES de agregar — o mesmo eixo de coorte
+  de `proposalOutcomes`/D243 e da filha por contratante/D276, mantendo o motor agnóstico ao recorte.
+  Shows sem entrada em PROPOSED (fora da coorte) saem de qualquer ano específico, mas seguem contando
+  em `"all"` (comportamento histórico intacto: `opts` é opcional). A página e o export ganham o
+  `?ano=`: `availableYears = proposalOutcomeYears(shows)` (reuso literal do eixo de anos da conversão,
+  sem novo helper), `parseProfitYear` + `PeriodPicker` (`basePath` da própria rota, `ariaLabel="Ano da
+  proposta"`), subtítulo com o período, empty-state honesto por ano ("Nenhuma proposta de {ano} teve
+  transição cronometrada…") e sufixo do ano no filename do CSV (`tempo-em-etapa-2026.csv`,
+  `-todas.csv` no geral). Zero migração, zero I/O extra (recorta o mesmo acervo já carregado), zero
+  dependência nova.
+- **Justificativa:** leva a tela-mãe do tempo em etapa à paridade com as irmãs do funil (coorte por
+  ano da proposta), fechando o descompasso com a própria filha por contratante — a mesma disciplina
+  "recorte pela ENTRADA da proposta, não pela data do show" já consolidada em D243/D276. Reaproveita
+  integralmente o motor puro (`funnelStageDurations`) e os utilitários de período (`proposalOutcomeYears`,
+  `parseProfitYear`, `PeriodPicker`) — nenhuma regra de negócio nova.
+- **Alternativas consideradas:** (a) recortar pela data do SHOW (como o funil/retrato de estado) —
+  descartado: o tempo em etapa é uma leitura de coorte (a jornada de uma proposta ao longo do tempo),
+  então o eixo coerente é a data da proposta, o mesmo de todas as telas de coorte do funil (D243/D276),
+  para não misturar dois eixos na mesma família. (b) um comparativo YoY {ano}×{ano-1} por etapa na
+  própria mãe — adiado: o valor imediato é o recorte por ano (a paridade que faltava); o comparativo
+  por etapa é um passo maior e menos pedido que o da filha por contratante (que já o tem via D278).
+  (c) deixar a mãe sem recorte por ser "a visão geral" — descartado: a filha por contratante já recorta,
+  então a mãe sem `?ano=` era o elo mais fraco, não uma escolha de design.
+- **DoD:** build de produção OK, typecheck (`tsc --noEmit`, 0 erros), lint (`next lint`, 0 avisos);
+  **1606 testes** (`vitest run`, +2 em `shows.test.ts`, `describe("funnelStageDurations")`: recorta por
+  ano da entrada da proposta — all/2026/2025 com contagens e medianas distintas; recorte por ano ignora
+  shows sem entrada em PROPOSED (fora da coorte), mas os conta em `all`). Smoke (`next start`) → `/login`
+  200, `/shows/funil/tempo-em-etapa`, `?ano=2026` e `/export?ano=2026` 307→/login (auth-gated, sem 500).
+  `npm audit` **inalterado** vs. baseline (10 advisories; ver D6).
+- **Nota de concorrência:** número **D281** escolhido como o próximo livre após o D280 (Sessão 287). Se
+  uma PR paralela reivindicar D281, renumerar para o próximo livre no merge.
