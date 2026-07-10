@@ -91,6 +91,7 @@ import type {
   ScheduleConflicts,
   FunnelStageDurations,
   StageDurationStat,
+  StageDurationRowStatus,
   ProposalConversion,
   ProposalConversionComparison,
   ContactProposalConversion,
@@ -2579,23 +2580,49 @@ export const STAGE_DURATIONS_CSV_HEADERS = [
  * etapa), como a participação em branco de `pipelineToCsv`. Sem amostra
  * (`totalSamples === 0`) sai só cabeçalho + Total zerado. Mesma convenção pt-BR
  * dos irmãos (delimitador ";"). Pura.
+ *
+ * Quando `previousYear` é informado (recorte por ano com comparativo, D282), a
+ * planilha ganha uma última coluna "vs. {previousYear} (dias)" espelhando a coluna
+ * da página: variação assinada da mediana de permanência para as etapas presentes
+ * nos dois períodos (negativo = passou a atravessar mais rápido), "novo" para as
+ * que só têm amostra no ano atual (`isNew`) e em branco para as não comparáveis
+ * (`medianDaysDelta` ausente) e para a linha "Total". Sem `previousYear`, a saída é
+ * idêntica à histórica (6 colunas). Espelha `proposalDeliberationByContactToCsv`.
  */
 export function stageDurationsToCsv(
   durations: FunnelStageDurations,
   delimiter = DEFAULT_DELIMITER,
+  previousYear?: number | null,
+  rowStatus?: (status: string) => StageDurationRowStatus,
 ): string {
-  const out: string[][] = [Array.from(STAGE_DURATIONS_CSV_HEADERS)];
+  const withTrend = previousYear != null;
+  const header = Array.from(STAGE_DURATIONS_CSV_HEADERS) as string[];
+  if (withTrend) header.push(`vs. ${previousYear} (dias)`);
+  const out: string[][] = [header];
   for (const stage of durations.stages) {
-    out.push([
+    const cols = [
       showStatusLabel(stage.status),
       String(stage.count),
       String(stage.medianDays),
       String(stage.averageDays),
       String(stage.shortestDays),
       String(stage.longestDays),
-    ]);
+    ];
+    if (withTrend) {
+      const status = rowStatus ? rowStatus(stage.status) : { kind: "none" as const };
+      cols.push(
+        status.kind === "new"
+          ? "novo"
+          : status.kind === "changed"
+            ? csvSignedDays(status.change.medianDaysDelta)
+            : "",
+      );
+    }
+    out.push(cols);
   }
-  out.push(["Total", String(durations.totalSamples), "", "", "", ""]);
+  const total = ["Total", String(durations.totalSamples), "", "", "", ""];
+  if (withTrend) total.push("");
+  out.push(total);
   return toCsv(out, delimiter);
 }
 

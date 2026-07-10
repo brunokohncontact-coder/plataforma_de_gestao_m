@@ -9748,3 +9748,53 @@ contexto, decisão, justificativa e alternativas consideradas.
   `npm audit` **inalterado** vs. baseline (10 advisories; ver D6).
 - **Nota de concorrência:** número **D281** escolhido como o próximo livre após o D280 (Sessão 287). Se
   uma PR paralela reivindicar D281, renumerar para o próximo livre no merge.
+
+## 2026-07-10 — D282: Comparativo ano a ano por etapa do funil na tela-mãe (`compareFunnelStageDurations` + coluna "vs. {ano-1}")
+- **Contexto:** a D281 trouxe o recorte por ano (`?ano=`) à tela-mãe do tempo em cada etapa
+  (`/shows/funil/tempo-em-etapa`), mas adiou explicitamente o "passo maior": um comparativo YoY
+  {ano}×{ano-1} POR ETAPA na própria mãe + coluna "vs. {ano-1}" — o espelho, no eixo do funil
+  inteiro, do que a filha por contratante já tinha (`compareProposalDeliberationByContact`/D278,
+  card de "movers" + coluna "vs. {ano-1}"). Sem ele, dava para recortar cada ano isoladamente, mas
+  não para ver, num relance, QUAIS etapas o funil passou a atravessar mais rápido ou mais devagar de
+  um ano para o outro.
+- **Decisão:** três funções puras novas em `src/lib/shows.ts`, espelho fiel de D278 no eixo da etapa:
+  `compareFunnelStageDurations(current, previous)` (casa as etapas por `status` entre dois
+  `funnelStageDurations` já recortados por ano, devolve `changes` com a variação da mediana + `trend`,
+  `biggestSpeedup`/`biggestSlowdown` e `newStages`/`droppedStages`, **preservando a ordem canônica do
+  funil** em `changes` para a coluna alinhar sem reordenar); `indexStageDurationChanges(comparison)`
+  (lookup por `status` → `changed`/`new`/`none` para a coluna resolver em O(1)); e a constante
+  `STAGE_DURATION_TREND_EPSILON`(=3, a mesma escala de `DELIBERATION_TREND_EPSILON`, mas própria para
+  poder ser afinada isoladamente). Como na deliberação (D278), **descer** a mediana é o sinal saudável
+  (o show fica menos tempo parado na etapa): `trend` = `"faster"` (≤ −epsilon) / `"slower"` (≥ +epsilon)
+  / `"stable"`. A página ganha o card "Como mudou o ritmo do funil · {ano} vs. {ano-1}" (etapa que mais
+  acelerou / mais desacelerou + rodapé de etapas que ganharam/perderam amostra) e a coluna "vs. {ano-1}"
+  na tabela "Detalhe" (verde = mais rápido, vermelho = mais lento, "nova" = só teve amostra neste ano).
+  O CSV `stageDurationsToCsv` ganha a coluna opcional "vs. {ano-1} (dias)" quando `previousYear` +
+  `rowStatus` são informados (espelho de `proposalDeliberationByContactToCsv`). Só exibe com um ano
+  específico e ambos os períodos com amostra (`changes.length > 0`). Reusa os MESMOS shows já carregados,
+  recortando o ano anterior pela mesma agregação pura — zero nova consulta, zero migração, zero dependência.
+- **Justificativa:** fecha o "passo maior" adiado na D281 e leva a tela-mãe do tempo em etapa à paridade
+  TOTAL com a filha por contratante (recorte por ano + comparativo YoY + coluna "vs. {ano-1}" + CSV),
+  reaproveitando integralmente o motor puro (`funnelStageDurations`) e a disciplina de comparação de
+  D278/D196. Nenhuma regra de negócio nova: só uma leitura derivada de dois relatórios já computados.
+- **Alternativas consideradas:** (a) rotular o `trend` como "improved/worsened" (como a deliberação por
+  contratante) — descartado em favor de "faster/slower" (neutro): a mãe cobre TODAS as etapas do funil,
+  não só a deliberação da PROPOSTA, e para etapas como CONFIRMED "atravessar mais rápido" nem sempre é
+  inequivocamente "melhor"; "faster/slower" descreve o fato sem sobre-afirmar juízo, mantendo a mesma
+  cor (verde = descer, o sinal saudável no funil comercial). (b) reusar `DELIBERATION_TREND_EPSILON` —
+  descartado: constante própria (`STAGE_DURATION_TREND_EPSILON`) para afinar o limiar do funil inteiro
+  sem mexer no eixo da deliberação por contratante (as etapas têm escalas de tempo diferentes). (c)
+  ordenar `changes` pela maior piora no topo (como o comparativo por contratante) — descartado: a tabela
+  da mãe lista as etapas na ordem canônica do funil, então `changes` preserva ESSA ordem para a coluna
+  casar linha a linha; os destaques de "quem mais mudou" ficam no card (`biggestSpeedup`/`biggestSlowdown`).
+- **DoD:** build de produção OK, typecheck (`tsc --noEmit`, 0 erros), lint (`next lint`, 0 avisos);
+  **1612 testes** (`vitest run`, +6: 5 em `shows.test.ts`, `describe("compareFunnelStageDurations /
+  indexStageDurationChanges")` — sem etapas em comum → changes vazio + new/dropped; faster/slower além
+  do limiar com ordem canônica preservada + biggest speedup/slowdown; variação dentro do limiar fica
+  estável; etapas só num período viram new/dropped; lookup changed/new/none por status incl. null/undefined
+  — 1 em `csv.test.ts`, `describe("stageDurationsToCsv")` — coluna "vs. {ano-1} (dias)" com variação
+  assinada, "novo" e Total em branco). Smoke (`next start`) → `/login` 200, `/shows/funil/tempo-em-etapa`,
+  `?ano=2026` e `/export?ano=2026` 307→/login (auth-gated, sem 500). `npm audit` **inalterado** vs.
+  baseline (10 advisories; ver D6).
+- **Nota de concorrência:** número **D282** escolhido como o próximo livre após o D281 (Sessão 287). Se
+  uma PR paralela reivindicar D282, renumerar para o próximo livre no merge.

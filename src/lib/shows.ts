@@ -1985,6 +1985,185 @@ export function funnelStageDurations(
   return { stages, totalSamples, showCount };
 }
 
+// ── Comparativo ano a ano do tempo em cada etapa ─────────────────────────────
+// `funnelStageDurations` já recorta por ano (D281); este comparativo casa DUAS
+// leituras (o ano selecionado × o anterior) por etapa (`status`) e destila a
+// variação da mediana de permanência — quais etapas o funil passou a atravessar
+// mais rápido / mais devagar. Espelho por-etapa de `compareProposalDeliberationByContact`
+// (D278, deliberação por contratante), aqui no eixo do funil inteiro. Como na
+// deliberação, **descer** a mediana é o sinal saudável (o show fica menos tempo
+// parado na etapa); subir é a etapa emperrando. Puro, sem I/O: recebe dois
+// `funnelStageDurations` já computados. Ver D282.
+
+/**
+ * Limiar (dias) da variação da mediana de permanência numa etapa para virar
+ * tendência (não ruído). Reusa a mesma escala da deliberação
+ * (`DELIBERATION_TREND_EPSILON`=3): uma etapa que atravessa 2 dias mais
+ * rápido/devagar de um ano para o outro é rotina; a partir de ~3 dias já é um
+ * ritmo diferente. Constante própria para poder ser afinada sem mexer no eixo da
+ * deliberação por contratante.
+ */
+export const STAGE_DURATION_TREND_EPSILON = 3;
+
+/**
+ * Variação da permanência de UMA etapa do funil entre dois períodos (o ano
+ * selecionado × o anterior). Espelha `ContactProposalDeliberationChange` no eixo
+ * da etapa. `medianDaysDelta` negativo = a etapa passou a ser atravessada **mais
+ * rápido** (o show fica menos tempo parado ali); positivo = passou a demorar mais.
+ */
+export interface StageDurationChange {
+  /** Etapa comparada (`fromStatus`), presente nos dois períodos. */
+  status: string;
+  /** Estatística da etapa no período atual. */
+  current: StageDurationStat;
+  /** Estatística da etapa no período anterior. */
+  previous: StageDurationStat;
+  /**
+   * Variação da mediana de permanência (atual − anterior, em dias). Negativo =
+   * atravessa mais rápido agora; positivo = demora mais. Ancora o veredito (a
+   * mediana é a leitura principal da página).
+   */
+  medianDaysDelta: number;
+  /** Variação da média de permanência (atual − anterior, em dias) — só informativo. */
+  avgDaysDelta: number;
+  /**
+   * Direção do ritmo da etapa, pela variação da **mediana** contra
+   * `STAGE_DURATION_TREND_EPSILON`:
+   * - "faster": a mediana caiu além do limiar (atravessa mais rápido);
+   * - "slower": subiu além do limiar (fica mais tempo parado);
+   * - "stable": dentro do limiar (ruído).
+   */
+  trend: "faster" | "slower" | "stable";
+}
+
+export interface FunnelStageDurationsComparison {
+  /**
+   * Etapas presentes nos DOIS períodos, com a variação da permanência, na ordem
+   * canônica do funil (a mesma ordem em que a página lista as etapas) — para a
+   * coluna "vs. {ano-1}" casar linha a linha sem reordenar a tabela.
+   */
+  changes: StageDurationChange[];
+  /** Etapa que mais acelerou (variação de mediana mais negativa entre as "faster"). */
+  biggestSpeedup: StageDurationChange | null;
+  /** Etapa que mais desacelerou (variação de mediana mais positiva entre as "slower"). */
+  biggestSlowdown: StageDurationChange | null;
+  /** Etapas com amostra só no período atual (novas no recorte). */
+  newStages: StageDurationStat[];
+  /** Etapas com amostra só no anterior (sumiram do recorte atual). */
+  droppedStages: StageDurationStat[];
+}
+
+/**
+ * Compara o **tempo em cada etapa** entre dois períodos (atual × anterior),
+ * casando as etapas por `status`. Para cada etapa presente nos dois períodos
+ * devolve a variação da mediana de permanência (quais etapas passaram a ser
+ * atravessadas mais rápido / mais devagar); as que têm amostra só num período
+ * viram `newStages`/`droppedStages`.
+ *
+ * Puro, sem I/O: recebe dois `funnelStageDurations` já computados (cada um
+ * recortado ao seu ano via `opts.year`, o eixo de coorte da entrada da proposta no
+ * funil — D281). Como na deliberação (D278), aqui **descer** a mediana é o sinal
+ * saudável — o show fica menos tempo parado na etapa —; reusa
+ * `STAGE_DURATION_TREND_EPSILON` como limiar. Mantém a ORDEM canônica do funil em
+ * `changes` (a mesma da página), para a coluna "vs. {ano-1}" alinhar sem reordenar.
+ * O chamador decide quando exibir (tipicamente só com um ano específico e ambos os
+ * períodos com amostra). Ver D282.
+ */
+export function compareFunnelStageDurations(
+  current: FunnelStageDurations,
+  previous: FunnelStageDurations,
+): FunnelStageDurationsComparison {
+  const prevByStatus = new Map<string, StageDurationStat>();
+  for (const s of previous.stages) prevByStatus.set(s.status, s);
+
+  const currentStatuses = new Set<string>();
+  const changes: StageDurationChange[] = [];
+  const newStages: StageDurationStat[] = [];
+
+  // Preserva a ordem canônica do funil (`current.stages` já vem ordenado).
+  for (const cur of current.stages) {
+    currentStatuses.add(cur.status);
+    const prev = prevByStatus.get(cur.status);
+    if (!prev) {
+      newStages.push(cur);
+      continue;
+    }
+    const medianDaysDelta = cur.medianDays - prev.medianDays;
+    changes.push({
+      status: cur.status,
+      current: cur,
+      previous: prev,
+      medianDaysDelta,
+      avgDaysDelta: cur.averageDays - prev.averageDays,
+      trend:
+        medianDaysDelta <= -STAGE_DURATION_TREND_EPSILON
+          ? "faster"
+          : medianDaysDelta >= STAGE_DURATION_TREND_EPSILON
+            ? "slower"
+            : "stable",
+    });
+  }
+
+  const droppedStages = previous.stages.filter((s) => !currentStatuses.has(s.status));
+
+  let biggestSpeedup: StageDurationChange | null = null;
+  let biggestSlowdown: StageDurationChange | null = null;
+  for (const c of changes) {
+    if (
+      c.trend === "faster" &&
+      (!biggestSpeedup || c.medianDaysDelta < biggestSpeedup.medianDaysDelta)
+    ) {
+      biggestSpeedup = c;
+    }
+    if (
+      c.trend === "slower" &&
+      (!biggestSlowdown || c.medianDaysDelta > biggestSlowdown.medianDaysDelta)
+    ) {
+      biggestSlowdown = c;
+    }
+  }
+
+  return { changes, biggestSpeedup, biggestSlowdown, newStages, droppedStages };
+}
+
+/**
+ * Situação de uma linha da tabela por etapa (período atual) frente ao anterior,
+ * para a coluna "vs. {ano-1}" (espelha `ContactProposalDeliberationRowStatus`/D278
+ * no eixo da etapa):
+ * - "changed": a etapa tinha amostra nos dois períodos — traz a variação;
+ * - "new": só tem amostra no período atual (nova no recorte);
+ * - "none": status não comparável (não presente no comparativo).
+ */
+export type StageDurationRowStatus =
+  | { kind: "changed"; change: StageDurationChange }
+  | { kind: "new" }
+  | { kind: "none" };
+
+/**
+ * Casa cada linha da tabela por etapa (período atual) com sua situação no
+ * comparativo `compareFunnelStageDurations`, indexando por `status` para o
+ * consumidor resolver a coluna "vs. {ano-1}" em O(1). Puro: recebe o comparativo
+ * já computado e devolve uma função de lookup. Uma etapa presente nos dois
+ * períodos vira "changed"; uma só no atual (em `newStages`) vira "new"; qualquer
+ * outro status vira "none". Espelha `indexContactProposalDeliberationChanges`.
+ */
+export function indexStageDurationChanges(
+  comparison: FunnelStageDurationsComparison,
+): (status: string | null | undefined) => StageDurationRowStatus {
+  const changedByStatus = new Map<string, StageDurationChange>();
+  for (const c of comparison.changes) changedByStatus.set(c.status, c);
+  const newStatuses = new Set<string>();
+  for (const s of comparison.newStages) newStatuses.add(s.status);
+
+  return (status) => {
+    if (!status) return { kind: "none" };
+    const change = changedByStatus.get(status);
+    if (change) return { kind: "changed", change };
+    if (newStatuses.has(status)) return { kind: "new" };
+    return { kind: "none" };
+  };
+}
+
 // ── Tempo de decisão da proposta por contratante ─────────────────────────────
 // O tempo-em-etapa (`funnelStageDurations`/D235) mede a velocidade típica de
 // travessia do funil somando TODOS os shows. Esta leitura recorta uma etapa só —

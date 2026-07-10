@@ -4,8 +4,14 @@ import { prisma } from "@/lib/prisma";
 import {
   funnelStageDurations,
   proposalOutcomeYears,
+  compareFunnelStageDurations,
+  indexStageDurationChanges,
+  STAGE_DURATION_TREND_EPSILON,
   type StageDurationStat,
   type ProposalOutcomeShowLike,
+  type FunnelStageDurationsComparison,
+  type StageDurationChange,
+  type StageDurationRowStatus,
 } from "@/lib/shows";
 import { parseProfitYear } from "@/lib/finance";
 import {
@@ -57,6 +63,30 @@ export default async function StageDurationsPage({
   const maxMedian = Math.max(1, ...durations.stages.map((s) => s.medianDays));
   const periodLabel =
     yearFilter === "all" ? "todas as propostas" : `propostas de ${yearFilter}`;
+
+  // Comparativo por etapa {ano} × {ano-1}: quais etapas o funil passou a atravessar
+  // mais rápido / mais devagar (D282 — fecha o "passo maior" adiado na D281,
+  // espelhando compareProposalDeliberationByContact/D278 no eixo do funil inteiro).
+  // Só com um ano específico e ambos os períodos com amostra — senão
+  // "acelerou/desacelerou" enganaria. Reusa os MESMOS shows já carregados, recortando
+  // o ano anterior pela mesma agregação pura (eixo da entrada da proposta), sem nova
+  // consulta. O veredito ancora na mediana, a leitura principal da página.
+  let comparison: FunnelStageDurationsComparison | null = null;
+  let previousYear = 0;
+  if (yearFilter !== "all") {
+    previousYear = yearFilter - 1;
+    const previous = funnelStageDurations(shows, { year: previousYear });
+    if (durations.totalSamples > 0 && previous.totalSamples > 0) {
+      const c = compareFunnelStageDurations(durations, previous);
+      // Só vale exibir se há de fato alguma etapa nos dois períodos.
+      if (c.changes.length > 0) comparison = c;
+    }
+  }
+
+  // Lookup por `status` para a coluna "vs. {ano-1}" da tabela: casa cada etapa
+  // (período atual) com sua variação, ou marca "nova"/"—" (D282). Reusa o mesmo
+  // comparativo já computado — zero lógica pura nova na página.
+  const rowStatus = comparison ? indexStageDurationChanges(comparison) : null;
   const exportHref =
     yearFilter === "all"
       ? "/shows/funil/tempo-em-etapa/export"
@@ -132,6 +162,14 @@ export default async function StageDurationsPage({
             aberto) não entra na conta.
           </p>
 
+          {comparison && (
+            <StageMoversCard
+              comparison={comparison}
+              currentYear={yearFilter as number}
+              previousYear={previousYear}
+            />
+          )}
+
           <section className="card">
             <h2 className="mb-4 font-semibold">Permanência mediana por etapa</h2>
             <div className="space-y-4">
@@ -149,6 +187,9 @@ export default async function StageDurationsPage({
                   <th className="py-2 pr-3 font-medium">Etapa</th>
                   <th className="py-2 px-3 text-right font-medium">Transições</th>
                   <th className="py-2 px-3 text-right font-medium">Mediana</th>
+                  {rowStatus && (
+                    <th className="py-2 px-3 text-right font-medium">vs. {previousYear}</th>
+                  )}
                   <th className="py-2 px-3 text-right font-medium">Média</th>
                   <th className="py-2 px-3 text-right font-medium">Mín</th>
                   <th className="py-2 pl-3 text-right font-medium">Máx</th>
@@ -178,6 +219,14 @@ export default async function StageDurationsPage({
                       <td className="py-2 px-3 text-right font-semibold tabular-nums">
                         {daysLabel(stage.medianDays)}
                       </td>
+                      {rowStatus && (
+                        <td className="py-2 px-3 text-right">
+                          <StageRowDelta
+                            status={rowStatus(stage.status)}
+                            year={previousYear}
+                          />
+                        </td>
+                      )}
                       <td className="py-2 px-3 text-right tabular-nums text-gray-600">
                         {daysLabel(stage.averageDays)}
                       </td>
@@ -195,11 +244,155 @@ export default async function StageDurationsPage({
             <p className="mt-3 text-xs text-gray-400">
               A mediana é a leitura principal (resistente a um caso fora da curva); a média fica
               como referência. Cada etapa soma tanto as saídas por avanço quanto por cancelamento.
+              {rowStatus && (
+                <>
+                  {" "}
+                  A coluna <strong>vs. {previousYear}</strong> mostra a variação da mediana de
+                  permanência de cada etapa frente ao ano anterior —{" "}
+                  <span className="text-emerald-600">verde</span> passou a atravessar mais rápido,{" "}
+                  <span className="text-red-600">vermelho</span> passou a demorar mais,
+                  &quot;nova&quot; só teve amostra neste ano.
+                </>
+              )}
             </p>
           </section>
         </>
       )}
     </div>
+  );
+}
+
+/** Variação de permanência em dias com sinal (ex.: -12 → "−12 dias", 3 → "+3 dias"). */
+function signedDaysLabel(delta: number): string {
+  if (delta === 0) return "0 dias";
+  const abs = Math.abs(delta);
+  return `${delta > 0 ? "+" : "−"}${abs} ${abs === 1 ? "dia" : "dias"}`;
+}
+
+/**
+ * Célula da coluna "vs. {ano-1}" na tabela por etapa: a variação da mediana de
+ * permanência desta etapa frente ao ano anterior (`indexStageDurationChanges`,
+ * D282). Descer a mediana é o sinal saudável (verde, atravessa mais rápido); subir
+ * é a etapa emperrando (vermelho); dentro do limiar é estável (cinza). Uma etapa
+ * com amostra só neste ano vira "nova"; a não comparável fica em "—".
+ */
+function StageRowDelta({
+  status,
+  year,
+}: {
+  status: StageDurationRowStatus;
+  year: number;
+}) {
+  if (status.kind === "new") {
+    return (
+      <span className="text-xs text-gray-400" title={`Só teve amostra depois de ${year}`}>
+        nova
+      </span>
+    );
+  }
+  if (status.kind === "none") {
+    return <span className="text-gray-300">—</span>;
+  }
+  const { medianDaysDelta, trend } = status.change;
+  const tone =
+    trend === "faster"
+      ? "text-emerald-600"
+      : trend === "slower"
+        ? "text-red-600"
+        : "text-gray-500";
+  return (
+    <span className={"font-medium tabular-nums " + tone}>{signedDaysLabel(medianDaysDelta)}</span>
+  );
+}
+
+/** Um lado do card de "movers": qual etapa acelerou ou desacelerou a travessia. */
+function StageMoverBlock({
+  title,
+  change,
+  tone,
+}: {
+  title: string;
+  change: StageDurationChange | null;
+  tone: "faster" | "slower";
+}) {
+  const valueClass = tone === "faster" ? "text-emerald-600" : "text-red-600";
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{title}</p>
+      {change ? (
+        <>
+          <p className="mt-1 truncate font-medium text-gray-900">
+            {SHOW_STATUS_LABELS[change.status as ShowStatus] ?? change.status}
+          </p>
+          <p className={"mt-1 text-lg font-bold " + valueClass}>
+            {signedDaysLabel(change.medianDaysDelta)}
+          </p>
+          <p className="text-xs text-gray-400">
+            {daysLabel(change.previous.medianDays)} → {daysLabel(change.current.medianDays)}
+          </p>
+        </>
+      ) : (
+        <p className="mt-1 text-sm text-gray-400">
+          Nenhuma etapa {tone === "faster" ? "acelerou" : "desacelerou"} mais de{" "}
+          {STAGE_DURATION_TREND_EPSILON} dias
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Card "Como mudou o ritmo do funil {ano} vs. {ano-1}": destaca a etapa que mais
+ * acelerou (passou a ser atravessada mais rápido) e a que mais desacelerou (o show
+ * ficou mais tempo parado) frente ao ano anterior (`compareFunnelStageDurations`,
+ * D282). Como na deliberação, **descer** a mediana é o sinal saudável. Fecha o
+ * rodapé com as etapas que ganharam/perderam amostra no recorte. Espelho de
+ * `DeliberationMoversCard` no eixo do funil inteiro.
+ */
+function StageMoversCard({
+  comparison,
+  currentYear,
+  previousYear,
+}: {
+  comparison: FunnelStageDurationsComparison;
+  currentYear: number;
+  previousYear: number;
+}) {
+  const { biggestSpeedup, biggestSlowdown, changes, newStages, droppedStages } = comparison;
+  return (
+    <section className="card space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+          Como mudou o ritmo do funil · {currentYear} vs. {previousYear}
+        </p>
+        <span className="text-xs text-gray-400">
+          {changes.length} {changes.length === 1 ? "etapa comparável" : "etapas comparáveis"}
+        </span>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <StageMoverBlock title="Passou a atravessar mais rápido" change={biggestSpeedup} tone="faster" />
+        <StageMoverBlock title="Passou a demorar mais" change={biggestSlowdown} tone="slower" />
+      </div>
+      {(newStages.length > 0 || droppedStages.length > 0) && (
+        <p className="text-xs text-gray-400">
+          {newStages.length > 0 && (
+            <>
+              {newStages.length} {newStages.length === 1 ? "etapa ganhou" : "etapas ganharam"} amostra
+              em {currentYear}
+            </>
+          )}
+          {newStages.length > 0 && droppedStages.length > 0 && " · "}
+          {droppedStages.length > 0 && (
+            <>
+              {droppedStages.length}{" "}
+              {droppedStages.length === 1 ? "tinha amostra" : "tinham amostra"} em {previousYear} mas
+              não em {currentYear}
+            </>
+          )}
+          .
+        </p>
+      )}
+    </section>
   );
 }
 
