@@ -1967,6 +1967,133 @@ export function funnelStageDurations(
   return { stages, totalSamples, showCount };
 }
 
+// ── Tempo de decisão da proposta por contratante ─────────────────────────────
+// O tempo-em-etapa (`funnelStageDurations`/D235) mede a velocidade típica de
+// travessia do funil somando TODOS os shows. Esta leitura recorta uma etapa só —
+// PROPOSTA — e a quebra por contratante: quanto cada contratante costuma demorar
+// para DECIDIR uma proposta (avançá-la ou cancelá-la) depois de ela entrar na
+// mesa. Reaproveita o mesmo motor: para cada contratante roda
+// `funnelStageDurations` sobre os shows dele e destila a estatística da etapa
+// PROPOSED. Como o motor credita o tempo à etapa de ORIGEM só quando o show SAI
+// dela, propostas ainda em aberto (sem desfecho) não entram na conta — a leitura
+// é honesta sobre decisões já tomadas. Espelho por contratante de `paymentLagByContact`
+// (prazo de recebimento) e `bookingLeadTimeByContact` (antecedência), aqui no eixo
+// da deliberação. Ver D275.
+
+/** Show, como o agregador de deliberação por contratante precisa vê-lo (só eventos). */
+export interface ProposalDeliberationShowLike {
+  statusEvents: StatusEventLike[];
+}
+
+/** Um contratante + os shows a que está vinculado, para a agregação por contratante. */
+export interface ContactProposalDeliberationItem<C> {
+  contact: C;
+  shows: ProposalDeliberationShowLike[];
+}
+
+/**
+ * Amostra mínima de propostas decididas para a mediana de deliberação de um
+ * contratante ser considerada confiável. Alinhado a `MIN_LEAD_TIME_SAMPLE` /
+ * `MIN_SHOW_GAP_SAMPLE`: abaixo disso a mediana vira ruído (um caso fora da curva
+ * distorce), então a página/CSV suprimem-na (mas o contratante ainda é listado).
+ */
+export const MIN_DELIBERATION_SAMPLE = 3;
+
+/** Deliberação da proposta de um contratante (a etapa PROPOSED do seu funil). */
+export interface ContactProposalDeliberationRow<C> {
+  /** Contratante do grupo. */
+  contact: C;
+  /** Estatística da etapa PROPOSED dos shows dele (mediana/média/mín/máx/amostra). */
+  stat: StageDurationStat;
+  /** `stat.count >= MIN_DELIBERATION_SAMPLE`: gate de confiança da mediana. */
+  reliable: boolean;
+  /** Participação deste contratante na amostra total de decisões (0..1). */
+  share: number;
+}
+
+/** Resultado de `proposalDeliberationByContact`. */
+export interface ProposalDeliberationByContact<C> {
+  /**
+   * Contratantes com ao menos uma proposta decidida (transição de saída de
+   * PROPOSED), ordenados da menor mediana de deliberação à maior (decide rápido
+   * primeiro), depois maior amostra, nome pt-BR e id.
+   */
+  rows: ContactProposalDeliberationRow<C>[];
+  /** Nº de contratantes na lista (= `rows.length`). */
+  contactCount: number;
+  /**
+   * Deliberação da carteira inteira: a etapa PROPOSED sobre TODAS as relações
+   * achatadas (um show com N contatos conta N vezes, como `overall` de
+   * `proposalOutcomesByContact`), ou `null` se ninguém decidiu proposta ainda.
+   */
+  overall: StageDurationStat | null;
+  /** Total de decisões cronometradas (soma dos `stat.count` por relação). */
+  totalSamples: number;
+  /**
+   * O contratante que mais te deixa esperando: maior mediana de deliberação
+   * entre os com amostra confiável (`reliable`), ou `null` se nenhum a tem. Só
+   * vira destaque quando há mais de um contratante confiável (senão a "comparação"
+   * seria consigo mesmo).
+   */
+  slowest: ContactProposalDeliberationRow<C> | null;
+}
+
+/**
+ * Tempo de decisão da proposta por contratante: para cada contratante, roda
+ * `funnelStageDurations` sobre os shows dele e extrai a estatística da etapa
+ * PROPOSED — quanto tempo suas propostas costumam ficar na mesa antes de virar
+ * confirmação ou cancelamento. Só viram linha os contratantes com ao menos uma
+ * decisão cronometrada (proposta que já saiu de PROPOSED); os que só têm proposta
+ * ainda em aberto ficam de fora (sem número honesto a mostrar). O agregado
+ * `overall` roda o mesmo motor sobre as relações achatadas (por relação, como o
+ * funil por contratante). Ordena da menor mediana à maior (decide rápido primeiro),
+ * com maior amostra, nome pt-BR e id como desempate. Pura e determinística — não
+ * depende de "agora". Ver D275.
+ */
+export function proposalDeliberationByContact<C extends { id: string; name: string }>(
+  items: ContactProposalDeliberationItem<C>[],
+): ProposalDeliberationByContact<C> {
+  const rows: ContactProposalDeliberationRow<C>[] = [];
+  let totalSamples = 0;
+
+  for (const { contact, shows } of items) {
+    const stat = funnelStageDurations(shows).stages.find((s) => s.status === "PROPOSED");
+    if (!stat) continue; // nenhuma proposta decidida deste contratante → fora da lista
+    totalSamples += stat.count;
+    rows.push({ contact, stat, reliable: stat.count >= MIN_DELIBERATION_SAMPLE, share: 0 });
+  }
+
+  // Participação só faz sentido depois de conhecer o total (por relação).
+  for (const row of rows) {
+    row.share = totalSamples > 0 ? row.stat.count / totalSamples : 0;
+  }
+
+  rows.sort((a, b) => {
+    if (a.stat.medianDays !== b.stat.medianDays) return a.stat.medianDays - b.stat.medianDays;
+    if (a.stat.count !== b.stat.count) return b.stat.count - a.stat.count;
+    const byName = a.contact.name.localeCompare(b.contact.name, "pt-BR");
+    if (byName !== 0) return byName;
+    return a.contact.id.localeCompare(b.contact.id);
+  });
+
+  const overall =
+    funnelStageDurations(items.flatMap((i) => i.shows)).stages.find(
+      (s) => s.status === "PROPOSED",
+    ) ?? null;
+
+  // "Quem mais te deixa esperando": maior mediana entre os confiáveis, mas só
+  // quando há mais de um confiável (senão o destaque seria trivial).
+  const reliableRows = rows.filter((r) => r.reliable);
+  let slowest: ContactProposalDeliberationRow<C> | null = null;
+  if (reliableRows.length > 1) {
+    slowest = reliableRows.reduce((best, r) =>
+      r.stat.medianDays > best.stat.medianDays ? r : best,
+    );
+  }
+
+  return { rows, contactCount: rows.length, overall, totalSamples, slowest };
+}
+
 // ── Conversão real proposta → realizado (coorte, pela linha do tempo) ─────────
 // A "taxa de concretização" do funil (`showPipeline`) é um retrato do estado
 // ATUAL: dos shows que hoje estão PLAYED ou CANCELLED, quantos foram tocados. Ela

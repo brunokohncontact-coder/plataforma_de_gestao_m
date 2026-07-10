@@ -9,7 +9,27 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1568 testes** verdes após o **nudge de queda do
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1578 testes** verdes após o **tempo de decisão da
+proposta por contratante** (Sessão 280, D275 — leva o eixo por contratante à deliberação do funil: o "Tempo em cada etapa"
+(`funnelStageDurations`/D235, `/shows/funil/tempo-em-etapa`) media a velocidade típica de travessia somando TODOS os shows, mas
+não dizia DE QUEM a proposta demora a sair da mesa — os eixos por contratante já existiam para recebíveis
+(`paymentLagByContact`) e antecedência (`bookingLeadTimeByContact`), faltava o da deliberação. Novo
+`proposalDeliberationByContact(items)` + tipos `ProposalDeliberationByContact`/`ContactProposalDeliberationRow`/
+`ProposalDeliberationShowLike`/`ContactProposalDeliberationItem` + constante `MIN_DELIBERATION_SAMPLE`(=3) em `src/lib/shows.ts`:
+para cada contratante roda o MESMO motor `funnelStageDurations` sobre os shows dele e destila a estatística da etapa **PROPOSED**
+(mediana/média/mín/máx de dias na mesa antes de decidir — avançar ou cancelar); só viram linha os com ≥1 decisão cronometrada
+(propostas em aberto ficam de fora, sem número honesto); `overall` roda por relação (show partilhado conta p/ cada contato, como
+o `overall` de `proposalOutcomesByContact`/D247); ordena da MENOR mediana à MAIOR (decide rápido primeiro); `slowest` (destaque
+"Quem mais te deixa esperando") só com >1 contratante confiável. Página `/shows/funil/tempo-em-etapa/por-contratante`
+(sub-relatório da tela-mãe com link recíproco, card do mais lento + tabela) + export CSV `proposalDeliberationByContactToCsv` +
+`PROPOSAL_DELIBERATION_BY_CONTACT_CSV_HEADERS` em `src/lib/csv.ts` + entrada em `REPORT_GROUPS` (Agenda & pipeline). Reaproveita
+o motor puro/testado de D235 (zero regra nova, zero migração, zero dependência); consulta espelha a de
+`/shows/funil/conversao/contratantes`. **+10 testes** (7 de `proposalDeliberationByContact`: vazio; só-aberto não vira linha;
+destila PROPOSED e ordena com participação; amostra fina não-confiável mas listada; avanços + cancelamentos; `overall` por
+relação; `slowest` só com >1 confiável — 3 de `proposalDeliberationByContactToCsv`: vazio; linha menor-mediana-primeiro com dias
+crus; mediana suprimida na amostra fina). Build/typecheck/lint verdes; smoke → `/login` 200, a página e o `/export` 307→/login
+sem auth (rotas presentes no build); `npm audit` inalterado (10 advisories). Ver D275. Adiado: recorte por `?ano=`/comparativo
+YoY (espelho D269/D270) e nudge no Painel do mais lento. Antes disso, o **nudge de queda do
 cachê típico no Painel** (Sessão 279, D274 — leva ao dashboard o comparativo de nível de preço que só vivia em
 `/shows/faixas-de-cache`: `compareFeeDistribution` (D187) já media se o cachê **mediano** subiu/caiu ano a ano, mas o sinal
 não aparecia na primeira tela. Uma erosão do preço típico é um risco de carreira tão acionável quanto a conversão caindo
@@ -3848,6 +3868,14 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   ver D6/D8). Ver **DECISIONS.md D94**.
 
 ## Próximos passos (priorizados para a próxima sessão)
+- **Tempo de decisão por contratante — evoluções** (entregue na Sessão 280, D275 —
+  `proposalDeliberationByContact` em `src/lib/shows.ts` + `/shows/funil/tempo-em-etapa/por-contratante`
+  + CSV `proposalDeliberationByContactToCsv`): a deliberação da etapa PROPOSED quebrada por contratante,
+  ordenada menor→maior mediana, com card do mais lento. Próximo possível — (a) recorte por `?ano=`/
+  `PeriodPicker` + comparativo YoY por contratante (espelho de D269/D270 na antecedência: "quem passou
+  a decidir mais rápido/devagar"); (b) nudge no Painel quando um contratante recorrente passa a demorar
+  muito além do seu hábito para decidir (espelho de `contactBookingLeadTimeDropHeadline`/D272), adiado
+  por o Painel já estar denso.
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
    link "Relatórios" ancorado na seção da área, ver D55; **busca textual no hub** entregue na

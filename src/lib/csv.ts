@@ -90,6 +90,7 @@ import type {
   OpenWeekendsReport,
   ScheduleConflicts,
   FunnelStageDurations,
+  StageDurationStat,
   ProposalConversion,
   ProposalConversionComparison,
   ContactProposalConversion,
@@ -2595,6 +2596,62 @@ export function stageDurationsToCsv(
     ]);
   }
   out.push(["Total", String(durations.totalSamples), "", "", "", ""]);
+  return toCsv(out, delimiter);
+}
+
+// ── Tempo de decisão da proposta por contratante ─────────────────────────────
+
+export const PROPOSAL_DELIBERATION_BY_CONTACT_CSV_HEADERS = [
+  "Contratante",
+  "Decisões",
+  "Mediana (dias)",
+  "Média (dias)",
+  "Mín (dias)",
+  "Máx (dias)",
+  "Participação (%)",
+] as const;
+
+/** Uma linha de deliberação por contratante para a exportação. */
+export interface ProposalDeliberationByContactCsvRow {
+  /** Contratante do grupo. */
+  contact: { name: string };
+  /** Estatística da etapa PROPOSED deste contratante. */
+  stat: StageDurationStat;
+  /** Amostra confiável (`stat.count >= MIN_DELIBERATION_SAMPLE`): gate da mediana. */
+  reliable: boolean;
+  /** Participação na amostra total de decisões (0..1). */
+  share: number;
+}
+
+/**
+ * Serializa o tempo de decisão da proposta por contratante em CSV, pronto para
+ * download — espelha a tabela de `/shows/funil/tempo-em-etapa/por-contratante`.
+ * Uma linha por contratante (na ordem da página: menor mediana primeiro), com o
+ * nº de decisões cronometradas, mediana/média/mín/máx de dias na etapa PROPOSED e
+ * a participação na amostra. A mediana só sai quando a amostra é confiável
+ * (`reliable`) — abaixo disso fica em branco, mesma regra da UI. Encerra numa
+ * linha "Total" com o total de decisões (as colunas de dias em branco: não há
+ * mediana honesta entre contratantes, como o "Total" de `stageDurationsToCsv`).
+ * Dias como inteiro cru (legível por máquina), mesma convenção dos irmãos. Pura.
+ */
+export function proposalDeliberationByContactToCsv(
+  rows: ProposalDeliberationByContactCsvRow[],
+  totalSamples: number,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(PROPOSAL_DELIBERATION_BY_CONTACT_CSV_HEADERS)];
+  for (const row of rows) {
+    out.push([
+      row.contact.name,
+      String(row.stat.count),
+      row.reliable ? String(row.stat.medianDays) : "",
+      String(row.stat.averageDays),
+      String(row.stat.shortestDays),
+      String(row.stat.longestDays),
+      csvShare(row.share),
+    ]);
+  }
+  out.push(["Total", String(totalSamples), "", "", "", "", ""]);
   return toCsv(out, delimiter);
 }
 

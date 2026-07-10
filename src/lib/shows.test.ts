@@ -38,6 +38,8 @@ import {
   MIN_LEAD_TIME_SAMPLE,
   buildStatusTimeline,
   funnelStageDurations,
+  proposalDeliberationByContact,
+  MIN_DELIBERATION_SAMPLE,
   proposalOutcomes,
   proposalOutcomeYears,
   proposalOutcomesByContact,
@@ -1672,6 +1674,117 @@ describe("funnelStageDurations", () => {
       },
     ]);
     expect(r.stages.map((s) => s.status)).toEqual(["PROPOSED", "CONFIRMED"]);
+  });
+});
+
+describe("proposalDeliberationByContact", () => {
+  const ev = (
+    fromStatus: string | null,
+    toStatus: string,
+    createdAt: string,
+  ): StatusEventLike => ({ fromStatus, toStatus, createdAt });
+
+  /** Um show cuja proposta ficou `days` dias na mesa antes de sair (avançar ou cancelar). */
+  const decided = (days: number, out: "CONFIRMED" | "CANCELLED" = "CONFIRMED") => ({
+    statusEvents: [
+      ev(null, "PROPOSED", "2026-01-01T00:00:00.000Z"),
+      ev(
+        "PROPOSED",
+        out,
+        new Date(Date.parse("2026-01-01T00:00:00.000Z") + days * 86400000).toISOString(),
+      ),
+    ],
+  });
+
+  /** Um show cuja proposta ainda está na mesa (sem desfecho a cronometrar). */
+  const open = () => ({
+    statusEvents: [ev(null, "PROPOSED", "2026-01-01T00:00:00.000Z")],
+  });
+
+  const c = (id: string, name: string, role = "CONTRACTOR") => ({ id, name, role });
+
+  it("sem contratantes devolve vazio", () => {
+    const r = proposalDeliberationByContact([]);
+    expect(r.rows).toEqual([]);
+    expect(r.contactCount).toBe(0);
+    expect(r.overall).toBeNull();
+    expect(r.totalSamples).toBe(0);
+    expect(r.slowest).toBeNull();
+  });
+
+  it("contratante só com proposta em aberto não vira linha", () => {
+    const r = proposalDeliberationByContact([
+      { contact: c("1", "Ana"), shows: [open(), open()] },
+    ]);
+    expect(r.contactCount).toBe(0);
+    expect(r.overall).toBeNull();
+  });
+
+  it("destila a etapa PROPOSED por contratante e ordena da menor mediana à maior", () => {
+    const r = proposalDeliberationByContact([
+      { contact: c("slow", "Lento"), shows: [decided(10), decided(20), decided(30)] },
+      { contact: c("fast", "Rápido"), shows: [decided(1), decided(3), decided(5)] },
+    ]);
+    expect(r.contactCount).toBe(2);
+    expect(r.rows.map((row) => row.contact.id)).toEqual(["fast", "slow"]);
+    const fast = r.rows[0];
+    expect(fast.stat.medianDays).toBe(3); // mediana de [1,3,5]
+    expect(fast.reliable).toBe(true);
+    const slow = r.rows[1];
+    expect(slow.stat.medianDays).toBe(20); // mediana de [10,20,30]
+    expect(r.totalSamples).toBe(6);
+    // Participação soma 1 (3/6 cada).
+    expect(fast.share).toBeCloseTo(0.5);
+    expect(slow.share).toBeCloseTo(0.5);
+  });
+
+  it("marca amostra fina como não-confiável mas ainda lista o contratante", () => {
+    const r = proposalDeliberationByContact([
+      { contact: c("1", "Ana"), shows: [decided(5), decided(9)] }, // 2 < MIN
+    ]);
+    expect(MIN_DELIBERATION_SAMPLE).toBeGreaterThan(2);
+    expect(r.contactCount).toBe(1);
+    expect(r.rows[0].reliable).toBe(false);
+    expect(r.rows[0].stat.count).toBe(2);
+  });
+
+  it("conta tanto avanços quanto cancelamentos na deliberação", () => {
+    const r = proposalDeliberationByContact([
+      {
+        contact: c("1", "Ana"),
+        shows: [decided(3, "CANCELLED"), decided(7, "CONFIRMED"), decided(5, "CANCELLED")],
+      },
+    ]);
+    const row = r.rows[0];
+    expect(row.stat.count).toBe(3);
+    expect(row.stat.medianDays).toBe(5); // mediana de [3,7,5]
+  });
+
+  it("overall agrega por relação (show partilhado conta para cada contato)", () => {
+    const shared = decided(8);
+    const r = proposalDeliberationByContact([
+      { contact: c("1", "Ana"), shows: [shared, decided(2)] },
+      { contact: c("2", "Beto"), shows: [shared] },
+    ]);
+    // overall roda sobre [Ana.shows..., Beto.shows...] achatado: [8, 2, 8] → mediana 8.
+    expect(r.overall).not.toBeNull();
+    expect(r.overall!.count).toBe(3);
+    expect(r.overall!.medianDays).toBe(8);
+  });
+
+  it("destaca o mais lento só quando há mais de um contratante confiável", () => {
+    const oneReliable = proposalDeliberationByContact([
+      { contact: c("1", "Ana"), shows: [decided(4), decided(6), decided(8)] },
+      { contact: c("2", "Beto"), shows: [decided(2)] }, // amostra fina, não confiável
+    ]);
+    expect(oneReliable.slowest).toBeNull();
+
+    const twoReliable = proposalDeliberationByContact([
+      { contact: c("1", "Ana"), shows: [decided(4), decided(6), decided(8)] }, // mediana 6
+      { contact: c("2", "Beto"), shows: [decided(20), decided(30), decided(40)] }, // mediana 30
+    ]);
+    expect(twoReliable.slowest?.contact.id).toBe("2");
+    expect(twoReliable.slowest?.stat.medianDays).toBe(30);
   });
 });
 
