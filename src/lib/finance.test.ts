@@ -131,6 +131,7 @@ import {
   paymentLagByContact,
   comparePaymentLagByContact,
   indexContactPaymentLagChanges,
+  contactPaymentLagRiseHeadline,
   paymentSpeedBucket,
   PAYMENT_SPEED_BUCKET_ORDER,
   computeGoalProgress,
@@ -4935,6 +4936,132 @@ describe("comparePaymentLagByContact", () => {
     expect(c.changes.map((x) => x.contact.id)).toEqual(["desac", "acel"]);
     expect(c.biggestWorsening?.contact.id).toBe("desac");
     expect(c.biggestImprovement?.contact.id).toBe("acel");
+  });
+});
+
+describe("contactPaymentLagRiseHeadline", () => {
+  interface Contact {
+    id: string;
+    name: string;
+  }
+  type ShowWithPayer = ReceivableShowLike & { payer: Contact | null };
+  const getPayer = (s: ShowWithPayer) => s.payer;
+
+  /** Um par show+recebimento de um contratante, com prazo de `lagDays` dias. */
+  function paid(id: string, payer: Contact, year: number, lagDays: number) {
+    const show: ShowWithPayer = {
+      id,
+      fee: 100_00,
+      status: "PLAYED",
+      date: `${year}-03-01T00:00:00.000Z`,
+      payer,
+    };
+    const t = tx({
+      type: "INCOME",
+      amount: 100_00,
+      received: true,
+      showId: id,
+      date: new Date(Date.UTC(year, 2, 1 + lagDays)).toISOString(),
+    });
+    return { show, tx: t };
+  }
+
+  // `n` pares show+recebimento do contratante naquele ano, todos com o mesmo prazo
+  // `lagDays` (média estável e amostra confiável quando n >= MIN_MEDIAN_LAG_SAMPLE).
+  const many = (id: string, payer: Contact, year: number, lagDays: number, n: number) =>
+    Array.from({ length: n }, (_, i) => paid(`${id}-${year}-${i}`, payer, year, lagDays));
+
+  const report = (pairs: ReturnType<typeof paid>[]) =>
+    paymentLagByContact<Contact, ShowWithPayer>(
+      pairs.map((p) => p.show),
+      pairs.map((p) => p.tx),
+      getPayer,
+    );
+  const headline = (cur: ReturnType<typeof paid>[], prev: ReturnType<typeof paid>[]) =>
+    contactPaymentLagRiseHeadline(comparePaymentLagByContact(report(cur), report(prev)));
+
+  const ze = { id: "ze", name: "Bar do Zé" };
+  const ana = { id: "ana", name: "Ana" };
+
+  it("aponta o contratante que mais desacelerou, com amostra confiável nas duas coortes", () => {
+    // Zé: 2025 prazo médio 10 → 2026 prazo médio 45 (+35 dias, crítico); Ana melhora.
+    const h = headline(
+      [...many("ze", ze, 2026, 45, 3), ...many("ana", ana, 2026, 5, 3)],
+      [...many("ze", ze, 2025, 10, 3), ...many("ana", ana, 2025, 40, 3)],
+    );
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(true); // +35 dias >= 30 crítico
+    expect(h.contact?.id).toBe("ze");
+    expect(h.riseDays).toBe(35);
+    expect(h.currentAvgDays).toBe(45);
+    expect(h.previousAvgDays).toBe(10);
+    expect(h).toMatchObject({ sample: 3, others: 0 });
+  });
+
+  it("ignora pioras de amostra fina e elege a maior piora CONFIÁVEL", () => {
+    // Fina: piora 40 dias mas só 1 show em cada coorte → fora do gate.
+    // Sólida: 20 → 45 (+25 dias) com 3 shows em cada → é a eleita.
+    const fina = { id: "fina", name: "Fina" };
+    const sol = { id: "sol", name: "Sólida" };
+    const h = headline(
+      [paid("fina", fina, 2026, 45), ...many("sol", sol, 2026, 45, 3)],
+      [paid("fina", fina, 2025, 5), ...many("sol", sol, 2025, 20, 3)],
+    );
+    expect(h.show).toBe(true);
+    expect(h.contact?.id).toBe("sol");
+    expect(h.riseDays).toBe(25);
+    expect(h.others).toBe(0); // a fina não conta (não passa no gate)
+  });
+
+  it("conta em `others` os demais contratantes que também desaceleraram no gate", () => {
+    const bar = { id: "bar", name: "Bar" };
+    const h = headline(
+      [
+        ...many("ze", ze, 2026, 45, 3), // 5 → 45 (+40)
+        ...many("bar", bar, 2026, 40, 3), // 10 → 40 (+30)
+        ...many("ana", ana, 2026, 5, 3), // melhora
+      ],
+      [
+        ...many("ze", ze, 2025, 5, 3),
+        ...many("bar", bar, 2025, 10, 3),
+        ...many("ana", ana, 2025, 40, 3),
+      ],
+    );
+    expect(h.show).toBe(true);
+    expect(h.contact?.id).toBe("ze"); // maior piora no topo
+    expect(h.others).toBe(1); // Bar também passou no gate
+  });
+
+  it("não dispara quando ninguém tem piora material e confiável", () => {
+    const bar = { id: "bar", name: "Bar" };
+    const h = headline(
+      [...many("ze", ze, 2026, 20, 3), ...many("bar", bar, 2026, 22, 3)],
+      [...many("ze", ze, 2025, 50, 3), ...many("bar", bar, 2025, 20, 3)], // Zé melhora, Bar estável (+2)
+    );
+    expect(h.show).toBe(false);
+    expect(h.contact).toBeNull();
+    expect(h.riseDays).toBe(0);
+    expect(h.others).toBe(0);
+  });
+
+  it("uma piora pequena (abaixo do piso de 14 dias) não vira nudge", () => {
+    // 20 → 30 = +10 dias < PAYMENT_LAG_RISE_DAYS (14).
+    const h = headline(many("ze", ze, 2026, 30, 3), many("ze", ze, 2025, 20, 3));
+    expect(h.show).toBe(false);
+  });
+
+  it("respeita limiares injetáveis (amostra mínima / piso de dias / crítico)", () => {
+    // Zé: 20 → 40 (+20 dias), com só 2 shows em cada coorte.
+    const cmp = comparePaymentLagByContact(
+      report(many("ze", ze, 2026, 40, 2)),
+      report(many("ze", ze, 2025, 20, 2)),
+    );
+    // amostra mínima 3 não passa (só 2 shows); mínima 2 passa
+    expect(contactPaymentLagRiseHeadline(cmp, 3).show).toBe(false);
+    expect(contactPaymentLagRiseHeadline(cmp, 2).show).toBe(true);
+    // +20 dias não é crítico no padrão (>= 30), mas vira crítico com piso afrouxado
+    expect(contactPaymentLagRiseHeadline(cmp, 2).critical).toBe(false);
+    expect(contactPaymentLagRiseHeadline(cmp, 2, 14, 15).critical).toBe(true);
   });
 });
 

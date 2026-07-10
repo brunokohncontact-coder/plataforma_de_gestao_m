@@ -9613,3 +9613,46 @@ contexto, decisão, justificativa e alternativas consideradas.
   (auth-gated, sem 500). `npm audit` **inalterado** vs. baseline (10 advisories; ver D6).
 - **Nota de concorrência:** número **D278** escolhido como o próximo livre após o D277 (Sessão 282). Se uma
   PR paralela reivindicar D278, renumerar para o próximo livre no merge.
+
+## 2026-07-10 — D279: Nudge no Painel do contratante que passou a pagar mais devagar (`contactPaymentLagRiseHeadline` + banner em `dashboard/page.tsx`)
+- **Contexto:** os eixos por-contratante mais novos já ecoavam no Painel quando UMA relação piora ano a ano —
+  antecedência encolhendo (`contactBookingLeadTimeDropHeadline`/D272), conversão caindo
+  (`contactConversionDropHeadline`/D248) e deliberação arrastando (`slowDeliberatorHeadline`/D277). Mas o
+  eixo do **prazo de recebimento por contratante** — o ORIGINAL da família (`paymentLagByContact`/D192,
+  `comparePaymentLagByContact`/D194) — só vivia na página `/shows/prazo-recebimento/por-contratante`; o
+  Painel não avisava, num relance, "o Bar do Zé passou a te deixar esperando 45 dias pelo cachê (era 10)".
+  Um pagador recorrente que desacelera é um risco de caixa tão acionável quanto os irmãos: é a hora de
+  renegociar prazo / pedir adiantamento. Faltava fechar essa paridade.
+- **Decisão:** novo helper puro `contactPaymentLagRiseHeadline(comparison, minSample?, riseDays?, criticalDays?)`
+  + tipo `ContactPaymentLagRiseHeadline<C>` + constantes `PAYMENT_LAG_RISE_DAYS`(=14) e
+  `PAYMENT_LAG_RISE_CRITICAL_DAYS`(=30) em `src/lib/finance.ts` (espelho de `contactBookingLeadTimeDropHeadline`/
+  D272, aqui no eixo do recebimento). Recebe um `PaymentLagByContactComparison` já computado (dois
+  `paymentLagByContact`, cada um sobre a coorte do seu ano) e destila o pagador de MAIOR alta de prazo com
+  amostra confiável — `showCount >= minSample` nas DUAS coortes — e alta de ao menos `riseDays` dias;
+  `critical` quando a alta chega a `criticalDays`; `others` resume os demais no gate. Banner no
+  `dashboard/page.tsx` (link `/shows/prazo-recebimento/por-contratante`) que **CEDE A VEZ** ao nudge absoluto
+  de DSO (`paymentLagHeadline`/D70) — no máximo um banner de recebimento por vez; reusa os mesmos
+  shows/transações já carregados e o `leadBooker`/`pickPayerContact` dos recebíveis (zero I/O extra, zero
+  regra de negócio nova, zero migração, zero dependência). Só a ponta de PIORA (pagar mais devagar) vira
+  alerta; passar a pagar mais rápido é boa notícia.
+- **Justificativa:** leva o eixo por-contratante do prazo de recebimento à paridade com os irmãos no Painel
+  (o sinal já existia na lógica pura da D194, só faltava o eco na primeira tela). Emoji 🐢 (não-crítico) /
+  🔴 (crítico) para diferenciar do 📉 da antecedência. Gate duplo (confiança + piora material) mantém o
+  nudge raro, como nos irmãos.
+- **Alternativas consideradas:** (a) ancorar na MEDIANA (como o nudge de antecedência) — **descartado**: o
+  próprio `comparePaymentLagByContact` (D194) ancora deliberadamente na MÉDIA ponderada (`avgDays`), não na
+  mediana, porque por pagador a amostra costuma ser pequena (< `MIN_MEDIAN_LAG_SAMPLE`) e a mediana fica
+  ruidosa, ao passo que `avgDays` está sempre definido e é o eixo por que a página ordena/destaca; o nudge
+  segue a mesma escolha para ser consistente com o card. (b) não ceder a vez ao DSO absoluto — descartado:
+  adensaria o Painel com dois banners de recebimento; a disciplina "um por vez" espelha D272. (c) piso de
+  1 dia — descartado: usar `PAYMENT_LAG_RISE_DAYS`=14 (2× o `PAYMENT_LAG_TREND_EPSILON`=7 do card), o mesmo
+  fator do irmão da antecedência, para o Painel só alertar com uma piora de fato material.
+- **DoD:** build de produção OK, typecheck (`tsc --noEmit`, 0 erros), lint (`next lint`, 0 avisos);
+  **1599 testes** (`vitest run`, +6 em `finance.test.ts`, `describe("contactPaymentLagRiseHeadline")`: aponta
+  o pagador que mais desacelerou com amostra confiável nas duas coortes (crítico); ignora pioras de amostra
+  fina e elege a maior CONFIÁVEL; conta os demais em `others`; não dispara sem piora material/confiável;
+  piora abaixo do piso de 14 dias não vira nudge; respeita limiares injetáveis de amostra/piso/crítico).
+  Smoke (`next start`) → `/login` 200, `/dashboard` e `/shows/prazo-recebimento/por-contratante` 307→/login
+  (auth-gated, sem 500). `npm audit` **inalterado** vs. baseline (10 advisories; ver D6).
+- **Nota de concorrência:** número **D279** escolhido como o próximo livre após o D278 (Sessão 284). Se uma
+  PR paralela reivindicar D279, renumerar para o próximo livre no merge.

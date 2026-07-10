@@ -9,8 +9,29 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1593 testes** verdes após o
-**comparativo ano a ano do tempo de decisão por contratante** (Sessão 284, D278 — fecha o "passo maior" adiado na D276:
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1599 testes** verdes após o
+**nudge no Painel do contratante que passou a pagar mais devagar** (Sessão 285, D279 — fecha a paridade dos eixos
+por-contratante no Painel: os irmãos mais novos já ecoavam na primeira tela quando UMA relação piora ano a ano —
+antecedência encolhendo (`contactBookingLeadTimeDropHeadline`/D272), conversão caindo (`contactConversionDropHeadline`/D248)
+e deliberação arrastando (`slowDeliberatorHeadline`/D277) —, mas o eixo do **prazo de recebimento por contratante** (o ORIGINAL
+da família: `paymentLagByContact`/D192, `comparePaymentLagByContact`/D194) só vivia na página `/shows/prazo-recebimento/por-contratante`.
+Um pagador recorrente que desacelera é um risco de caixa tão acionável quanto os irmãos (hora de renegociar prazo / pedir
+adiantamento). Novo helper puro `contactPaymentLagRiseHeadline(comparison, minSample?, riseDays?, criticalDays?)` + tipo
+`ContactPaymentLagRiseHeadline<C>` + constantes `PAYMENT_LAG_RISE_DAYS`(=14, o dobro do `PAYMENT_LAG_TREND_EPSILON`=7 do card) e
+`PAYMENT_LAG_RISE_CRITICAL_DAYS`(=30) em `src/lib/finance.ts` (espelho de `contactBookingLeadTimeDropHeadline`/D272 no eixo do
+recebimento): recebe um `PaymentLagByContactComparison` já computado e destila o pagador de MAIOR alta de prazo com amostra
+confiável (`showCount >= minSample` nas DUAS coortes) e alta ≥ `riseDays` dias; `critical` a ≥ `criticalDays`; `others` resume os
+demais no gate. **Ancora na MÉDIA ponderada (`avgDays`), não na mediana** — a mesma escolha deliberada de `comparePaymentLagByContact`
+(por pagador a amostra é pequena e a mediana fica ruidosa; `avgDays` está sempre definido e é o eixo por que a página ordena/destaca).
+Banner no `dashboard/page.tsx` (🐢 não-crítico / 🔴 crítico, link `/shows/prazo-recebimento/por-contratante`) que CEDE A VEZ ao nudge
+absoluto de DSO (`paymentLagHeadline`/D70) — no máximo um banner de recebimento por vez —, reusando os MESMOS shows/transações já
+carregados e o `leadBooker`/`pickPayerContact` dos recebíveis: zero I/O extra, zero regra de negócio nova, zero migração, zero
+dependência. Só a ponta de PIORA (pagar mais devagar) vira alerta. **+6 testes** (`finance.test.ts`, `describe("contactPaymentLagRiseHeadline")`:
+aponta o pagador que mais desacelerou com amostra confiável nas duas coortes — crítico; ignora pioras de amostra fina e elege a maior
+CONFIÁVEL; conta os demais em `others`; não dispara sem piora material/confiável; piora abaixo do piso de 14 dias não vira nudge;
+respeita limiares injetáveis de amostra/piso/crítico). Build/typecheck/lint verdes; smoke → `/login` 200, `/dashboard` e
+`/shows/prazo-recebimento/por-contratante` 307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories). Ver D279.
+Antes disso, o **comparativo ano a ano do tempo de decisão por contratante** (Sessão 284, D278 — fecha o "passo maior" adiado na D276:
 `compareProposalDeliberationByContact(current, previous)` + tipos `ProposalDeliberationByContactComparison`/
 `ContactProposalDeliberationChange`/`ContactProposalDeliberationRowStatus` + `indexContactProposalDeliberationChanges` +
 constante `DELIBERATION_TREND_EPSILON`(=3) em `src/lib/shows.ts`, espelho literal de `compareBookingLeadTimeByContact`/

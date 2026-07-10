@@ -5249,6 +5249,126 @@ export function indexContactPaymentLagChanges<
   };
 }
 
+// ── Manchete de prazo de recebimento POR CONTRATANTE para o Painel (quem passou a pagar mais devagar?) ──
+// Enquanto `paymentLagHeadline` (D70) alerta sobre o DSO do caixa INTEIRO (o prazo
+// mediano em ABSOLUTO), este destila QUAL contratante recorrente passou a te pagar
+// com materialmente MAIS dias de atraso de um ano para o outro — o eco de
+// `comparePaymentLagByContact` (D194) no dashboard, irmão no eixo do recebimento de
+// `contactBookingLeadTimeDropHeadline` (D272, antecedência) e `contactConversionDropHeadline`
+// (D248, conversão). Fecha a paridade: os eixos por-contratante mais novos (antecedência,
+// conversão, deliberação) já ecoavam no Painel; o do prazo de recebimento — o ORIGINAL
+// da família (D194/D195) — só vivia na página. É mais acionável (diz DE QUEM renegociar
+// prazo / cobrar adiantamento) e pega o caso que o nudge absoluto perde: o caixa segue com
+// DSO saudável na média, mas um pagador específico começou a te deixar esperando.
+//
+// Ancora na MÉDIA ponderada (`avgDays`), não na mediana — a mesma escolha deliberada de
+// `comparePaymentLagByContact` (a amostra por pagador costuma ser pequena e a mediana fica
+// ruidosa; `avgDays` está sempre definido e é o eixo por que a página ordena/destaca). Reusa
+// o gate de confiança do axis (amostra ≥ `MIN_MEDIAN_LAG_SAMPLE` shows pagos nas DUAS coortes)
+// e um piso de piora material (≥ `PAYMENT_LAG_RISE_DAYS`, o dobro do `PAYMENT_LAG_TREND_EPSILON`
+// do veredito do card). Só a ponta de PIORA (pagar mais devagar) vira nudge; passar a pagar
+// mais rápido é boa notícia. Pura, sem I/O.
+
+/**
+ * Aumento mínimo do prazo médio (em dias) para o nudge de "passou a pagar mais
+ * devagar" por contratante disparar. Duas semanas — o dobro de
+ * `PAYMENT_LAG_TREND_EPSILON` (=7, o limiar do veredito do card), espelhando
+ * `LEAD_TIME_DROP_DAYS` no eixo da antecedência: o Painel só alerta com uma piora de
+ * prazo de fato material, não qualquer oscilação.
+ */
+export const PAYMENT_LAG_RISE_DAYS = 14;
+/** Aumento do prazo médio (em dias) que escala o nudge para crítico (um mês a mais para o caixa entrar). */
+export const PAYMENT_LAG_RISE_CRITICAL_DAYS = 30;
+
+/** Manchete de prazo de recebimento por contratante para o Painel (nudge de piora do prazo ano a ano). */
+export interface ContactPaymentLagRiseHeadline<C> {
+  /** True quando o nudge deve aparecer (um contratante com piora confiável e material). */
+  show: boolean;
+  /** True quando a piora desse contratante entra na faixa crítica (≥ `criticalDays`). */
+  critical: boolean;
+  /** O contratante que mais desacelerou (dentre os que passam no gate), ou `null`. */
+  contact: C | null;
+  /** Aumento do prazo médio em dias (atual − anterior); ≥ 0 quando `show`. */
+  riseDays: number;
+  /** Prazo médio do contratante na coorte atual (dias). */
+  currentAvgDays: number;
+  /** Prazo médio do contratante na coorte anterior (dias). */
+  previousAvgDays: number;
+  /** Shows pagos do contratante na coorte atual (a amostra da média). */
+  sample: number;
+  /**
+   * Quantos OUTROS contratantes também passaram no gate de piora material e
+   * confiável (para o banner: "+N desaceleraram"). 0 quando só um qualifica.
+   */
+  others: number;
+}
+
+/**
+ * Decide se o Painel deve alertar que UM contratante específico passou a te pagar
+ * com materialmente MAIS dias de atraso de um ano para o outro — o eco de
+ * `comparePaymentLagByContact` (D194) no dashboard, irmão por-contratante de
+ * `paymentLagHeadline` no eixo absoluto e espelho de
+ * `contactBookingLeadTimeDropHeadline` (D272) no eixo do recebimento. Recebe um
+ * comparativo já computado (dois `paymentLagByContact`, cada um sobre a coorte do
+ * seu ano) e não faz I/O.
+ *
+ * Varre os `changes` (já ordenados da maior piora à maior melhora, por `avgDaysDelta`
+ * desc) e escolhe o contratante de MAIOR piora de prazo que ainda tenha amostra
+ * confiável — ao menos `minSample` shows pagos em CADA coorte, para a média não se
+ * apoiar em 1–2 shows — e alta de ao menos `riseDays` dias. `critical` quando essa
+ * alta chega a `criticalDays` ou mais; `others` conta quantos outros contratantes
+ * também passariam no mesmo gate (o banner os resume). Como os nudges irmãos, só a
+ * ponta de PIORA vira alerta e o gate o mantém raro. Ancora na MÉDIA (`avgDays`),
+ * como o comparativo. Pura.
+ */
+export function contactPaymentLagRiseHeadline<
+  C extends { id: string; name: string },
+  S extends ReceivableShowLike,
+>(
+  comparison: PaymentLagByContactComparison<C, S>,
+  minSample: number = MIN_MEDIAN_LAG_SAMPLE,
+  riseDays: number = PAYMENT_LAG_RISE_DAYS,
+  criticalDays: number = PAYMENT_LAG_RISE_CRITICAL_DAYS,
+): ContactPaymentLagRiseHeadline<C> {
+  const qualifies = (c: ContactPaymentLagChange<C, S>): boolean => {
+    const reliable =
+      c.current.showCount >= minSample && c.previous.showCount >= minSample;
+    return reliable && c.avgDaysDelta >= riseDays;
+  };
+
+  // `changes` já vem ordenado por `avgDaysDelta` desc (maior piora de prazo
+  // primeiro), então o primeiro que passa no gate é o de maior alta.
+  const worst = comparison.changes.find(qualifies) ?? null;
+  if (!worst) {
+    return {
+      show: false,
+      critical: false,
+      contact: null,
+      riseDays: 0,
+      currentAvgDays: 0,
+      previousAvgDays: 0,
+      sample: 0,
+      others: 0,
+    };
+  }
+
+  const rise = worst.avgDaysDelta;
+  const others = comparison.changes.reduce(
+    (n, c) => (c !== worst && qualifies(c) ? n + 1 : n),
+    0,
+  );
+  return {
+    show: true,
+    critical: rise >= criticalDays,
+    contact: worst.contact,
+    riseDays: rise,
+    currentAvgDays: worst.current.avgDays,
+    previousAvgDays: worst.previous.avgDays,
+    sample: worst.current.showCount,
+    others,
+  };
+}
+
 /**
  * Decide quanto lançar ao quitar um cachê, dado o valor pedido pelo usuário e o
  * saldo em aberto (recalculado no servidor — a fonte de verdade). Regras:
