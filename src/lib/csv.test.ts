@@ -3003,11 +3003,11 @@ describe("stageDurationsToCsv", () => {
     const lines = stageDurationsToCsv(funnelStageDurations([])).split("\r\n");
     expect(lines[0]).toBe(STAGE_DURATIONS_CSV_HEADERS.join(";"));
     expect(lines).toHaveLength(2);
-    // Total: 0 transições; colunas de dias em branco (não há agregado entre etapas).
-    expect(lines[1]).toBe("Total;0;;;;");
+    // Total: 0 transições; colunas de dias + % do percurso em branco (sem agregado honesto).
+    expect(lines[1]).toBe("Total;0;;;;;");
   });
 
-  it("uma linha por etapa (ordem canônica do funil) com dias crus + Total", () => {
+  it("uma linha por etapa (ordem canônica do funil) com dias crus + % do percurso + Total", () => {
     const durations = funnelStageDurations([
       {
         statusEvents: [
@@ -3020,12 +3020,27 @@ describe("stageDurationsToCsv", () => {
     const lines = stageDurationsToCsv(durations).split("\r\n");
     // cabeçalho + 2 etapas com amostra + Total
     expect(lines).toHaveLength(4);
-    expect(lines[1]).toBe("Proposto;1;4;4;4;4");
-    expect(lines[2]).toBe("Confirmado;1;6;6;6;6");
-    // Total soma as transições cronometradas; dias em branco.
-    expect(lines[3]).toBe("Total;2;;;;");
-    // Emite o inteiro de dias cru (legível por máquina), não "N dias" da UI.
-    expect(lines[0].split(";")).toHaveLength(6);
+    // % do percurso: mediana da etapa ÷ soma (4+6=10) → 40% / 60%.
+    expect(lines[1]).toBe("Proposto;1;4;4;4;4;40%");
+    expect(lines[2]).toBe("Confirmado;1;6;6;6;6;60%");
+    // Total soma as transições cronometradas; dias + % em branco.
+    expect(lines[3]).toBe("Total;2;;;;;");
+    // Emite o inteiro de dias cru (legível por máquina), não "N dias" da UI; 7 colunas.
+    expect(lines[0].split(";")).toHaveLength(7);
+  });
+
+  it("% do percurso em branco por linha quando não há mediana positiva (o \"—\" da tela)", () => {
+    // Todas as transições no mesmo dia → medianas 0 → soma 0 (sem naco honesto).
+    const sameDay = {
+      statusEvents: [
+        ev(null, "PROPOSED", "2026-03-01T09:00:00.000Z"),
+        ev("PROPOSED", "CONFIRMED", "2026-03-01T15:00:00.000Z"),
+      ],
+    };
+    const lines = stageDurationsToCsv(funnelStageDurations([sameDay])).split("\r\n");
+    // Proposto: 0 dias, % em branco (não "0%").
+    expect(lines[1]).toBe("Proposto;1;0;0;0;0;");
+    expect(lines[2]).toBe("Total;1;;;;;");
   });
 
   it("agrega a mesma etapa entre shows (mediana/média/mín/máx)", () => {
@@ -3047,9 +3062,9 @@ describe("stageDurationsToCsv", () => {
       mkProposed(9, "3"),
     ]);
     const lines = stageDurationsToCsv(durations).split("\r\n");
-    // mediana [2,4,9]=4, média 5, mín 2, máx 9
-    expect(lines[1]).toBe("Proposto;3;4;5;2;9");
-    expect(lines[2]).toBe("Total;3;;;;");
+    // mediana [2,4,9]=4, média 5, mín 2, máx 9; etapa única → 100% do percurso.
+    expect(lines[1]).toBe("Proposto;3;4;5;2;9;100%");
+    expect(lines[2]).toBe("Total;3;;;;;");
   });
 
   it("com previousYear anexa a coluna vs. {ano-1} (dias) com variação assinada, novo e Total em branco", () => {
@@ -3073,14 +3088,15 @@ describe("stageDurationsToCsv", () => {
     const comparison = compareFunnelStageDurations(current, previous);
     const rowStatus = indexStageDurationChanges(comparison);
     const lines = stageDurationsToCsv(current, undefined, 2025, rowStatus).split("\r\n");
-    // Cabeçalho ganha a 7ª coluna.
+    // Cabeçalho: 7 colunas fixas (incl. % do percurso) + a coluna de tendência anexa.
     expect(lines[0]).toBe(STAGE_DURATIONS_CSV_HEADERS.join(";") + ";vs. 2025 (dias)");
+    // % do percurso: Proposto 4 / (4+10=14) → 29%; Confirmado 10/14 → 71%.
     // Proposto: variação -16 dias (sinal ASCII cru, legível por máquina).
-    expect(lines[1]).toBe("Proposto;1;4;4;4;4;-16");
+    expect(lines[1]).toBe("Proposto;1;4;4;4;4;29%;-16");
     // Confirmado: só em 2026 → "novo".
-    expect(lines[2]).toBe("Confirmado;1;10;10;10;10;novo");
-    // Total: coluna de tendência em branco.
-    expect(lines[3]).toBe("Total;2;;;;;");
+    expect(lines[2]).toBe("Confirmado;1;10;10;10;10;71%;novo");
+    // Total: % do percurso e tendência em branco.
+    expect(lines[3]).toBe("Total;2;;;;;;");
   });
 });
 
