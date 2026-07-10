@@ -9,7 +9,27 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1587 testes** verdes após a **consolidação da PR
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1593 testes** verdes após o
+**comparativo ano a ano do tempo de decisão por contratante** (Sessão 284, D278 — fecha o "passo maior" adiado na D276:
+`compareProposalDeliberationByContact(current, previous)` + tipos `ProposalDeliberationByContactComparison`/
+`ContactProposalDeliberationChange`/`ContactProposalDeliberationRowStatus` + `indexContactProposalDeliberationChanges` +
+constante `DELIBERATION_TREND_EPSILON`(=3) em `src/lib/shows.ts`, espelho literal de `compareBookingLeadTimeByContact`/
+`indexContactBookingLeadTimeChanges` (D196) no eixo da deliberação. Casa os contratantes por `contact.id` entre dois relatórios
+`proposalDeliberationByContact` já recortados por ano (via `opts.year`/D276, o eixo de coorte da entrada da proposta no funil) e
+devolve `changes` (variação da mediana + `trend`), `biggestImprovement`/`biggestWorsening` e `newContacts`/`droppedContacts`.
+Como no prazo de recebimento (D194), **descer** a mediana é a melhora (a proposta sai mais rápido da mesa), ao contrário da
+antecedência (D196, subir é a melhora). Página `/shows/funil/tempo-em-etapa/por-contratante` ganha o card "Quem mudou o ritmo de
+decisão · {ano} vs. {ano-1}" (mais acelerou / mais desacelerou + novos/sumidos) e a coluna "vs. {ano-1}" na tabela; o CSV
+`proposalDeliberationByContactToCsv` ganha a coluna opcional "vs. {ano-1} (dias)" quando `previousYear` é informado (espelho de
+`bookingLeadTimeByContactToCsv`). Só exibe com um ano específico e ambos os períodos com decisão cronometrada. Reusa os MESMOS
+itens já carregados (recorta o ano anterior pela mesma agregação pura), zero nova consulta, zero migração, zero dependência.
+`DELIBERATION_TREND_EPSILON`=3 (< os 7 dos irmãos) porque a deliberação costuma ser mais curta que antecedência/prazo. **+6 testes**
+(5 de `compareProposalDeliberationByContact`/`indexContactProposalDeliberationChanges`: sem comum → changes vazio + sumidos;
+melhora/piora além do limiar com "maior piora no topo"; dentro do limiar fica estável; novos/sumidos; lookup changed/new/none — 1
+de `proposalDeliberationByContactToCsv`: coluna "vs. {ano-1}" com variação assinada, "novo" e Total em branco). Build/typecheck/lint
+verdes; smoke → `/login` 200, página e `/export?ano=2026` 307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories).
+A deliberação por contratante agora está em paridade TOTAL com os eixos irmãos (recorte por ano + comparativo YoY + coluna
+"vs. {ano-1}" + nudge no Painel/D277). Ver D278. Antes disso, **1587 testes** verdes após a **consolidação da PR
 paralela #309 (D276, recorte por ano no tempo de decisão por contratante) na `main`** (Sessão 283 — a #309 ficara com conflito
 (`dirty`) contra a `main` após o merge de D277 (#310); esta sessão rebaseou o commit da #309 sobre a `main` atual, resolveu os
 conflitos só nos docs (PROGRESS/DECISIONS — o código auto-mergeou limpo: `slowDeliberatorHeadline` de D277 e o `opts.year` de
@@ -48,8 +68,8 @@ conversao/contratantes), subtítulo com o período, empty-state honesto por ano,
 dependência. **+2 testes** (`shows.test.ts`, `describe("proposalDeliberationByContact")`: recorta por ano da entrada da proposta
 — `all`/2026/2025 com contagens e medianas distintas + `overall` recortado; contratante sem proposta no ano sai da lista).
 Build/typecheck/lint verdes; smoke → `/login` 200, página e `/export?ano=2026` 307→/login (auth-gated, sem 500); `npm audit`
-inalterado (10 advisories). Adiado (o "passo maior", espelho D270/D248): comparativo YoY por contratante {ano}×{ano-1} na
-deliberação + coluna "vs. {ano-1}". Ver D276. Antes disso, o **tempo de decisão da
+inalterado (10 advisories). ~~Adiado (o "passo maior", espelho D270/D248): comparativo YoY por contratante {ano}×{ano-1} na
+deliberação + coluna "vs. {ano-1}"~~ (entregue na Sessão 284, D278). Ver D276. Antes disso, o **tempo de decisão da
 proposta por contratante** (Sessão 280, D275 — leva o eixo por contratante à deliberação do funil: o "Tempo em cada etapa"
 (`funnelStageDurations`/D235, `/shows/funil/tempo-em-etapa`) media a velocidade típica de travessia somando TODOS os shows, mas
 não dizia DE QUEM a proposta demora a sair da mesa — os eixos por contratante já existiam para recebíveis

@@ -2621,6 +2621,17 @@ export interface ProposalDeliberationByContactCsvRow {
   reliable: boolean;
   /** Participação na amostra total de decisões (0..1). */
   share: number;
+  /**
+   * Situação da linha frente ao período anterior, para a coluna opcional
+   * "vs. {ano-1}" (espelha `ContactProposalDeliberationRowStatus`/D278): variação
+   * da mediana de deliberação (atual − anterior, dias; negativo = passou a decidir
+   * mais rápido) quando o contratante existe nos dois períodos. Só entra na saída
+   * quando o serializador recebe `previousYear`; deixe `undefined`/`null` para as
+   * linhas não comparáveis (sem recorte por ano).
+   */
+  medianDaysDelta?: number | null;
+  /** `true` quando o contratante só apareceu no período atual ("novo" na coluna). */
+  isNew?: boolean;
 }
 
 /**
@@ -2633,15 +2644,27 @@ export interface ProposalDeliberationByContactCsvRow {
  * linha "Total" com o total de decisões (as colunas de dias em branco: não há
  * mediana honesta entre contratantes, como o "Total" de `stageDurationsToCsv`).
  * Dias como inteiro cru (legível por máquina), mesma convenção dos irmãos. Pura.
+ *
+ * Quando `previousYear` é informado (recorte por ano com comparativo, D278), a
+ * planilha ganha uma última coluna "vs. {previousYear} (dias)" espelhando a coluna
+ * da página: variação assinada da mediana de deliberação para quem existe nos dois
+ * períodos (negativo = passou a decidir mais rápido), "novo" para quem só apareceu
+ * no ano atual (`isNew`) e em branco para as linhas não comparáveis
+ * (`medianDaysDelta` ausente) e para a linha "Total". Sem `previousYear`, a saída é
+ * idêntica à histórica (7 colunas). Espelha `bookingLeadTimeByContactToCsv`.
  */
 export function proposalDeliberationByContactToCsv(
   rows: ProposalDeliberationByContactCsvRow[],
   totalSamples: number,
   delimiter = DEFAULT_DELIMITER,
+  previousYear?: number | null,
 ): string {
-  const out: string[][] = [Array.from(PROPOSAL_DELIBERATION_BY_CONTACT_CSV_HEADERS)];
+  const withTrend = previousYear != null;
+  const header = Array.from(PROPOSAL_DELIBERATION_BY_CONTACT_CSV_HEADERS) as string[];
+  if (withTrend) header.push(`vs. ${previousYear} (dias)`);
+  const out: string[][] = [header];
   for (const row of rows) {
-    out.push([
+    const cols = [
       row.contact.name,
       String(row.stat.count),
       row.reliable ? String(row.stat.medianDays) : "",
@@ -2649,9 +2672,21 @@ export function proposalDeliberationByContactToCsv(
       String(row.stat.shortestDays),
       String(row.stat.longestDays),
       csvShare(row.share),
-    ]);
+    ];
+    if (withTrend) {
+      cols.push(
+        row.isNew
+          ? "novo"
+          : row.medianDaysDelta != null
+            ? csvSignedDays(row.medianDaysDelta)
+            : "",
+      );
+    }
+    out.push(cols);
   }
-  out.push(["Total", String(totalSamples), "", "", "", "", ""]);
+  const total = ["Total", String(totalSamples), "", "", "", "", ""];
+  if (withTrend) total.push("");
+  out.push(total);
   return toCsv(out, delimiter);
 }
 

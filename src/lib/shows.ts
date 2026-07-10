@@ -2110,6 +2110,193 @@ export function proposalDeliberationByContact<C extends { id: string; name: stri
   return { rows, contactCount: rows.length, overall, totalSamples, slowest };
 }
 
+// ── Comparativo ano a ano do tempo de decisão por contratante ────────────────
+// Espelha `comparePaymentLagByContact`/`compareBookingLeadTimeByContact`
+// (D194/D196) no eixo da deliberação: casa os contratantes entre dois períodos
+// (o ano selecionado × o anterior) para revelar quem passou a DECIDIR mais rápido
+// / mais devagar uma proposta, além de quem entrou e quem sumiu da carteira. Como
+// no prazo de recebimento (descer o prazo é a melhora), aqui **descer** a mediana
+// de deliberação é a melhora (a proposta fica menos tempo parada na mesa). O
+// veredito ancora na mediana — o mesmo eixo por que a página ordena (menor
+// primeiro) e destaca (`slowest`). Puro e determinístico. Ver D278.
+
+/**
+ * Limiar (dias) da variação da mediana de deliberação para virar tendência (não
+ * ruído). Uma proposta que decide 2 dias mais rápido/devagar de um ano para o
+ * outro é rotina; a partir de ~3 dias já é um hábito diferente. Menor que o
+ * `PAYMENT_LAG_TREND_EPSILON`/`LEAD_TIME_TREND_EPSILON` (=7) porque a deliberação
+ * costuma ser mais curta que o prazo de recebimento ou a antecedência de agenda.
+ */
+export const DELIBERATION_TREND_EPSILON = 3;
+
+/**
+ * Variação da deliberação de UM contratante entre dois períodos (o ano
+ * selecionado × o anterior). Espelha `ContactPaymentLagChange` no eixo da
+ * decisão. `medianDaysDelta` negativo = o contratante passou a decidir **mais
+ * rápido** (melhora); positivo = passou a demorar mais (piora).
+ */
+export interface ContactProposalDeliberationChange<C> {
+  /** Contratante comparado — sempre identificado (a deliberação não tem grupo "sem contratante"). */
+  contact: C;
+  /** Linha do contratante no período atual. */
+  current: ContactProposalDeliberationRow<C>;
+  /** Linha do contratante no período anterior. */
+  previous: ContactProposalDeliberationRow<C>;
+  /**
+   * Variação da mediana de deliberação (atual − anterior, em dias). Negativo =
+   * decide mais rápido agora (melhora); positivo = demora mais (piora). Ancora o
+   * veredito (o mesmo eixo por que a página ordena/destaca).
+   */
+  medianDaysDelta: number;
+  /** Variação da média de deliberação (atual − anterior, em dias) — só informativo. */
+  avgDaysDelta: number;
+  /**
+   * Direção do hábito de decisão do contratante, pela variação da **mediana**
+   * contra `DELIBERATION_TREND_EPSILON`:
+   * - "improved": a mediana caiu além do limiar (decide mais rápido);
+   * - "worsened": subiu além do limiar (demora mais para decidir);
+   * - "stable": dentro do limiar (ruído).
+   */
+  trend: "improved" | "worsened" | "stable";
+}
+
+export interface ProposalDeliberationByContactComparison<C> {
+  /**
+   * Contratantes presentes nos DOIS períodos, com a variação da deliberação.
+   * Ordenados da maior piora à maior melhora (quem passou a demorar mais para
+   * decidir primeiro), para o "mover" de cima do card ser o que mais merece atenção.
+   */
+  changes: ContactProposalDeliberationChange<C>[];
+  /** Quem mais acelerou a decisão (variação de mediana mais negativa entre os "improved"). */
+  biggestImprovement: ContactProposalDeliberationChange<C> | null;
+  /** Quem mais desacelerou (variação de mediana mais positiva entre os "worsened"). */
+  biggestWorsening: ContactProposalDeliberationChange<C> | null;
+  /** Contratantes que só decidiram proposta no período atual (novos na carteira). */
+  newContacts: ContactProposalDeliberationRow<C>[];
+  /** Contratantes que decidiram no anterior mas não no atual (sumiram da carteira). */
+  droppedContacts: ContactProposalDeliberationRow<C>[];
+}
+
+/**
+ * Compara o **tempo de decisão por contratante** entre dois períodos (atual ×
+ * anterior), casando os contratantes por `contact.id`. Para cada um presente nos
+ * dois períodos devolve a variação da deliberação (quem passou a decidir mais
+ * rápido / mais devagar); os que aparecem só num período viram
+ * `newContacts`/`droppedContacts`.
+ *
+ * Puro, sem I/O: recebe dois `proposalDeliberationByContact` já computados (cada
+ * um recortado ao seu ano via `opts.year`, o eixo de coorte da entrada da
+ * proposta no funil — D276). Como no prazo de recebimento (D194), aqui **descer**
+ * a mediana é a melhora — a proposta sai mais rápido da mesa —, ao contrário da
+ * antecedência (D196, onde subir é a melhora); reusa `DELIBERATION_TREND_EPSILON`
+ * como limiar. Por contratante a amostra costuma ser pequena, então o chamador
+ * tipicamente marca os destaques abaixo de `MIN_DELIBERATION_SAMPLE` como amostra
+ * fina. O chamador decide quando exibir (tipicamente só com um ano específico e
+ * ambos os períodos com decisão cronometrada).
+ */
+export function compareProposalDeliberationByContact<C extends { id: string }>(
+  current: ProposalDeliberationByContact<C>,
+  previous: ProposalDeliberationByContact<C>,
+): ProposalDeliberationByContactComparison<C> {
+  const prevById = new Map<string, ContactProposalDeliberationRow<C>>();
+  for (const r of previous.rows) prevById.set(r.contact.id, r);
+
+  const currentIds = new Set<string>();
+  const changes: ContactProposalDeliberationChange<C>[] = [];
+  const newContacts: ContactProposalDeliberationRow<C>[] = [];
+
+  for (const cur of current.rows) {
+    currentIds.add(cur.contact.id);
+    const prev = prevById.get(cur.contact.id);
+    if (!prev) {
+      newContacts.push(cur);
+      continue;
+    }
+    const medianDaysDelta = cur.stat.medianDays - prev.stat.medianDays;
+    changes.push({
+      contact: cur.contact,
+      current: cur,
+      previous: prev,
+      medianDaysDelta,
+      avgDaysDelta: cur.stat.averageDays - prev.stat.averageDays,
+      trend:
+        medianDaysDelta <= -DELIBERATION_TREND_EPSILON
+          ? "improved"
+          : medianDaysDelta >= DELIBERATION_TREND_EPSILON
+            ? "worsened"
+            : "stable",
+    });
+  }
+
+  const droppedContacts = previous.rows.filter((r) => !currentIds.has(r.contact.id));
+
+  // Maior piora no topo (demora crescendo primeiro): variação de mediana desc;
+  // empate estável pelo id.
+  changes.sort(
+    (a, b) =>
+      b.medianDaysDelta - a.medianDaysDelta ||
+      a.contact.id.localeCompare(b.contact.id),
+  );
+
+  let biggestImprovement: ContactProposalDeliberationChange<C> | null = null;
+  let biggestWorsening: ContactProposalDeliberationChange<C> | null = null;
+  for (const c of changes) {
+    if (
+      c.trend === "improved" &&
+      (!biggestImprovement || c.medianDaysDelta < biggestImprovement.medianDaysDelta)
+    ) {
+      biggestImprovement = c;
+    }
+    if (
+      c.trend === "worsened" &&
+      (!biggestWorsening || c.medianDaysDelta > biggestWorsening.medianDaysDelta)
+    ) {
+      biggestWorsening = c;
+    }
+  }
+
+  return { changes, biggestImprovement, biggestWorsening, newContacts, droppedContacts };
+}
+
+/**
+ * Situação de uma linha da tabela por contratante (período atual) frente ao
+ * período anterior, para a coluna "vs. {ano-1}" (espelha
+ * `ContactBookingLeadTimeRowStatus`/D196 no eixo da deliberação):
+ * - "changed": o contratante existia nos dois períodos — traz a variação da deliberação;
+ * - "new": só apareceu no período atual (começou a decidir agora);
+ * - "none": id não comparável (não presente no comparativo).
+ */
+export type ContactProposalDeliberationRowStatus<C> =
+  | { kind: "changed"; change: ContactProposalDeliberationChange<C> }
+  | { kind: "new" }
+  | { kind: "none" };
+
+/**
+ * Casa cada linha da tabela por contratante (período atual) com sua situação no
+ * comparativo `compareProposalDeliberationByContact`, indexando por `contact.id`
+ * para o consumidor resolver a coluna "vs. {ano-1}" em O(1) — sem repetir a
+ * varredura na apresentação. Puro: recebe o comparativo já computado e devolve uma
+ * função de lookup. Um contratante presente nos dois períodos vira "changed"; um
+ * que só está no atual (em `newContacts`) vira "new"; qualquer outro id vira
+ * "none". Espelha `indexContactBookingLeadTimeChanges`.
+ */
+export function indexContactProposalDeliberationChanges<C extends { id: string }>(
+  comparison: ProposalDeliberationByContactComparison<C>,
+): (contactId: string | null | undefined) => ContactProposalDeliberationRowStatus<C> {
+  const changedById = new Map<string, ContactProposalDeliberationChange<C>>();
+  for (const c of comparison.changes) changedById.set(c.contact.id, c);
+  const newIds = new Set<string>();
+  for (const r of comparison.newContacts) newIds.add(r.contact.id);
+
+  return (contactId) => {
+    if (!contactId) return { kind: "none" };
+    const change = changedById.get(contactId);
+    if (change) return { kind: "changed", change };
+    if (newIds.has(contactId)) return { kind: "new" };
+    return { kind: "none" };
+  };
+}
+
 // ── Nudge do Painel: o contratante mais lento a decidir ──────────────────────
 // `proposalDeliberationByContact` (D275) já sabe QUEM te deixa mais tempo com a
 // proposta na mesa (o `slowest`), mas esse sinal só vivia na página dedicada

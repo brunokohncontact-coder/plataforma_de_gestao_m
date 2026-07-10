@@ -4,7 +4,10 @@ import { prisma } from "@/lib/prisma";
 import {
   proposalDeliberationByContact,
   proposalOutcomeYears,
+  compareProposalDeliberationByContact,
+  indexContactProposalDeliberationChanges,
   type ProposalDeliberationShowLike,
+  type ContactProposalDeliberationRowStatus,
 } from "@/lib/shows";
 import { parseProfitYear } from "@/lib/finance";
 import { proposalDeliberationByContactToCsv } from "@/lib/csv";
@@ -54,7 +57,44 @@ export async function GET(request: Request) {
   const report = proposalDeliberationByContact(items, {
     year: yearFilter === "all" ? "all" : yearFilter,
   });
-  const csv = proposalDeliberationByContactToCsv(report.rows, report.totalSamples);
+
+  // Comparativo ano a ano por contratante (D278), espelhando a página: só com um
+  // ano específico e ambos os períodos com decisão cronometrada. Quando existe, a
+  // planilha ganha a coluna "vs. {ano-1}"; senão fica idêntica à histórica. Recorta
+  // o MESMO acervo já carregado pelo eixo da entrada da proposta (`opts.year`).
+  type DeliberationContact = { id: string; name: string };
+  let rowStatus:
+    | ((id: string | null | undefined) => ContactProposalDeliberationRowStatus<DeliberationContact>)
+    | null = null;
+  let previousYear: number | null = null;
+  if (yearFilter !== "all") {
+    const prev = yearFilter - 1;
+    const previousReport = proposalDeliberationByContact(items, { year: prev });
+    if (report.totalSamples > 0 && previousReport.totalSamples > 0) {
+      const comparison = compareProposalDeliberationByContact(report, previousReport);
+      if (comparison.changes.length > 0) {
+        rowStatus = indexContactProposalDeliberationChanges(comparison);
+        previousYear = prev;
+      }
+    }
+  }
+
+  const csv = proposalDeliberationByContactToCsv(
+    report.rows.map((r) => {
+      const status = rowStatus?.(r.contact.id);
+      return {
+        contact: { name: r.contact.name },
+        stat: r.stat,
+        reliable: r.reliable,
+        share: r.share,
+        medianDaysDelta: status?.kind === "changed" ? status.change.medianDaysDelta : null,
+        isNew: status?.kind === "new",
+      };
+    }),
+    report.totalSamples,
+    undefined,
+    previousYear,
+  );
 
   const suffix = yearFilter === "all" ? "todas" : String(yearFilter);
   // BOM UTF-8 para preservar acentuação ao abrir no Excel.

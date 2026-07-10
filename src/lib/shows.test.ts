@@ -40,6 +40,9 @@ import {
   funnelStageDurations,
   proposalDeliberationByContact,
   MIN_DELIBERATION_SAMPLE,
+  compareProposalDeliberationByContact,
+  indexContactProposalDeliberationChanges,
+  DELIBERATION_TREND_EPSILON,
   slowDeliberatorHeadline,
   proposalOutcomes,
   proposalOutcomeYears,
@@ -1841,6 +1844,168 @@ describe("proposalDeliberationByContact", () => {
     expect(r.contactCount).toBe(0);
     expect(r.overall).toBeNull();
     expect(r.totalSamples).toBe(0);
+  });
+});
+
+describe("compareProposalDeliberationByContact", () => {
+  const ev = (
+    fromStatus: string | null,
+    toStatus: string,
+    createdAt: string,
+  ): StatusEventLike => ({ fromStatus, toStatus, createdAt });
+
+  /** Proposta que entrou em `year` e ficou `days` dias na mesa antes de sair. */
+  const decidedInYear = (year: number, days: number) => {
+    const start = Date.parse(`${year}-06-01T00:00:00.000Z`);
+    return {
+      statusEvents: [
+        ev(null, "PROPOSED", new Date(start).toISOString()),
+        ev("PROPOSED", "CONFIRMED", new Date(start + days * 86400000).toISOString()),
+      ],
+    };
+  };
+
+  const c = (id: string, name: string, role = "CONTRACTOR") => ({ id, name, role });
+
+  /** Roda o relatório recortado por ano para um conjunto de itens. */
+  const reportFor = (
+    items: Parameters<typeof proposalDeliberationByContact>[0],
+    year: number,
+  ) => proposalDeliberationByContact(items, { year });
+
+  it("sem contratantes em comum devolve changes vazio", () => {
+    const items = [
+      { contact: c("1", "Ana"), shows: [decidedInYear(2025, 5)] },
+    ];
+    const cmp = compareProposalDeliberationByContact(
+      reportFor(items, 2026),
+      reportFor(items, 2025),
+    );
+    expect(cmp.changes).toEqual([]);
+    expect(cmp.biggestImprovement).toBeNull();
+    expect(cmp.biggestWorsening).toBeNull();
+    // Ana só tem proposta em 2025 → sumiu no atual (2026).
+    expect(cmp.droppedContacts.map((r) => r.contact.id)).toEqual(["1"]);
+    expect(cmp.newContacts).toEqual([]);
+  });
+
+  it("marca melhora quando a mediana cai além do limiar e piora quando sobe", () => {
+    // Ana acelerou (mediana 20 → 4), Beto desacelerou (mediana 4 → 20).
+    const items = [
+      {
+        contact: c("ana", "Ana"),
+        shows: [
+          decidedInYear(2025, 18),
+          decidedInYear(2025, 20),
+          decidedInYear(2025, 22),
+          decidedInYear(2026, 2),
+          decidedInYear(2026, 4),
+          decidedInYear(2026, 6),
+        ],
+      },
+      {
+        contact: c("beto", "Beto"),
+        shows: [
+          decidedInYear(2025, 2),
+          decidedInYear(2025, 4),
+          decidedInYear(2025, 6),
+          decidedInYear(2026, 18),
+          decidedInYear(2026, 20),
+          decidedInYear(2026, 22),
+        ],
+      },
+    ];
+    const cmp = compareProposalDeliberationByContact(
+      reportFor(items, 2026),
+      reportFor(items, 2025),
+    );
+    expect(cmp.changes).toHaveLength(2);
+    // Maior piora no topo: Beto (+16) antes de Ana (−16).
+    expect(cmp.changes[0].contact.id).toBe("beto");
+    expect(cmp.changes[0].medianDaysDelta).toBe(16);
+    expect(cmp.changes[0].trend).toBe("worsened");
+    expect(cmp.changes[1].contact.id).toBe("ana");
+    expect(cmp.changes[1].medianDaysDelta).toBe(-16);
+    expect(cmp.changes[1].trend).toBe("improved");
+    expect(cmp.biggestImprovement?.contact.id).toBe("ana");
+    expect(cmp.biggestWorsening?.contact.id).toBe("beto");
+  });
+
+  it("variação dentro do limiar fica estável (nem melhora nem piora)", () => {
+    const delta = DELIBERATION_TREND_EPSILON - 1; // abaixo do limiar
+    const items = [
+      {
+        contact: c("1", "Ana"),
+        shows: [
+          decidedInYear(2025, 10),
+          decidedInYear(2025, 10),
+          decidedInYear(2025, 10),
+          decidedInYear(2026, 10 + delta),
+          decidedInYear(2026, 10 + delta),
+          decidedInYear(2026, 10 + delta),
+        ],
+      },
+    ];
+    const cmp = compareProposalDeliberationByContact(
+      reportFor(items, 2026),
+      reportFor(items, 2025),
+    );
+    expect(cmp.changes).toHaveLength(1);
+    expect(cmp.changes[0].medianDaysDelta).toBe(delta);
+    expect(cmp.changes[0].trend).toBe("stable");
+    expect(cmp.biggestImprovement).toBeNull();
+    expect(cmp.biggestWorsening).toBeNull();
+  });
+
+  it("classifica novos e sumidos entre os períodos", () => {
+    const items = [
+      // Ana existe nos dois anos (comparável).
+      {
+        contact: c("ana", "Ana"),
+        shows: [decidedInYear(2025, 5), decidedInYear(2026, 5)],
+      },
+      // Beto só decidiu em 2026 → novo.
+      { contact: c("beto", "Beto"), shows: [decidedInYear(2026, 8)] },
+      // Caio só decidiu em 2025 → sumiu.
+      { contact: c("caio", "Caio"), shows: [decidedInYear(2025, 9)] },
+    ];
+    const cmp = compareProposalDeliberationByContact(
+      reportFor(items, 2026),
+      reportFor(items, 2025),
+    );
+    expect(cmp.changes.map((ch) => ch.contact.id)).toEqual(["ana"]);
+    expect(cmp.newContacts.map((r) => r.contact.id)).toEqual(["beto"]);
+    expect(cmp.droppedContacts.map((r) => r.contact.id)).toEqual(["caio"]);
+  });
+
+  it("indexContactProposalDeliberationChanges resolve changed/new/none por id", () => {
+    const items = [
+      {
+        contact: c("ana", "Ana"),
+        shows: [
+          decidedInYear(2025, 18),
+          decidedInYear(2025, 20),
+          decidedInYear(2025, 22),
+          decidedInYear(2026, 2),
+          decidedInYear(2026, 4),
+          decidedInYear(2026, 6),
+        ],
+      },
+      { contact: c("beto", "Beto"), shows: [decidedInYear(2026, 8)] },
+    ];
+    const cmp = compareProposalDeliberationByContact(
+      reportFor(items, 2026),
+      reportFor(items, 2025),
+    );
+    const status = indexContactProposalDeliberationChanges(cmp);
+    expect(status("ana").kind).toBe("changed");
+    const anaStatus = status("ana");
+    if (anaStatus.kind === "changed") {
+      expect(anaStatus.change.medianDaysDelta).toBe(-16);
+    }
+    expect(status("beto").kind).toBe("new");
+    expect(status("desconhecido").kind).toBe("none");
+    expect(status(null).kind).toBe("none");
   });
 });
 
