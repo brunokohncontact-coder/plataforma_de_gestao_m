@@ -1,21 +1,34 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { funnelStageDurations, type StageDurationStat } from "@/lib/shows";
+import {
+  funnelStageDurations,
+  proposalOutcomeYears,
+  type StageDurationStat,
+  type ProposalOutcomeShowLike,
+} from "@/lib/shows";
+import { parseProfitYear } from "@/lib/finance";
 import {
   SHOW_STATUS_LABELS,
   SHOW_STATUS_DOT,
   type ShowStatus,
 } from "@/lib/domain";
+import { PeriodPicker } from "@/components/PeriodPicker";
 
 export const dynamic = "force-dynamic";
+
+type SearchParams = { [key: string]: string | string[] | undefined };
 
 /** Dias inteiros como texto pt-BR ("1 dia" / "N dias"). */
 function daysLabel(n: number): string {
   return `${n} ${n === 1 ? "dia" : "dias"}`;
 }
 
-export default async function StageDurationsPage() {
+export default async function StageDurationsPage({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
   const user = await requireUser();
 
   // Só precisamos dos eventos de status de cada show — a agregação é pura sobre
@@ -31,8 +44,23 @@ export default async function StageDurationsPage() {
     },
   });
 
-  const durations = funnelStageDurations(shows);
+  // Anos do seletor: só os que têm coorte (entrada em PROPOSED), pelo mesmo eixo
+  // (data da proposta) da conversão e da quebra por contratante — o recorte
+  // reaproveita `proposalOutcomeYears`/`opts.year`, mantendo a paridade com as
+  // telas irmãs do funil (D276/D243). Ver D281.
+  const availableYears = proposalOutcomeYears(shows as ProposalOutcomeShowLike[]);
+  const yearFilter = parseProfitYear(searchParams?.ano, availableYears);
+
+  const durations = funnelStageDurations(shows, {
+    year: yearFilter === "all" ? "all" : yearFilter,
+  });
   const maxMedian = Math.max(1, ...durations.stages.map((s) => s.medianDays));
+  const periodLabel =
+    yearFilter === "all" ? "todas as propostas" : `propostas de ${yearFilter}`;
+  const exportHref =
+    yearFilter === "all"
+      ? "/shows/funil/tempo-em-etapa/export"
+      : `/shows/funil/tempo-em-etapa/export?ano=${yearFilter}`;
 
   return (
     <div className="space-y-6">
@@ -42,12 +70,13 @@ export default async function StageDurationsPage() {
           <p className="text-sm text-gray-500">
             Quanto tempo, tipicamente, um show fica em cada etapa do funil antes de sair —
             avançando ou sendo cancelado. Enquanto o funil mostra <em>onde</em> os shows estão,
-            isto mostra a <em>velocidade</em> com que atravessam.
+            isto mostra a <em>velocidade</em> com que atravessam.{" "}
+            <span className="text-gray-400">Recorte: {periodLabel}.</span>
           </p>
         </div>
         <div className="flex items-center gap-2">
           {durations.totalSamples > 0 && (
-            <Link href="/shows/funil/tempo-em-etapa/export" className="btn-secondary">
+            <Link href={exportHref} className="btn-secondary">
               ⬇ CSV
             </Link>
           )}
@@ -60,14 +89,32 @@ export default async function StageDurationsPage() {
         </div>
       </div>
 
+      {availableYears.length > 0 && (
+        <PeriodPicker
+          years={availableYears}
+          active={yearFilter}
+          basePath="/shows/funil/tempo-em-etapa"
+          ariaLabel="Ano da proposta"
+        />
+      )}
+
       {durations.totalSamples === 0 ? (
         <div className="card text-center text-gray-500">
-          <p>Ainda não há histórico de mudanças de status para medir.</p>
-          <p className="mt-2 text-sm">
-            O tempo em cada etapa é calculado a partir das transições de status registradas a
-            partir de agora (proposta → confirmado → realizado). Conforme você movimenta shows
-            pelo funil, esta leitura vai se formando.
-          </p>
+          {yearFilter === "all" ? (
+            <>
+              <p>Ainda não há histórico de mudanças de status para medir.</p>
+              <p className="mt-2 text-sm">
+                O tempo em cada etapa é calculado a partir das transições de status registradas a
+                partir de agora (proposta → confirmado → realizado). Conforme você movimenta shows
+                pelo funil, esta leitura vai se formando.
+              </p>
+            </>
+          ) : (
+            <p>
+              Nenhuma proposta de <strong>{yearFilter}</strong> teve transição cronometrada para
+              medir. Experimente outro ano ou <strong>Todos</strong>.
+            </p>
+          )}
           <Link
             href="/shows/funil"
             className="mt-3 inline-block text-brand-700 hover:underline"

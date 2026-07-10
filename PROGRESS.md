@@ -9,7 +9,28 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1604 testes** verdes após o
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1606 testes** verdes após o
+**recorte por ano (`?ano=`) no tempo em cada etapa do funil** (Sessão 287, D281 — fecha o descompasso de paridade
+herdado no funil: a página-mãe `/shows/funil/tempo-em-etapa` (`funnelStageDurations`/D235) media a permanência típica
+em cada etapa somando TODAS as propostas de todos os tempos, SEM seletor de período — ao contrário das telas irmãs do
+MESMO funil que já recortam pela coorte da proposta: `/shows/funil/conversao` (`proposalOutcomes`/D243) e a própria
+FILHA `/shows/funil/tempo-em-etapa/por-contratante` (`proposalDeliberationByContact` com `opts.year`/D276). A filha
+nasceu com `?ano=`, a mãe não. Agora `funnelStageDurations(shows, opts?)` aceita `opts.year` (reusa
+`ProposalOutcomesOptions`, sem tipo novo): recorta os shows pela ENTRADA da proposta no funil (primeiro
+`toStatus === PROPOSED` via `firstProposedAt`, o mesmo eixo de coorte de D243/D276) ANTES de agregar, mantendo o motor
+puro agnóstico ao recorte; shows sem entrada em PROPOSED saem de qualquer ano específico mas seguem contando em `"all"`
+(comportamento histórico intacto — `opts` opcional). Página e export ganham o `?ano=`: `availableYears =
+proposalOutcomeYears(shows)` (reuso literal do eixo de anos da conversão), `parseProfitYear` + `PeriodPicker`
+(`basePath` da rota, `ariaLabel="Ano da proposta"`), subtítulo com o período, empty-state honesto por ano e sufixo do
+ano no filename do CSV (`tempo-em-etapa-2026.csv` / `-todas.csv`). Zero migração, zero I/O extra (recorta o mesmo
+acervo já carregado), zero dependência. **+2 testes** (`shows.test.ts`, `describe("funnelStageDurations")`: recorta por
+ano da entrada da proposta — all/2026/2025 com contagens/medianas distintas; recorte por ano ignora shows sem entrada em
+PROPOSED (fora da coorte) mas os conta em `all`). Build/typecheck/lint verdes; smoke → `/login` 200,
+`/shows/funil/tempo-em-etapa`, `?ano=2026` e `/export?ano=2026` 307→/login (auth-gated, sem 500); `npm audit` inalterado
+(10 advisories). O recorte é pela data da PROPOSTA, não a do show — o eixo de coorte coerente com toda a família do funil.
+~~Adiado (o "passo maior", espelho D278): comparativo YoY por etapa {ano}×{ano-1} na própria mãe + coluna "vs. {ano-1}"~~
+(o valor imediato era o recorte por ano; o comparativo por etapa é um passo maior e menos pedido). Ver D281. Antes disso,
+**1604 testes** verdes após o
 **nudge no Painel do contratante que passou a decidir mais devagar** (Sessão 286, D280 — fecha a paridade TOTAL dos
 eixos por-contratante no Painel: cada um agora tem os DOIS sabores de eco — o ABSOLUTO (uma relação bem pior que a
 carteira hoje) E o de TENDÊNCIA (uma relação que piorou ano a ano). A **deliberação** só tinha o absoluto

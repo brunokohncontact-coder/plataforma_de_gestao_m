@@ -1922,14 +1922,32 @@ export interface FunnelStageDurations {
  * mediana/média/mín/máx. Pura e determinística — não depende de "agora" (a
  * permanência na etapa atual, ainda em aberto, fica de fora, coerente com
  * `buildStatusTimeline`). Ver D235.
+ *
+ * Com `opts.year` (ano UTC) recorta aos shows cuja proposta ENTROU no funil
+ * naquele ano — o mesmo eixo de coorte de `proposalOutcomes`/D243 (primeiro
+ * `toStatus === PROPOSED`), não a data do show —, espelhando o recorte que a
+ * quebra por contratante já faz (`proposalDeliberationByContact`/D276). Shows
+ * sem entrada em PROPOSED (sem coorte) ficam de fora de qualquer ano específico,
+ * mas contam em `"all"`. Filtra antes de agregar, mantendo o motor agnóstico ao
+ * recorte. Ver D281.
  */
 export function funnelStageDurations(
   shows: StageDurationShowLike[],
+  opts: ProposalOutcomesOptions = {},
 ): FunnelStageDurations {
+  const year = opts.year ?? "all";
+  const scoped =
+    year === "all"
+      ? shows
+      : shows.filter((show) => {
+          const proposedAt = firstProposedAt(show.statusEvents);
+          return proposedAt !== null && new Date(proposedAt).getUTCFullYear() === year;
+        });
+
   const samplesByStage = new Map<string, number[]>();
   let showCount = 0;
 
-  for (const show of shows) {
+  for (const show of scoped) {
     const timeline = buildStatusTimeline(show.statusEvents);
     let contributed = false;
     for (const entry of timeline) {
