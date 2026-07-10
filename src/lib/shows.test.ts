@@ -1787,6 +1787,61 @@ describe("proposalDeliberationByContact", () => {
     expect(twoReliable.slowest?.contact.id).toBe("2");
     expect(twoReliable.slowest?.stat.medianDays).toBe(30);
   });
+
+  /** Proposta que entrou em `year` (jun/UTC) e ficou `days` dias na mesa antes de sair. */
+  const decidedInYear = (
+    year: number,
+    days: number,
+    out: "CONFIRMED" | "CANCELLED" = "CONFIRMED",
+  ) => {
+    const start = Date.parse(`${year}-06-01T00:00:00.000Z`);
+    return {
+      statusEvents: [
+        ev(null, "PROPOSED", new Date(start).toISOString()),
+        ev("PROPOSED", out, new Date(start + days * 86400000).toISOString()),
+      ],
+    };
+  };
+
+  it("recorta por ano da entrada da proposta (opts.year)", () => {
+    const items = [
+      {
+        contact: c("1", "Ana"),
+        shows: [
+          decidedInYear(2025, 10),
+          decidedInYear(2026, 2),
+          decidedInYear(2026, 4),
+          decidedInYear(2026, 6),
+        ],
+      },
+    ];
+
+    // Sem recorte conta as 4 propostas (mediana de [10,2,4,6]).
+    const all = proposalDeliberationByContact(items);
+    expect(all.rows[0].stat.count).toBe(4);
+
+    // 2026 conta só as três daquele ano (mediana de [2,4,6] = 4).
+    const y2026 = proposalDeliberationByContact(items, { year: 2026 });
+    expect(y2026.rows[0].stat.count).toBe(3);
+    expect(y2026.rows[0].stat.medianDays).toBe(4);
+    expect(y2026.totalSamples).toBe(3);
+    expect(y2026.overall?.count).toBe(3);
+
+    // 2025 conta só a proposta daquele ano.
+    const y2025 = proposalDeliberationByContact(items, { year: 2025 });
+    expect(y2025.rows[0].stat.count).toBe(1);
+    expect(y2025.rows[0].stat.medianDays).toBe(10);
+  });
+
+  it("contratante sem proposta no ano recortado sai da lista", () => {
+    const r = proposalDeliberationByContact(
+      [{ contact: c("1", "Ana"), shows: [decidedInYear(2025, 5), decidedInYear(2025, 7)] }],
+      { year: 2026 },
+    );
+    expect(r.contactCount).toBe(0);
+    expect(r.overall).toBeNull();
+    expect(r.totalSamples).toBe(0);
+  });
 });
 
 describe("slowDeliberatorHeadline", () => {

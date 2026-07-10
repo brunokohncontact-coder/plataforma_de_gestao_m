@@ -3,8 +3,10 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   proposalDeliberationByContact,
+  proposalOutcomeYears,
   type ProposalDeliberationShowLike,
 } from "@/lib/shows";
+import { parseProfitYear } from "@/lib/finance";
 import { proposalDeliberationByContactToCsv } from "@/lib/csv";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +17,8 @@ export const dynamic = "force-dynamic";
 // tabela de `/shows/funil/tempo-em-etapa/por-contratante`. Mesma consulta (cada
 // contato + os eventos de status dos seus shows) e mesma agregação pura; a
 // serialização fica em `@/lib/csv` (`proposalDeliberationByContactToCsv`), testada.
-export async function GET() {
+// Aplica o mesmo recorte por ano da proposta (`?ano=`, eixo da coorte) da tela.
+export async function GET(request: Request) {
   const user = await requireUser();
 
   const contacts = await prisma.contact.findMany({
@@ -44,9 +47,16 @@ export async function GET() {
     shows: c.shows.map((cs) => cs.show) as ProposalDeliberationShowLike[],
   }));
 
-  const report = proposalDeliberationByContact(items);
+  const availableYears = proposalOutcomeYears(items.flatMap((i) => i.shows));
+  const rawYear = new URL(request.url).searchParams.get("ano") ?? undefined;
+  const yearFilter = parseProfitYear(rawYear, availableYears);
+
+  const report = proposalDeliberationByContact(items, {
+    year: yearFilter === "all" ? "all" : yearFilter,
+  });
   const csv = proposalDeliberationByContactToCsv(report.rows, report.totalSamples);
 
+  const suffix = yearFilter === "all" ? "todas" : String(yearFilter);
   // BOM UTF-8 para preservar acentuação ao abrir no Excel.
   const body = "﻿" + csv;
 
@@ -54,7 +64,7 @@ export async function GET() {
     status: 200,
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="tempo-decisao-por-contratante.csv"`,
+      "Content-Disposition": `attachment; filename="tempo-decisao-por-contratante-${suffix}.csv"`,
       "Cache-Control": "no-store",
     },
   });

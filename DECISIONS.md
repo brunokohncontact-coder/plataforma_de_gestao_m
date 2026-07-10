@@ -9496,6 +9496,36 @@ contexto, decisão, justificativa e alternativas consideradas.
 - **Nota de concorrência:** número **D275** escolhido como o próximo livre após o D274 (Sessão 278). Se
   uma PR paralela reivindicar D275, renumerar para o próximo livre no merge.
 
+## 2026-07-10 — D276: Recorte por ano (`?ano=`) no tempo de decisão por contratante
+- **Contexto:** a D275 entregou a deliberação por contratante (`/shows/funil/tempo-em-etapa/por-contratante`)
+  mas SEM seletor de período (adiado ali como "alternativa (b)"), somando todas as propostas de todos os
+  tempos. A irmã do mesmo funil `/shows/funil/conversao/contratantes` (D247) já recorta por ano da proposta.
+- **Decisão:** `proposalDeliberationByContact(items, opts?)` passa a aceitar `opts.year` (ano UTC da ENTRADA
+  da proposta no funil — o mesmo eixo de coorte de `proposalOutcomes`/D243, primeiro `toStatus === PROPOSED`,
+  **não** a data do show). Filtra os shows de cada contratante por `firstProposedAt` **antes** de
+  `funnelStageDurations`, mantendo o motor puro agnóstico ao recorte; o `overall` por relação segue o mesmo
+  filtro. Reusa o tipo `ProposalOutcomesOptions` (já `{ year? }`) — nenhum tipo novo. Página e export ganham
+  `?ano=`: anos do seletor via `proposalOutcomeYears(allShows)` (reuso literal do eixo da conversão, sem novo
+  helper de anos), `parseProfitYear` + `PeriodPicker` (espelho de conversao/contratantes), subtítulo com o
+  período, empty-state honesto por ano e sufixo de ano no filename do CSV (`tempo-decisao-por-contratante-2026.csv`).
+- **Justificativa:** o eixo da coorte (data da proposta) é o mesmo já usado pela conversão por contratante —
+  reusar `proposalOutcomeYears`/`ProposalOutcomesOptions` mantém as duas telas do funil por contratante
+  coerentes e evita duplicar helper de anos ou tipo de opção. Filtrar antes do motor preserva D235/D275 puros
+  e testados; zero migração, zero I/O extra (recorta o mesmo acervo já carregado), zero dependência.
+- **Alternativas consideradas:** (a) recortar pela data do SHOW (como o funil de estado) — descartado: a
+  deliberação é sobre a vida da PROPOSTA; a coorte por data de entrada é o eixo honesto e o que a irmã da
+  conversão usa. (b) comparativo YoY por contratante {ano}×{ano-1} + coluna "vs. {ano-1}" (espelho de
+  D270/D248) — adiado para uma próxima sessão (o "passo maior", como D269→D270 na antecedência); o recorte
+  por ano já é uma unidade fechada e útil. (c) novo helper `proposalDeliberationYears` — descartado: os anos
+  são exatamente os da entrada da proposta, já cobertos por `proposalOutcomeYears`.
+- **DoD:** build de produção OK, typecheck (`tsc --noEmit`, 0 erros), lint (`next lint`, 0 avisos);
+  **1580 testes** (`vitest run`, +2 em `proposalDeliberationByContact`: recorta por ano da entrada da proposta
+  — `all`/2026/2025 com contagens/medianas distintas e `overall` recortado; contratante sem proposta no ano
+  sai da lista). Smoke (`next start`) → `/login` 200, página e `/export?ano=2026` 307→/login (auth-gated, sem
+  500); ambas as rotas presentes no build. `npm audit` **inalterado** vs. baseline (10 advisories; ver D6).
+- **Nota de concorrência:** número **D276** escolhido como o próximo livre após o D275 (Sessão 280). Chegou
+  via PR paralela #309 e foi consolidado no merge da Sessão 282 (esta), preservando a numeração.
+
 ## 2026-07-10 — D277: Nudge no Painel do contratante mais lento a decidir (`slowDeliberatorHeadline` + banner em `dashboard/page.tsx`)
 - **Contexto:** `proposalDeliberationByContact` (D275) já sabe QUEM te deixa mais tempo com a proposta na
   mesa (o campo `slowest` — o contratante de maior mediana de deliberação entre os confiáveis), mas esse
@@ -9534,7 +9564,7 @@ contexto, decisão, justificativa e alternativas consideradas.
   `/dashboard` e `/shows/funil/tempo-em-etapa/por-contratante` 307→/login (auth-gated, sem 500). `npm
   audit` **inalterado** vs. baseline (10 advisories; ver D6).
 - **Nota de concorrência:** número **D277** escolhido deixando o **D276** para a PR paralela #309 (recorte
-  por ano no tempo de decisão por contratante), que já o reivindica. Se o merge divergir, renumerar para o
-  próximo livre. O helper não colide com #309: aquela PR muda a assinatura de `proposalDeliberationByContact`
-  (adiciona `opts?` opcional), e a chamada do Painel aqui (`proposalDeliberationByContact(items)`) permanece
-  compatível.
+  por ano no tempo de decisão por contratante). Ambas foram consolidadas no merge da Sessão 282 (esta): a
+  numeração D276/D277 permanece. O helper não colide com #309: aquela PR muda a assinatura de
+  `proposalDeliberationByContact` (adiciona `opts?` opcional), e a chamada do Painel aqui
+  (`proposalDeliberationByContact(items)`) permanece compatível.
