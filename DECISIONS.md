@@ -9568,3 +9568,48 @@ contexto, decisão, justificativa e alternativas consideradas.
   numeração D276/D277 permanece. O helper não colide com #309: aquela PR muda a assinatura de
   `proposalDeliberationByContact` (adiciona `opts?` opcional), e a chamada do Painel aqui
   (`proposalDeliberationByContact(items)`) permanece compatível.
+
+## 2026-07-10 — D278: Comparativo ano a ano do tempo de decisão por contratante (`compareProposalDeliberationByContact` + coluna "vs. {ano-1}" + card "Quem mudou o ritmo de decisão")
+- **Contexto:** a D276 entregou o recorte por ano (`?ano=`) no tempo de decisão por contratante
+  (`/shows/funil/tempo-em-etapa/por-contratante`), mas **adiou explicitamente** o "passo maior": o
+  comparativo YoY {ano}×{ano-1} por contratante + a coluna "vs. {ano-1}" na tabela. Os eixos irmãos por
+  contratante já tinham esse comparativo — antecedência (`compareBookingLeadTimeByContact`/D196) e prazo de
+  recebimento (`comparePaymentLagByContact`/D194) —, faltava o da deliberação. Quem passou a decidir uma
+  proposta mais rápido / mais devagar de um ano para o outro é tão acionável quanto quem mudou o ritmo de
+  agenda: revela onde a relação esfriou (passou a te deixar mais tempo na mesa) ou aqueceu.
+- **Decisão:** `compareProposalDeliberationByContact(current, previous)` + tipos
+  `ProposalDeliberationByContactComparison`/`ContactProposalDeliberationChange`/
+  `ContactProposalDeliberationRowStatus` + `indexContactProposalDeliberationChanges` + constante
+  `DELIBERATION_TREND_EPSILON`(=3) em `src/lib/shows.ts` (espelho literal de
+  `compareBookingLeadTimeByContact`/`indexContactBookingLeadTimeChanges`, aqui no eixo da deliberação).
+  Casa os contratantes por `contact.id` entre dois relatórios `proposalDeliberationByContact` já recortados
+  por ano (via `opts.year`, o eixo de coorte da entrada da proposta no funil — D276); devolve os `changes`
+  (variação da mediana, `trend`), `biggestImprovement`/`biggestWorsening` e `newContacts`/`droppedContacts`.
+  Como no prazo de recebimento, **descer** a mediana é a melhora (a proposta sai mais rápido da mesa), ao
+  contrário da antecedência (onde subir é a melhora). Página ganha o card "Quem mudou o ritmo de decisão ·
+  {ano} vs. {ano-1}" (mais acelerou / mais desacelerou + novos/sumidos) e a coluna "vs. {ano-1}" na tabela;
+  o CSV (`proposalDeliberationByContactToCsv`) ganha a coluna opcional "vs. {ano-1} (dias)" quando o
+  `previousYear` é informado, espelhando `bookingLeadTimeByContactToCsv`. Só exibe com um ano específico e
+  ambos os períodos com decisão cronometrada (`totalSamples > 0`).
+- **Justificativa:** fecha o adiamento da D276 e leva a deliberação por contratante à paridade total com os
+  eixos irmãos (escopo/ano + comparativo YoY + nudge no Painel/D277). Reusa os MESMOS itens já carregados
+  (recorta o ano anterior pela mesma agregação pura, zero nova consulta), zero migração, zero dependência. O
+  `DELIBERATION_TREND_EPSILON`=3 é menor que o `LEAD_TIME_TREND_EPSILON`/`PAYMENT_LAG_TREND_EPSILON`(=7)
+  porque a deliberação costuma ser mais curta que a antecedência de agenda ou o prazo de recebimento — 3
+  dias de variação já é um hábito diferente.
+- **Alternativas consideradas:** (a) reusar `LEAD_TIME_TREND_EPSILON`(=7) — descartado: 7 dias seria alto
+  demais num funil que decide em dias/semanas, escondendo mudanças reais de ritmo. (b) comparar só linhas
+  confiáveis (≥ `MIN_DELIBERATION_SAMPLE`) — descartado: espelha o irmão da antecedência, que compara todas
+  as linhas presentes nos dois períodos e apenas SINALIZA amostra fina no card (`smallSample`); suprimir
+  linhas esconderia movimentos legítimos. (c) ancorar o veredito na média em vez da mediana — descartado: a
+  mediana já é a leitura principal do relatório (resistente a outlier), como nos irmãos.
+- **DoD:** build de produção OK, typecheck (`tsc --noEmit`, 0 erros), lint (`next lint`, 0 avisos);
+  **1593 testes** (`vitest run`, +6: 5 de `compareProposalDeliberationByContact`/
+  `indexContactProposalDeliberationChanges` em `shows.test.ts` — sem contratante em comum devolve changes
+  vazio + sumidos; melhora/piora além do limiar com ordem "maior piora no topo"; variação dentro do limiar
+  fica estável; novos/sumidos entre períodos; lookup changed/new/none por id — e 1 de
+  `proposalDeliberationByContactToCsv` em `csv.test.ts` — coluna "vs. {ano-1}" com variação assinada, "novo"
+  e Total em branco). Smoke (`next start`) → `/login` 200, a página e o `/export?ano=2026` 307→/login
+  (auth-gated, sem 500). `npm audit` **inalterado** vs. baseline (10 advisories; ver D6).
+- **Nota de concorrência:** número **D278** escolhido como o próximo livre após o D277 (Sessão 282). Se uma
+  PR paralela reivindicar D278, renumerar para o próximo livre no merge.

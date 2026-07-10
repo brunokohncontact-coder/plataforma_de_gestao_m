@@ -3105,6 +3105,34 @@ describe("proposalDeliberationByContactToCsv", () => {
     // Mediana em branco; média [5,9]=7, mín 5, máx 9, 2/2 = 100%
     expect(lines[1]).toBe("Ana;2;;7;5;9;100%");
   });
+
+  it("com previousYear ganha a coluna vs. {ano-1}: variação assinada, novo e Total em branco", () => {
+    const report = proposalDeliberationByContact([
+      { contact: c("ana", "Ana"), shows: [decided(4), decided(6), decided(8)] }, // mediana 6
+      { contact: c("beto", "Beto"), shows: [decided(1), decided(3), decided(5)] }, // mediana 3
+    ]);
+    const rows = [
+      // Ana passou a decidir mais rápido: −4 dias.
+      { ...report.rows.find((r) => r.contact.name === "Beto")!, medianDaysDelta: -4 },
+      // Beto é novo no ano.
+      { ...report.rows.find((r) => r.contact.name === "Ana")!, isNew: true },
+    ];
+    const lines = proposalDeliberationByContactToCsv(
+      rows,
+      report.totalSamples,
+      ";",
+      2025,
+    ).split("\r\n");
+    expect(lines[0]).toBe(
+      PROPOSAL_DELIBERATION_BY_CONTACT_CSV_HEADERS.join(";") + ";vs. 2025 (dias)",
+    );
+    // Beto (mediana 3): variação −4 dias.
+    expect(lines[1]).toBe("Beto;3;3;3;1;5;50%;-4");
+    // Ana: novo.
+    expect(lines[2]).toBe("Ana;3;6;6;4;8;50%;novo");
+    // Total ganha a célula vazia extra.
+    expect(lines[3]).toBe("Total;6;;;;;;");
+  });
 });
 
 describe("proposalConversionToCsv", () => {
