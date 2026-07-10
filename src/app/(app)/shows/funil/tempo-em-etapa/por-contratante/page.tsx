@@ -3,13 +3,18 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   proposalDeliberationByContact,
+  proposalOutcomeYears,
   MIN_DELIBERATION_SAMPLE,
   type ProposalDeliberationShowLike,
   type ContactProposalDeliberationRow,
 } from "@/lib/shows";
+import { parseProfitYear, type ProfitYearFilter } from "@/lib/finance";
 import { CONTACT_ROLE_LABELS, type ContactRole } from "@/lib/domain";
+import { PeriodPicker } from "@/components/PeriodPicker";
 
 export const dynamic = "force-dynamic";
+
+type SearchParams = { [key: string]: string | string[] | undefined };
 
 interface DeliberationContact {
   id: string;
@@ -27,7 +32,11 @@ function pct(share: number): string {
   return `${Math.round(share * 100)}%`;
 }
 
-export default async function ProposalDeliberationByContactPage() {
+export default async function ProposalDeliberationByContactPage({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
   const user = await requireUser();
 
   // Cada contato + os eventos de status dos shows a que está vinculado — a
@@ -60,7 +69,24 @@ export default async function ProposalDeliberationByContactPage() {
     shows: c.shows.map((cs) => cs.show) as ProposalDeliberationShowLike[],
   }));
 
-  const report = proposalDeliberationByContact(items);
+  // Anos do seletor: só os que têm coorte (entrada em PROPOSED), pelo mesmo eixo
+  // (data da proposta) da conversão por contratante — reusa `proposalOutcomeYears`,
+  // já que a deliberação recorta pela ENTRADA da proposta no funil, não pela data
+  // do show. Achatar com repetição não afeta o conjunto de anos.
+  const allShows = items.flatMap((i) => i.shows);
+  const availableYears = proposalOutcomeYears(allShows);
+  const yearFilter = parseProfitYear(searchParams?.ano, availableYears);
+
+  const report = proposalDeliberationByContact(items, {
+    year: yearFilter === "all" ? "all" : yearFilter,
+  });
+  const periodLabel =
+    yearFilter === "all" ? "todas as propostas" : `propostas de ${yearFilter}`;
+
+  const exportHref =
+    yearFilter === "all"
+      ? "/shows/funil/tempo-em-etapa/por-contratante/export"
+      : `/shows/funil/tempo-em-etapa/por-contratante/export?ano=${yearFilter}`;
 
   return (
     <div className="space-y-6">
@@ -69,17 +95,13 @@ export default async function ProposalDeliberationByContactPage() {
           <h1 className="text-2xl font-bold">Tempo de decisão por contratante</h1>
           <p className="text-sm text-gray-500">
             Quanto tempo, tipicamente, cada contratante deixa uma proposta na mesa antes de decidir —
-            avançar para confirmado ou cancelar. O tempo em cada etapa, quebrado por quem fecha:
-            para saber com quem vale cobrar antes e de quem a resposta demora.
+            avançar para confirmado ou cancelar ({periodLabel}). O tempo em cada etapa, quebrado por
+            quem fecha: para saber com quem vale cobrar antes e de quem a resposta demora.
           </p>
         </div>
         <div className="flex items-center gap-2">
           {report.contactCount > 0 && (
-            <a
-              href="/shows/funil/tempo-em-etapa/por-contratante/export"
-              className="btn-secondary text-sm"
-              download
-            >
+            <a href={exportHref} className="btn-secondary text-sm" download>
               ⬇ CSV
             </a>
           )}
@@ -89,9 +111,21 @@ export default async function ProposalDeliberationByContactPage() {
         </div>
       </div>
 
+      {availableYears.length > 0 && (
+        <PeriodPicker
+          years={availableYears}
+          active={yearFilter as ProfitYearFilter}
+          basePath="/shows/funil/tempo-em-etapa/por-contratante"
+        />
+      )}
+
       {report.contactCount === 0 ? (
         <div className="card text-center text-gray-500">
-          <p>Ainda não há propostas decididas por contratante para medir.</p>
+          <p>
+            {yearFilter === "all"
+              ? "Ainda não há propostas decididas por contratante para medir."
+              : `Nenhuma proposta de ${yearFilter} foi decidida por contratante para medir.`}
+          </p>
           <p className="mt-2 text-sm">
             A deliberação é calculada a partir do histórico de status registrado a partir de agora
             (proposta → confirmado / cancelado), vinculado a cada contratante. Conforme você
