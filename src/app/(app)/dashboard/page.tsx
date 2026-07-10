@@ -13,6 +13,9 @@ import {
   summarizePaymentPromises,
   paymentLag,
   paymentLagHeadline,
+  paymentLagByContact,
+  comparePaymentLagByContact,
+  contactPaymentLagRiseHeadline,
   showPipeline,
   projectYearEnd,
   projectYearEndWithFixedCosts,
@@ -444,6 +447,38 @@ export default async function DashboardPage() {
         compareBookingLeadTimeByContact(
           bookingLeadTimeByContact(filterShowsByYear(shows, currentYear), leadBooker),
           bookingLeadTimeByContact(filterShowsByYear(shows, currentYear - 1), leadBooker),
+        ),
+      );
+
+  // Prazo de recebimento PIORANDO com um contratante (D194 no Painel): "quem, dos
+  // meus pagadores recorrentes, passou a me deixar esperando mais tempo pelo cachê?".
+  // Reaproveita os shows/transações já carregados (o mesmo `leadBooker`/pickPayerContact
+  // dos recebíveis): monta o prazo por contratante deste ano e do anterior, compara
+  // (comparePaymentLagByContact) e destila o pagador de maior alta de prazo com amostra
+  // confiável nas duas coortes (contactPaymentLagRiseHeadline resolve o gate). Ancora na
+  // MÉDIA (avgDays), como o comparativo. CEDE A VEZ ao nudge absoluto de DSO
+  // (paymentLagHeadline): quando o caixa inteiro já demora, o Painel conta a história
+  // maior e o detalhe por pagador espera o clique; este brilha quando o DSO segue
+  // saudável na média mas uma relação específica desacelerou. Fecha a paridade dos
+  // eixos por-contratante no Painel (antecedência/D272, conversão/D248, deliberação/D277
+  // já ecoavam; faltava o do recebimento). O detalhe está em
+  // /shows/prazo-recebimento/por-contratante.
+  const lagRiseHead = lagHeadline.show
+    ? null // o nudge absoluto de DSO já está no ar; cede a vez (evita banner duplo)
+    : contactPaymentLagRiseHeadline(
+        comparePaymentLagByContact(
+          paymentLagByContact(
+            filterShowsByYear(shows, currentYear) as (ReceivableShowLike &
+              (typeof shows)[number])[],
+            txs,
+            leadBooker,
+          ),
+          paymentLagByContact(
+            filterShowsByYear(shows, currentYear - 1) as (ReceivableShowLike &
+              (typeof shows)[number])[],
+            txs,
+            leadBooker,
+          ),
         ),
       );
 
@@ -1724,6 +1759,47 @@ export default async function DashboardPage() {
             </p>
           </Link>
         </section>
+      )}
+
+      {/* Prazo de recebimento piorando COM UM CONTRATANTE (D194 no Painel): um
+          pagador recorrente passou a te deixar esperando materialmente mais tempo
+          pelo cachê de um ano para o outro. Cede a vez ao nudge absoluto de DSO
+          acima; brilha quando o caixa segue saudável na média mas uma relação
+          específica desacelerou. Vermelho no crítico (≥ 30 dias a mais). */}
+      {lagRiseHead?.show && lagRiseHead.contact && (
+        <Link
+          href="/shows/prazo-recebimento/por-contratante"
+          className={
+            "flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3 text-sm transition " +
+            (lagRiseHead.critical
+              ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100")
+          }
+        >
+          <span className="font-semibold">
+            {lagRiseHead.critical ? "🔴" : "🐢"} {lagRiseHead.contact.name} passou a pagar mais devagar
+          </span>
+          <span>
+            Em {currentYear} o cachê entra em{" "}
+            <strong>{daysLabel(lagRiseHead.currentAvgDays)}</strong> em média (sobre{" "}
+            {lagRiseHead.sample}{" "}
+            {lagRiseHead.sample === 1 ? "show pago" : "shows pagos"}) —{" "}
+            <strong>{daysLabel(lagRiseHead.riseDays)} a mais</strong> que em {currentYear - 1}{" "}
+            ({daysLabel(lagRiseHead.previousAvgDays)})
+            {lagRiseHead.others > 0 && (
+              <span className={lagRiseHead.critical ? "text-red-600" : "text-amber-600"}>
+                {" "}
+                · +{lagRiseHead.others}{" "}
+                {lagRiseHead.others === 1
+                  ? "pagador desacelerou"
+                  : "pagadores desaceleraram"}
+              </span>
+            )}
+          </span>
+          <span className={lagRiseHead.critical ? "text-red-600" : "text-amber-600"}>
+            Ver →
+          </span>
+        </Link>
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
