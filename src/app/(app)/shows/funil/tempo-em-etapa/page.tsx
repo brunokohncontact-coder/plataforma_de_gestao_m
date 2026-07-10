@@ -51,6 +51,9 @@ export default async function StageDurationsPage() {
               ⬇ CSV
             </Link>
           )}
+          <Link href="/shows/funil/tempo-em-etapa/por-contratante" className="btn-secondary">
+            Por contratante
+          </Link>
           <Link href="/shows/funil" className="btn-secondary">
             ← Funil
           </Link>

@@ -9453,3 +9453,45 @@ contexto, decisão, justificativa e alternativas consideradas.
   **inalterado** vs. baseline (10 advisories; ver D6).
 - **Nota de concorrência:** número **D274** escolhido como o próximo livre após o D273 (Sessão 278). Se uma PR paralela
   reivindicar D274, renumerar para o próximo livre no merge.
+
+## 2026-07-10 — D275: Tempo de decisão da proposta por contratante (deliberação da etapa PROPOSED, quebrada por quem fecha)
+- **Contexto:** o "Tempo em cada etapa" (`funnelStageDurations`/D235, `/shows/funil/tempo-em-etapa`)
+  mede a velocidade típica de travessia do funil somando TODOS os shows — não sabe DE QUEM a proposta
+  demora a sair da mesa. Os eixos por contratante já existem para recebíveis (`paymentLagByContact`)
+  e antecedência (`bookingLeadTimeByContact`); faltava o da deliberação (quem senta em cima da proposta).
+- **Decisão:** adicionar `proposalDeliberationByContact(items)` em `src/lib/shows.ts` — para cada
+  contratante roda o MESMO motor `funnelStageDurations` sobre os shows dele e destila a estatística da
+  etapa **PROPOSED** (mediana/média/mín/máx de dias na mesa antes de decidir). Só viram linha os
+  contratantes com ao menos uma decisão cronometrada (proposta que já saiu de PROPOSED); os com apenas
+  proposta em aberto ficam de fora (sem número honesto). `overall` roda o motor sobre as relações
+  achatadas (por relação — um show partilhado conta para cada contato, como o `overall` de
+  `proposalOutcomesByContact`/D247). Ordena da MENOR mediana à MAIOR (decide rápido primeiro), com maior
+  amostra / nome pt-BR / id como desempate. Gate de confiança `MIN_DELIBERATION_SAMPLE`=3 (alinhado a
+  `MIN_LEAD_TIME_SAMPLE`/`MIN_SHOW_GAP_SAMPLE`): abaixo disso a mediana é suprimida na tela/CSV, mas o
+  contratante segue listado. Destaque `slowest` (card "Quem mais te deixa esperando") só quando há mais
+  de um contratante confiável (senão o destaque seria trivial). Página
+  `/shows/funil/tempo-em-etapa/por-contratante` (sub-relatório da tela-mãe, com link recíproco) + export
+  CSV `proposalDeliberationByContactToCsv` + entrada em `REPORT_GROUPS` (Agenda & pipeline).
+- **Justificativa:** reaproveita o motor puro e testado de D235 (zero regra de negócio nova, zero
+  migração, zero dependência); a consulta espelha a de `/shows/funil/conversao/contratantes` (cada contato
+  + os eventos de status dos seus shows). A deliberação por contratante é acionável: com quem combinar
+  prazo de resposta ou cobrar antes. Como o motor só credita o tempo à etapa quando o show SAI dela, a
+  leitura ignora propostas ainda em aberto — honesta sobre decisões já tomadas.
+- **Alternativas consideradas:** (a) medir TODAS as etapas por contratante (matriz), não só PROPOSED —
+  descartado: a etapa acionável é a deliberação da proposta; CONFIRMED→PLAYED é só a agenda correndo, e
+  uma matriz por contratante seria densa demais. (b) recorte por `?ano=`/`PeriodPicker` e comparativo
+  YoY (espelho de D269/D270) — adiado para uma próxima sessão (a tela + CSV já entregam o sinal; o eixo
+  temporal das transições é o histórico registrado, sem backfill, como o resto do tempo-em-etapa). (c)
+  nudge no Painel para o contratante mais lento — adiado (o Painel já é denso; o card `slowest` na tela
+  dedicada cobre o destaque).
+- **DoD:** build de produção OK, typecheck (`tsc --noEmit`, 0 erros), lint (`next lint`, 0 avisos);
+  **1578 testes** (`vitest run`, +10: 7 de `proposalDeliberationByContact` — vazio; só-aberto não vira
+  linha; destila PROPOSED e ordena menor→maior mediana com participação; amostra fina não-confiável mas
+  listada; conta avanços + cancelamentos; `overall` por relação com show partilhado; `slowest` só com >1
+  confiável — e 3 de `proposalDeliberationByContactToCsv` — vazio só cabeçalho+Total; linha por
+  contratante menor-mediana-primeiro com dias crus; mediana suprimida na amostra fina). Smoke
+  (`next start`) → `/login` 200, `/shows/funil/tempo-em-etapa/por-contratante` e `/export` 307→/login
+  (auth-gated, sem 500); ambas as rotas presentes no build. `npm audit` **inalterado** vs. baseline
+  (10 advisories; ver D6).
+- **Nota de concorrência:** número **D275** escolhido como o próximo livre após o D274 (Sessão 278). Se
+  uma PR paralela reivindicar D275, renumerar para o próximo livre no merge.

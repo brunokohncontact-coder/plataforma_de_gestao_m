@@ -79,6 +79,14 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "⏱",
       },
       {
+        title: "Tempo de decisão por contratante",
+        href: "/shows/funil/tempo-em-etapa/por-contratante",
+        description:
+          "Quanto cada contratante costuma demorar para decidir uma proposta — com quem vale cobrar antes.",
+        subtopic: "Agenda & pipeline",
+        icon: "🕰",
+      },
+      {
         title: "Propostas paradas",
         href: "/shows/funil/paradas",
         description:

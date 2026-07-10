@@ -87,6 +87,8 @@ import {
   PIPELINE_CSV_HEADERS,
   stageDurationsToCsv,
   STAGE_DURATIONS_CSV_HEADERS,
+  proposalDeliberationByContactToCsv,
+  PROPOSAL_DELIBERATION_BY_CONTACT_CSV_HEADERS,
   proposalConversionToCsv,
   PROPOSAL_CONVERSION_CSV_HEADERS,
   proposalConversionComparisonToCsv,
@@ -144,6 +146,7 @@ import {
   findScheduleConflicts,
   bookingLeadTime,
   funnelStageDurations,
+  proposalDeliberationByContact,
   proposalOutcomes,
   compareProposalOutcomes,
   proposalOutcomesByContact,
@@ -3045,6 +3048,62 @@ describe("stageDurationsToCsv", () => {
     // mediana [2,4,9]=4, média 5, mín 2, máx 9
     expect(lines[1]).toBe("Proposto;3;4;5;2;9");
     expect(lines[2]).toBe("Total;3;;;;");
+  });
+});
+
+describe("proposalDeliberationByContactToCsv", () => {
+  const ev = (fromStatus: string | null, toStatus: string, createdAt: string) => ({
+    fromStatus,
+    toStatus,
+    createdAt,
+  });
+  const decided = (days: number) => ({
+    statusEvents: [
+      ev(null, "PROPOSED", "2026-01-01T00:00:00.000Z"),
+      ev(
+        "PROPOSED",
+        "CONFIRMED",
+        new Date(Date.parse("2026-01-01T00:00:00.000Z") + days * 86400000).toISOString(),
+      ),
+    ],
+  });
+  const c = (id: string, name: string) => ({ id, name, role: "CONTRACTOR" });
+
+  it("sem contratantes: só cabeçalho + Total zerado", () => {
+    const report = proposalDeliberationByContact([]);
+    const lines = proposalDeliberationByContactToCsv(report.rows, report.totalSamples).split(
+      "\r\n",
+    );
+    expect(lines[0]).toBe(PROPOSAL_DELIBERATION_BY_CONTACT_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe("Total;0;;;;;");
+  });
+
+  it("uma linha por contratante (menor mediana primeiro) + Total; dias crus", () => {
+    const report = proposalDeliberationByContact([
+      { contact: c("slow", "Lento"), shows: [decided(10), decided(20), decided(30)] },
+      { contact: c("fast", "Rápido"), shows: [decided(1), decided(3), decided(5)] },
+    ]);
+    const lines = proposalDeliberationByContactToCsv(report.rows, report.totalSamples).split(
+      "\r\n",
+    );
+    expect(lines).toHaveLength(4); // cabeçalho + 2 contratantes + Total
+    // Rápido primeiro: mediana [1,3,5]=3, média 3, mín 1, máx 5, 3/6 = 50%
+    expect(lines[1]).toBe("Rápido;3;3;3;1;5;50%");
+    // Lento: mediana [10,20,30]=20, média 20, mín 10, máx 30, 50%
+    expect(lines[2]).toBe("Lento;3;20;20;10;30;50%");
+    expect(lines[3]).toBe("Total;6;;;;;");
+  });
+
+  it("suprime a mediana de amostra fina (não-confiável), mantendo as demais colunas", () => {
+    const report = proposalDeliberationByContact([
+      { contact: c("1", "Ana"), shows: [decided(5), decided(9)] }, // 2 decisões < MIN
+    ]);
+    const lines = proposalDeliberationByContactToCsv(report.rows, report.totalSamples).split(
+      "\r\n",
+    );
+    // Mediana em branco; média [5,9]=7, mín 5, máx 9, 2/2 = 100%
+    expect(lines[1]).toBe("Ana;2;;7;5;9;100%");
   });
 });
 
