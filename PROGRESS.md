@@ -9,7 +9,32 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1599 testes** verdes após o
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1604 testes** verdes após o
+**nudge no Painel do contratante que passou a decidir mais devagar** (Sessão 286, D280 — fecha a paridade TOTAL dos
+eixos por-contratante no Painel: cada um agora tem os DOIS sabores de eco — o ABSOLUTO (uma relação bem pior que a
+carteira hoje) E o de TENDÊNCIA (uma relação que piorou ano a ano). A **deliberação** só tinha o absoluto
+(`slowDeliberatorHeadline`/D277); faltava o de tendência, embora a lógica pura de comparação já existisse
+(`compareProposalDeliberationByContact`/D278) — o sinal só vivia na página `/shows/funil/tempo-em-etapa/por-contratante`.
+Novo helper puro `contactDeliberationRiseHeadline(comparison, minSample?, riseDays?, criticalDays?)` + tipo
+`ContactDeliberationRiseHeadline<C>` + constantes `DELIBERATION_RISE_DAYS`(=6, o dobro do `DELIBERATION_TREND_EPSILON`=3 do
+card) e `DELIBERATION_RISE_CRITICAL_DAYS`(=14) em `src/lib/shows.ts` (espelho fiel de `contactPaymentLagRiseHeadline`/D279 e
+`contactBookingLeadTimeDropHeadline`/D272 no eixo da deliberação): recebe um `ProposalDeliberationByContactComparison` já
+computado (dois `proposalDeliberationByContact`, cada um recortado ao seu ano via `opts.year`/D276) e destila o contratante
+de MAIOR alta de deliberação com amostra confiável (`stat.count >= minSample` nas DUAS coortes) e alta ≥ `riseDays` dias;
+`critical` a ≥ `criticalDays`; `others` resume os demais no gate. **Ancora na MEDIANA** (ao contrário do recebimento/D279 que
+usa a média) — a mesma escolha do card/comparativo D278, o eixo por que a página ordena/destaca. Banner no
+`dashboard/page.tsx` (link `/shows/funil/tempo-em-etapa/por-contratante?ano={ano}`, 🐌 não-crítico / 🔴 crítico) que **CEDE A
+VEZ** ao nudge absoluto de deliberação (`slowDeliberatorHeadline`) — no máximo um banner de deliberação por vez. Reusa o MESMO
+pivô show×contato já montado para a conversão/deliberação por contratante (as shows carregam `statusEvents`, o único campo que
+a deliberação precisa): zero I/O extra, zero regra de negócio nova, zero migração, zero dependência. Só a ponta de PIORA
+(decidir mais devagar) vira alerta; acelerar a decisão é boa notícia. **+5 testes** (`shows.test.ts`,
+`describe("contactDeliberationRiseHeadline")`: aponta o contratante que mais desacelerou a decisão com amostra confiável nas
+duas coortes (crítico); dispara não-crítico entre o piso e o limiar crítico; ignora pioras de amostra fina e elege a maior
+confiável, contando o resto em `others`; não dispara sem piora material (abaixo do piso); respeita limiares injetáveis).
+Build/typecheck/lint verdes; smoke → `/login` 200, `/dashboard` e `/shows/funil/tempo-em-etapa/por-contratante?ano=2026`
+307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories). O `DELIBERATION_RISE_DAYS`=6 é menor que os 14 dos
+irmãos porque a deliberação costuma ser mais curta que o prazo de recebimento ou a antecedência (mesma razão do epsilon do card
+já ser 3 < 7). Ver D280. Antes disso, **1599 testes** verdes após o
 **nudge no Painel do contratante que passou a pagar mais devagar** (Sessão 285, D279 — fecha a paridade dos eixos
 por-contratante no Painel: os irmãos mais novos já ecoavam na primeira tela quando UMA relação piora ano a ano —
 antecedência encolhendo (`contactBookingLeadTimeDropHeadline`/D272), conversão caindo (`contactConversionDropHeadline`/D248)

@@ -9656,3 +9656,52 @@ contexto, decisão, justificativa e alternativas consideradas.
   (auth-gated, sem 500). `npm audit` **inalterado** vs. baseline (10 advisories; ver D6).
 - **Nota de concorrência:** número **D279** escolhido como o próximo livre após o D278 (Sessão 284). Se uma
   PR paralela reivindicar D279, renumerar para o próximo livre no merge.
+
+## 2026-07-10 — D280: Nudge no Painel do contratante que passou a decidir mais devagar (`contactDeliberationRiseHeadline` + banner em `dashboard/page.tsx`)
+- **Contexto:** o Painel já tinha DOIS sabores de eco por-contratante para os eixos irmãos — o ABSOLUTO
+  (uma relação bem pior que a carteira HOJE) e o de TENDÊNCIA (uma relação que PIOROU ano a ano): antecedência
+  tem `bookingLeadTimeHeadline` (absoluto) + `contactBookingLeadTimeDropHeadline` (YoY/D272); recebimento tem
+  `paymentLagHeadline` (absoluto) + `contactPaymentLagRiseHeadline` (YoY/D279); conversão tem
+  `proposalConversionHeadline` (geral) + `contactConversionDropHeadline` (YoY/D248). A **deliberação** só tinha
+  o absoluto — `slowDeliberatorHeadline` (D277, quem decide bem mais devagar que a TÍPICA da carteira). Faltava
+  o sabor de TENDÊNCIA: "quem, dos parceiros recorrentes, passou a demorar materialmente MAIS para decidir uma
+  proposta que no ano passado?". A lógica pura de comparação já existia (`compareProposalDeliberationByContact`/
+  D278), mas o sinal só vivia na página `/shows/funil/tempo-em-etapa/por-contratante`; o Painel não avisava.
+  Um parceiro que passa a arrastar a decisão prende suas propostas na mesa — é a hora de cobrar prazo.
+- **Decisão:** novo helper puro `contactDeliberationRiseHeadline(comparison, minSample?, riseDays?, criticalDays?)`
+  + tipo `ContactDeliberationRiseHeadline<C>` + constantes `DELIBERATION_RISE_DAYS`(=6) e
+  `DELIBERATION_RISE_CRITICAL_DAYS`(=14) em `src/lib/shows.ts` (espelho fiel de `contactPaymentLagRiseHeadline`/
+  D279 e `contactBookingLeadTimeDropHeadline`/D272, aqui no eixo da deliberação). Recebe um
+  `ProposalDeliberationByContactComparison` já computado (dois `proposalDeliberationByContact`, cada um sobre a
+  coorte do seu ano via `opts.year`/D276) e destila o contratante de MAIOR alta de deliberação com amostra
+  confiável — `stat.count >= minSample` nas DUAS coortes — e alta de ao menos `riseDays` dias; `critical` a
+  ≥ `criticalDays`; `others` resume os demais no gate. Banner no `dashboard/page.tsx` (link
+  `/shows/funil/tempo-em-etapa/por-contratante?ano={ano}`) que **CEDE A VEZ** ao nudge absoluto de deliberação
+  (`slowDeliberatorHeadline`/D277) — no máximo um banner de deliberação por vez. Reusa o MESMO pivô
+  show×contato já montado para a conversão/deliberação por contratante (as shows carregam `statusEvents`, o
+  único campo que a deliberação precisa): **zero I/O extra, zero regra de negócio nova, zero migração, zero
+  dependência**. Só a ponta de PIORA (decidir mais devagar) vira alerta; acelerar a decisão é boa notícia.
+- **Justificativa:** leva o eixo por-contratante da deliberação à paridade TOTAL com os irmãos no Painel
+  (agora todos têm absoluto + tendência YoY). A lógica de comparação já existia (D278), só faltava o eco na
+  primeira tela. Emoji 🐌 (não-crítico) / 🔴 (crítico), reaproveitando o 🐌 do nudge absoluto de deliberação
+  (D277) já que só um deles aparece por vez (cessão de vez). Gate duplo (confiança + piora material) mantém o
+  nudge raro, como nos irmãos.
+- **Alternativas consideradas:** (a) ancorar na MÉDIA (como o nudge de recebimento/D279) — **descartado**: o
+  próprio `compareProposalDeliberationByContact` (D278) ancora deliberadamente na MEDIANA (é o eixo por que a
+  página ordena/destaca e o `slowest`/tendência decide), então o nudge segue a mesma escolha para ser
+  consistente com o card — ao contrário do recebimento, onde a média é o eixo por decisão de amostra pequena.
+  (b) não ceder a vez ao absoluto — descartado: adensaria o Painel com dois banners de deliberação; a disciplina
+  "um por vez" espelha D272/D279. (c) piso de 14 dias (como os irmãos) — descartado: usar `DELIBERATION_RISE_DAYS`=6
+  (2× o `DELIBERATION_TREND_EPSILON`=3 do card, a mesma regra "2× o epsilon" dos irmãos), menor que os 14 dos
+  irmãos porque a deliberação costuma ser mais curta que o prazo de recebimento ou a antecedência de agenda —
+  a mesma razão por que o próprio epsilon do card já é 3 (< os 7 dos irmãos).
+- **DoD:** build de produção OK, typecheck (`tsc --noEmit`, 0 erros), lint (`next lint`, 0 avisos);
+  **1604 testes** (`vitest run`, +5 em `shows.test.ts`, `describe("contactDeliberationRiseHeadline")`: aponta o
+  contratante que mais desacelerou a decisão com amostra confiável nas duas coortes (crítico); dispara
+  não-crítico entre o piso e o limiar crítico; ignora pioras de amostra fina e elege a maior CONFIÁVEL, contando
+  o resto em `others`; não dispara sem piora material (abaixo do piso); respeita limiares injetáveis de piso/
+  crítico). Smoke (`next start`) → `/login` 200, `/dashboard` e
+  `/shows/funil/tempo-em-etapa/por-contratante?ano=2026` 307→/login (auth-gated, sem 500). `npm audit`
+  **inalterado** vs. baseline (10 advisories; ver D6).
+- **Nota de concorrência:** número **D280** escolhido como o próximo livre após o D279 (Sessão 286). Se uma
+  PR paralela reivindicar D280, renumerar para o próximo livre no merge.

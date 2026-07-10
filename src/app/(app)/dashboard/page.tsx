@@ -84,6 +84,8 @@ import {
   currentDrySpellHeadline,
   proposalDeliberationByContact,
   slowDeliberatorHeadline,
+  compareProposalDeliberationByContact,
+  contactDeliberationRiseHeadline,
   type ConflictShowLike,
   type LeadTimeShowLike,
   type StaleProposalShowLike,
@@ -568,6 +570,30 @@ export default async function DashboardPage() {
   const slowDeliberator = slowDeliberatorHeadline(
     proposalDeliberationByContact(conversionContactItems),
   );
+
+  // Deliberação DESACELERANDO com um contratante (D278 no Painel): "quem, dos meus
+  // parceiros recorrentes, passou a demorar materialmente mais para decidir uma
+  // proposta que no ano passado?". Reaproveita o MESMO pivô show×contato (as shows
+  // carregam statusEvents, o único campo que a deliberação precisa — zero I/O extra):
+  // monta a deliberação por contratante da coorte deste ano e da do anterior
+  // (proposalDeliberationByContact recorta pela entrada da proposta no funil, D276),
+  // compara (compareProposalDeliberationByContact) e destila o contratante de maior
+  // alta de decisão com amostra confiável nas duas coortes (contactDeliberationRiseHeadline
+  // resolve o gate). CEDE A VEZ ao nudge absoluto de deliberação (slowDeliberatorHeadline):
+  // quando alguém já decide bem mais devagar que a carteira, o Painel conta essa história
+  // e o detalhe por contratante espera o clique; este brilha quando a carteira decide num
+  // ritmo saudável mas uma relação específica azedou de um ano para o outro. Fecha a
+  // paridade dos eixos por-contratante no Painel (antecedência/D272, recebimento/D279,
+  // conversão/D248 já ecoavam a piora ano a ano; faltava o da deliberação). O detalhe está
+  // em /shows/funil/tempo-em-etapa/por-contratante.
+  const deliberationRiseHead = slowDeliberator.show
+    ? null // o nudge absoluto de deliberação já está no ar; cede a vez (evita banner duplo)
+    : contactDeliberationRiseHeadline(
+        compareProposalDeliberationByContact(
+          proposalDeliberationByContact(conversionContactItems, { year: currentYear }),
+          proposalDeliberationByContact(conversionContactItems, { year: currentYear - 1 }),
+        ),
+      );
 
   // Oportunidade de rebooking (D229): a praça mais esquecida que vale um retorno —
   // cidade onde já toquei (com lastro, ≥ 2 shows), nada agendado adiante e há > 90
@@ -1231,6 +1257,42 @@ export default async function DashboardPage() {
             {daysLabel(slowDeliberator.typicalDays)} da carteira. Vale cobrar a decisão.
           </span>
           <span className={slowDeliberator.critical ? "text-red-600" : "text-amber-600"}>
+            Ver →
+          </span>
+        </Link>
+      )}
+
+      {/* Um contratante recorrente passou a decidir mais devagar (D278 no Painel):
+          cede a vez ao nudge absoluto acima; brilha quando a carteira decide num ritmo
+          saudável na média mas uma relação específica arrastou a decisão ano a ano. */}
+      {deliberationRiseHead?.show && deliberationRiseHead.contact && (
+        <Link
+          href={`/shows/funil/tempo-em-etapa/por-contratante?ano=${currentYear}`}
+          className={
+            "flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3 text-sm transition " +
+            (deliberationRiseHead.critical
+              ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100")
+          }
+        >
+          <span className="font-semibold">
+            {deliberationRiseHead.critical ? "🔴" : "🐌"} {deliberationRiseHead.contact.name} passou a decidir mais devagar
+          </span>
+          <span>
+            Em {currentYear} leva <strong>{daysLabel(deliberationRiseHead.currentMedianDays)}</strong> em
+            mediana para decidir suas propostas (sobre {deliberationRiseHead.sample}{" "}
+            {deliberationRiseHead.sample === 1 ? "decisão" : "decisões"}) —{" "}
+            <strong>{daysLabel(deliberationRiseHead.riseDays)} a mais</strong> que em {currentYear - 1}{" "}
+            ({daysLabel(deliberationRiseHead.previousMedianDays)})
+            {deliberationRiseHead.others > 0 && (
+              <span className={deliberationRiseHead.critical ? "text-red-600" : "text-amber-600"}>
+                {" "}
+                · +{deliberationRiseHead.others}{" "}
+                {deliberationRiseHead.others === 1 ? "contratante desacelerou" : "contratantes desaceleraram"}
+              </span>
+            )}
+          </span>
+          <span className={deliberationRiseHead.critical ? "text-red-600" : "text-amber-600"}>
             Ver →
           </span>
         </Link>
