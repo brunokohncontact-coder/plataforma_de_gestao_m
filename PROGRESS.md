@@ -9,7 +9,32 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1606 testes** verdes após o
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1612 testes** verdes após o
+**comparativo ano a ano por etapa do funil na tela-mãe** (Sessão 288, D282 — fecha o "passo maior" adiado na D281:
+a tela-mãe do tempo em cada etapa (`/shows/funil/tempo-em-etapa`) já recortava por ano (`?ano=`, D281), mas não sabia
+comparar {ano}×{ano-1} POR ETAPA — o espelho, no eixo do funil inteiro, do que a filha por contratante já tinha
+(`compareProposalDeliberationByContact`/D278). Três funções puras novas em `src/lib/shows.ts`, espelho fiel de D278:
+`compareFunnelStageDurations(current, previous)` casa as etapas por `status` entre dois `funnelStageDurations` já
+recortados por ano e devolve `changes` (variação da mediana + `trend`), `biggestSpeedup`/`biggestSlowdown` e
+`newStages`/`droppedStages`, **preservando a ordem canônica do funil** em `changes` para a coluna alinhar sem reordenar;
+`indexStageDurationChanges(comparison)` → lookup `status`→`changed`/`new`/`none` em O(1); e a constante
+`STAGE_DURATION_TREND_EPSILON`(=3, própria para afinar sem mexer no eixo da deliberação). Como na deliberação (D278),
+**descer** a mediana é o sinal saudável (o show fica menos tempo parado na etapa): `trend` = `"faster"` (≤ −ε) /
+`"slower"` (≥ +ε) / `"stable"`. Rótulo NEUTRO (faster/slower, não improved/worsened) porque a mãe cobre TODAS as etapas
+e "atravessar mais rápido" nem sempre é inequivocamente melhor — descreve o fato mantendo a cor (verde = descer). Página
+ganha o card "Como mudou o ritmo do funil · {ano} vs. {ano-1}" (etapa que mais acelerou / mais desacelerou + rodapé de
+etapas que ganharam/perderam amostra) e a coluna "vs. {ano-1}" na tabela Detalhe; o CSV `stageDurationsToCsv` ganha a
+coluna opcional "vs. {ano-1} (dias)" quando `previousYear`+`rowStatus` são informados (espelho de
+`proposalDeliberationByContactToCsv`). Só exibe com um ano específico e ambos os períodos com amostra. Reusa os MESMOS
+shows já carregados (recorta o ano anterior pela mesma agregação pura), zero nova consulta, zero migração, zero
+dependência. **+6 testes** (`shows.test.ts`, `describe("compareFunnelStageDurations / indexStageDurationChanges")`: sem
+etapas em comum → changes vazio + new/dropped; faster/slower além do limiar com ordem canônica preservada + biggest
+speedup/slowdown; variação dentro do limiar fica estável; etapas só num período viram new/dropped; lookup
+changed/new/none incl. null/undefined — `csv.test.ts`: coluna "vs. {ano-1} (dias)" com variação assinada, "novo" e Total
+em branco). Build/typecheck/lint verdes; smoke → `/login` 200, `/shows/funil/tempo-em-etapa`, `?ano=2026` e
+`/export?ano=2026` 307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories). A tela-mãe do tempo em etapa
+agora está em paridade TOTAL com a filha por contratante (recorte por ano + comparativo YoY + coluna "vs. {ano-1}" + CSV).
+Ver D282. Antes disso, **1606 testes** verdes após o
 **recorte por ano (`?ano=`) no tempo em cada etapa do funil** (Sessão 287, D281 — fecha o descompasso de paridade
 herdado no funil: a página-mãe `/shows/funil/tempo-em-etapa` (`funnelStageDurations`/D235) media a permanência típica
 em cada etapa somando TODAS as propostas de todos os tempos, SEM seletor de período — ao contrário das telas irmãs do

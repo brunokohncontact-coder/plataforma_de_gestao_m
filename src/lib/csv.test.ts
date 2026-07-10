@@ -146,6 +146,8 @@ import {
   findScheduleConflicts,
   bookingLeadTime,
   funnelStageDurations,
+  compareFunnelStageDurations,
+  indexStageDurationChanges,
   proposalDeliberationByContact,
   proposalOutcomes,
   compareProposalOutcomes,
@@ -3048,6 +3050,37 @@ describe("stageDurationsToCsv", () => {
     // mediana [2,4,9]=4, média 5, mín 2, máx 9
     expect(lines[1]).toBe("Proposto;3;4;5;2;9");
     expect(lines[2]).toBe("Total;3;;;;");
+  });
+
+  it("com previousYear anexa a coluna vs. {ano-1} (dias) com variação assinada, novo e Total em branco", () => {
+    const start = (year: number) => Date.parse(`${year}-06-01T00:00:00.000Z`);
+    const inYear = (year: number, proposed: number, confirmed?: number) => {
+      const events = [
+        ev(null, "PROPOSED", new Date(start(year)).toISOString()),
+        ev("PROPOSED", "CONFIRMED", new Date(start(year) + proposed * 86400000).toISOString()),
+      ];
+      if (confirmed !== undefined) {
+        events.push(
+          ev("CONFIRMED", "PLAYED", new Date(start(year) + (proposed + confirmed) * 86400000).toISOString()),
+        );
+      }
+      return { statusEvents: events };
+    };
+    // PROPOSED acelerou (20 → 4 = −16); CONFIRMED só existe em 2026 → "novo".
+    const shows = [inYear(2025, 20), inYear(2026, 4, 10)];
+    const current = funnelStageDurations(shows, { year: 2026 });
+    const previous = funnelStageDurations(shows, { year: 2025 });
+    const comparison = compareFunnelStageDurations(current, previous);
+    const rowStatus = indexStageDurationChanges(comparison);
+    const lines = stageDurationsToCsv(current, undefined, 2025, rowStatus).split("\r\n");
+    // Cabeçalho ganha a 7ª coluna.
+    expect(lines[0]).toBe(STAGE_DURATIONS_CSV_HEADERS.join(";") + ";vs. 2025 (dias)");
+    // Proposto: variação -16 dias (sinal ASCII cru, legível por máquina).
+    expect(lines[1]).toBe("Proposto;1;4;4;4;4;-16");
+    // Confirmado: só em 2026 → "novo".
+    expect(lines[2]).toBe("Confirmado;1;10;10;10;10;novo");
+    // Total: coluna de tendência em branco.
+    expect(lines[3]).toBe("Total;2;;;;;");
   });
 });
 

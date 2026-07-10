@@ -38,6 +38,8 @@ import {
   MIN_LEAD_TIME_SAMPLE,
   buildStatusTimeline,
   funnelStageDurations,
+  compareFunnelStageDurations,
+  indexStageDurationChanges,
   proposalDeliberationByContact,
   MIN_DELIBERATION_SAMPLE,
   compareProposalDeliberationByContact,
@@ -1738,6 +1740,111 @@ describe("funnelStageDurations", () => {
     expect(y26.stages).toEqual([]);
     expect(y26.totalSamples).toBe(0);
     expect(y26.showCount).toBe(0);
+  });
+});
+
+describe("compareFunnelStageDurations / indexStageDurationChanges", () => {
+  const ev = (
+    fromStatus: string | null,
+    toStatus: string,
+    createdAt: string,
+  ): StatusEventLike => ({ fromStatus, toStatus, createdAt });
+
+  /**
+   * Show cuja proposta ENTROU no funil em `year`, ficou `proposed` dias na etapa
+   * PROPOSED e (se `confirmed` informado) `confirmed` dias na etapa CONFIRMED.
+   */
+  const showInYear = (year: number, proposed: number, confirmed?: number) => {
+    const start = Date.parse(`${year}-06-01T00:00:00.000Z`);
+    const events: StatusEventLike[] = [
+      ev(null, "PROPOSED", new Date(start).toISOString()),
+      ev("PROPOSED", "CONFIRMED", new Date(start + proposed * 86400000).toISOString()),
+    ];
+    if (confirmed !== undefined) {
+      events.push(
+        ev(
+          "CONFIRMED",
+          "PLAYED",
+          new Date(start + (proposed + confirmed) * 86400000).toISOString(),
+        ),
+      );
+    }
+    return { statusEvents: events };
+  };
+
+  const cut = (shows: Parameters<typeof funnelStageDurations>[0], year: number) =>
+    funnelStageDurations(shows, { year });
+
+  it("sem etapas em comum devolve changes vazio + dropped/new", () => {
+    // 2025 só tem PROPOSED; 2026 só tem CONFIRMED (sem etapa compartilhada).
+    const only2025 = [showInYear(2025, 5)]; // PROPOSED
+    const only2026 = [
+      { statusEvents: [ev(null, "CONFIRMED", "2026-01-01T00:00:00.000Z"), ev("CONFIRMED", "PLAYED", "2026-01-05T00:00:00.000Z")] },
+    ];
+    // Recorta cada período do seu próprio acervo para isolar as etapas.
+    const current = funnelStageDurations(only2026); // CONFIRMED (sem coorte de ano → usa "all")
+    const previous = funnelStageDurations(only2025); // PROPOSED
+    const cmp = compareFunnelStageDurations(current, previous);
+    expect(cmp.changes).toEqual([]);
+    expect(cmp.biggestSpeedup).toBeNull();
+    expect(cmp.biggestSlowdown).toBeNull();
+    expect(cmp.newStages.map((s) => s.status)).toEqual(["CONFIRMED"]);
+    expect(cmp.droppedStages.map((s) => s.status)).toEqual(["PROPOSED"]);
+  });
+
+  it("marca faster quando a mediana cai além do limiar e slower quando sobe, mantendo a ordem do funil", () => {
+    // PROPOSED acelerou (20 → 4 = −16), CONFIRMED desacelerou (4 → 20 = +16).
+    const shows = [
+      showInYear(2025, 18, 2),
+      showInYear(2025, 20, 4),
+      showInYear(2025, 22, 6),
+      showInYear(2026, 2, 18),
+      showInYear(2026, 4, 20),
+      showInYear(2026, 6, 22),
+    ];
+    const cmp = compareFunnelStageDurations(cut(shows, 2026), cut(shows, 2025));
+    // Ordem canônica do funil preservada: PROPOSED antes de CONFIRMED.
+    expect(cmp.changes.map((c) => c.status)).toEqual(["PROPOSED", "CONFIRMED"]);
+    const proposed = cmp.changes.find((c) => c.status === "PROPOSED")!;
+    const confirmed = cmp.changes.find((c) => c.status === "CONFIRMED")!;
+    expect(proposed).toMatchObject({ medianDaysDelta: -16, trend: "faster" });
+    expect(confirmed).toMatchObject({ medianDaysDelta: 16, trend: "slower" });
+    expect(cmp.biggestSpeedup!.status).toBe("PROPOSED");
+    expect(cmp.biggestSlowdown!.status).toBe("CONFIRMED");
+  });
+
+  it("variação dentro do limiar fica estável (nem faster nem slower)", () => {
+    // PROPOSED variou só 2 dias (< STAGE_DURATION_TREND_EPSILON=3).
+    const shows = [showInYear(2025, 5), showInYear(2026, 7)];
+    const cmp = compareFunnelStageDurations(cut(shows, 2026), cut(shows, 2025));
+    expect(cmp.changes).toHaveLength(1);
+    expect(cmp.changes[0]).toMatchObject({ status: "PROPOSED", medianDaysDelta: 2, trend: "stable" });
+    expect(cmp.biggestSpeedup).toBeNull();
+    expect(cmp.biggestSlowdown).toBeNull();
+  });
+
+  it("etapas só num período viram new/dropped", () => {
+    // 2025: PROPOSED + CONFIRMED. 2026: só PROPOSED (proposta ainda sem 2ª travessia).
+    const shows = [showInYear(2025, 5, 8), showInYear(2026, 6)];
+    const cmp = compareFunnelStageDurations(cut(shows, 2026), cut(shows, 2025));
+    // PROPOSED existe nos dois; CONFIRMED só em 2025 → dropped.
+    expect(cmp.changes.map((c) => c.status)).toEqual(["PROPOSED"]);
+    expect(cmp.newStages).toEqual([]);
+    expect(cmp.droppedStages.map((s) => s.status)).toEqual(["CONFIRMED"]);
+  });
+
+  it("indexStageDurationChanges resolve changed / new / none por status", () => {
+    // 2026 ganha uma etapa nova (CONFIRMED só no atual); PROPOSED muda nos dois.
+    const shows = [showInYear(2025, 20), showInYear(2026, 4, 10)];
+    const cmp = compareFunnelStageDurations(cut(shows, 2026), cut(shows, 2025));
+    const lookup = indexStageDurationChanges(cmp);
+    const proposed = lookup("PROPOSED");
+    expect(proposed.kind).toBe("changed");
+    if (proposed.kind === "changed") expect(proposed.change.medianDaysDelta).toBe(-16);
+    expect(lookup("CONFIRMED").kind).toBe("new");
+    expect(lookup("PLAYED").kind).toBe("none");
+    expect(lookup(null).kind).toBe("none");
+    expect(lookup(undefined).kind).toBe("none");
   });
 });
 

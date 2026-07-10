@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import {
   funnelStageDurations,
   proposalOutcomeYears,
+  compareFunnelStageDurations,
+  indexStageDurationChanges,
   type ProposalOutcomeShowLike,
 } from "@/lib/shows";
 import { parseProfitYear } from "@/lib/finance";
@@ -37,7 +39,24 @@ export async function GET(request: Request) {
   const durations = funnelStageDurations(shows, {
     year: yearFilter === "all" ? "all" : yearFilter,
   });
-  const csv = stageDurationsToCsv(durations);
+
+  // Com um ano específico e ambos os períodos com amostra, anexa a coluna
+  // "vs. {ano-1} (dias)" — o mesmo comparativo da tela (D282). Reusa os mesmos
+  // shows já carregados, recortando o ano anterior pela agregação pura.
+  let previousYear: number | null = null;
+  let rowStatus: ReturnType<typeof indexStageDurationChanges> | undefined;
+  if (yearFilter !== "all") {
+    const previous = funnelStageDurations(shows, { year: yearFilter - 1 });
+    if (durations.totalSamples > 0 && previous.totalSamples > 0) {
+      const comparison = compareFunnelStageDurations(durations, previous);
+      if (comparison.changes.length > 0) {
+        previousYear = yearFilter - 1;
+        rowStatus = indexStageDurationChanges(comparison);
+      }
+    }
+  }
+
+  const csv = stageDurationsToCsv(durations, undefined, previousYear, rowStatus);
 
   const suffix = yearFilter === "all" ? "todas" : String(yearFilter);
   // BOM UTF-8 para preservar acentuação ao abrir no Excel.
