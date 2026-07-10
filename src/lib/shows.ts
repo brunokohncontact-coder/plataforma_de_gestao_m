@@ -1985,6 +1985,62 @@ export function funnelStageDurations(
   return { stages, totalSamples, showCount };
 }
 
+// ── Onde o tempo se concentra ao longo do funil ──────────────────────────────
+// `funnelStageDurations` mede a mediana de permanência POR etapa; esta leitura
+// derivada responde à pergunta de COMPOSIÇÃO: de todo o tempo que um show leva
+// atravessando o funil, que naco fica em cada etapa? É o gargalo de tempo num
+// relance. Ver D283.
+
+/** Participação de uma etapa no tempo típico de percurso do funil. */
+export interface StageTimeShare {
+  /** Etapa medida (mesmo `status` de `StageDurationStat`). */
+  status: string;
+  /** Mediana de permanência da etapa (dias inteiros). */
+  medianDays: number;
+  /** `medianDays` ÷ soma das medianas de todas as etapas (0..1). */
+  share: number;
+}
+
+/** Onde o tempo se concentra ao longo do funil (composição das medianas). */
+export interface StageTimeConcentration {
+  /** Uma entrada por etapa, na ordem canônica de `durations.stages`. */
+  shares: StageTimeShare[];
+  /** Soma das medianas de permanência de todas as etapas (denominador do share). */
+  totalMedianDays: number;
+  /** A etapa que concentra o maior naco do tempo, ou `null` sem base. */
+  dominant: StageTimeShare | null;
+}
+
+/**
+ * Onde o tempo se concentra ao longo do funil: cada etapa como fração do tempo
+ * TÍPICO de percurso, isto é, sua mediana de permanência sobre a SOMA das medianas
+ * de todas as etapas. NÃO é a mediana do percurso inteiro (que não se recompõe das
+ * medianas por etapa) — é uma leitura de COMPOSIÇÃO, o mesmo espírito de
+ * `incomeMix`/`expenseMix`, respondendo "de todo o tempo que um show leva
+ * atravessando o funil, que naco fica em cada etapa?". Preserva a ordem canônica de
+ * `durations.stages`. `dominant` é a etapa de maior naco (o maior gargalo de tempo);
+ * empate resolve pela primeira na ordem do funil (comparação estrita). Sem medianas
+ * positivas (`totalMedianDays === 0`) devolve shares zerados e `dominant` nulo. Pura
+ * e determinística. Ver D283.
+ */
+export function stageTimeConcentration(
+  durations: FunnelStageDurations,
+): StageTimeConcentration {
+  const totalMedianDays = durations.stages.reduce((sum, s) => sum + s.medianDays, 0);
+  const shares: StageTimeShare[] = durations.stages.map((s) => ({
+    status: s.status,
+    medianDays: s.medianDays,
+    share: totalMedianDays > 0 ? s.medianDays / totalMedianDays : 0,
+  }));
+  let dominant: StageTimeShare | null = null;
+  if (totalMedianDays > 0) {
+    for (const entry of shares) {
+      if (!dominant || entry.share > dominant.share) dominant = entry;
+    }
+  }
+  return { shares, totalMedianDays, dominant };
+}
+
 // ── Comparativo ano a ano do tempo em cada etapa ─────────────────────────────
 // `funnelStageDurations` já recorta por ano (D281); este comparativo casa DUAS
 // leituras (o ano selecionado × o anterior) por etapa (`status`) e destila a
