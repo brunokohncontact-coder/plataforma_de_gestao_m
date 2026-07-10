@@ -39,6 +39,10 @@ import {
   buildStatusTimeline,
   funnelStageDurations,
   stageTimeConcentration,
+  stageTimeBottleneckHeadline,
+  STAGE_BOTTLENECK_SHARE,
+  STAGE_BOTTLENECK_CRITICAL_SHARE,
+  STAGE_BOTTLENECK_MIN_SHOWS,
   compareFunnelStageDurations,
   indexStageDurationChanges,
   proposalDeliberationByContact,
@@ -1828,6 +1832,108 @@ describe("stageTimeConcentration", () => {
     expect(c.shares).toHaveLength(1);
     expect(c.shares[0].share).toBe(0);
     expect(c.dominant).toBeNull();
+  });
+});
+
+describe("stageTimeBottleneckHeadline", () => {
+  const ev = (
+    fromStatus: string | null,
+    toStatus: string,
+    createdAt: string,
+  ): StatusEventLike => ({ fromStatus, toStatus, createdAt });
+
+  /**
+   * `n` shows idênticos, cada um ficando `proposed` dias em PROPOSED e `confirmed`
+   * dias em CONFIRMED (índice `i` desloca a data-base para gerar shows distintos).
+   */
+  const shows = (n: number, proposed: number, confirmed: number) =>
+    Array.from({ length: n }, (_, i) => {
+      const start = Date.parse(`2026-01-01T00:00:00.000Z`) + i * 40 * 86400000;
+      return {
+        statusEvents: [
+          ev(null, "PROPOSED", new Date(start).toISOString()),
+          ev(
+            "PROPOSED",
+            "CONFIRMED",
+            new Date(start + proposed * 86400000).toISOString(),
+          ),
+          ev(
+            "CONFIRMED",
+            "PLAYED",
+            new Date(start + (proposed + confirmed) * 86400000).toISOString(),
+          ),
+        ],
+      };
+    });
+
+  it("sem amostra não dispara", () => {
+    const h = stageTimeBottleneckHeadline(funnelStageDurations([]));
+    expect(h.show).toBe(false);
+    expect(h.critical).toBe(false);
+    expect(h.share).toBe(0);
+    expect(h.sample).toBe(0);
+    expect(h.totalMedianDays).toBe(0);
+  });
+
+  it("dispara quando PROPOSED domina o tempo de percurso com amostra confiável", () => {
+    // PROPOSED 10 dias, CONFIRMED 5 → soma 15, share de PROPOSED = 2/3 (≥ 0.5, < 0.7).
+    const h = stageTimeBottleneckHeadline(funnelStageDurations(shows(4, 10, 5)));
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(false);
+    expect(h.share).toBeCloseTo(10 / 15, 5);
+    expect(h.medianDays).toBe(10);
+    expect(h.totalMedianDays).toBe(15);
+    expect(h.sample).toBe(4);
+  });
+
+  it("escala para crítico quando a fatia de PROPOSED atinge o piso crítico", () => {
+    // PROPOSED 8 dias, CONFIRMED 2 → soma 10, share = 0.8 (≥ 0.7).
+    const h = stageTimeBottleneckHeadline(funnelStageDurations(shows(4, 8, 2)));
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(true);
+    expect(h.share).toBeCloseTo(0.8, 5);
+  });
+
+  it("não dispara quando o gargalo é CONFIRMED (espera esperada, não acionável)", () => {
+    // PROPOSED 3 dias, CONFIRMED 10 → dominante é CONFIRMED; share de PROPOSED só informa.
+    const h = stageTimeBottleneckHeadline(funnelStageDurations(shows(5, 3, 10)));
+    expect(h.show).toBe(false);
+    expect(h.critical).toBe(false);
+    expect(h.share).toBeCloseTo(3 / 13, 5); // ainda reporta a fatia de PROPOSED
+    expect(h.medianDays).toBe(3);
+  });
+
+  it("não dispara com amostra abaixo do mínimo, mesmo com PROPOSED dominante", () => {
+    const h = stageTimeBottleneckHeadline(
+      funnelStageDurations(shows(STAGE_BOTTLENECK_MIN_SHOWS - 1, 10, 5)),
+    );
+    expect(h.sample).toBe(STAGE_BOTTLENECK_MIN_SHOWS - 1);
+    expect(h.show).toBe(false);
+    expect(h.share).toBeCloseTo(10 / 15, 5);
+  });
+
+  it("empate 50/50 dispara (limiar inclusivo, dominância cabe a PROPOSED)", () => {
+    // PROPOSED e CONFIRMED com 6 dias cada → share 0.5; dominante = PROPOSED (canônico).
+    const h = stageTimeBottleneckHeadline(funnelStageDurations(shows(4, 6, 6)));
+    expect(h.share).toBeCloseTo(0.5, 5);
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(false);
+  });
+
+  it("respeita limiares customizados de share", () => {
+    const durations = funnelStageDurations(shows(4, 10, 5)); // share = 2/3
+    // Piso mais alto que a fatia observada → não dispara.
+    expect(stageTimeBottleneckHeadline(durations, 0.75).show).toBe(false);
+    // Piso crítico mais baixo → a mesma fatia já vira crítico.
+    const h = stageTimeBottleneckHeadline(durations, STAGE_BOTTLENECK_SHARE, 0.6);
+    expect(h.show).toBe(true);
+    expect(h.critical).toBe(true);
+  });
+
+  it("expõe as constantes de calibração esperadas", () => {
+    expect(STAGE_BOTTLENECK_SHARE).toBe(0.5);
+    expect(STAGE_BOTTLENECK_CRITICAL_SHARE).toBe(0.7);
+    expect(STAGE_BOTTLENECK_MIN_SHOWS).toBe(4);
   });
 });
 

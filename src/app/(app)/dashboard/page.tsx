@@ -74,6 +74,8 @@ import {
   contactBookingLeadTimeDropHeadline,
   findStaleProposals,
   staleProposalsHeadline,
+  funnelStageDurations,
+  stageTimeBottleneckHeadline,
   proposalOutcomes,
   compareProposalOutcomes,
   proposalConversionHeadline,
@@ -89,6 +91,7 @@ import {
   type ConflictShowLike,
   type LeadTimeShowLike,
   type StaleProposalShowLike,
+  type StageDurationShowLike,
   type ProposalOutcomeShowLike,
   type ShowGapShowLike,
 } from "@/lib/shows";
@@ -593,6 +596,31 @@ export default async function DashboardPage() {
           proposalDeliberationByContact(conversionContactItems, { year: currentYear }),
           proposalDeliberationByContact(conversionContactItems, { year: currentYear - 1 }),
         ),
+      );
+
+  // Gargalo de TEMPO no funil (D285 no Painel): "de todo o tempo que um show leva do
+  // primeiro contato ao palco, o grosso fica esperando decisão da proposta?".
+  // Reaproveita os shows já carregados (os statusEvents vêm na mesma consulta — zero
+  // I/O extra): funnelStageDurations mede a permanência por etapa e
+  // stageTimeBottleneckHeadline destila o caso ESTRUTURAL e acionável — quando a etapa
+  // PROPOSED concentra a maior fatia (≥ 50%) do tempo típico de percurso, com amostra
+  // confiável. É a leitura de COMPOSIÇÃO histórica (stageTimeConcentration/D283) no
+  // Painel: distinta de staleProposalsHeadline (propostas paradas AGORA, por deal) e
+  // slowDeliberatorHeadline (QUEM decide devagar, por contratante). Por ser a história
+  // maior e mais lenta, CEDE A VEZ aos nudges concretos da mesma família: se qualquer
+  // um deles já conta o problema da decisão (proposta parada agora, ou um contratante
+  // específico lento/desacelerando), o Painel não repete o recado estrutural. Brilha no
+  // caso em que nada está parado hoje e ninguém em especial arrasta, mas a carteira,
+  // vista de cima, gasta o percurso todo na decisão. O detalhe está em
+  // /shows/funil/tempo-em-etapa.
+  const proposalDelayNudgeActive =
+    staleHeadline.show ||
+    slowDeliberator.show ||
+    (deliberationRiseHead?.show ?? false);
+  const timeBottleneckHead = proposalDelayNudgeActive
+    ? null // um nudge concreto da decisão já está no ar; cede a vez (evita banner duplo)
+    : stageTimeBottleneckHeadline(
+        funnelStageDurations(shows as StageDurationShowLike[]),
       );
 
   // Oportunidade de rebooking (D229): a praça mais esquecida que vale um retorno —
@@ -1293,6 +1321,38 @@ export default async function DashboardPage() {
             )}
           </span>
           <span className={deliberationRiseHead.critical ? "text-red-600" : "text-amber-600"}>
+            Ver →
+          </span>
+        </Link>
+      )}
+
+      {/* Gargalo de tempo no funil (D285): a maior parte do tempo típico até o palco
+          fica na proposta, esperando decisão. Leitura estrutural (composição histórica);
+          cede a vez aos nudges concretos da decisão (propostas paradas / contratante
+          lento). Vermelho quando a fatia é o grosso do percurso (≥ 70%). Detalhe em
+          /shows/funil/tempo-em-etapa. */}
+      {timeBottleneckHead?.show && (
+        <Link
+          href="/shows/funil/tempo-em-etapa"
+          className={
+            "flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3 text-sm transition " +
+            (timeBottleneckHead.critical
+              ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100")
+          }
+        >
+          <span className="font-semibold">
+            {timeBottleneckHead.critical ? "🔴" : "⏳"} O funil empaca na decisão
+          </span>
+          <span>
+            <strong>{Math.round(timeBottleneckHead.share * 100)}%</strong> do tempo típico
+            até o palco fica na proposta esperando resposta —{" "}
+            <strong>{daysLabel(timeBottleneckHead.medianDays)}</strong> em mediana de{" "}
+            {daysLabel(timeBottleneckHead.totalMedianDays)} de percurso (sobre{" "}
+            {timeBottleneckHead.sample}{" "}
+            {timeBottleneckHead.sample === 1 ? "show" : "shows"}). Vale cobrar decisão mais cedo.
+          </span>
+          <span className={timeBottleneckHead.critical ? "text-red-600" : "text-amber-600"}>
             Ver →
           </span>
         </Link>

@@ -2041,6 +2041,88 @@ export function stageTimeConcentration(
   return { shares, totalMedianDays, dominant };
 }
 
+// ── Manchete de gargalo de TEMPO no funil para o Painel (o percurso empaca na decisão?) ──
+// `stageTimeConcentration` (D283) já diz, de todo o tempo típico de travessia do
+// funil, que naco fica em cada etapa. Este headline destila o caso ACIONÁVEL disso
+// para o Painel: quando a MAIOR fatia desse tempo se concentra na etapa PROPOSED —
+// as propostas passam o grosso do percurso apenas esperando decisão —, é hora de
+// cobrar resposta. SÓ a etapa PROPOSED vira nudge: se o gargalo é CONFIRMED (a espera
+// entre confirmar e o show) isso é esperado e nada há a cobrar; PLAYED/CANCELLED são
+// terminais e sequer aparecem como etapa de ORIGEM. Diferente dos irmãos de proposta:
+// `staleProposalsHeadline` (D240) aponta propostas paradas AGORA (presente, por deal);
+// `slowDeliberatorHeadline` (D275) aponta QUEM decide devagar (por contratante). Este é
+// a leitura ESTRUTURAL da carteira inteira (a composição HISTÓRICA do tempo) e por isso
+// CEDE a vez a eles no Painel. Espelha o gate de composição de
+// `clientConcentrationHeadline`/`geoConcentrationHeadline`: só dispara acima de um piso
+// de participação e com amostra confiável. Puro, sem I/O. Ver D285.
+
+/** Etapa do funil cujo gargalo de tempo é acionável no Painel (esperar decisão da proposta). */
+const STAGE_BOTTLENECK_STAGE: ShowStatus = "PROPOSED";
+/**
+ * Participação mínima do tempo típico de percurso concentrada em PROPOSED para o
+ * nudge disparar. Metade — a maior parte do percurso apenas aguardando decisão já
+ * é um gargalo material, não a distribuição natural de um funil saudável.
+ */
+export const STAGE_BOTTLENECK_SHARE = 0.5;
+/** Participação que escala o nudge para crítico (o grosso do percurso numa etapa só). */
+export const STAGE_BOTTLENECK_CRITICAL_SHARE = 0.7;
+/**
+ * Mínimo de shows com transição cronometrada para a composição ser um hábito, não
+ * 1–2 casos. Reusa a mesma escala de amostra confiável dos nudges de conversão
+ * (`CONVERSION_DROP_MIN_DECIDED`=4).
+ */
+export const STAGE_BOTTLENECK_MIN_SHOWS = 4;
+
+/** Manchete de gargalo de tempo no funil para o Painel (concentração em PROPOSED). */
+export interface StageTimeBottleneckHeadline {
+  /** True quando o Painel deve alertar (gargalo em PROPOSED acima do piso, amostra confiável). */
+  show: boolean;
+  /** True quando a concentração entra na faixa crítica (≥ `criticalShare`). */
+  critical: boolean;
+  /** Fração do tempo típico de percurso que fica na etapa PROPOSED (0..1). */
+  share: number;
+  /** Mediana de permanência em PROPOSED (dias) — informativa no banner. */
+  medianDays: number;
+  /** Soma das medianas de todas as etapas (o percurso típico total, dias). */
+  totalMedianDays: number;
+  /** Shows que contribuíram transição cronometrada (amostra da composição). */
+  sample: number;
+}
+
+/**
+ * Decide se o Painel deve alertar que o tempo de percurso do funil se concentra na
+ * DECISÃO (etapa PROPOSED) — as propostas passam o grosso do caminho até o palco
+ * apenas esperando resposta. Recebe uma `funnelStageDurations` já computada (dela
+ * extrai a composição via `stageTimeConcentration` e a amostra via `showCount`) e
+ * não faz I/O. `show` só quando a etapa DOMINANTE do tempo é PROPOSED, sua fatia é
+ * ≥ `minShare` e há amostra confiável (`showCount >= minShows`); `critical` quando a
+ * fatia atinge `criticalShare`. Fora do caso PROPOSED (gargalo em CONFIRMED = espera
+ * esperada; sem base) não dispara. Puro e determinístico. Ver D285.
+ */
+export function stageTimeBottleneckHeadline(
+  durations: FunnelStageDurations,
+  minShare: number = STAGE_BOTTLENECK_SHARE,
+  criticalShare: number = STAGE_BOTTLENECK_CRITICAL_SHARE,
+  minShows: number = STAGE_BOTTLENECK_MIN_SHOWS,
+): StageTimeBottleneckHeadline {
+  const concentration = stageTimeConcentration(durations);
+  const proposed =
+    concentration.shares.find((s) => s.status === STAGE_BOTTLENECK_STAGE) ?? null;
+  const dominantIsProposed =
+    concentration.dominant?.status === STAGE_BOTTLENECK_STAGE;
+  const share = proposed?.share ?? 0;
+  const reliable = durations.showCount >= minShows;
+  const show = dominantIsProposed && reliable && share >= minShare;
+  return {
+    show,
+    critical: show && share >= criticalShare,
+    share,
+    medianDays: proposed?.medianDays ?? 0,
+    totalMedianDays: concentration.totalMedianDays,
+    sample: durations.showCount,
+  };
+}
+
 // ── Comparativo ano a ano do tempo em cada etapa ─────────────────────────────
 // `funnelStageDurations` já recorta por ano (D281); este comparativo casa DUAS
 // leituras (o ano selecionado × o anterior) por etapa (`status`) e destila a
