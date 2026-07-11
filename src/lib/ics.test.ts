@@ -8,6 +8,10 @@ import {
   formatAlarmTrigger,
   parseReminderMinutes,
   DEFAULT_REMINDER_MINUTES,
+  DEFAULT_REMINDER_VALUE,
+  reminderLabel,
+  REMINDER_OPTIONS,
+  REMINDER_PRESETS,
   buildVEvent,
   showsToIcs,
   type IcsShow,
@@ -134,6 +138,58 @@ describe("parseReminderMinutes", () => {
     expect(parseReminderMinutes(" 3H ")).toBe(180);
     expect(parseReminderMinutes("1d")).toBe(1440);
     expect(parseReminderMinutes("2d")).toBe(2880);
+  });
+});
+
+describe("reminderLabel", () => {
+  it("formata minutos abaixo de uma hora", () => {
+    expect(reminderLabel(30)).toBe("30 min antes");
+    expect(reminderLabel(45)).toBe("45 min antes");
+  });
+
+  it("formata horas cheias e horas com minutos", () => {
+    expect(reminderLabel(60)).toBe("1 h antes");
+    expect(reminderLabel(120)).toBe("2 h antes");
+    expect(reminderLabel(90)).toBe("1h30 antes");
+  });
+
+  it("formata dias (singular/plural) e dia com resto", () => {
+    expect(reminderLabel(1440)).toBe("1 dia antes");
+    expect(reminderLabel(2880)).toBe("2 dias antes");
+    expect(reminderLabel(1560)).toBe("1 dia e 2 h antes");
+  });
+
+  it("zero/negativo vira 'no horário'", () => {
+    expect(reminderLabel(0)).toBe("no horário");
+    expect(reminderLabel(-10)).toBe("no horário");
+  });
+});
+
+describe("REMINDER_OPTIONS", () => {
+  it("tem uma opção por preset, na ordem, mais 'off' ao final", () => {
+    const presetKeys = Object.keys(REMINDER_PRESETS);
+    const optionValues = REMINDER_OPTIONS.map((o) => o.value);
+    expect(optionValues).toEqual([...presetKeys, "off"]);
+  });
+
+  it("cada opção de preset carrega os minutos e o rótulo corretos", () => {
+    for (const [value, minutes] of Object.entries(REMINDER_PRESETS)) {
+      const opt = REMINDER_OPTIONS.find((o) => o.value === value);
+      expect(opt).toBeDefined();
+      expect(opt!.minutes).toBe(minutes);
+      expect(opt!.label).toBe(reminderLabel(minutes));
+    }
+  });
+
+  it("a opção 'off' significa sem lembrete", () => {
+    const off = REMINDER_OPTIONS.find((o) => o.value === "off");
+    expect(off).toEqual({ value: "off", label: "Sem lembrete", minutes: null });
+  });
+
+  it("o valor padrão do seletor casa com o preset e com o padrão de minutos", () => {
+    expect(REMINDER_PRESETS[DEFAULT_REMINDER_VALUE]).toBe(DEFAULT_REMINDER_MINUTES);
+    expect(parseReminderMinutes(DEFAULT_REMINDER_VALUE)).toBe(DEFAULT_REMINDER_MINUTES);
+    expect(REMINDER_OPTIONS.some((o) => o.value === DEFAULT_REMINDER_VALUE)).toBe(true);
   });
 });
 

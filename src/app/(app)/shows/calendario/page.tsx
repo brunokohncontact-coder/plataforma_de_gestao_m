@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { ShowsViewToggle } from "@/components/ShowsViewToggle";
+import { IcsExportButton } from "@/components/IcsExportButton";
 import {
   buildMonthGrid,
   monthGridRange,
@@ -54,13 +55,7 @@ export default async function ShowsCalendarPage({
           >
             ⬇ CSV
           </a>
-          <a
-            href="/shows/agenda.ics"
-            className="text-sm text-brand-700 hover:underline"
-            title="Baixar a agenda para Google/Apple Calendar (com lembrete 3h antes de cada show)"
-          >
-            Exportar .ics
-          </a>
+          <IcsExportButton />
           <Link href="/shows/novo" className="btn-primary">
             + Novo show
           </Link>

@@ -115,6 +115,61 @@ export const REMINDER_PRESETS: Readonly<Record<string, number>> = {
 export const DEFAULT_REMINDER_MINUTES = 180;
 
 /**
+ * Valor do parâmetro `?lembrete=` que corresponde ao padrão ({@link
+ * DEFAULT_REMINDER_MINUTES}). É a opção pré-selecionada no seletor da UI e casa
+ * com {@link REMINDER_PRESETS} (invariante coberto por teste).
+ */
+export const DEFAULT_REMINDER_VALUE = "3h";
+
+/**
+ * Rótulo legível (pt-BR) de uma antecedência em minutos para o seletor de
+ * lembrete — "30 min antes", "1 h antes", "1 dia antes", "1 dia e 2 h antes".
+ * Pura, sem dependência dos presets (aceita qualquer valor positivo).
+ */
+export function reminderLabel(minutes: number): string {
+  const total = Math.max(0, Math.round(minutes));
+  if (total === 0) return "no horário";
+  const days = Math.floor(total / 1440);
+  const rest = total % 1440;
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days} ${days === 1 ? "dia" : "dias"}`);
+  if (rest > 0) {
+    if (rest < 60) parts.push(`${rest} min`);
+    else {
+      const h = Math.floor(rest / 60);
+      const m = rest % 60;
+      parts.push(m === 0 ? `${h} h` : `${h}h${m}`);
+    }
+  }
+  return `${parts.join(" e ")} antes`;
+}
+
+/** Uma opção do seletor de lembrete na UI. */
+export interface ReminderOption {
+  /** Valor do parâmetro `?lembrete=` (ex.: "3h", "off"). */
+  value: string;
+  /** Rótulo exibido ao usuário. */
+  label: string;
+  /** Minutos de antecedência; `null` = sem lembrete ("off"). */
+  minutes: number | null;
+}
+
+/**
+ * Opções ordenadas do seletor de lembrete do feed .ics, da mais próxima ao show
+ * ("30 min antes") à mais distante ("2 dias antes"), terminando em "Sem
+ * lembrete" (`off`). Deriva de {@link REMINDER_PRESETS} para manter UI e parser
+ * (`parseReminderMinutes`) em sincronia — um preset novo aparece automaticamente.
+ */
+export const REMINDER_OPTIONS: readonly ReminderOption[] = [
+  ...Object.entries(REMINDER_PRESETS).map(([value, minutes]) => ({
+    value,
+    minutes,
+    label: reminderLabel(minutes),
+  })),
+  { value: "off", label: "Sem lembrete", minutes: null },
+];
+
+/**
  * Interpreta o parâmetro `?lembrete=` do feed .ics em minutos de antecedência.
  * Ausente/vazio → o padrão ({@link DEFAULT_REMINDER_MINUTES}); "off"/"0"/"nao"/
  * "sem"/"none" → `null` (sem lembrete); um preset conhecido → seus minutos;
