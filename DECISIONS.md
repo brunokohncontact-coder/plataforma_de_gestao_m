@@ -9971,3 +9971,51 @@ contexto, decisão, justificativa e alternativas consideradas.
   sem 500). `npm audit` **inalterado** vs. baseline (10 advisories; ver D6).
 - **Nota de concorrência:** número **D286** escolhido como o próximo livre após o D285 (Sessão 291). Se
   uma PR paralela reivindicar D286, renumerar para o próximo livre no merge.
+
+## 2026-07-11 — D287: Recebíveis vencidos SEM promessa de pagamento no `/shows/a-receber` (`receivablesAwaitingPromise`)
+- **Contexto:** a tela de cachês a receber já cobre dois eixos de cobrança — o AGING
+  (`bucketReceivablesByAge`, "qual dinheiro está parado há mais tempo?") e as PROMESSAS
+  (`summarizePaymentPromises`, furadas × no prazo, "quem prometeu e não pagou?"). Mas
+  `summarizePaymentPromises` **ignora de propósito** as linhas sem promessa registrada
+  (`status === "none"`). Restava um ponto cego: os shows já vencidos há um bom tempo para
+  os quais NENHUMA promessa foi registrada — a conversa de cobrança nem começou. É
+  justamente o dinheiro mais fácil de esquecer (não aparece em nenhum dos dois destaques
+  atuais: no aging some no meio dos baldes por valor, e nas promessas nem entra).
+- **Decisão:** helper puro novo `receivablesAwaitingPromise(rows, opts)` +
+  tipos `AwaitingPromiseRow`/`ReceivablesAwaitingPromise` + constante
+  `AWAITING_PROMISE_MIN_DAYS`(=30) em `src/lib/finance.ts`: varre os recebíveis já em
+  aberto (saída de `reconcileShowFees`) e destila os que têm `paymentPromiseStatus`
+  === "none" E já estão parados há ≥ `minDaysOutstanding` dias (padrão 30), ordenados do
+  atraso mais longo ao mais curto (id desempata), com `count`/`totalOutstanding`/
+  `maxDaysOutstanding`. `now` e o limiar são injetáveis. A página `/shows/a-receber`
+  ganha um banner âmbar "🔔 Cobrança que ainda nem começou" (só com `count > 0`) sob o de
+  promessas, com total + nº de cachês + maior atraso, orientando a registrar uma promessa.
+  Reusa os shows/transações JÁ carregados pela página — zero consulta, zero migração, zero
+  dependência.
+- **Justificativa:** é o terceiro eixo de cobrança que faltava, complementar aos dois
+  existentes (aging por idade, promessas por status), preenchendo exatamente a lacuna que
+  `summarizePaymentPromises` deixa explícita ao ignorar as linhas sem promessa. O limiar de
+  30 dias separa o "recém-tocado" (ainda natural não ter combinado o pagamento) do "já devia
+  ter uma promessa na mesa". Lógica pura testável fora do React, no molde dos irmãos do
+  arquivo. O `daysOutstanding` é computado do mesmo jeito que `bucketReceivablesByAge`
+  (dias UTC desde a data do show), mantendo consistência com o aging já exibido.
+- **Alternativas consideradas:** (a) fundir isso em `summarizePaymentPromises` como um
+  terceiro grupo "unpromised" — descartado: aquela função é sobre a data PROMETIDA (ordena
+  por ela); "sem promessa" não tem data prometida e ordena pelo ATRASO, semântica distinta
+  o bastante para um helper próprio. (b) sem limiar de dias (listar todo recebível sem
+  promessa) — descartado: recém-tocados sem promessa são ruído, não alarme; o limiar foca no
+  que já esfriou. (c) nudge no Painel em vez de banner na tela — adiado: o Painel já está
+  denso (D285/D286) e este sinal é operacional, pertence à tela de cobrança; um nudge pode
+  vir depois espelhando o padrão `bookingLeadTimeHeadline`. (d) coluna/CSV próprio —
+  desnecessário: o CSV da tela já traz "Dias de atraso" e "Status promessa" por linha (D130),
+  então a planilha já permite filtrar exatamente esse recorte.
+- **DoD:** build de produção OK, typecheck (`tsc --noEmit`, 0 erros), lint (`next lint`,
+  0 avisos); **1636 testes** (`vitest run`, +6 em `finance.test.ts`,
+  `describe("receivablesAwaitingPromise")`: lista só vencidos além do limiar e sem promessa;
+  ordena do atraso mais longo ao mais curto com id de desempate; usa o saldo em aberto no
+  total; respeita limiar customizado; lista vazia quando todos têm promessa ou estão dentro
+  do limiar; expõe a constante de 30 dias). Smoke (`next start`) → `/login` 200,
+  `/shows/a-receber` 307→/login (auth-gated, sem 500). `npm audit` **inalterado** vs.
+  baseline (10 advisories; ver D6).
+- **Nota de concorrência:** número **D287** escolhido como o próximo livre após o D286
+  (Sessão 292). Se uma PR paralela reivindicar D287, renumerar para o próximo livre no merge.

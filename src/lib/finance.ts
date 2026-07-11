@@ -4419,6 +4419,79 @@ export function summarizePaymentPromises<S extends PromisableShowLike>(
   };
 }
 
+// ── Recebíveis vencidos SEM promessa (a cobrança que nem começou) ────────────
+//
+// `summarizePaymentPromises` cobre quem JÁ prometeu (furadas × no prazo) e ignora
+// de propósito as linhas sem promessa. Mas o dinheiro mais fácil de esquecer é
+// justamente o dos shows já vencidos há um bom tempo para os quais NENHUMA promessa
+// foi registrada — a conversa de cobrança nem começou. Esta leitura destila esses
+// recebíveis: em aberto, sem promessa e já parados além de um limiar de dias.
+
+export interface AwaitingPromiseRow<S extends ReceivableShowLike = ReceivableShowLike> {
+  row: ShowReceivableRow<S>;
+  /** Dias decorridos desde a data do show (>= 0). */
+  daysOutstanding: number;
+}
+
+export interface ReceivablesAwaitingPromise<
+  S extends ReceivableShowLike = ReceivableShowLike,
+> {
+  /** Recebíveis vencidos sem promessa, do atraso mais longo ao mais curto. */
+  rows: AwaitingPromiseRow<S>[];
+  count: number;
+  /** Total em aberto sem promessa e já vencido além do limiar (centavos). */
+  totalOutstanding: number;
+  /** Maior atraso em dias no grupo (0 se vazio). */
+  maxDaysOutstanding: number;
+}
+
+/**
+ * Limiar padrão (dias) a partir do qual um recebível sem promessa vira alerta de
+ * cobrança. 30 dias: passou de "recém-tocado" para "já devia ter combinado o pagamento".
+ */
+export const AWAITING_PROMISE_MIN_DAYS = 30;
+
+/**
+ * Varre os recebíveis em aberto (saída de `reconcileShowFees`) e destila os que
+ * NÃO têm promessa de pagamento registrada (`paymentPromiseStatus` === "none") e já
+ * estão parados há pelo menos `minDaysOutstanding` dias — a cobrança que ainda nem
+ * começou e o dinheiro mais fácil de esquecer. Complementa `summarizePaymentPromises`
+ * (que só olha quem já prometeu). Ordena do atraso mais longo ao mais curto (id
+ * desempata); `now` e o limiar são injetáveis para teste.
+ */
+export function receivablesAwaitingPromise<S extends PromisableShowLike>(
+  rows: ShowReceivableRow<S>[],
+  opts: { now?: Date | string; minDaysOutstanding?: number } = {},
+): ReceivablesAwaitingPromise<S> {
+  const now = opts.now ?? new Date();
+  const todayMs = utcMidnight(now);
+  const minDays = opts.minDaysOutstanding ?? AWAITING_PROMISE_MIN_DAYS;
+
+  const matched: AwaitingPromiseRow<S>[] = [];
+  for (const row of rows) {
+    if (paymentPromiseStatus(row.show.paymentPromisedAt, now) !== "none") continue;
+    const days = Math.max(
+      0,
+      Math.round((todayMs - utcMidnight(row.show.date)) / DAY_MS),
+    );
+    if (days < minDays) continue;
+    matched.push({ row, daysOutstanding: days });
+  }
+
+  matched.sort(
+    (a, b) =>
+      b.daysOutstanding - a.daysOutstanding ||
+      a.row.show.id.localeCompare(b.row.show.id),
+  );
+
+  return {
+    rows: matched,
+    count: matched.length,
+    totalOutstanding: sum(matched.map((m) => m.row.outstanding)),
+    maxDaysOutstanding: matched.reduce((m, a) => Math.max(m, a.daysOutstanding), 0),
+  };
+}
+
 // ── Cachês a receber por contratante (de quem cobrar primeiro) ──────────────
 //
 // O aging (`bucketReceivablesByAge`) responde "qual dinheiro está parado há mais
