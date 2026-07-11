@@ -5,6 +5,7 @@ import {
   reconcileShowFees,
   bucketReceivablesByAge,
   summarizePaymentPromises,
+  receivablesAwaitingPromise,
   paymentPromiseStatus,
   dayKey,
   type PromisableShowLike,
@@ -71,6 +72,7 @@ export default async function ShowReceivablesPage() {
   const result = reconcileShowFees(shows as PromisableShowLike[], txs);
   const aging = bucketReceivablesByAge(result);
   const promises = summarizePaymentPromises(result.rows);
+  const awaitingPromise = receivablesAwaitingPromise(result.rows);
   const daysByShow = new Map(
     aging.buckets.flatMap((b) => b.rows.map((a) => [a.row.show.id, a.daysOutstanding])),
   );
@@ -209,6 +211,27 @@ export default async function ShowReceivablesPage() {
                   <span className="font-medium">⚠</span> abaixo já passaram da data prometida.
                 </p>
               )}
+            </div>
+          )}
+
+          {awaitingPromise.count > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                <span className="font-semibold">🔔 Cobrança que ainda nem começou</span>
+                <span className="font-semibold text-amber-700">
+                  {formatMoney(awaitingPromise.totalOutstanding)} em{" "}
+                  {awaitingPromise.count}{" "}
+                  {awaitingPromise.count === 1 ? "cachê parado" : "cachês parados"} há 30+ dias
+                </span>
+                <span className="text-amber-600">
+                  mais antigo: <strong>{awaitingPromise.maxDaysOutstanding} dias</strong>
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-amber-600">
+                Shows vencidos sem nenhuma promessa de pagamento registrada — o dinheiro
+                mais fácil de esquecer. Cobre e registre uma data prometida (
+                <span className="font-medium">+ promessa</span>) para acompanhar.
+              </p>
             </div>
           )}
 

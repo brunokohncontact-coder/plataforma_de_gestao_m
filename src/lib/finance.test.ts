@@ -64,6 +64,8 @@ import {
   resolvePromiseDate,
   paymentPromiseStatus,
   summarizePaymentPromises,
+  receivablesAwaitingPromise,
+  AWAITING_PROMISE_MIN_DAYS,
   computeDelta,
   compareSummaries,
   averageSummaries,
@@ -4177,6 +4179,72 @@ describe("summarizePaymentPromises", () => {
     expect(summary.pendingCount).toBe(0);
     expect(summary.brokenOutstanding).toBe(0);
     expect(summary.pendingOutstanding).toBe(0);
+  });
+});
+
+describe("receivablesAwaitingPromise", () => {
+  const now = new Date("2026-03-15T12:00:00.000Z");
+
+  function gig(partial: Partial<PromisableShowLike>): PromisableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-02-01T20:00:00.000Z", // 42 dias antes de "now"
+      ...partial,
+    };
+  }
+
+  it("lista só os vencidos além do limiar e SEM promessa", () => {
+    const shows = [
+      gig({ id: "velho-sem-promessa", date: "2026-02-01T00:00:00.000Z" }), // 42 dias
+      gig({ id: "com-promessa", paymentPromisedAt: "2026-03-10T00:00:00.000Z" }), // tem promessa → fora
+      gig({ id: "recente-sem-promessa", date: "2026-03-01T00:00:00.000Z" }), // 14 dias → abaixo do limiar
+    ];
+    const list = receivablesAwaitingPromise(reconcileShowFees(shows, [], { now }).rows, { now });
+    expect(list.count).toBe(1);
+    expect(list.rows.map((r) => r.row.show.id)).toEqual(["velho-sem-promessa"]);
+    expect(list.totalOutstanding).toBe(100_00);
+    expect(list.maxDaysOutstanding).toBe(42);
+  });
+
+  it("ordena do atraso mais longo ao mais curto (id desempata)", () => {
+    const shows = [
+      gig({ id: "b", date: "2026-02-05T00:00:00.000Z" }), // 38 dias
+      gig({ id: "a", date: "2026-01-10T00:00:00.000Z" }), // 64 dias
+      gig({ id: "c", date: "2026-02-05T00:00:00.000Z" }), // 38 dias, empata com b
+    ];
+    const list = receivablesAwaitingPromise(reconcileShowFees(shows, [], { now }).rows, { now });
+    expect(list.rows.map((r) => r.row.show.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("usa o saldo em aberto (desconta o já recebido) no total", () => {
+    const shows = [gig({ id: "g1", fee: 100_00, date: "2026-01-10T00:00:00.000Z" })];
+    const txs = [tx({ type: "INCOME", amount: 30_00, received: true, showId: "g1" })];
+    const list = receivablesAwaitingPromise(reconcileShowFees(shows, txs, { now }).rows, { now });
+    expect(list.totalOutstanding).toBe(70_00);
+  });
+
+  it("respeita um limiar customizado de dias", () => {
+    const shows = [gig({ id: "g1", date: "2026-03-01T00:00:00.000Z" })]; // 14 dias
+    const rows = reconcileShowFees(shows, [], { now }).rows;
+    expect(receivablesAwaitingPromise(rows, { now }).count).toBe(0); // padrão 30
+    expect(receivablesAwaitingPromise(rows, { now, minDaysOutstanding: 7 }).count).toBe(1);
+  });
+
+  it("retorna lista vazia quando todos têm promessa ou estão dentro do limiar", () => {
+    const shows = [
+      gig({ id: "com-promessa", paymentPromisedAt: "2026-03-20T00:00:00.000Z" }),
+      gig({ id: "recente", date: "2026-03-10T00:00:00.000Z" }), // 5 dias
+    ];
+    const list = receivablesAwaitingPromise(reconcileShowFees(shows, [], { now }).rows, { now });
+    expect(list.count).toBe(0);
+    expect(list.totalOutstanding).toBe(0);
+    expect(list.maxDaysOutstanding).toBe(0);
+  });
+
+  it("expõe o limiar padrão de 30 dias", () => {
+    expect(AWAITING_PROMISE_MIN_DAYS).toBe(30);
   });
 });
 

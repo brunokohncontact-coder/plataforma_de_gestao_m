@@ -9,7 +9,24 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1630 testes** verdes após a
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1636 testes** verdes após o
+**alerta de recebíveis vencidos SEM promessa em `/shows/a-receber`** (Sessão 293, D287 — a tela de cachês a
+receber já cobria dois eixos de cobrança — o AGING por idade (`bucketReceivablesByAge`) e as PROMESSAS por
+status (`summarizePaymentPromises`, furadas × no prazo) — mas `summarizePaymentPromises` IGNORA de propósito
+as linhas sem promessa registrada, deixando um ponto cego: os shows já vencidos há tempo para os quais NENHUMA
+promessa foi registrada, a cobrança que nem começou e o dinheiro mais fácil de esquecer. Helper puro novo
+`receivablesAwaitingPromise(rows, opts)` + tipos `AwaitingPromiseRow`/`ReceivablesAwaitingPromise` + constante
+`AWAITING_PROMISE_MIN_DAYS`(=30) em `src/lib/finance.ts`: varre os recebíveis em aberto (saída de
+`reconcileShowFees`), destila os com `paymentPromiseStatus` === "none" E parados há ≥ limiar de dias (padrão 30),
+ordenados do atraso mais longo ao mais curto (id desempata), com `count`/`totalOutstanding`/`maxDaysOutstanding`
+(`now` e limiar injetáveis). A página ganha o banner âmbar "🔔 Cobrança que ainda nem começou" (só com `count > 0`)
+sob o de promessas, com total + nº de cachês + maior atraso, orientando a registrar uma promessa. Terceiro eixo de
+cobrança complementar aos dois existentes; reusa os shows/transações JÁ carregados — zero consulta, zero regra nova,
+zero migração, zero dependência. **+6 testes** (`finance.test.ts`, `describe("receivablesAwaitingPromise")`: lista só
+vencidos além do limiar e sem promessa; ordena do atraso mais longo ao mais curto com id de desempate; usa o saldo em
+aberto no total; respeita limiar customizado; vazia quando todos têm promessa ou dentro do limiar; expõe a constante de
+30 dias). Build/typecheck/lint verdes; smoke → `/login` 200, `/shows/a-receber` 307→/login (auth-gated, sem 500);
+`npm audit` inalterado (10 advisories). Ver D287. Antes disso, **1630 testes** verdes após a
 **barra de composição do tempo do funil no card "Onde o tempo se concentra"** (Sessão 292, D286 — a D283
 deu à tela `/shows/funil/tempo-em-etapa` a leitura de COMPOSIÇÃO (`stageTimeConcentration`) e o card
 "Onde o tempo se concentra", mas o card só NOMEAVA a etapa dominante em texto; a composição inteira só
