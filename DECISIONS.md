@@ -10144,3 +10144,44 @@ contexto, decisão, justificativa e alternativas consideradas.
   (auth-gated, sem 500). `npm audit` **inalterado** vs. baseline (10 advisories; ver D6).
 - **Nota de concorrência:** número **D290** escolhido como o próximo livre após o D289
   (Sessão 295). Se uma PR paralela reivindicar D290, renumerar para o próximo livre no merge.
+
+## D292 — Coluna "vs. {ano-1}" por faixa na tabela e no CSV das faixas de cachê (`bandChanges` + `indexFeeBandShareChanges` + `feeDistributionToCsv` com comparativo) (Sessão 297)
+- **Contexto:** a tela `/shows/faixas-de-cache` já tinha o recorte por ano (`?ano=`) e o card
+  comparativo `FeeComparisonCard` (`compareFeeDistribution`/D187), mas o card só resumia o
+  deslocamento em três números — mediana, média e participação premium. A **tabela de distribuição**
+  (uma linha por faixa de preço) não dizia, faixa a faixa, para ONDE a agenda migrou de um ano para
+  o outro: "quantos p.p. dos shows saíram de 'Até R$ 500' e entraram em 'Acima de R$ 5.000'?". Todas
+  as telas irmãs de comparativo por linha do app já carregam uma coluna "vs. {ano-1}" por item
+  (`indexContactPipelineChanges`/D238, `indexStageDurationChanges`/D282), menos esta.
+- **Decisão:** `compareFeeDistribution` passa a computar `bandChanges: FeeBandShareChange[]` — o
+  deslocamento da participação (nº de shows, `countShare`) faixa a faixa, na ordem canônica de
+  `FEE_BANDS` (sempre as 6 faixas, casadas por chave; faixa ausente no anterior conta 0). Novo tipo
+  `FeeBandShareChange` (`currentCount`/`previousCount`/`currentCountShare`/`previousCountShare`/
+  `countShareDelta`) e lookup O(1) `indexFeeBandShareChanges(comparison)` em `src/lib/finance.ts`,
+  espelho de `indexStageDurationChanges`. A tabela da página ganha a coluna "vs. {ano-1}" (só quando
+  o card comparativo existe) mostrando o delta em p.p. por faixa, com uma legenda; `feeDistributionToCsv`
+  ganha os parâmetros opcionais `comparison`/`previousYear` e, quando ambos vêm, anexa a coluna
+  "vs. {ano-1} (p.p.)" ao final (espelho de `stageDurationsToCsv`, usando `csvSignedPoints`). A rota
+  `/shows/faixas-de-cache/export` recomputa a distribuição do ano anterior sobre os MESMOS registros
+  já carregados (mesmo recorte UTC da D108) e passa o comparativo ao serializador.
+- **Justificativa:** leitura NEUTRA por faixa — subir num degrau alto é bom, num baixo é o contrário;
+  o rumo direcional (para cima/baixo) já vive no veredito da mediana (`trend`) do card. A coluna só
+  descreve o deslocamento, completando o par resumo (card) + detalhe (tabela/CSV) que o resto do app
+  adota. Zero consulta nova, zero regra de negócio nova, zero migração, zero dependência: reusa
+  `compareFeeDistribution`/`feeDistribution` já computados.
+- **Alternativas consideradas:** (a) colorir o delta por direção (verde/vermelho) — descartado:
+  enganoso, pois +p.p. numa faixa baixa não é bom; cinza neutro é honesto. (b) uma tela/rota
+  `/comparativo` própria (como sazonalidade/dias-semana) — descartado: aqui o comparativo já é
+  inline no card, e a coluna por linha é a granularidade que faltava, não uma nova tela. (c) deixar
+  o CSV sem a coluna — descartado: quebra a paridade tela↔CSV que a base mantém (D284/D290).
+- **DoD:** build de produção OK, typecheck (`tsc --noEmit`, 0 erros), lint (`next lint`, 0 avisos);
+  **1658 testes** (`vitest run`, +8: `finance.test.ts` — `bandChanges` traz as 6 faixas na ordem
+  canônica; capta a migração de faixa (delta por degrau); faixa vazia nos dois anos → delta 0; sem
+  base anterior → cada faixa preenchida vira +participação; `indexFeeBandShareChanges` mapeia por
+  chave — `csv.test.ts` — sem comparativo → sem coluna; com comparativo → coluna "vs. {ano-1} (p.p.)"
+  com −50/+50 e Total em branco; comparativo sem o ano anterior → sem coluna). Smoke (`next start`) →
+  `/login` 200, `/shows/faixas-de-cache`, `?ano=2026` e `/export?ano=2026` 307→/login (auth-gated,
+  sem 500). `npm audit` **inalterado** vs. baseline (10 advisories; ver D6).
+- **Nota de concorrência:** número **D292** escolhido para não colidir com a PR paralela #325 (aberta,
+  reivindica D291). Se D291 não for mesclada, o número fica como salto cosmético — preferível a uma
+  colisão. Se outra PR reivindicar D292, renumerar para o próximo livre no merge.

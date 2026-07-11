@@ -9,7 +9,29 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1650 testes** verdes após a
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1658 testes** verdes após a
+**coluna "vs. {ano-1}" por faixa na tabela e no CSV das faixas de cachê** (Sessão 297, D292 — a tela
+`/shows/faixas-de-cache` já tinha recorte por ano (`?ano=`) e o card comparativo `FeeComparisonCard`
+(`compareFeeDistribution`/D187), mas o card só resumia o deslocamento em três números (mediana, média,
+participação premium) — a TABELA de distribuição (uma linha por faixa) não dizia, faixa a faixa, para ONDE a
+agenda migrou de um ano para o outro, ao contrário de todas as telas irmãs de comparativo por linha do app
+(`indexContactPipelineChanges`/D238, `indexStageDurationChanges`/D282). Agora `compareFeeDistribution` computa
+`bandChanges: FeeBandShareChange[]` — o delta de participação (nº de shows, `countShare`) faixa a faixa na
+ordem canônica de `FEE_BANDS` (6 faixas, casadas por chave; ausente no anterior = 0) — mais o tipo
+`FeeBandShareChange` e o lookup O(1) `indexFeeBandShareChanges` em `src/lib/finance.ts` (espelho de
+`indexStageDurationChanges`). A tabela ganha a coluna "vs. {ano-1}" (só quando o card comparativo existe) com o
+delta em p.p. por faixa + legenda; `feeDistributionToCsv` ganha os parâmetros opcionais
+`comparison`/`previousYear` e anexa a coluna "vs. {ano-1} (p.p.)" ao final (espelho de `stageDurationsToCsv`,
+`csvSignedPoints`); a rota `.../export` recomputa a distribuição do ano anterior sobre os MESMOS registros já
+carregados (recorte UTC da D108). Leitura NEUTRA por faixa (subir num degrau alto é bom, num baixo é o
+contrário — o rumo direcional vive no veredito da mediana do card); completa o par resumo (card) + detalhe
+(tabela/CSV). Zero consulta nova, zero regra nova, zero migração, zero dependência. **+8 testes**
+(`finance.test.ts`: `bandChanges` traz as 6 faixas na ordem canônica; capta a migração de faixa; faixa vazia
+nos dois anos → delta 0; sem base anterior → cada faixa preenchida vira +participação; `indexFeeBandShareChanges`
+mapeia por chave — `csv.test.ts`: sem comparativo → sem coluna; com comparativo → coluna "vs. {ano-1} (p.p.)"
+com −50/+50 e Total em branco; comparativo sem o ano anterior → sem coluna). Build/typecheck/lint verdes; smoke
+→ `/login` 200, `/shows/faixas-de-cache`, `?ano=2026` e `/export?ano=2026` 307→/login (auth-gated, sem 500);
+`npm audit` inalterado (10 advisories). Ver D292. Antes disso, **1650 testes** verdes após a
 **coluna "sem cobrança iniciada" no CSV dos cachês a receber por contratante** (Sessão 296, D290 — fecha o
 adiamento explícito da D289(a) ("um CSV pode vir depois se houver demanda"): a D289 deu à tela
 `/shows/a-receber/por-contratante` o selo âmbar "🔔 {N} sem cobrança iniciada" por devedor

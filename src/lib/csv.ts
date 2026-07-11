@@ -41,6 +41,8 @@ import {
   type WeekdayPerformanceDayTrend,
   classifyWeekdayPerformanceDayChange,
   type FeeDistribution,
+  type FeeDistributionComparison,
+  indexFeeBandShareChanges,
   type FeeTrend,
   type CashFlowMonth,
   type CashflowProjection,
@@ -1597,24 +1599,43 @@ export const FEE_DISTRIBUTION_CSV_HEADERS = [
 export function feeDistributionToCsv(
   dist: FeeDistribution,
   delimiter = DEFAULT_DELIMITER,
+  comparison?: FeeDistributionComparison | null,
+  previousYear?: number | null,
 ): string {
-  const out: string[][] = [Array.from(FEE_DISTRIBUTION_CSV_HEADERS)];
+  // Coluna opcional "vs. {ano-1} (p.p.)": o deslocamento da participação da faixa
+  // de um ano para o outro (D282/D284 no eixo do funil, agora nas faixas de preço).
+  // Só quando o chamador informa AMBOS o comparativo e o ano anterior — espelha
+  // `stageDurationsToCsv`. Casa por chave de faixa (`indexFeeBandShareChanges`).
+  const withTrend = comparison != null && previousYear != null;
+  const changeByKey = withTrend
+    ? indexFeeBandShareChanges(comparison)
+    : null;
+  const header = Array.from(FEE_DISTRIBUTION_CSV_HEADERS) as string[];
+  if (withTrend) header.push(`vs. ${previousYear} (p.p.)`);
+  const out: string[][] = [header];
   for (const b of dist.bands) {
-    out.push([
+    const cols = [
       b.label,
       String(b.count),
       csvShare(b.countShare),
       centsToCsvAmount(b.totalFee),
       csvShare(b.feeShare),
-    ]);
+    ];
+    if (withTrend) {
+      const change = changeByKey!.get(b.key);
+      cols.push(change ? csvSignedPoints(change.countShareDelta) : "");
+    }
+    out.push(cols);
   }
-  out.push([
+  const total = [
     "Total",
     String(dist.totalShows),
     "",
     centsToCsvAmount(dist.totalFee),
     "",
-  ]);
+  ];
+  if (withTrend) total.push("");
+  out.push(total);
   return toCsv(out, delimiter);
 }
 

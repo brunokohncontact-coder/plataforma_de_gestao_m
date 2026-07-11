@@ -4,9 +4,11 @@ import { prisma } from "@/lib/prisma";
 import {
   feeDistribution,
   feeDistributionYears,
+  compareFeeDistribution,
   parseProfitYear,
   filterShowsByYear,
   type ReceivableShowLike,
+  type FeeDistributionComparison,
 } from "@/lib/finance";
 import { feeDistributionToCsv } from "@/lib/csv";
 
@@ -41,7 +43,31 @@ export async function GET(req: NextRequest) {
   }));
 
   const dist = feeDistribution(shows);
-  const csv = feeDistributionToCsv(dist);
+
+  // Coluna "vs. {ano-1} (p.p.)" no CSV — paridade com o card comparativo da
+  // página: só com um ano específico e ambos os períodos tendo shows realizados
+  // com cachê (senão a comparação seria enganosa). Reaproveita o MESMO recorte
+  // por ano UTC (D108) sobre os registros já carregados, sem nova consulta.
+  let comparison: FeeDistributionComparison | null = null;
+  let previousYear: number | null = null;
+  if (yearFilter !== "all") {
+    previousYear = yearFilter - 1;
+    const previousDist = feeDistribution(
+      filterShowsByYear(rows, previousYear).map((s) => ({
+        id: s.id,
+        fee: s.fee,
+        status: s.status,
+        date: s.date,
+      })),
+    );
+    if (dist.totalShows > 0 && previousDist.totalShows > 0) {
+      comparison = compareFeeDistribution(dist, previousDist);
+    } else {
+      previousYear = null;
+    }
+  }
+
+  const csv = feeDistributionToCsv(dist, undefined, comparison, previousYear);
 
   // BOM UTF-8 para preservar acentuação ao abrir no Excel.
   const body = "\uFEFF" + csv;

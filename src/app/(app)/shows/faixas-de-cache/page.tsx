@@ -5,10 +5,12 @@ import {
   feeDistribution,
   feeDistributionYears,
   compareFeeDistribution,
+  indexFeeBandShareChanges,
   parseProfitYear,
   filterShowsByYear,
   type ReceivableShowLike,
   type FeeBandStat,
+  type FeeBandShareChange,
   type FeeDistributionComparison,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
@@ -74,6 +76,13 @@ export default async function FeeDistributionPage({
 
   // Escala das barras: maior nº de shows numa faixa (distribuição por contagem).
   const peakCount = Math.max(1, ...dist.bands.map((b) => b.count));
+
+  // Deslocamento faixa a faixa do ano anterior, para a coluna "vs. {ano-1}" da
+  // tabela (só existe quando o card comparativo existe). Lookup O(1) por faixa,
+  // espelho do padrão "vs. {ano-1}" por linha das telas do funil (D238/D282).
+  const bandChangeByKey = comparison
+    ? indexFeeBandShareChanges(comparison)
+    : null;
 
   return (
     <div className="space-y-6">
@@ -194,7 +203,19 @@ export default async function FeeDistributionPage({
                   <th className="pb-2 px-3 text-right font-medium">Shows</th>
                   <th className="pb-2 px-3 text-right font-medium">% dos shows</th>
                   <th className="pb-2 px-3 text-right font-medium">Faturamento</th>
-                  <th className="pb-2 pl-3 text-right font-medium">% do faturam.</th>
+                  <th
+                    className={
+                      "pb-2 text-right font-medium " +
+                      (bandChangeByKey ? "px-3" : "pl-3")
+                    }
+                  >
+                    % do faturam.
+                  </th>
+                  {bandChangeByKey && (
+                    <th className="pb-2 pl-3 text-right font-medium">
+                      vs. {previousYear}
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -204,6 +225,7 @@ export default async function FeeDistributionPage({
                     band={b}
                     peakCount={peakCount}
                     isModal={dist.modalBand?.key === b.key}
+                    change={bandChangeByKey?.get(b.key) ?? null}
                   />
                 ))}
               </tbody>
@@ -213,10 +235,29 @@ export default async function FeeDistributionPage({
                   <td className="py-2 px-3 text-right">{dist.totalShows}</td>
                   <td className="py-2 px-3 text-right text-gray-400">100%</td>
                   <td className="py-2 px-3 text-right">{formatMoney(dist.totalFee)}</td>
-                  <td className="py-2 pl-3 text-right text-gray-400">100%</td>
+                  <td
+                    className={
+                      "py-2 text-right text-gray-400 " +
+                      (bandChangeByKey ? "px-3" : "pl-3")
+                    }
+                  >
+                    100%
+                  </td>
+                  {bandChangeByKey && (
+                    <td className="py-2 pl-3 text-right text-gray-400">—</td>
+                  )}
                 </tr>
               </tfoot>
             </table>
+            {bandChangeByKey && (
+              <p className="mt-3 text-xs text-gray-500">
+                A coluna <strong>vs. {previousYear}</strong> mostra quantos pontos
+                percentuais da agenda cada faixa ganhou (+) ou perdeu (−) frente ao
+                ano anterior — para ONDE seus cachês migraram. É uma leitura neutra
+                por faixa; o rumo geral (para cima ou para baixo) está no cartão
+                acima.
+              </p>
+            )}
           </section>
         </>
       )}
@@ -335,10 +376,12 @@ function BandRow({
   band,
   peakCount,
   isModal,
+  change,
 }: {
   band: FeeBandStat;
   peakCount: number;
   isModal: boolean;
+  change: FeeBandShareChange | null;
 }) {
   const empty = band.count === 0;
   return (
@@ -361,9 +404,20 @@ function BandRow({
       <td className="py-2 px-3 text-right text-xs text-gray-500">
         {empty ? "—" : formatMoney(band.totalFee)}
       </td>
-      <td className="py-2 pl-3 text-right text-xs text-gray-500">
+      <td
+        className={
+          "py-2 text-right text-xs text-gray-500 " + (change ? "px-3" : "pl-3")
+        }
+      >
         {empty ? "—" : pct(band.feeShare)}
       </td>
+      {change && (
+        <td className="py-2 pl-3 text-right text-xs text-gray-500">
+          {change.countShareDelta === 0 && change.currentCount === 0
+            ? "—"
+            : pointsDelta(change.countShareDelta)}
+        </td>
+      )}
     </tr>
   );
 }

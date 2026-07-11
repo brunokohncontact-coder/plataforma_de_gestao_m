@@ -175,6 +175,7 @@ import {
   weekdayPerformance,
   compareWeekdayPerformance,
   feeDistribution,
+  compareFeeDistribution,
   showPipeline,
   incomeMix,
   expenseMix,
@@ -1808,6 +1809,62 @@ describe("feeDistributionToCsv", () => {
     const dist = feeDistribution([gig({ fee: 150000 })], { now: new Date(NOW) });
     const ate500 = feeDistributionToCsv(dist).split("\r\n")[1].split(";");
     expect(ate500).toEqual(["Até R$ 500", "0", "0%", "0,00", "0%"]);
+  });
+
+  it("sem comparativo → sem coluna 'vs. {ano-1}' (5 colunas por linha)", () => {
+    const dist = feeDistribution([gig({ fee: 150000 })], { now: new Date(NOW) });
+    const lines = feeDistributionToCsv(dist).split("\r\n");
+    expect(lines[0].split(";")).toHaveLength(FEE_DISTRIBUTION_CSV_HEADERS.length);
+    expect(lines[0]).not.toContain("vs.");
+  });
+
+  it("com comparativo → coluna 'vs. {ano-1} (p.p.)' com o deslocamento por faixa", () => {
+    // Atual: 2 de 4 shows na faixa premium (50%); "R$ 1.000 – 2.000" com 2 (50%).
+    // Anterior: 4 de 4 em "R$ 1.000 – 2.000" (100%), 0 premium.
+    const current = feeDistribution(
+      [
+        gig({ fee: 600000 }),
+        gig({ fee: 600000 }),
+        gig({ fee: 150000 }),
+        gig({ fee: 150000 }),
+      ],
+      { now: new Date(NOW) },
+    );
+    const previous = feeDistribution(
+      [
+        gig({ fee: 150000 }),
+        gig({ fee: 150000 }),
+        gig({ fee: 150000 }),
+        gig({ fee: 150000 }),
+      ],
+      { now: new Date(NOW) },
+    );
+    const cmp = compareFeeDistribution(current, previous);
+    const lines = feeDistributionToCsv(current, undefined, cmp, 2023).split("\r\n");
+    // Cabeçalho ganha a 6ª coluna.
+    const header = lines[0].split(";");
+    expect(header).toHaveLength(FEE_DISTRIBUTION_CSV_HEADERS.length + 1);
+    expect(header[5]).toBe("vs. 2023 (p.p.)");
+    // "R$ 1.000 – 2.000" (linha 3): 100% → 50% = −50 p.p.
+    const mid = lines[3].split(";");
+    expect(mid[0]).toBe("R$ 1.000 – 2.000");
+    expect(mid[5]).toBe("-50");
+    // "Acima de R$ 5.000" (linha 6): 0% → 50% = +50 p.p.
+    const premium = lines[6].split(";");
+    expect(premium[0]).toBe("Acima de R$ 5.000");
+    expect(premium[5]).toBe("+50");
+    // Linha Total: coluna vs. em branco.
+    const total = lines[7].split(";");
+    expect(total[0]).toBe("Total");
+    expect(total[5]).toBe("");
+  });
+
+  it("comparativo sem o ano anterior informado → coluna não aparece", () => {
+    const dist = feeDistribution([gig({ fee: 150000 })], { now: new Date(NOW) });
+    const cmp = compareFeeDistribution(dist, dist);
+    // previousYear ausente (null) ⇒ mesmo com comparativo, sem coluna extra.
+    const lines = feeDistributionToCsv(dist, undefined, cmp, null).split("\r\n");
+    expect(lines[0].split(";")).toHaveLength(FEE_DISTRIBUTION_CSV_HEADERS.length);
   });
 });
 
