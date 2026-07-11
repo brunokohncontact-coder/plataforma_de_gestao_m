@@ -13,6 +13,8 @@ import {
   summarizePaymentPromises,
   receivablesAwaitingPromise,
   awaitingPromiseHeadline,
+  promisesDueSoonHeadline,
+  PROMISE_DUE_SOON_DAYS,
   paymentLag,
   paymentLagHeadline,
   paymentLagByContact,
@@ -276,6 +278,9 @@ export default async function DashboardPage() {
   const awaitingPromiseHead = awaitingPromiseHeadline(
     receivablesAwaitingPromise(receivables.rows),
   );
+  // Lado positivo dos recebíveis: das promessas que o contratante fez e ainda estão
+  // no prazo, quais vencem já-já — o dinheiro que se pode esperar na semana (D291).
+  const promisesDueSoon = promisesDueSoonHeadline(receivablePromises);
 
   // Prazo de recebimento realizado (DSO): sobre o cachê que JÁ entrou, em quantos
   // dias depois do show o dinheiro caiu no caixa. Reaproveita os shows/transações
@@ -736,6 +741,18 @@ export default async function DashboardPage() {
               >
                 {" "}
                 ({awaitingPromiseHead.count})
+              </span>
+            </span>
+          )}
+          {promisesDueSoon.show && (
+            <span className="font-semibold text-emerald-700">
+              💰 {formatMoney(promisesDueSoon.totalOutstanding)} prometido{" "}
+              {promisesDueSoon.nextDays === 0
+                ? "para hoje"
+                : `nos próximos ${PROMISE_DUE_SOON_DAYS} dias`}
+              <span className="font-normal text-emerald-600">
+                {" "}
+                ({promisesDueSoon.count})
               </span>
             </span>
           )}

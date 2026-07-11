@@ -4541,6 +4541,72 @@ export function awaitingPromiseHeadline(
   };
 }
 
+// ── Nudge de Painel: promessas de pagamento a vencer nos próximos dias ──────
+//
+// Os três sinais de recebível já no Painel são todos NEGATIVOS: encalhado (🚨),
+// promessa furada (🤝) e cobrança que nem começou (🔔). Falta o lado que planeja
+// o caixa: das promessas que o contratante fez e que ainda estão NO PRAZO
+// (`summarizePaymentPromises().pending`), quais chegam já-já? Esta leitura destila
+// as promessas no prazo cuja data cai dentro de uma janela curta (padrão 7 dias) —
+// o dinheiro que se pode esperar na semana e cuja falta, se não pingar, é a próxima
+// cobrança a fazer. Puro, sem I/O: recebe o `PaymentPromiseSummary` já computado.
+
+/**
+ * Janela padrão (dias) para uma promessa de pagamento no prazo virar "a vencer" —
+ * o horizonte de caixa da semana. 7 dias: chega dentro dos próximos sete dias.
+ */
+export const PROMISE_DUE_SOON_DAYS = 7;
+
+export interface PromisesDueSoonHeadline {
+  /** Aparecer no Painel? Só quando há ≥1 promessa no prazo vencendo na janela. */
+  show: boolean;
+  /** Nº de promessas no prazo cuja data cai dentro da janela. */
+  count: number;
+  /** Total em aberto coberto por essas promessas (centavos). */
+  totalOutstanding: number;
+  /** Dias até a promessa mais próxima da janela (0 = vence hoje). */
+  nextDays: number;
+  /** Dias até a promessa mais distante ainda dentro da janela. */
+  maxDays: number;
+}
+
+/**
+ * Deriva de um `PaymentPromiseSummary` (D284) o nudge das promessas no prazo que
+ * vencem em breve. Varre `summary.pending` (promessas hoje/futuras, já ordenadas da
+ * mais próxima à mais distante) e retém as que caem em [hoje, hoje+`withinDays`];
+ * soma o saldo em aberto e reporta o menor/maior nº de dias até o vencimento na
+ * janela. Puro; `now` e a janela são injetáveis para teste.
+ */
+export function promisesDueSoonHeadline<S extends ReceivableShowLike>(
+  summary: PaymentPromiseSummary<S>,
+  opts: { now?: Date | string; withinDays?: number } = {},
+): PromisesDueSoonHeadline {
+  const now = opts.now ?? new Date();
+  const todayMs = utcMidnight(now);
+  const within = opts.withinDays ?? PROMISE_DUE_SOON_DAYS;
+
+  let count = 0;
+  let totalOutstanding = 0;
+  let nextDays = Infinity;
+  let maxDays = 0;
+  for (const entry of summary.pending) {
+    const days = Math.round((entry.promisedAt.getTime() - todayMs) / DAY_MS);
+    if (days < 0 || days > within) continue;
+    count += 1;
+    totalOutstanding += entry.row.outstanding;
+    if (days < nextDays) nextDays = days;
+    if (days > maxDays) maxDays = days;
+  }
+
+  return {
+    show: count > 0,
+    count,
+    totalOutstanding,
+    nextDays: count > 0 ? nextDays : 0,
+    maxDays,
+  };
+}
+
 // ── Cobrança que ainda nem começou, por contratante (de quem nunca cobrei) ──
 //
 // `receivablesAwaitingPromise` (D287) responde, na carteira inteira, "quanto há
