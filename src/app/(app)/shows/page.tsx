@@ -111,7 +111,7 @@ export default async function ShowsPage({
             <a
               href="/shows/agenda.ics"
               className="text-sm text-brand-700 hover:underline"
-              title="Baixar a agenda para Google/Apple Calendar"
+              title="Baixar a agenda para Google/Apple Calendar (com lembrete 3h antes de cada show)"
             >
               Exportar .ics
             </a>

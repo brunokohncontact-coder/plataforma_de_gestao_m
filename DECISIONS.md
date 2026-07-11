@@ -10311,3 +10311,46 @@ contexto, decisão, justificativa e alternativas consideradas.
   (1672 testes). `npm audit` inalterado (10 advisories; ver D6).
 - **Nota de concorrência:** número **D294** escolhido como o próximo livre após o D293
   (Sessão 298). Se outra PR reivindicar D294, renumerar para o próximo livre no merge.
+
+## 2026-07-11 — D295: Lembretes de show no feed .ics (VALARM), 3h antes por padrão (Sessão 301)
+- **Contexto:** o feed iCalendar `/shows/agenda.ics` (D14/D15) exporta cada show como um
+  VEVENT, mas sem nenhum alarme. O músico importa/assina a agenda no Google/Apple Calendar
+  e mesmo assim o celular **não avisa** antes do gig — justo o momento em que um lembrete
+  vale mais (preparar equipamento, deslocar-se). A serialização iCal já é uma camada pura
+  testada (`src/lib/ics.ts`), então dá para acrescentar o lembrete sem tocar em I/O nem no
+  schema.
+- **Decisão:** anexar a cada VEVENT **ainda por cumprir** um bloco `VALARM`
+  (`ACTION:DISPLAY`, `DESCRIPTION` = título do show, `TRIGGER` = antecedência negativa) que
+  dispara **3h antes** por padrão. Só shows **PROPOSED/CONFIRMED** recebem alarme
+  (`showWantsReminder`): um `PLAYED` já aconteceu e um `CANCELLED` não vai acontecer — alarme
+  neles é ruído. A antecedência é configurável pelo query param `?lembrete=` da rota
+  (presets `30m|1h|2h|3h|6h|12h|1d|2d`; `off`/`0`/`nao`/`sem`/`none` desliga; valor
+  desconhecido ou ausente cai no padrão de 180 min). O parâmetro persiste na URL de
+  assinatura, então a escolha vale para o feed assinado.
+- **Justificativa:** é a peça que faltava para o feed ser útil de fato — um calendário sem
+  lembrete é uma lista, não um assistente. VALARM/`ACTION:DISPLAY` é padrão RFC 5545 §3.6.6,
+  suportado por Google/Apple/Outlook. Manter a lógica em `ics.ts` (helpers puros
+  `showWantsReminder`, `formatAlarmTrigger`, `parseReminderMinutes` + `REMINDER_PRESETS` +
+  `DEFAULT_REMINDER_MINUTES`) preserva a testabilidade e o zero-I/O; a rota só interpreta o
+  param e repassa a opção. Default **ligado** (e não opt-in) porque o produto ainda não tem
+  usuários reais em produção (bloqueio da D294) — é a hora de assumir o padrão mais útil.
+- **Alternativas consideradas:**
+  - *Lembrete opt-in (default desligado)* — descartado: esconderia o maior valor do feed
+    atrás de um parâmetro que ninguém descobre; o opt-out (`?lembrete=off`) cobre quem não
+    quer.
+  - *Alarmar também `PLAYED`/`CANCELLED`* — descartado: alarme com trigger no passado que os
+    clientes ignoram, só engorda o arquivo e polui a lista de alarmes.
+  - *Dois alarmes (ex.: 1 dia + 3h antes)* — adiado: um VALARM cobre o caso comum sem inflar
+    o VEVENT; um segundo eixo pode vir se houver demanda.
+  - *Seletor de antecedência na UI (client component)* — adiado: os três botões "Exportar
+    .ics" ganharam só o `title` anunciando o lembrete; o controle fino vive no `?lembrete=`
+    (o feed é assinado por URL, onde o param é natural). Um seletor pode vir depois.
+- **Hipótese a validar:** a antecedência padrão de **3h** (`DEFAULT_REMINDER_MINUTES`) é um
+  palpite razoável (tempo de preparo/deslocamento no mesmo dia), não medido com uso real. A
+  cadência ideal varia por perfil (quem viaja para o gig pode querer 1 dia). Validar antes de
+  fixar; o `?lembrete=` já dá a saída.
+- **DoD:** build/typecheck/lint verdes; **1684 testes** (+13 em `ics.test.ts`); smoke →
+  `/login` 200, `/shows/agenda.ics` e `/shows` 307→/login (auth-gated, sem 500); `npm audit`
+  inalterado (10 advisories; ver D6). Zero migração, zero dependência nova.
+- **Nota de concorrência:** número **D295** escolhido como o próximo livre após o D294
+  (Sessão 300). Se outra PR reivindicar D295, renumerar para o próximo livre no merge.

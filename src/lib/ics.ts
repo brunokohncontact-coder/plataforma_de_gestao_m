@@ -72,6 +72,62 @@ export function icsEventStatus(status: ShowStatus): "TENTATIVE" | "CONFIRMED" | 
   }
 }
 
+/**
+ * Um lembrete (VALARM) só faz sentido para compromissos ainda por cumprir:
+ * PROPOSED (a acompanhar) e CONFIRMED (firme). Um show PLAYED já aconteceu e um
+ * CANCELLED não vai acontecer — nenhum precisa de alarme. Ver DECISIONS.md (D295).
+ */
+export function showWantsReminder(status: ShowStatus): boolean {
+  return status === "PROPOSED" || status === "CONFIRMED";
+}
+
+/**
+ * Formata uma antecedência em minutos como uma DURATION negativa da RFC 5545
+ * §3.3.6 (ex.: 180 → "-PT3H", 90 → "-PT1H30M", 1440 → "-P1D", 1560 → "-P1DT2H"),
+ * pronta para a propriedade TRIGGER de um VALARM. Zero/negativo → "-PT0M".
+ */
+export function formatAlarmTrigger(minutesBefore: number): string {
+  const total = Math.max(0, Math.round(minutesBefore));
+  if (total === 0) return "-PT0M";
+  const days = Math.floor(total / 1440);
+  const hours = Math.floor((total % 1440) / 60);
+  const mins = total % 60;
+  const time = `${hours > 0 ? `${hours}H` : ""}${mins > 0 ? `${mins}M` : ""}`;
+  return `-P${days > 0 ? `${days}D` : ""}${time ? `T${time}` : ""}`;
+}
+
+/**
+ * Presets de antecedência do lembrete (valor do parâmetro `?lembrete=` → minutos).
+ * Cobre da véspera imediata ("30m") a dois dias antes ("2d").
+ */
+export const REMINDER_PRESETS: Readonly<Record<string, number>> = {
+  "30m": 30,
+  "1h": 60,
+  "2h": 120,
+  "3h": 180,
+  "6h": 360,
+  "12h": 720,
+  "1d": 1440,
+  "2d": 2880,
+};
+
+/** Antecedência padrão do lembrete quando `?lembrete=` está ausente: 3h antes. */
+export const DEFAULT_REMINDER_MINUTES = 180;
+
+/**
+ * Interpreta o parâmetro `?lembrete=` do feed .ics em minutos de antecedência.
+ * Ausente/vazio → o padrão ({@link DEFAULT_REMINDER_MINUTES}); "off"/"0"/"nao"/
+ * "sem"/"none" → `null` (sem lembrete); um preset conhecido → seus minutos;
+ * qualquer outro valor cai no padrão (leniente, nunca lança).
+ */
+export function parseReminderMinutes(value: string | null | undefined): number | null {
+  if (value == null) return DEFAULT_REMINDER_MINUTES;
+  const v = value.trim().toLowerCase();
+  if (v === "") return DEFAULT_REMINDER_MINUTES;
+  if (["off", "0", "nao", "não", "none", "sem"].includes(v)) return null;
+  return REMINDER_PRESETS[v] ?? DEFAULT_REMINDER_MINUTES;
+}
+
 /** Forma mínima de show para exportação (desacoplada do Prisma). */
 export interface IcsShow {
   id: string;
@@ -91,6 +147,12 @@ export interface IcsOptions {
   durationMinutes?: number;
   /** Domínio usado no UID (`<id>@<uidDomain>`). Default: "palco.app". */
   uidDomain?: string;
+  /**
+   * Quando um número positivo, anexa um VALARM (ACTION:DISPLAY) que dispara este
+   * tanto de minutos antes do início — mas só para shows ainda por cumprir
+   * ({@link showWantsReminder}). Ausente/≤0 → sem lembrete. Ver DECISIONS.md (D295).
+   */
+  reminderMinutesBefore?: number;
 }
 
 /** Junta local + cidade em uma única linha de LOCATION (ignora partes vazias). */
@@ -131,6 +193,18 @@ export function buildVEvent(show: IcsShow, opts: IcsOptions = {}): string[] {
 
   props.push(`DESCRIPTION:${escapeIcsText(descriptionLines(show))}`);
   props.push(`STATUS:${icsEventStatus(show.status)}`);
+
+  const reminder = opts.reminderMinutesBefore;
+  if (typeof reminder === "number" && reminder > 0 && showWantsReminder(show.status)) {
+    props.push(
+      "BEGIN:VALARM",
+      "ACTION:DISPLAY",
+      `DESCRIPTION:${escapeIcsText(show.title)}`,
+      `TRIGGER:${formatAlarmTrigger(reminder)}`,
+      "END:VALARM",
+    );
+  }
+
   props.push("END:VEVENT");
 
   return props.map(foldIcsLine);
