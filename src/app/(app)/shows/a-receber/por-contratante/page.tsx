@@ -5,11 +5,14 @@ import {
   reconcileShowFees,
   outstandingByContact,
   summarizePaymentPromises,
+  awaitingPromiseByContact,
   paymentPromiseStatus,
   RECEIVABLE_AGE_BUCKET_LABELS,
   type ReceivableAgeBucketKey,
   type ReceivableShowLike,
   type PaymentPromiseSummary,
+  type PromisableShowLike,
+  type AwaitingPromiseContactRow,
   type TxLike,
 } from "@/lib/finance";
 import { pickPayerContact, buildContactBilling } from "@/lib/billing";
@@ -119,6 +122,18 @@ export default async function ReceivablesByContactPage() {
       r.contact?.id ?? NO_CONTACT_KEY,
       summarizePaymentPromises(r.rows.map((a) => a.row)),
     ]),
+  );
+
+  // Cobrança que ainda nem começou (D287), quebrada por contratante: com quem a
+  // conversa de cobrança nem começou (recebível vencido há 30+ dias sem nenhuma
+  // promessa registrada). Reaproveita a lógica pura já testada; a chave casa a do
+  // byContact.rows para pendurar um selo por devedor ao lado das promessas furadas.
+  const awaiting = awaitingPromiseByContact(
+    receivables.rows,
+    getPayer as (s: PromisableShowLike & ShowRow) => PayerContact | null,
+  );
+  const awaitingByKey = new Map<string, AwaitingPromiseContactRow<PayerContact, ReceivableShowLike & ShowRow>>(
+    awaiting.rows.map((r) => [r.contact?.id ?? NO_CONTACT_KEY, r]),
   );
 
   return (
@@ -270,10 +285,11 @@ export default async function ReceivablesByContactPage() {
               <tbody className="divide-y divide-gray-100">
                 {byContact.rows.map((r) => {
                   const groupPromises = promisesByKey.get(r.contact?.id ?? NO_CONTACT_KEY);
+                  const groupAwaiting = awaitingByKey.get(r.contact?.id ?? NO_CONTACT_KEY);
                   return (
                   <tr key={r.contact?.id ?? "__none__"} className="hover:bg-gray-50">
                     <td className="px-4 py-3">
-                      <span className="inline-flex items-center gap-2">
+                      <span className="inline-flex flex-wrap items-center gap-2">
                         {r.contact ? (
                           <Link
                             href={`/contatos/${r.contact.id}`}
@@ -291,6 +307,14 @@ export default async function ReceivablesByContactPage() {
                           >
                             ⚠ {groupPromises.brokenCount}{" "}
                             {groupPromises.brokenCount === 1 ? "promessa" : "promessas"}
+                          </span>
+                        )}
+                        {groupAwaiting && groupAwaiting.count > 0 && (
+                          <span
+                            className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700"
+                            title={`${groupAwaiting.count} ${groupAwaiting.count === 1 ? "cachê" : "cachês"} sem nenhuma promessa registrada há 30+ dias (${formatMoney(groupAwaiting.totalOutstanding)}) — a cobrança nem começou`}
+                          >
+                            🔔 {groupAwaiting.count} sem cobrança
                           </span>
                         )}
                       </span>
@@ -331,6 +355,7 @@ export default async function ReceivablesByContactPage() {
             <h2 className="text-sm font-semibold text-gray-700">Shows em aberto por contratante</h2>
             {byContact.rows.map((r) => {
               const groupPromises = promisesByKey.get(r.contact?.id ?? NO_CONTACT_KEY);
+              const groupAwaiting = awaitingByKey.get(r.contact?.id ?? NO_CONTACT_KEY);
               // Cobrança consolidada: uma só mensagem cobrindo todos os shows em aberto
               // deste contratante (e-mail/WhatsApp). null quando o contato não tem canal
               // (sem e-mail/telefone) ou é o grupo "Sem contratante".
@@ -357,7 +382,7 @@ export default async function ReceivablesByContactPage() {
               return (
               <div key={r.contact?.id ?? "__none__"} className="card">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-                  <p className="flex items-center gap-2 font-medium text-gray-900">
+                  <p className="flex flex-wrap items-center gap-2 font-medium text-gray-900">
                     {r.contact ? r.contact.name : "Sem contratante"}
                     {groupPromises && groupPromises.brokenCount > 0 && (
                       <span
@@ -366,6 +391,14 @@ export default async function ReceivablesByContactPage() {
                       >
                         ⚠ {groupPromises.brokenCount}{" "}
                         {groupPromises.brokenCount === 1 ? "promessa vencida" : "promessas vencidas"}
+                      </span>
+                    )}
+                    {groupAwaiting && groupAwaiting.count > 0 && (
+                      <span
+                        className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700"
+                        title={`${groupAwaiting.count} ${groupAwaiting.count === 1 ? "cachê" : "cachês"} sem nenhuma promessa registrada há 30+ dias (${formatMoney(groupAwaiting.totalOutstanding)}) — a cobrança nem começou`}
+                      >
+                        🔔 {groupAwaiting.count} sem cobrança iniciada
                       </span>
                     )}
                   </p>
@@ -475,7 +508,10 @@ export default async function ReceivablesByContactPage() {
             e-mail/telefone). O selo <span className="font-medium text-red-600">⚠ promessa
             vencida</span> marca quem prometeu pagar até uma data que já passou (e o cachê
             continua em aberto); <span className="font-medium text-amber-600">📅</span> indica
-            promessa ainda no prazo. A data prometida é registrada/editada em{" "}
+            promessa ainda no prazo. O selo{" "}
+            <span className="font-medium text-amber-700">🔔 sem cobrança iniciada</span> marca o
+            contratante que tem cachê vencido há 30+ dias sem nenhuma promessa registrada — a
+            conversa de cobrança com ele nem começou. A data prometida é registrada/editada em{" "}
             <Link href="/shows/a-receber" className="text-brand-700 hover:underline">
               Cachês a receber
             </Link>

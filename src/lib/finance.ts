@@ -4541,6 +4541,140 @@ export function awaitingPromiseHeadline(
   };
 }
 
+// ── Cobrança que ainda nem começou, por contratante (de quem nunca cobrei) ──
+//
+// `receivablesAwaitingPromise` (D287) responde, na carteira inteira, "quanto há
+// vencido sem nenhuma promessa registrada?" — mas não diz de QUEM é essa cobrança
+// nunca iniciada. Esta leitura quebra o mesmo recorte (recebíveis em aberto, SEM
+// promessa e parados há ≥ limiar de dias) pelo contratante responsável pelo
+// pagamento, o companheiro por-devedor da leitura da carteira: com quem a conversa
+// de cobrança nem começou, e quem concentra o dinheiro mais fácil de esquecer.
+// Espelha o agrupamento de `outstandingByContact` (mesmo `getPayer`, mesmo grupo
+// `null` "sem contratante" por último), filtrado ao subconjunto sem promessa.
+
+export interface AwaitingPromiseContactRow<
+  C,
+  S extends ReceivableShowLike = ReceivableShowLike,
+> {
+  /** Contratante devedor; `null` agrega os shows sem contato vinculado. */
+  contact: C | null;
+  /** Nº de cachês sem promessa e já vencidos além do limiar desse contratante. */
+  count: number;
+  /** Total em aberto sem promessa desse contratante (centavos). */
+  totalOutstanding: number;
+  /** Maior atraso (dias desde o show) entre os cachês sem promessa do contratante. */
+  maxDaysOutstanding: number;
+  /** Cachês sem promessa do contratante, do atraso mais longo ao mais curto. */
+  rows: AwaitingPromiseRow<S>[];
+}
+
+export interface AwaitingPromiseByContact<
+  C,
+  S extends ReceivableShowLike = ReceivableShowLike,
+> {
+  /** Grupos por contratante, do maior saldo sem promessa ao menor; o grupo `null`
+   * (sem contratante) vai sempre por último. */
+  rows: AwaitingPromiseContactRow<C, S>[];
+  /** Nº total de cachês sem promessa além do limiar. */
+  count: number;
+  /** Soma em aberto de tudo sem promessa além do limiar (centavos). */
+  totalOutstanding: number;
+  /** Nº de contratantes identificados com cobrança nunca iniciada (exclui `null`). */
+  contactCount: number;
+  /** Contratante que mais concentra cobrança nunca iniciada (maior total), ou null. */
+  topContact: AwaitingPromiseContactRow<C, S> | null;
+}
+
+/**
+ * Agrupa a "cobrança que ainda nem começou" (`receivablesAwaitingPromise`/D287) pelo
+ * contratante que responde pelo pagamento. Puro, sem I/O: varre os recebíveis em
+ * aberto (saída de `reconcileShowFees`), retém os SEM promessa (`paymentPromiseStatus`
+ * === "none") e já parados há ≥ `minDaysOutstanding` dias (mesmo filtro da leitura da
+ * carteira), e os agrupa por `getPayer(show)` (ex.: billing.pickPayerContact; `null`
+ * cai em "sem contratante"). Grupos ordenados do MAIOR saldo sem promessa ao menor
+ * (desempate: atraso mais longo, depois id); o grupo `null` vai sempre por último. Os
+ * cachês de cada grupo vão do atraso mais longo ao mais curto (id desempata). `now` e
+ * o limiar são injetáveis para teste.
+ */
+export function awaitingPromiseByContact<
+  C extends { id: string },
+  S extends PromisableShowLike,
+>(
+  rows: ShowReceivableRow<S>[],
+  getPayer: (show: S) => C | null,
+  opts: { now?: Date | string; minDaysOutstanding?: number } = {},
+): AwaitingPromiseByContact<C, S> {
+  const now = opts.now ?? new Date();
+  const todayMs = utcMidnight(now);
+  const minDays = opts.minDaysOutstanding ?? AWAITING_PROMISE_MIN_DAYS;
+
+  interface Group {
+    contact: C | null;
+    total: number;
+    maxDays: number;
+    rows: AwaitingPromiseRow<S>[];
+  }
+  const NO_CONTACT = " "; // chave reservada para o grupo sem contratante
+  const groups = new Map<string, Group>();
+
+  for (const row of rows) {
+    if (paymentPromiseStatus(row.show.paymentPromisedAt, now) !== "none") continue;
+    const days = Math.max(
+      0,
+      Math.round((todayMs - utcMidnight(row.show.date)) / DAY_MS),
+    );
+    if (days < minDays) continue;
+    const contact = getPayer(row.show);
+    const key = contact ? contact.id : NO_CONTACT;
+    const g =
+      groups.get(key) ??
+      ({ contact, total: 0, maxDays: 0, rows: [] } as Group);
+    g.total += row.outstanding;
+    g.maxDays = Math.max(g.maxDays, days);
+    g.rows.push({ row, daysOutstanding: days });
+    groups.set(key, g);
+  }
+
+  const rowsOut: AwaitingPromiseContactRow<C, S>[] = [];
+  let count = 0;
+  let totalOutstanding = 0;
+  for (const g of groups.values()) {
+    g.rows.sort(
+      (a, b) =>
+        b.daysOutstanding - a.daysOutstanding ||
+        a.row.show.id.localeCompare(b.row.show.id),
+    );
+    count += g.rows.length;
+    totalOutstanding += g.total;
+    rowsOut.push({
+      contact: g.contact,
+      count: g.rows.length,
+      totalOutstanding: g.total,
+      maxDaysOutstanding: g.maxDays,
+      rows: g.rows,
+    });
+  }
+
+  // Maior saldo sem promessa → menor; o grupo sem contratante (null) por último.
+  rowsOut.sort((a, b) => {
+    if (!a.contact !== !b.contact) return a.contact ? -1 : 1;
+    return (
+      b.totalOutstanding - a.totalOutstanding ||
+      b.maxDaysOutstanding - a.maxDaysOutstanding ||
+      (a.contact?.id ?? "").localeCompare(b.contact?.id ?? "")
+    );
+  });
+
+  const identified = rowsOut.filter((r) => r.contact);
+  return {
+    rows: rowsOut,
+    count,
+    totalOutstanding,
+    contactCount: identified.length,
+    topContact: identified[0] ?? null,
+  };
+}
+
 // ── Cachês a receber por contratante (de quem cobrar primeiro) ──────────────
 //
 // O aging (`bucketReceivablesByAge`) responde "qual dinheiro está parado há mais

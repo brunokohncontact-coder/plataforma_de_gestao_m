@@ -68,6 +68,7 @@ import {
   AWAITING_PROMISE_MIN_DAYS,
   awaitingPromiseHeadline,
   AWAITING_PROMISE_CRITICAL_DAYS,
+  awaitingPromiseByContact,
   computeDelta,
   compareSummaries,
   averageSummaries,
@@ -4325,6 +4326,127 @@ describe("awaitingPromiseHeadline", () => {
 
   it("expõe o limiar crítico padrão de 90 dias", () => {
     expect(AWAITING_PROMISE_CRITICAL_DAYS).toBe(90);
+  });
+});
+
+describe("awaitingPromiseByContact", () => {
+  const now = new Date("2026-04-01T12:00:00.000Z");
+
+  interface Contact {
+    id: string;
+    name: string;
+  }
+  type ShowWithPayer = PromisableShowLike & { payer: Contact | null };
+  const getPayer = (s: ShowWithPayer) => s.payer;
+
+  function gig(partial: Partial<ShowWithPayer>): ShowWithPayer {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-01-01T00:00:00.000Z", // 90 dias antes de "now"
+      payer: null,
+      ...partial,
+    };
+  }
+
+  const rowsOf = (shows: ShowWithPayer[]) =>
+    reconcileShowFees(shows, [], { now }).rows;
+
+  it("retorna vazio quando não há cobrança sem promessa além do limiar", () => {
+    const a = { id: "a", name: "Bar A" };
+    const shows = [
+      gig({ id: "com-promessa", payer: a, paymentPromisedAt: "2026-04-10T00:00:00.000Z" }),
+      gig({ id: "recente", payer: a, date: "2026-03-25T00:00:00.000Z" }), // 7 dias → dentro do limiar
+    ];
+    const r = awaitingPromiseByContact(rowsOf(shows), getPayer, { now });
+    expect(r.rows).toEqual([]);
+    expect(r.count).toBe(0);
+    expect(r.totalOutstanding).toBe(0);
+    expect(r.contactCount).toBe(0);
+    expect(r.topContact).toBeNull();
+  });
+
+  it("agrupa a cobrança sem promessa por contratante, do maior saldo ao menor", () => {
+    const a = { id: "a", name: "Bar A" };
+    const b = { id: "b", name: "Bar B" };
+    const shows = [
+      gig({ id: "x", fee: 100_00, payer: b }),
+      gig({ id: "y", fee: 300_00, payer: a }),
+    ];
+    const r = awaitingPromiseByContact(rowsOf(shows), getPayer, { now });
+    expect(r.rows.map((row) => row.contact?.id)).toEqual(["a", "b"]);
+    expect(r.count).toBe(2);
+    expect(r.totalOutstanding).toBe(400_00);
+    expect(r.contactCount).toBe(2);
+    expect(r.topContact!.contact!.id).toBe("a");
+    expect(r.rows[0].totalOutstanding).toBe(300_00);
+  });
+
+  it("exclui quem tem promessa e quem está dentro do limiar, usando o saldo em aberto", () => {
+    const a = { id: "a", name: "Bar A" };
+    const txs = [tx({ type: "INCOME", amount: 40_00, received: true, showId: "sem-promessa" })];
+    const shows = [
+      gig({ id: "sem-promessa", fee: 100_00, payer: a }), // 90 dias, sem promessa → entra (60,00)
+      gig({ id: "com-promessa", fee: 500_00, payer: a, paymentPromisedAt: "2026-04-10T00:00:00.000Z" }),
+      gig({ id: "recente", fee: 500_00, payer: a, date: "2026-03-25T00:00:00.000Z" }), // 7 dias → fora
+    ];
+    const r = awaitingPromiseByContact(reconcileShowFees(shows, txs, { now }).rows, getPayer, { now });
+    expect(r.count).toBe(1);
+    expect(r.rows).toHaveLength(1);
+    expect(r.rows[0].totalOutstanding).toBe(60_00);
+    expect(r.rows[0].rows.map((s) => s.row.show.id)).toEqual(["sem-promessa"]);
+  });
+
+  it("guarda o pior atraso e ordena os cachês do grupo do mais longo ao mais curto (id desempata)", () => {
+    const a = { id: "a", name: "Bar A" };
+    const shows = [
+      gig({ id: "recente", fee: 100_00, payer: a, date: "2026-03-01T00:00:00.000Z" }), // 31 dias
+      gig({ id: "antigo", fee: 100_00, payer: a, date: "2026-01-10T00:00:00.000Z" }), // 81 dias
+      gig({ id: "medio", fee: 100_00, payer: a, date: "2026-02-01T00:00:00.000Z" }), // 59 dias
+    ];
+    const r = awaitingPromiseByContact(rowsOf(shows), getPayer, { now });
+    const row = r.rows[0];
+    expect(row.maxDaysOutstanding).toBe(81);
+    expect(row.rows.map((s) => s.row.show.id)).toEqual(["antigo", "medio", "recente"]);
+  });
+
+  it("joga shows sem contratante para o grupo nulo (sempre por último) e o ignora em contactCount/topContact", () => {
+    const dono = { id: "d", name: "Contratante" };
+    const shows = [
+      // órfão deve mais e está mais atrasado, ainda assim vai por último.
+      gig({ id: "orfao", fee: 900_00, payer: null, date: "2026-01-01T00:00:00.000Z" }),
+      gig({ id: "comdono", fee: 100_00, payer: dono }),
+    ];
+    const r = awaitingPromiseByContact(rowsOf(shows), getPayer, { now });
+    expect(r.rows.map((row) => row.contact?.id ?? null)).toEqual(["d", null]);
+    expect(r.contactCount).toBe(1); // exclui o grupo nulo
+    expect(r.topContact!.contact!.id).toBe("d");
+    expect(r.count).toBe(2);
+    expect(r.totalOutstanding).toBe(1000_00);
+  });
+
+  it("desempata pelo atraso mais longo quando o saldo sem promessa é igual", () => {
+    const a = { id: "a", name: "Bar A" };
+    const b = { id: "b", name: "Bar B" };
+    const shows = [
+      gig({ id: "x", fee: 200_00, payer: a, date: "2026-02-20T00:00:00.000Z" }), // 40 dias
+      gig({ id: "y", fee: 200_00, payer: b, date: "2026-01-05T00:00:00.000Z" }), // 86 dias
+    ];
+    const r = awaitingPromiseByContact(rowsOf(shows), getPayer, { now });
+    // mesmo saldo (200,00); b está mais atrasado, então vem primeiro.
+    expect(r.rows.map((row) => row.contact?.id)).toEqual(["b", "a"]);
+    expect(r.topContact!.contact!.id).toBe("b");
+  });
+
+  it("respeita um limiar customizado de dias", () => {
+    const a = { id: "a", name: "Bar A" };
+    const shows = [gig({ id: "g1", payer: a, date: "2026-03-18T00:00:00.000Z" })]; // 14 dias
+    const rows = rowsOf(shows);
+    expect(awaitingPromiseByContact(rows, getPayer, { now }).count).toBe(0); // padrão 30
+    expect(
+      awaitingPromiseByContact(rows, getPayer, { now, minDaysOutstanding: 7 }).count,
+    ).toBe(1);
   });
 });
 

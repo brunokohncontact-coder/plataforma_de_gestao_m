@@ -10061,3 +10061,49 @@ contexto, decisão, justificativa e alternativas consideradas.
   (10 advisories; ver D6).
 - **Nota de concorrência:** número **D288** escolhido como o próximo livre após o D287
   (Sessão 293). Se uma PR paralela reivindicar D288, renumerar para o próximo livre no merge.
+
+## 2026-07-11 — D289: Cobrança que ainda nem começou, por contratante (`awaitingPromiseByContact`)
+- **Contexto:** a D287 (Sessão 293) criou `receivablesAwaitingPromise` — recebíveis já
+  vencidos há ≥30 dias SEM nenhuma promessa registrada (a cobrança que nem começou) — e a
+  D288 (Sessão 294) levou o sinal ao Painel. Mas a leitura era só da carteira INTEIRA: dizia
+  "quanto" há sem cobrança iniciada, nunca de QUEM. A tela `/shows/a-receber/por-contratante`
+  já quebra o saldo em aberto por devedor e pendura um selo ⚠ de promessas vencidas por
+  contratante, mas não tinha o eixo simétrico "com quem a conversa de cobrança nem começou".
+- **Decisão:** helper puro novo `awaitingPromiseByContact(rows, getPayer, opts?)` + tipos
+  `AwaitingPromiseByContact`/`AwaitingPromiseContactRow` em `src/lib/finance.ts`, espelho de
+  `outstandingByContact` filtrado ao subconjunto sem promessa: varre os recebíveis em aberto
+  (saída de `reconcileShowFees`), retém os com `paymentPromiseStatus` === "none" e parados há
+  ≥ `minDaysOutstanding` (mesmo filtro/limiar da D287, `AWAITING_PROMISE_MIN_DAYS`=30) e os
+  agrupa por `getPayer(show)` (o eixo do pagador, `pickPayerContact`). Por grupo:
+  `count`/`totalOutstanding`/`maxDaysOutstanding` + os cachês do atraso mais longo ao mais
+  curto (id desempata). Grupos ordenados do MAIOR saldo sem promessa ao menor (desempate:
+  atraso mais longo, depois id), o grupo `null` "sem contratante" sempre por último; expõe
+  `contactCount` (exclui o nulo) e `topContact` (quem mais concentra cobrança nunca iniciada).
+  A página `/shows/a-receber/por-contratante` ganha um selo âmbar "🔔 {N} sem cobrança
+  iniciada" por contratante (na tabela e no cabeçalho do detalhe), ao lado do selo ⚠ de
+  promessas vencidas, mais uma frase na legenda. Reaproveita os shows/transações JÁ carregados
+  para a página — zero consulta, zero migração, zero dependência.
+- **Justificativa:** é o companheiro por-devedor exato da leitura da carteira (D287/D288): o
+  banner diz o total, esta quebra diz com QUEM começar a cobrança que nunca começou. Espelha o
+  agrupamento consolidado de `outstandingByContact` (mesmo `getPayer`, mesmo grupo nulo por
+  último) e o padrão de selo de `summarizePaymentPromises` na mesma tela — zero regra de
+  negócio nova (reusa o filtro de D287), lógica pura testável fora do React.
+- **Alternativas consideradas:** (a) uma tela/CSV dedicados — descartado por ora: o selo na
+  tela por-contratante que já existe entrega o sinal acionável ("de quem"), sem adensar a
+  navegação; um CSV pode vir depois se houver demanda (a coluna "Status promessa" do CSV de
+  `/shows/a-receber` já permite o recorte manual). (b) reusar os grupos de `outstandingByContact`
+  e filtrar na página — descartado: replicaria o filtro de promessa/limiar no componente; um
+  helper puro dedicado (mesmo espírito de `receivablesAwaitingPromise`) o mantém testável e
+  reusável. (c) badge de valor (R$) em vez de contagem — descartado: a contagem "N sem
+  cobrança" é o gancho de ação; o valor total vai no `title` do selo (tooltip).
+- **DoD:** build de produção OK, typecheck (`tsc --noEmit`, 0 erros), lint (`next lint`,
+  0 avisos); **1649 testes** (`vitest run`, +7 em `finance.test.ts`,
+  `describe("awaitingPromiseByContact")`: vazio sem cobrança sem promessa; agrupa por
+  contratante do maior saldo ao menor; exclui quem tem promessa/está no limiar usando o saldo
+  em aberto; guarda o pior atraso e ordena os cachês do grupo; grupo nulo por último e fora de
+  contactCount/topContact; desempate por atraso quando o saldo é igual; respeita limiar
+  customizado). Smoke (`next start`) → `/login` 200, `/shows/a-receber` e
+  `/shows/a-receber/por-contratante` 307→/login (auth-gated, sem 500). `npm audit`
+  **inalterado** vs. baseline (10 advisories; ver D6).
+- **Nota de concorrência:** número **D289** escolhido como o próximo livre após o D288
+  (Sessão 294). Se uma PR paralela reivindicar D289, renumerar para o próximo livre no merge.

@@ -9,7 +9,28 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1642 testes** verdes após o
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1649 testes** verdes após a
+**cobrança que ainda nem começou, por contratante** (Sessão 295, D289 — a D287/D288 criaram a leitura da
+carteira INTEIRA da "cobrança que nem começou" (`receivablesAwaitingPromise` — recebíveis vencidos há ≥30 dias
+SEM promessa registrada — banner na tela + segmento no Painel), mas nunca diziam de QUEM é essa cobrança nunca
+iniciada. A tela `/shows/a-receber/por-contratante` já quebrava o saldo por devedor com selo ⚠ de promessas
+vencidas, faltando o eixo simétrico "com quem a conversa de cobrança nem começou". Helper puro novo
+`awaitingPromiseByContact(rows, getPayer, opts?)` + tipos `AwaitingPromiseByContact`/`AwaitingPromiseContactRow`
+em `src/lib/finance.ts`, espelho de `outstandingByContact` filtrado ao subconjunto sem promessa: varre os
+recebíveis em aberto (saída de `reconcileShowFees`), retém os com `paymentPromiseStatus` === "none" e parados há
+≥ `AWAITING_PROMISE_MIN_DAYS`(=30) dias (mesmo filtro de D287) e os agrupa por `getPayer(show)` (o eixo do
+pagador, `pickPayerContact`); por grupo `count`/`totalOutstanding`/`maxDaysOutstanding` + cachês do atraso mais
+longo ao mais curto (id desempata); grupos do maior saldo sem promessa ao menor (desempate: atraso, depois id),
+grupo `null` "sem contratante" por último; expõe `contactCount` (exclui o nulo) e `topContact`. A página ganha
+um selo âmbar "🔔 {N} sem cobrança iniciada" por contratante (na tabela e no cabeçalho do detalhe), ao lado do
+⚠ de promessas vencidas, mais uma frase na legenda. Reusa os shows/transações JÁ carregados — zero consulta,
+zero regra nova, zero migração, zero dependência. **+7 testes** (`finance.test.ts`,
+`describe("awaitingPromiseByContact")`: vazio sem cobrança sem promessa; agrupa por contratante do maior saldo
+ao menor; exclui quem tem promessa/está no limiar usando o saldo em aberto; guarda o pior atraso e ordena os
+cachês do grupo; grupo nulo por último e fora de contactCount/topContact; desempate por atraso quando o saldo é
+igual; respeita limiar customizado). Build/typecheck/lint verdes; smoke → `/login` 200, `/shows/a-receber` e
+`/shows/a-receber/por-contratante` 307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories).
+Ver D289. Antes disso, **1642 testes** verdes após o
 **nudge de Painel da cobrança que ainda nem começou** (Sessão 294, D288 — fecha o adiamento explícito da
 D287(c): a D287 criou `receivablesAwaitingPromise` (recebíveis vencidos há ≥30 dias SEM nenhuma promessa
 registrada — a cobrança que nem começou) e o pôs num banner na tela `/shows/a-receber`, mas ADIOU levar o
