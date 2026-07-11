@@ -9,7 +9,24 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 300 (D294) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 301 (D295) —
+lembretes de show no feed .ics (VALARM):** o feed iCalendar `/shows/agenda.ics` (D14/D15) exportava
+cada show como VEVENT sem nenhum alarme — o músico importava/assinava a agenda mas o celular não
+avisava antes do gig. Agora cada show **ainda por cumprir** (proposto/confirmado) sai com um **VALARM**
+(`ACTION:DISPLAY`, texto = título do show) disparando **3h antes** por padrão; shows já tocados
+(`PLAYED`) e cancelados não recebem alarme (`showWantsReminder`). Tudo na camada pura testada
+`src/lib/ics.ts`: novo campo `IcsOptions.reminderMinutesBefore`, helpers `showWantsReminder`,
+`formatAlarmTrigger` (minutos → DURATION negativa da RFC 5545 §3.3.6: 180→`-PT3H`, 1440→`-P1D`,
+1560→`-P1DT2H`), `parseReminderMinutes` + presets `REMINDER_PRESETS` (30m|1h|2h|3h|6h|12h|1d|2d) +
+`DEFAULT_REMINDER_MINUTES`(=180). A rota lê `?lembrete=` (default 3h; `off`/`0`/`nao`/`sem`/`none`
+desliga) e repassa a `showsToIcs`; os três botões "Exportar .ics" (`/shows`, `/shows/calendario`,
+`/shows/semana`) tiveram o `title` atualizado para anunciar o lembrete. Zero migração, zero dependência,
+zero consulta nova (reusa os shows já carregados pela rota). **+13 testes** (`ics.test.ts`:
+`showWantsReminder` só proposto/confirmado; `formatAlarmTrigger` h/min/dias/arredonda/zero;
+`parseReminderMinutes` padrão/opt-out/presets; `buildVEvent` emite/omite VALARM por config e por status,
+ignora ≤0; `showsToIcs` propaga só a elegíveis). Build/typecheck/lint verdes (**1684 testes**); smoke →
+`/login` 200, `/shows/agenda.ics` e `/shows` 307→/login (auth-gated, sem 500); `npm audit` inalterado
+(10 advisories). Ver D295. Antes disso, **Sessão 300 (D294) —
 diagnóstico do outage de produção + runbook de deploy:** o deploy na Vercel retorna `Application
 error: a server-side exception` em `/register` (e em toda ação que **grava** no banco; digest
 4246294862) porque produção roda **SQLite** (`DATABASE_URL="file:./dev.db"`, `provider="sqlite"`),
@@ -5044,5 +5061,8 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   (queda que vira crítico) são **hipóteses** — quantos pontos de participação da faixa "Acima de
   R$ 5.000" contam como "esvaziamento material/crítico" do topo varia por circuito/preço. Validar
   com músicos antes de virar premissa fixa.
+- **Antecedência do lembrete .ics (D295)**: `DEFAULT_REMINDER_MINUTES`=180 (3h antes) é
+  **hipótese** — a antecedência ideal varia por perfil (quem viaja ao gig pode querer 1 dia).
+  Validar com músicos antes de virar premissa fixa; o `?lembrete=` já oferece a saída.
 - **Segurança em produção**: definir `AUTH_SECRET` forte e migrar para PostgreSQL antes
   de qualquer deploy real. Revisar advisories do Next (D6) e planejar upgrade p/ Next 15+.

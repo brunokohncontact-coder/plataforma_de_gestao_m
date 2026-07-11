@@ -4,6 +4,10 @@ import {
   foldIcsLine,
   formatIcsUtc,
   icsEventStatus,
+  showWantsReminder,
+  formatAlarmTrigger,
+  parseReminderMinutes,
+  DEFAULT_REMINDER_MINUTES,
   buildVEvent,
   showsToIcs,
   type IcsShow,
@@ -79,6 +83,60 @@ describe("icsEventStatus", () => {
   });
 });
 
+describe("showWantsReminder", () => {
+  it("lembra apenas compromissos por cumprir (proposto/confirmado)", () => {
+    expect(showWantsReminder("PROPOSED")).toBe(true);
+    expect(showWantsReminder("CONFIRMED")).toBe(true);
+    expect(showWantsReminder("PLAYED")).toBe(false);
+    expect(showWantsReminder("CANCELLED")).toBe(false);
+  });
+});
+
+describe("formatAlarmTrigger", () => {
+  it("formata horas e minutos como DURATION negativa da RFC 5545", () => {
+    expect(formatAlarmTrigger(180)).toBe("-PT3H");
+    expect(formatAlarmTrigger(90)).toBe("-PT1H30M");
+    expect(formatAlarmTrigger(30)).toBe("-PT30M");
+  });
+
+  it("usa a parte de data para dias e combina com horas", () => {
+    expect(formatAlarmTrigger(1440)).toBe("-P1D");
+    expect(formatAlarmTrigger(1560)).toBe("-P1DT2H");
+    expect(formatAlarmTrigger(2880)).toBe("-P2D");
+  });
+
+  it("arredonda e trata zero/negativo como -PT0M", () => {
+    expect(formatAlarmTrigger(0)).toBe("-PT0M");
+    expect(formatAlarmTrigger(-10)).toBe("-PT0M");
+    expect(formatAlarmTrigger(59.6)).toBe("-PT1H"); // 60 min arredondado
+  });
+});
+
+describe("parseReminderMinutes", () => {
+  it("cai no padrão quando ausente/vazio/desconhecido", () => {
+    expect(parseReminderMinutes(null)).toBe(DEFAULT_REMINDER_MINUTES);
+    expect(parseReminderMinutes(undefined)).toBe(DEFAULT_REMINDER_MINUTES);
+    expect(parseReminderMinutes("  ")).toBe(DEFAULT_REMINDER_MINUTES);
+    expect(parseReminderMinutes("xyz")).toBe(DEFAULT_REMINDER_MINUTES);
+  });
+
+  it("desliga o lembrete com os valores de opt-out", () => {
+    expect(parseReminderMinutes("off")).toBeNull();
+    expect(parseReminderMinutes("0")).toBeNull();
+    expect(parseReminderMinutes("nao")).toBeNull();
+    expect(parseReminderMinutes("sem")).toBeNull();
+    expect(parseReminderMinutes("NONE")).toBeNull();
+  });
+
+  it("resolve os presets conhecidos (case-insensitive, com espaços)", () => {
+    expect(parseReminderMinutes("30m")).toBe(30);
+    expect(parseReminderMinutes("1h")).toBe(60);
+    expect(parseReminderMinutes(" 3H ")).toBe(180);
+    expect(parseReminderMinutes("1d")).toBe(1440);
+    expect(parseReminderMinutes("2d")).toBe(2880);
+  });
+});
+
 describe("buildVEvent", () => {
   const base: IcsShow = {
     id: "show123",
@@ -143,6 +201,42 @@ describe("buildVEvent", () => {
       "UID:show123@exemplo.com",
     );
   });
+
+  it("não emite VALARM quando não há lembrete configurado", () => {
+    expect(buildVEvent(base, opts).some((l) => l === "BEGIN:VALARM")).toBe(false);
+  });
+
+  it("anexa um VALARM (DISPLAY) antes do END quando há lembrete", () => {
+    const lines = buildVEvent(base, { ...opts, reminderMinutesBefore: 180 });
+    const alarmStart = lines.indexOf("BEGIN:VALARM");
+    expect(alarmStart).toBeGreaterThan(-1);
+    expect(lines).toContain("ACTION:DISPLAY");
+    expect(lines).toContain("TRIGGER:-PT3H");
+    // o alarme usa o título do show como texto do lembrete
+    expect(lines).toContain("DESCRIPTION:Show no Bar do Zé");
+    // bloco contíguo BEGIN..END (5 linhas) dentro do VEVENT, antes do END final
+    expect(lines[alarmStart + 4]).toBe("END:VALARM");
+    expect(lines.at(-1)).toBe("END:VEVENT");
+  });
+
+  it("não lembra shows já tocados nem cancelados", () => {
+    for (const status of ["PLAYED", "CANCELLED"] as const) {
+      const lines = buildVEvent(
+        { ...base, status },
+        { ...opts, reminderMinutesBefore: 180 },
+      );
+      expect(lines.some((l) => l === "BEGIN:VALARM")).toBe(false);
+    }
+  });
+
+  it("ignora lembrete zero/negativo", () => {
+    expect(
+      buildVEvent(base, { ...opts, reminderMinutesBefore: 0 }).some((l) => l === "BEGIN:VALARM"),
+    ).toBe(false);
+    expect(
+      buildVEvent(base, { ...opts, reminderMinutesBefore: -5 }).some((l) => l === "BEGIN:VALARM"),
+    ).toBe(false);
+  });
 });
 
 describe("showsToIcs", () => {
@@ -181,5 +275,18 @@ describe("showsToIcs", () => {
     expect(ics).toContain("\r\n");
     // não deve haver LF solto (sem CR antes)
     expect(/[^\r]\n/.test(ics)).toBe(false);
+  });
+
+  it("propaga o lembrete a cada evento elegível", () => {
+    const ics = showsToIcs(
+      [
+        { ...show, id: "up1", status: "CONFIRMED" },
+        { ...show, id: "past1", status: "PLAYED" },
+      ],
+      { ...opts, reminderMinutesBefore: 1440 },
+    );
+    // um VALARM só para o confirmado; nenhum para o já tocado
+    expect(ics.match(/BEGIN:VALARM/g) ?? []).toHaveLength(1);
+    expect(ics).toContain("TRIGGER:-P1D");
   });
 });
