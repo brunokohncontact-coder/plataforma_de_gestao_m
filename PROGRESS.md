@@ -9,7 +9,31 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1658 testes** verdes após a
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1666 testes** verdes após o
+**nudge de erosão da faixa premium no Painel** (Sessão 298, D293 — o `feeDropHeadline` (D274) avisa quando o
+cachê **mediano** cai de um ano para o outro, mas a D274(b) adiou — por densidade do Painel — o sinal mais
+sutil que a mediana não vê: a **cauda de cima** esvaziar sem o meio se mover (você continua fechando os shows
+do meio no mesmo valor, mas parou de emplacar os cachês de topo, faixa premium "Acima de R$ 5.000").
+`compareFeeDistribution` (D187) já computa `premiumShareDelta`, mas o sinal só vivia na tela
+`/shows/faixas-de-cache`. Novo helper puro `feePremiumErosionHeadline(comparison, minSample?, minPoints?,
+criticalPoints?)` + tipo `FeePremiumErosionHeadline` + constantes `PREMIUM_EROSION_MIN_SAMPLE`(=3),
+`PREMIUM_EROSION_MIN_POINTS`(=0.15) e `PREMIUM_EROSION_CRITICAL_POINTS`(=0.30) em `src/lib/finance.ts`, espelho
+de `feeDropHeadline`: recebe a `FeeDistributionComparison` já computada (zero I/O) e dispara `show` só quando a
+participação premium caiu materialmente (`premiumShareDelta ≤ −0.15`), havia base a erodir
+(`premiumSharePrevious > 0`), a mediana **não** está em queda (`trend !== "down"`) e ambos os anos têm ≥3 shows
+priced; `critical` (🔴 vs 🔻) quando a queda atinge 30 p.p. O gate `trend !== "down"` torna o nudge
+**mutuamente exclusivo** com o `feeDropHeadline` — nunca soma um segundo banner de cachê ao Painel (quando a
+mediana já caiu, aquele é o titular; a erosão premium só fala quando o meio se manteve e o topo secou),
+resolvendo exatamente a densidade que motivou o adiamento da D274(b). Banner no `dashboard/page.tsx` (link
+`/shows/faixas-de-cache?ano={ano}`, "Os cachês acima de R$ 5.000 caíram de {X}% para {Y}% dos shows … mesmo
+com o cachê típico firme. Hora de reforçar os contratantes de topo.") logo após o do `feeDropHeadline`; o
+dashboard passa a derivar `feeComparison` uma vez e alimenta os dois nudges. Zero consulta nova, zero regra
+nova, zero migração, zero dependência. **+8 testes** (`finance.test.ts`, `describe("feePremiumErosionHeadline")`:
+topo esvaziando com mediana firme → show crítico; erosão < 30 p.p. → não-crítico; mediana em queda cede a vez;
+premium subindo → não dispara; sem base premium → nada a erodir; erosão < 15 p.p. → não dispara; amostra fina
+suprime; `minPoints` parametrizável barra). Build/typecheck/lint verdes; smoke → `/login` 200, `/dashboard` e
+`/shows/faixas-de-cache?ano=2026` 307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories).
+Ver D293. Antes disso, **1658 testes** verdes após a
 **coluna "vs. {ano-1}" por faixa na tabela e no CSV das faixas de cachê** (Sessão 297, D292 — a tela
 `/shows/faixas-de-cache` já tinha recorte por ano (`?ano=`) e o card comparativo `FeeComparisonCard`
 (`compareFeeDistribution`/D187), mas o card só resumia o deslocamento em três números (mediana, média,
@@ -4982,5 +5006,10 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   que vira crítico) e `STAGE_BOTTLENECK_MIN_SHOWS`=4 (amostra confiável de shows) são **hipóteses** — a
   distribuição natural do tempo por etapa num funil saudável varia por circuito/gênero. Validar com músicos
   antes de virar premissa fixa.
+- **Erosão da faixa premium (D293)**: os limiares `PREMIUM_EROSION_MIN_POINTS`=0.15 (queda mínima da
+  participação premium, em pontos, para o nudge disparar) e `PREMIUM_EROSION_CRITICAL_POINTS`=0.30
+  (queda que vira crítico) são **hipóteses** — quantos pontos de participação da faixa "Acima de
+  R$ 5.000" contam como "esvaziamento material/crítico" do topo varia por circuito/preço. Validar
+  com músicos antes de virar premissa fixa.
 - **Segurança em produção**: definir `AUTH_SECRET` forte e migrar para PostgreSQL antes
   de qualquer deploy real. Revisar advisories do Next (D6) e planejar upgrade p/ Next 15+.
