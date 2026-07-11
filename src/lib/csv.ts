@@ -1053,6 +1053,8 @@ export const RECEIVABLE_BY_CONTACT_CSV_HEADERS = [
   "Participação",
   "Promessas vencidas",
   "A receber vencido (R$)",
+  "Sem cobrança iniciada",
+  "A receber sem promessa (R$)",
 ] as const;
 
 /**
@@ -1073,6 +1075,8 @@ export interface ReceivableByContactCsvRow {
   share: number; // participação no total a receber (0..1)
   brokenCount: number; // promessas vencidas do devedor
   brokenOutstanding: number; // centavos em promessas vencidas
+  awaitingCount: number; // cachês vencidos há ≥30 dias SEM promessa (cobrança nem começou)
+  awaitingOutstanding: number; // centavos em aberto sem nenhuma promessa registrada
 }
 
 /** Participação (0..1) -> porcentagem inteira ("37%"). Espelha o `pct` da página. */
@@ -1080,8 +1084,10 @@ export interface ReceivableByContactCsvRow {
  * Serializa os cachês a receber agrupados por contratante (de quem cobrar
  * primeiro) em CSV, pronto para download. Uma linha por devedor, espelhando a
  * tabela de `/shows/a-receber/por-contratante`: total a receber, nº de shows,
- * pior atraso, atraso médio ponderado, participação no total e as promessas
- * vencidas (contagem + valor). Mesma convenção pt-BR de `transactionsToCsv`. O
+ * pior atraso, atraso médio ponderado, participação no total, as promessas
+ * vencidas (contagem + valor) e a cobrança que ainda nem começou (cachês vencidos
+ * há ≥30 dias sem nenhuma promessa registrada — contagem + valor). Mesma
+ * convenção pt-BR de `transactionsToCsv`. O
  * grupo "Sem contratante" (`contact: null`) sai com nome fixo e papel em branco.
  * A ordem das linhas é preservada (a página ordena pelo maior saldo devedor,
  * "Sem contratante" por último). Pura.
@@ -1102,6 +1108,8 @@ export function receivablesByContactToCsv(
       csvShare(row.share),
       String(row.brokenCount),
       centsToCsvAmount(row.brokenOutstanding),
+      String(row.awaitingCount),
+      centsToCsvAmount(row.awaitingOutstanding),
     ]);
   }
   return toCsv(out, delimiter);
