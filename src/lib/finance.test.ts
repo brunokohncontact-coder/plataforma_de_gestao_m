@@ -66,6 +66,8 @@ import {
   summarizePaymentPromises,
   receivablesAwaitingPromise,
   AWAITING_PROMISE_MIN_DAYS,
+  awaitingPromiseHeadline,
+  AWAITING_PROMISE_CRITICAL_DAYS,
   computeDelta,
   compareSummaries,
   averageSummaries,
@@ -4245,6 +4247,84 @@ describe("receivablesAwaitingPromise", () => {
 
   it("expõe o limiar padrão de 30 dias", () => {
     expect(AWAITING_PROMISE_MIN_DAYS).toBe(30);
+  });
+});
+
+describe("awaitingPromiseHeadline", () => {
+  const now = new Date("2026-03-15T12:00:00.000Z");
+
+  function gig(partial: Partial<PromisableShowLike>): PromisableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-02-01T00:00:00.000Z", // 42 dias antes de "now"
+      ...partial,
+    };
+  }
+
+  function headlineFor(shows: PromisableShowLike[]) {
+    const report = receivablesAwaitingPromise(
+      reconcileShowFees(shows, [], { now }).rows,
+      { now },
+    );
+    return awaitingPromiseHeadline(report);
+  }
+
+  it("não dispara quando não há recebível sem promessa além do limiar", () => {
+    const head = headlineFor([
+      gig({ id: "com-promessa", paymentPromisedAt: "2026-03-20T00:00:00.000Z" }),
+      gig({ id: "recente", date: "2026-03-10T00:00:00.000Z" }), // 5 dias
+    ]);
+    expect(head.show).toBe(false);
+    expect(head.critical).toBe(false);
+    expect(head.count).toBe(0);
+    expect(head.totalOutstanding).toBe(0);
+    expect(head.maxDaysOutstanding).toBe(0);
+  });
+
+  it("dispara (não crítico) com recebível sem promessa além do limiar mas abaixo de 90 dias", () => {
+    const head = headlineFor([
+      gig({ id: "velho-sem-promessa", date: "2026-02-01T00:00:00.000Z" }), // 42 dias
+    ]);
+    expect(head.show).toBe(true);
+    expect(head.critical).toBe(false);
+    expect(head.count).toBe(1);
+    expect(head.totalOutstanding).toBe(100_00);
+    expect(head.maxDaysOutstanding).toBe(42);
+  });
+
+  it("vira crítico quando o mais antigo já passou de 90 dias", () => {
+    const head = headlineFor([
+      gig({ id: "gelado", date: "2025-12-01T00:00:00.000Z" }), // 104 dias
+    ]);
+    expect(head.show).toBe(true);
+    expect(head.critical).toBe(true);
+    expect(head.maxDaysOutstanding).toBe(104);
+  });
+
+  it("soma o total e reporta o maior atraso do grupo", () => {
+    const head = headlineFor([
+      gig({ id: "a", fee: 100_00, date: "2026-01-10T00:00:00.000Z" }), // 64 dias
+      gig({ id: "b", fee: 50_00, date: "2026-02-05T00:00:00.000Z" }), // 38 dias
+    ]);
+    expect(head.count).toBe(2);
+    expect(head.totalOutstanding).toBe(150_00);
+    expect(head.maxDaysOutstanding).toBe(64);
+    expect(head.critical).toBe(false);
+  });
+
+  it("respeita um limiar crítico customizado", () => {
+    const report = receivablesAwaitingPromise(
+      reconcileShowFees([gig({ id: "g1", date: "2026-02-01T00:00:00.000Z" })], [], { now }).rows,
+      { now },
+    ); // 42 dias
+    expect(awaitingPromiseHeadline(report).critical).toBe(false); // padrão 90
+    expect(awaitingPromiseHeadline(report, { criticalDays: 30 }).critical).toBe(true);
+  });
+
+  it("expõe o limiar crítico padrão de 90 dias", () => {
+    expect(AWAITING_PROMISE_CRITICAL_DAYS).toBe(90);
   });
 });
 

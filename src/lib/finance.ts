@@ -4492,6 +4492,55 @@ export function receivablesAwaitingPromise<S extends PromisableShowLike>(
   };
 }
 
+// ── Nudge de Painel: cobrança que ainda nem começou ─────────────────────────
+//
+// `receivablesAwaitingPromise` mora na tela `/shows/a-receber` (banner âmbar). Este
+// headline leva o mesmo sinal ao Painel num relance, espelhando os irmãos
+// (`bookingLeadTimeHeadline`/`staleProposalsHeadline`): puro, sem I/O, recebe o report
+// já computado sobre os recebíveis carregados e decide se o Painel deve avisar.
+
+export interface AwaitingPromiseHeadline {
+  /** Aparecer no Painel? Só quando há ≥1 recebível vencido além do limiar e SEM promessa. */
+  show: boolean;
+  /**
+   * Ao menos um recebível sem promessa parado há ≥ `criticalDays` — a cobrança nunca
+   * começou E o dinheiro já esfriou de vez. Permite ao Painel subir o tom (🔴 vs 🔔).
+   */
+  critical: boolean;
+  /** Nº de cachês sem promessa e já vencidos além do limiar. */
+  count: number;
+  /** Total em aberto desse grupo (centavos). */
+  totalOutstanding: number;
+  /** Maior atraso (dias) no grupo (0 se vazio). */
+  maxDaysOutstanding: number;
+}
+
+/**
+ * Limiar (dias) a partir do qual um recebível SEM promessa vira alerta **crítico** no
+ * Painel — o mesmo corte do balde "encalhado" do aging (90 dias): passou de "esqueci de
+ * combinar" para "o dinheiro esfriou de vez sem nenhuma conversa de cobrança".
+ */
+export const AWAITING_PROMISE_CRITICAL_DAYS = 90;
+
+/**
+ * Deriva o nudge de Painel de `receivablesAwaitingPromise`. Puro, sem I/O: recebe o
+ * report já computado. Dispara com qualquer recebível vencido além do limiar e sem
+ * promessa (`count > 0`); `critical` quando o mais antigo já passou de `criticalDays`.
+ */
+export function awaitingPromiseHeadline(
+  report: ReceivablesAwaitingPromise,
+  opts: { criticalDays?: number } = {},
+): AwaitingPromiseHeadline {
+  const criticalDays = opts.criticalDays ?? AWAITING_PROMISE_CRITICAL_DAYS;
+  return {
+    show: report.count > 0,
+    critical: report.maxDaysOutstanding >= criticalDays,
+    count: report.count,
+    totalOutstanding: report.totalOutstanding,
+    maxDaysOutstanding: report.maxDaysOutstanding,
+  };
+}
+
 // ── Cachês a receber por contratante (de quem cobrar primeiro) ──────────────
 //
 // O aging (`bucketReceivablesByAge`) responde "qual dinheiro está parado há mais

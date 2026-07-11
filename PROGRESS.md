@@ -9,7 +9,29 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1636 testes** verdes após o
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1642 testes** verdes após o
+**nudge de Painel da cobrança que ainda nem começou** (Sessão 294, D288 — fecha o adiamento explícito da
+D287(c): a D287 criou `receivablesAwaitingPromise` (recebíveis vencidos há ≥30 dias SEM nenhuma promessa
+registrada — a cobrança que nem começou) e o pôs num banner na tela `/shows/a-receber`, mas ADIOU levar o
+sinal ao Painel ("um nudge pode vir depois espelhando o padrão `bookingLeadTimeHeadline`"). Quem só bate o
+olho no Painel não via, num relance, que existe cobrança nunca iniciada. Helper puro novo
+`awaitingPromiseHeadline(report, opts?)` + tipo `AwaitingPromiseHeadline` + constante
+`AWAITING_PROMISE_CRITICAL_DAYS`(=90) em `src/lib/finance.ts`, espelho fiel de `staleProposalsHeadline`/
+`bookingLeadTimeHeadline`: recebe o `ReceivablesAwaitingPromise` já computado (D287) e destila o nudge —
+`show` quando `count > 0`; `critical` quando o mais antigo do grupo já passou de `criticalDays` (padrão 90,
+o MESMO corte do balde "encalhado" do aging: passou de "esqueci de combinar" para "esfriou de vez sem
+nenhuma cobrança"); `count`/`totalOutstanding`/`maxDaysOutstanding` repassados. O `dashboard/page.tsx`
+computa `receivablesAwaitingPromise(receivables.rows)` sobre os recebíveis JÁ carregados (zero I/O extra) e
+ganha um terceiro segmento "🔔 {total} sem cobrança iniciada ({N})" no banner "🎤 Cachês a receber", âmbar
+por padrão e vermelho quando `critical`, ao lado dos segmentos de encalhado (🚨) e promessas furadas (🤝).
+Segmento inline no banner existente (não banner próprio) porque é o MESMO eixo — cobrança de recebível —
+dos dois sinais já ali, agrupando os três num único cartão e sem adensar o Painel; zero regra nova, zero
+consulta, zero migração, zero dependência. **+6 testes** (`finance.test.ts`,
+`describe("awaitingPromiseHeadline")`: não dispara sem awaiting; dispara não-crítico entre 30 e 90 dias;
+vira crítico acima de 90; soma total e reporta o maior atraso; respeita `criticalDays` customizado; expõe
+a constante de 90 dias). Build/typecheck/lint verdes; smoke → `/login` 200, `/dashboard` e
+`/shows/a-receber` 307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories). Ver D288.
+Antes disso, **1636 testes** verdes após o
 **alerta de recebíveis vencidos SEM promessa em `/shows/a-receber`** (Sessão 293, D287 — a tela de cachês a
 receber já cobria dois eixos de cobrança — o AGING por idade (`bucketReceivablesByAge`) e as PROMESSAS por
 status (`summarizePaymentPromises`, furadas × no prazo) — mas `summarizePaymentPromises` IGNORA de propósito
