@@ -20,6 +20,7 @@ import { isValidDateKey } from "@/lib/finance";
 import { FILTER_RESTORED_PARAM } from "@/lib/listFilter";
 import { ShowsViewToggle } from "@/components/ShowsViewToggle";
 import { RememberedFilterNotice } from "@/components/RememberedFilterNotice";
+import { IcsExportButton } from "@/components/IcsExportButton";
 import { duplicateShowAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -107,15 +108,7 @@ export default async function ShowsPage({
               Exportar CSV
             </a>
           )}
-          {shows.length > 0 && (
-            <a
-              href="/shows/agenda.ics"
-              className="text-sm text-brand-700 hover:underline"
-              title="Baixar a agenda para Google/Apple Calendar (com lembrete 3h antes de cada show)"
-            >
-              Exportar .ics
-            </a>
-          )}
+          {shows.length > 0 && <IcsExportButton />}
           <Link href="/shows/novo" className="btn-primary">
             + Novo show
           </Link>

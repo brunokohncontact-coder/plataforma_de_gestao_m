@@ -10354,3 +10354,40 @@ contexto, decisão, justificativa e alternativas consideradas.
   inalterado (10 advisories; ver D6). Zero migração, zero dependência nova.
 - **Nota de concorrência:** número **D295** escolhido como o próximo livre após o D294
   (Sessão 300). Se outra PR reivindicar D295, renumerar para o próximo livre no merge.
+
+## D296 — Seletor de antecedência do lembrete na UI do "Exportar .ics" (`IcsExportButton` + `REMINDER_OPTIONS`) (Sessão 302)
+- **Contexto:** a D295 (Sessão 301) deu ao feed `/shows/agenda.ics` um VALARM (lembrete)
+  por show, ajustável só pelo parâmetro de URL `?lembrete=` (30m|1h|…|2d|off), e **adiou
+  explicitamente** o controle na tela ("Um seletor pode vir depois"). Os três botões
+  "Exportar .ics" (`/shows`, `/shows/calendario`, `/shows/semana`) só anunciavam o padrão de
+  3h no `title` — o músico não-técnico não tinha como mudar a antecedência sem editar a URL
+  à mão.
+- **Decisão:** fechado o adiamento. Novo client component `src/components/IcsExportButton.tsx`
+  que substitui os três links `<a href="/shows/agenda.ics">` por um botão de download com um
+  `<select>` acoplado de antecedência; trocar o seletor só reescreve o `href`
+  (`?lembrete=<valor>`), sem navegação nem estado no servidor. As opções e rótulos vêm da
+  camada pura testada `@/lib/ics`: `REMINDER_OPTIONS` (uma opção por preset de
+  `REMINDER_PRESETS`, na ordem, mais `off`), o rótulo pt-BR `reminderLabel(minutes)`
+  ("30 min antes"/"1 h antes"/"1 dia antes"/"1 dia e 2 h antes") e `DEFAULT_REMINDER_VALUE`
+  (="3h", pré-selecionado, com invariante testado de que casa com `DEFAULT_REMINDER_MINUTES`
+  e com o parser). Deriva de `REMINDER_PRESETS` para manter UI e parser em sincronia — um
+  preset novo aparece automaticamente. Zero rota nova (reusa o feed da D295), zero migração,
+  zero dependência.
+- **Justificativa:** o valor do lembrete estava atrás de um parâmetro que ninguém descobre;
+  o seletor traz o controle para onde o usuário já está (o botão de exportar), preservando o
+  `?lembrete=` como saída de poder/assinatura de URL. A lógica de opções fica pura e testável;
+  o componente é fino (só encadeia o valor no `href`).
+- **Alternativas consideradas:**
+  - *Pílulas de preset (server component, como `ReengageWindowPicker`)* — descartado: o .ics é
+    um **download**, não uma navegação; 9 links de download lado a lado sem "ativo" persistido
+    é ruidoso. Um `<select>` com um botão de download é mais limpo.
+  - *Persistir a escolha (cookie/URL da página)* — descartado por ora: é uma preferência de
+    exportação pontual, não um filtro de página; o padrão 3h cobre o caso comum.
+- **DoD:** build/typecheck/lint verdes; **1692 testes** (+8 em `ics.test.ts`: `reminderLabel`
+  min/hora/hora+min/dia/plural/resto/zero; `REMINDER_OPTIONS` uma por preset+off na ordem,
+  minutos/rótulo por preset, `off`=sem lembrete, padrão casa preset↔minutos↔parser); smoke →
+  `/login` 200, `/shows`, `/shows/calendario` e `/shows/agenda.ics?lembrete=1d` 307→/login
+  (auth-gated, sem 500); `npm audit` inalterado (10 advisories; ver D6). Zero migração, zero
+  dependência nova.
+- **Nota de concorrência:** número **D296** escolhido como o próximo livre após o D295
+  (Sessão 301). Se outra PR reivindicar D296, renumerar para o próximo livre no merge.

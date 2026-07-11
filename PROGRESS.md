@@ -9,7 +9,25 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 301 (D295) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 302 (D296) —
+seletor de antecedência do lembrete na UI do "Exportar .ics":** a D295 (Sessão 301) tornou o VALARM
+do feed `/shows/agenda.ics` ajustável só pelo parâmetro de URL `?lembrete=` e **adiou explicitamente**
+o controle na tela ("Um seletor pode vir depois"). Os três botões "Exportar .ics" (`/shows`,
+`/shows/calendario`, `/shows/semana`) só anunciavam o padrão de 3h no `title` — o músico não-técnico
+não tinha como mudar a antecedência sem editar a URL à mão. Agora um novo client component
+`src/components/IcsExportButton.tsx` substitui os três links por um botão de download com um `<select>`
+de antecedência acoplado; trocar o seletor só reescreve o `href` (`?lembrete=<valor>`), sem navegação
+nem estado no servidor. As opções/rótulos vêm da camada pura testada `src/lib/ics.ts`: `REMINDER_OPTIONS`
+(uma opção por preset de `REMINDER_PRESETS`, na ordem, mais `off`), `reminderLabel(minutes)` (rótulo pt-BR:
+"30 min antes"/"1 h antes"/"1 dia antes"/"1 dia e 2 h antes") e `DEFAULT_REMINDER_VALUE`(="3h",
+pré-selecionado com 🔔, invariante testado de que casa com `DEFAULT_REMINDER_MINUTES` e com o parser).
+Deriva de `REMINDER_PRESETS` → UI e parser sempre em sincronia (preset novo aparece sozinho). Zero rota nova
+(reusa o feed da D295), zero regra nova, zero migração, zero dependência. **+8 testes** (`ics.test.ts`:
+`reminderLabel` min/hora/hora+min/dia/plural/resto/zero; `REMINDER_OPTIONS` uma por preset+`off` na ordem,
+minutos/rótulo por preset, `off`=sem lembrete, padrão casa preset↔minutos↔parser). Build/typecheck/lint
+verdes (**1692 testes**); smoke → `/login` 200, `/shows`, `/shows/calendario` e
+`/shows/agenda.ics?lembrete=1d` 307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories).
+Ver D296. Antes disso, **Sessão 301 (D295) —
 lembretes de show no feed .ics (VALARM):** o feed iCalendar `/shows/agenda.ics` (D14/D15) exportava
 cada show como VEVENT sem nenhum alarme — o músico importava/assinava a agenda mas o celular não
 avisava antes do gig. Agora cada show **ainda por cumprir** (proposto/confirmado) sai com um **VALARM**

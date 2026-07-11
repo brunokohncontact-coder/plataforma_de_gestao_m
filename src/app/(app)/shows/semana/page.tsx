@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { ShowsViewToggle } from "@/components/ShowsViewToggle";
 import { MiniCalendar } from "@/components/MiniCalendar";
+import { IcsExportButton } from "@/components/IcsExportButton";
 import {
   buildWeekGrid,
   weekRange,
@@ -93,13 +94,7 @@ export default async function ShowsWeekPage({
         <h1 className="text-2xl font-bold">Shows</h1>
         <div className="flex items-center gap-3">
           <ShowsViewToggle active="semana" />
-          <a
-            href="/shows/agenda.ics"
-            className="text-sm text-brand-700 hover:underline"
-            title="Baixar a agenda para Google/Apple Calendar (com lembrete 3h antes de cada show)"
-          >
-            Exportar .ics
-          </a>
+          <IcsExportButton />
           {total > 0 && (
             <a
               href={`/shows/semana/export${
