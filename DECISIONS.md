@@ -9933,3 +9933,41 @@ contexto, decisão, justificativa e alternativas consideradas.
   gênero. Validar com músicos antes de virar premissa fixa.
 - **Nota de concorrência:** número **D285** escolhido como o próximo livre após o D284 (Sessão 290). Se
   uma PR paralela reivindicar D285, renumerar para o próximo livre no merge.
+
+## 2026-07-11 — D286: Barra de composição do tempo do funil no card "Onde o tempo se concentra"
+- **Contexto:** a D283 (Sessão 289) deu à tela `/shows/funil/tempo-em-etapa` a leitura de COMPOSIÇÃO do
+  tempo (`stageTimeConcentration`) e o card "Onde o tempo se concentra", mas esse card só NOMEIA a etapa
+  dominante (o maior naco) num texto. A composição inteira — que naco fica em CADA etapa — só aparecia como
+  números na coluna "% do percurso" da tabela "Detalhe", exigindo rolar e ler linha a linha para montar a
+  FORMA mentalmente. Faltava a peça visual que as demais leituras de composição do app já entregam num
+  relance (as barras de fonte de renda / composição de despesa).
+- **Decisão:** helper puro novo `stageTimeConcentrationSegments(concentration)` + tipo `StageTimeSegment`
+  em `src/lib/shows.ts`: achata a `StageTimeConcentration` (D283) já computada nos segmentos VISÍVEIS de
+  uma barra empilhada — só as etapas de naco positivo (`share > 0`), na ordem canônica de
+  `concentration.shares`, cada uma marcada `dominant` quando é a etapa de maior naco. Etapas de mediana
+  zero (naco zero) não ocupam largura e ficam de fora; sem base (`totalMedianDays === 0`) devolve lista
+  vazia. O card `TimeConcentrationCard` ganha uma barra empilhada (`ConcentrationBar`) sob o texto: cada
+  etapa vira uma fatia proporcional ao share, cor sólida reusando `SHOW_STATUS_DOT` (a mesma do ponto na
+  tabela), etapa dominante com anel; abaixo, uma legenda etapa + percentual. Deriva do MESMO
+  `stageTimeConcentration` já exibido — zero consulta, zero regra de negócio nova, zero migração, zero
+  dependência.
+- **Justificativa:** é o complemento visual do `dominant` de D283: em vez de só nomear o gargalo, mostra
+  a composição inteira num relance, o mesmo espírito das barras de renda/despesa. Não é redundante com o
+  card de movers (D282, que compara a mediana por etapa ANO A ANO) nem com a coluna "% do percurso" da
+  tabela (a mesma informação em NÚMEROS, sem a forma proporcional lado a lado). Manter a lógica de montar
+  os segmentos num helper puro (filtrar naco zero, preservar ordem canônica, marcar o dominante) a deixa
+  testável fora do React, no molde dos irmãos.
+- **Alternativas consideradas:** (a) desenhar a barra direto no componente a partir de `concentration.shares`
+  — descartado: a regra de "só segmentos visíveis + marcar dominante" merece teste próprio, e o helper puro
+  espelha a disciplina da base. (b) incluir as etapas de naco zero como fatias de largura 0 — descartado:
+  não há nada a desenhar e poluiriam a legenda; ficam de fora dos VISÍVEIS (a composição completa, com os
+  zeros, segue em `stageTimeConcentration`/tabela). (c) empilhar também no CSV — sem sentido (CSV é tabular;
+  a coluna "% do percurso" já carrega o share por linha, D284).
+- **DoD:** build de produção OK, typecheck (`tsc --noEmit`, 0 erros), lint (`next lint`, 0 avisos);
+  **1630 testes** (`vitest run`, +4 em `shows.test.ts`, `describe("stageTimeConcentrationSegments")`: sem
+  base → lista vazia; um segmento por etapa de naco positivo na ordem canônica marcando o dominante; etapa
+  de mediana zero fica de fora dos visíveis mas segue na composição; todas as medianas zero → lista vazia).
+  Smoke (`next start`) → `/login` 200, `/shows/funil/tempo-em-etapa` e `?ano=2026` 307→/login (auth-gated,
+  sem 500). `npm audit` **inalterado** vs. baseline (10 advisories; ver D6).
+- **Nota de concorrência:** número **D286** escolhido como o próximo livre após o D285 (Sessão 291). Se
+  uma PR paralela reivindicar D286, renumerar para o próximo livre no merge.

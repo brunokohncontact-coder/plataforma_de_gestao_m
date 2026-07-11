@@ -39,6 +39,7 @@ import {
   buildStatusTimeline,
   funnelStageDurations,
   stageTimeConcentration,
+  stageTimeConcentrationSegments,
   stageTimeBottleneckHeadline,
   STAGE_BOTTLENECK_SHARE,
   STAGE_BOTTLENECK_CRITICAL_SHARE,
@@ -1832,6 +1833,72 @@ describe("stageTimeConcentration", () => {
     expect(c.shares).toHaveLength(1);
     expect(c.shares[0].share).toBe(0);
     expect(c.dominant).toBeNull();
+  });
+});
+
+describe("stageTimeConcentrationSegments", () => {
+  const ev = (
+    fromStatus: string | null,
+    toStatus: string,
+    createdAt: string,
+  ): StatusEventLike => ({ fromStatus, toStatus, createdAt });
+
+  it("sem base devolve lista vazia", () => {
+    const segments = stageTimeConcentrationSegments(
+      stageTimeConcentration(funnelStageDurations([])),
+    );
+    expect(segments).toEqual([]);
+  });
+
+  it("um segmento por etapa de naco positivo, na ordem canônica, marcando o dominante", () => {
+    // PROPOSED 4 dias, CONFIRMED 12 dias → soma 16; shares 0.25/0.75, CONFIRMED domina.
+    const durations = funnelStageDurations([
+      {
+        statusEvents: [
+          ev(null, "PROPOSED", "2026-01-01T00:00:00.000Z"),
+          ev("PROPOSED", "CONFIRMED", "2026-01-05T00:00:00.000Z"), // 4 dias em PROPOSED
+          ev("CONFIRMED", "PLAYED", "2026-01-17T00:00:00.000Z"), // 12 dias em CONFIRMED
+        ],
+      },
+    ]);
+    const segments = stageTimeConcentrationSegments(stageTimeConcentration(durations));
+    expect(segments.map((s) => s.status)).toEqual(["PROPOSED", "CONFIRMED"]);
+    expect(segments[0].share).toBeCloseTo(0.25, 5);
+    expect(segments[1].share).toBeCloseTo(0.75, 5);
+    expect(segments.map((s) => s.dominant)).toEqual([false, true]);
+    expect(segments[1].medianDays).toBe(12);
+  });
+
+  it("etapa de mediana zero (naco zero) fica de fora dos segmentos visíveis", () => {
+    // 0 dias em PROPOSED + 6 dias em CONFIRMED → PROPOSED tem share 0, não desenha.
+    const durations = funnelStageDurations([
+      {
+        statusEvents: [
+          ev(null, "PROPOSED", "2026-03-01T00:00:00.000Z"),
+          ev("PROPOSED", "CONFIRMED", "2026-03-01T00:00:00.000Z"), // 0 dias em PROPOSED
+          ev("CONFIRMED", "PLAYED", "2026-03-07T00:00:00.000Z"), // 6 dias em CONFIRMED
+        ],
+      },
+    ]);
+    const concentration = stageTimeConcentration(durations);
+    // A composição ainda lista PROPOSED (share 0); os segmentos visíveis, não.
+    expect(concentration.shares.some((s) => s.status === "PROPOSED")).toBe(true);
+    const segments = stageTimeConcentrationSegments(concentration);
+    expect(segments.map((s) => s.status)).toEqual(["CONFIRMED"]);
+    expect(segments[0].dominant).toBe(true);
+  });
+
+  it("todas as medianas zero (sem dominante) devolve lista vazia", () => {
+    const durations = funnelStageDurations([
+      {
+        statusEvents: [
+          ev(null, "PROPOSED", "2026-04-01T00:00:00.000Z"),
+          ev("PROPOSED", "CONFIRMED", "2026-04-01T00:00:00.000Z"), // 0 dias em PROPOSED
+        ],
+      },
+    ]);
+    const segments = stageTimeConcentrationSegments(stageTimeConcentration(durations));
+    expect(segments).toEqual([]);
   });
 });
 
