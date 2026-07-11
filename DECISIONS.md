@@ -10185,3 +10185,50 @@ contexto, decisão, justificativa e alternativas consideradas.
 - **Nota de concorrência:** número **D292** escolhido para não colidir com a PR paralela #325 (aberta,
   reivindica D291). Se D291 não for mesclada, o número fica como salto cosmético — preferível a uma
   colisão. Se outra PR reivindicar D292, renumerar para o próximo livre no merge.
+
+## D293 — Nudge de erosão da faixa premium no Painel (`feePremiumErosionHeadline`) (Sessão 298)
+- **Contexto:** o `feeDropHeadline` (D274) avisa no Painel quando o cachê **mediano** cai de um ano
+  para o outro — o MEIO da tabela de preços encolheu. Mas a D274 (alternativa b) adiou um sinal mais
+  sutil que a mediana não enxerga: a **cauda de cima** esvaziar sem o meio se mover — você continua
+  fechando os shows do meio no mesmo valor, mas parou de emplacar os cachês de topo (faixa premium,
+  "Acima de R$ 5.000"). O adiamento foi por densidade: "o Painel já é denso". `compareFeeDistribution`
+  (D187) já computa `premiumShareDelta`, mas esse sinal só vivia na tela `/shows/faixas-de-cache`.
+- **Decisão:** helper puro novo `feePremiumErosionHeadline(comparison, minSample?, minPoints?,
+  criticalPoints?)` + tipo `FeePremiumErosionHeadline` + constantes `PREMIUM_EROSION_MIN_SAMPLE`(=3),
+  `PREMIUM_EROSION_MIN_POINTS`(=0.15) e `PREMIUM_EROSION_CRITICAL_POINTS`(=0.30) em `src/lib/finance.ts`,
+  espelho de `feeDropHeadline`. Recebe uma `FeeDistributionComparison` já computada (zero I/O) e destila
+  o nudge — `show` só quando a participação premium **caiu** materialmente (`premiumShareDelta ≤
+  −minPoints`), havia base a erodir (`premiumSharePrevious > 0`), a mediana **não** está em queda
+  (`trend !== "down"`) E ambos os anos têm amostra confiável (≥ `minSample` shows priced cada);
+  `critical` quando a queda atinge `criticalPoints`. Banner no `dashboard/page.tsx` (🔴 crítico vs 🔻;
+  link `/shows/faixas-de-cache?ano={ano}`; "Os cachês acima de R$ 5.000 caíram de {X}% para {Y}% dos
+  shows … mesmo com o cachê típico firme. Hora de reforçar os contratantes de topo."), logo após o
+  banner do `feeDropHeadline`. O dashboard passa a derivar `feeComparison` uma vez e alimenta os dois
+  nudges (antes só o `feeDropHead`).
+- **Justificativa:** o gate `trend !== "down"` torna o nudge **mutuamente exclusivo** com o
+  `feeDropHeadline` — nunca soma um segundo banner de cachê ao Painel: quando a mediana já caiu, aquele
+  é o titular; a erosão premium só fala quando o meio se manteve e o topo, silenciosamente, secou. Isso
+  resolve exatamente a densidade que motivou o adiamento da D274(b), justificando reabrir o item.
+  Reaproveita o MESMO `compareFeeDistribution` já computado pelo `feeDropHeadline` (recorte UTC por ano
+  da D108) — zero consulta nova, zero regra de negócio nova, zero migração, zero dependência. Só a ponta
+  de PIORA vira alerta (a faixa premium SUBINDO é boa notícia); os gates de amostra + piso mantêm o
+  nudge raro, como os irmãos.
+- **Alternativas consideradas:** (a) disparar mesmo com a mediana em queda (não-exclusivo) — descartado:
+  é justamente o que a D274(b) temia (dois banners de cachê), e a queda da mediana já é o sinal mais
+  forte. (b) ancorar num número absoluto de shows premium em vez da participação (p.p.) — descartado: a
+  participação normaliza por volume (2 de 4 ≠ 2 de 40), como a própria `premiumBandShare`. (c) colorir a
+  variação por direção sem o gate de piso — descartado: sem limiar oscilaria a cada show de topo a mais
+  ou a menos.
+- **DoD:** build de produção OK, typecheck (`tsc --noEmit`, 0 erros), lint (`next lint`, 0 avisos);
+  **1666 testes** (`vitest run`, +8: `feePremiumErosionHeadline` — topo esvaziando com mediana firme →
+  show crítico (−40 p.p.); erosão material < 30 p.p. → show não-crítico; mediana em queda cede a vez
+  (suprime); premium subindo → não dispara; sem base premium anterior → nada a erodir; erosão < 15 p.p.
+  → não dispara; amostra fina suprime; `minPoints` parametrizável barra). Smoke (`next start`) →
+  `/login` 200, `/dashboard` e `/shows/faixas-de-cache?ano=2026` 307→/login (auth-gated, sem 500).
+  `npm audit` **inalterado** vs. baseline (10 advisories; ver D6).
+- **Hipóteses a validar:** `PREMIUM_EROSION_MIN_POINTS`(=0.15) e `PREMIUM_EROSION_CRITICAL_POINTS`(=0.30)
+  — quantos pontos de participação premium contam como "esvaziamento material/crítico" do topo varia por
+  circuito/preço; validar com uso real antes de virar premissa fixa. Registrado em Bloqueios/dúvidas.
+- **Nota de concorrência:** número **D293** escolhido como o próximo livre após o D292 (Sessão 297); o
+  D291 segue reivindicado pela PR paralela #325 (aberta). Se outra PR reivindicar D293, renumerar para o
+  próximo livre no merge.

@@ -7925,6 +7925,102 @@ export function feeDropHeadline(
   };
 }
 
+// ── Manchete de erosão da faixa premium para o Painel (o topo esvaziou?) ─────
+//
+// `feeDropHeadline` (D274) já avisa quando o cachê MEDIANO cai — o meio da tabela
+// de preços encolheu. Mas há uma piora mais sutil que a mediana não vê: a **cauda
+// de cima** esvazia sem o meio se mover (você continua fechando os shows do meio
+// no mesmo valor, mas parou de emplacar os cachês de topo). `compareFeeDistribution`
+// (D187) já computa `premiumShareDelta` — a variação da participação da faixa
+// premium (`PREMIUM_FEE_BAND_KEY`, "Acima de R$ 5.000") de um ano para o outro —,
+// mas esse sinal só vivia na tela `/shows/faixas-de-cache`. Este é o eco dele no
+// Painel, no espírito dos nudges irmãos de "piora".
+//
+// Densidade (a razão de o item ter sido adiado na D274, alt. b): o nudge dispara
+// SÓ quando a mediana NÃO está em queda (`trend !== "down"`) — assim ele é
+// mutuamente exclusivo com `feeDropHeadline`, nunca somando um segundo banner de
+// cachê ao Painel. Quando a mediana já caiu, aquele é o titular; a erosão premium
+// só fala quando o meio se manteve e o topo, silenciosamente, secou.
+
+/**
+ * Amostra mínima de shows realizados com cachê em CADA ano para a erosão da faixa
+ * premium virar nudge — mesmo lastro de `FEE_DROP_MIN_SAMPLE`: abaixo disto a
+ * participação é ruído de amostra, não tendência de mix.
+ */
+export const PREMIUM_EROSION_MIN_SAMPLE = 3;
+
+/**
+ * Queda mínima (em pontos de participação, 0..1) da faixa premium para o nudge
+ * disparar: 0,15 = 15 p.p. dos shows saíram do topo da tabela. **Hipótese** — o
+ * que conta como "esvaziamento material" do topo varia por circuito/preço; validar
+ * com uso real antes de virar premissa fixa.
+ */
+export const PREMIUM_EROSION_MIN_POINTS = 0.15;
+
+/**
+ * Queda da participação premium (em pontos) a partir da qual a erosão entra na
+ * faixa crítica (vermelho): 0,30 = 30 p.p. a menos no topo. Espelha a escalada
+ * `critical` de `feeDropHeadline`. **Hipótese** (ver acima).
+ */
+export const PREMIUM_EROSION_CRITICAL_POINTS = 0.3;
+
+export interface FeePremiumErosionHeadline {
+  /**
+   * Deve aparecer no Painel? Só quando a participação da faixa premium **caiu**
+   * materialmente de um ano para o outro (`premiumShareDelta ≤ −minPoints`), havia
+   * o que erodir (`premiumSharePrevious > 0`), a mediana **não** está em queda
+   * (`trend !== "down"` — cede a vez ao `feeDropHeadline`, evitando dois banners de
+   * cachê) E ambos os anos têm amostra confiável (≥ `minSample` shows priced cada).
+   */
+  show: boolean;
+  /** Erosão acentuada (participação premium caiu ≥ `criticalPoints`)? */
+  critical: boolean;
+  /** Participação da faixa premium no ano atual (0..1). */
+  premiumShareCurrent: number;
+  /** Participação da faixa premium no ano anterior (0..1). */
+  premiumSharePrevious: number;
+  /** Variação da participação premium (atual − anterior, pontos); ≤ 0 quando `show`. */
+  premiumShareDelta: number;
+  /** Shows realizados com cachê no ano atual (para a moldura textual). */
+  currentShows: number;
+  /** Shows realizados com cachê no ano anterior. */
+  previousShows: number;
+}
+
+/**
+ * Decide se o Painel deve alertar que a faixa premium (o topo da tabela de cachês)
+ * esvaziou de um ano para o outro — o eco de `compareFeeDistribution` (D187) no
+ * dashboard, complementar a `feeDropHeadline` (D274, que olha a MEDIANA). Recebe um
+ * comparativo já computado (as duas distribuições) e não faz I/O. `show` só quando a
+ * participação premium caiu materialmente com base a erodir, a mediana NÃO está em
+ * queda (mutuamente exclusivo com `feeDropHeadline`) e ambos os anos têm ≥ `minSample`
+ * shows priced; `critical` quando a queda atinge `criticalPoints`. Como os nudges
+ * irmãos, fica raro por gate. Pura.
+ */
+export function feePremiumErosionHeadline(
+  comparison: FeeDistributionComparison,
+  minSample: number = PREMIUM_EROSION_MIN_SAMPLE,
+  minPoints: number = PREMIUM_EROSION_MIN_POINTS,
+  criticalPoints: number = PREMIUM_EROSION_CRITICAL_POINTS,
+): FeePremiumErosionHeadline {
+  const { current, previous, trend, premiumShareCurrent, premiumSharePrevious, premiumShareDelta } =
+    comparison;
+  const reliable =
+    current.totalShows >= minSample && previous.totalShows >= minSample;
+  const eroded = premiumSharePrevious > 0 && premiumShareDelta <= -minPoints;
+  const show = reliable && trend !== "down" && eroded;
+  const critical = show && premiumShareDelta <= -criticalPoints;
+  return {
+    show,
+    critical,
+    premiumShareCurrent,
+    premiumSharePrevious,
+    premiumShareDelta,
+    currentShows: current.totalShows,
+    previousShows: previous.totalShows,
+  };
+}
+
 // ── Cadência de shows (estou tocando mais ou menos ao longo do tempo?) ───────
 //
 // Responde "minha agenda está mais cheia?": conta os shows JÁ REALIZADOS (mesmo

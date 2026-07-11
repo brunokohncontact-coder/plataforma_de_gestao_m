@@ -42,6 +42,7 @@ import {
   feeDistribution,
   compareFeeDistribution,
   feeDropHeadline,
+  feePremiumErosionHeadline,
   rankContactsByProfit,
   clientConcentration,
   clientConcentrationHeadline,
@@ -339,12 +340,17 @@ export default async function DashboardPage() {
   // (feeDropHeadline → trend "down" + ≥ FEE_DROP_MIN_SAMPLE shows priced cada) — uma
   // erosão de preço é um risco acionável (revisar tabela/mix de contratantes); um cachê
   // subindo é boa notícia e não precisa de banner. O detalhe está em /shows/faixas-de-cache.
-  const feeDropHead = feeDropHeadline(
-    compareFeeDistribution(
-      feeDistribution(filterShowsByYear(shows, currentYear) as ReceivableShowLike[]),
-      feeDistribution(filterShowsByYear(shows, currentYear - 1) as ReceivableShowLike[]),
-    ),
+  const feeComparison = compareFeeDistribution(
+    feeDistribution(filterShowsByYear(shows, currentYear) as ReceivableShowLike[]),
+    feeDistribution(filterShowsByYear(shows, currentYear - 1) as ReceivableShowLike[]),
   );
+  const feeDropHead = feeDropHeadline(feeComparison);
+  // Erosão da faixa premium (D293): o topo da tabela (cachês acima de R$ 5.000)
+  // esvaziou de um ano para o outro — a piora que a MEDIANA não vê. Reaproveita o
+  // MESMO comparativo já computado; dispara só quando a mediana NÃO está em queda
+  // (mutuamente exclusivo com feeDropHead, para não somar um segundo banner de
+  // cachê ao Painel). Detalhe em /shows/faixas-de-cache.
+  const feePremiumErosionHead = feePremiumErosionHeadline(feeComparison);
 
   // Concentração de clientes (D109): "quanto da minha receita depende de poucos
   // contratantes?". Reaproveita os shows (com contatos) e transações já carregados;
@@ -1010,6 +1016,37 @@ export default async function DashboardPage() {
             revisar a tabela e o mix de contratantes.
           </span>
           <span className={feeDropHead.critical ? "text-red-600" : "text-amber-600"}>Ver →</span>
+        </Link>
+      )}
+
+      {/* Erosão da faixa premium (D293): o topo da tabela de cachês (acima de
+          R$ 5.000) esvaziou vs. o ano passado, mesmo com a mediana firme — a piora
+          que o nudge da mediana não capta. Só aparece quando o cachê típico NÃO
+          está em queda (senão o titular é o banner acima). Vermelho quando a
+          participação premium cai 30 p.p. ou mais. */}
+      {feePremiumErosionHead.show && (
+        <Link
+          href={`/shows/faixas-de-cache?ano=${currentYear}`}
+          className={
+            "flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3 text-sm transition " +
+            (feePremiumErosionHead.critical
+              ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100")
+          }
+        >
+          <span className="font-semibold">
+            {feePremiumErosionHead.critical ? "🔴" : "🔻"} Faixa premium esvaziando
+          </span>
+          <span>
+            Os cachês acima de R$ 5.000 caíram de{" "}
+            <strong>{Math.round(feePremiumErosionHead.premiumSharePrevious * 100)}%</strong> para{" "}
+            <strong>{Math.round(feePremiumErosionHead.premiumShareCurrent * 100)}%</strong> dos shows
+            de {currentYear - 1} para {currentYear}, mesmo com o cachê típico firme. Hora de
+            reforçar os contratantes de topo.
+          </span>
+          <span className={feePremiumErosionHead.critical ? "text-red-600" : "text-amber-600"}>
+            Ver →
+          </span>
         </Link>
       )}
 

@@ -104,6 +104,7 @@ import {
   compareFeeDistribution,
   indexFeeBandShareChanges,
   feeDropHeadline,
+  feePremiumErosionHeadline,
   premiumBandShare,
   type FeeDistribution,
   weekdayPerformanceYears,
@@ -7293,6 +7294,108 @@ describe("feeDropHeadline", () => {
     const current = distOf(700_00, 700_00, 700_00);
     const previous = distOf(1_000_00, 1_000_00, 1_000_00);
     expect(feeDropHeadline(compareFeeDistribution(current, previous), 5).show).toBe(false);
+  });
+});
+
+describe("feePremiumErosionHeadline", () => {
+  const now = new Date("2026-06-15T12:00:00.000Z");
+
+  function gig(partial: Partial<ReceivableShowLike>): ReceivableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-01-10T20:00:00.000Z",
+      ...partial,
+    };
+  }
+
+  function distOf(...fees: number[]): FeeDistribution {
+    return feeDistribution(
+      fees.map((fee, i) => gig({ id: `g${i}`, fee })),
+      { now },
+    );
+  }
+
+  it("faixa premium esvaziando com mediana firme → show, não crítico", () => {
+    // Mediana estável (1.000 nos dois anos), mas o topo secou: anterior 2/5 = 40%
+    // premium, atual 0/5 = 0% → −40 p.p. (≥ 15, mas a mediana não caiu).
+    const current = distOf(1_000_00, 1_000_00, 1_000_00, 900_00, 900_00);
+    const previous = distOf(1_000_00, 1_000_00, 1_000_00, 6_000_00, 7_000_00);
+    const cmp = compareFeeDistribution(current, previous);
+    expect(cmp.trend).toBe("stable"); // a mediana não é o titular aqui
+    const head = feePremiumErosionHeadline(cmp);
+    expect(head.show).toBe(true);
+    expect(head.critical).toBe(true); // 40 p.p. ≥ 30 → crítico
+    expect(head.premiumSharePrevious).toBeCloseTo(0.4, 5);
+    expect(head.premiumShareCurrent).toBe(0);
+    expect(head.premiumShareDelta).toBeCloseTo(-0.4, 5);
+    expect(head.currentShows).toBe(5);
+    expect(head.previousShows).toBe(5);
+  });
+
+  it("erosão material mas abaixo de 30 p.p. → show, não crítico", () => {
+    // Anterior 2/10 = 20% premium; atual 0/10 = 0% → −20 p.p. (≥ 15, < 30).
+    const current = distOf(...Array(10).fill(1_000_00));
+    const previous = distOf(...Array(8).fill(1_000_00), 6_000_00, 7_000_00);
+    const cmp = compareFeeDistribution(current, previous);
+    const head = feePremiumErosionHeadline(cmp);
+    expect(head.show).toBe(true);
+    expect(head.critical).toBe(false);
+    expect(head.premiumShareDelta).toBeCloseTo(-0.2, 5);
+  });
+
+  it("cede a vez ao feeDropHeadline: mediana em queda suprime o nudge premium", () => {
+    // O topo esvaziou E a mediana caiu — o titular é a queda da mediana (D274),
+    // não este banner (evita dois avisos de cachê no Painel).
+    const current = distOf(600_00, 600_00, 600_00, 600_00, 600_00);
+    const previous = distOf(1_000_00, 1_000_00, 1_000_00, 6_000_00, 7_000_00);
+    const cmp = compareFeeDistribution(current, previous);
+    expect(cmp.trend).toBe("down");
+    expect(cmp.premiumShareDelta).toBeLessThan(0); // o premium também caiu
+    expect(feePremiumErosionHeadline(cmp).show).toBe(false);
+  });
+
+  it("faixa premium subindo/estável → não vira nudge", () => {
+    const current = distOf(1_000_00, 1_000_00, 6_000_00, 7_000_00);
+    const previous = distOf(1_000_00, 1_000_00, 1_000_00, 1_000_00);
+    const head = feePremiumErosionHeadline(compareFeeDistribution(current, previous));
+    expect(head.show).toBe(false);
+    expect(head.premiumShareDelta).toBeGreaterThan(0);
+  });
+
+  it("sem base premium no ano anterior → nada a erodir, não dispara", () => {
+    // Nunca houve cachê de topo; a participação não pode "cair".
+    const current = distOf(1_000_00, 1_000_00, 1_000_00);
+    const previous = distOf(1_000_00, 1_000_00, 1_000_00);
+    const head = feePremiumErosionHeadline(compareFeeDistribution(current, previous));
+    expect(head.premiumSharePrevious).toBe(0);
+    expect(head.show).toBe(false);
+  });
+
+  it("erosão pequena (abaixo do piso de 15 p.p.) → não dispara", () => {
+    // Anterior 1/10 = 10% premium; atual 0/10 = 0% → −10 p.p. (< 15).
+    const current = distOf(...Array(10).fill(1_000_00));
+    const previous = distOf(...Array(9).fill(1_000_00), 6_000_00);
+    const head = feePremiumErosionHeadline(compareFeeDistribution(current, previous));
+    expect(head.premiumShareDelta).toBeCloseTo(-0.1, 5);
+    expect(head.show).toBe(false);
+  });
+
+  it("amostra fina em um dos anos suprime o nudge mesmo com erosão material", () => {
+    const current = distOf(1_000_00, 1_000_00); // só 2 shows (< minSample)
+    const previous = distOf(6_000_00, 7_000_00, 1_000_00);
+    const head = feePremiumErosionHeadline(compareFeeDistribution(current, previous));
+    expect(head.show).toBe(false);
+    expect(head.currentShows).toBe(2);
+  });
+
+  it("limiares parametrizáveis: minPoints maior barra o nudge", () => {
+    const current = distOf(...Array(10).fill(1_000_00));
+    const previous = distOf(...Array(8).fill(1_000_00), 6_000_00, 7_000_00); // −20 p.p.
+    const cmp = compareFeeDistribution(current, previous);
+    expect(feePremiumErosionHeadline(cmp).show).toBe(true);
+    expect(feePremiumErosionHeadline(cmp, 3, 0.25).show).toBe(false); // exige 25 p.p.
   });
 });
 
