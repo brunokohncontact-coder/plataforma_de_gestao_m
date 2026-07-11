@@ -10019,3 +10019,45 @@ contexto, decisão, justificativa e alternativas consideradas.
   baseline (10 advisories; ver D6).
 - **Nota de concorrência:** número **D287** escolhido como o próximo livre após o D286
   (Sessão 292). Se uma PR paralela reivindicar D287, renumerar para o próximo livre no merge.
+
+## 2026-07-11 — D288: Nudge de Painel da cobrança que ainda nem começou (`awaitingPromiseHeadline`)
+- **Contexto:** a D287 (Sessão 293) criou `receivablesAwaitingPromise` — recebíveis já
+  vencidos há ≥30 dias para os quais NENHUMA promessa foi registrada (a conversa de cobrança
+  nem começou, o dinheiro mais fácil de esquecer) — e o pôs num banner âmbar na tela
+  `/shows/a-receber`. A própria D287, na alternativa (c), ADIOU levar o sinal ao Painel:
+  "um nudge pode vir depois espelhando o padrão `bookingLeadTimeHeadline`". Ficava a lacuna:
+  quem só bate o olho no Painel não via, num relance, que existe cobrança nunca iniciada.
+- **Decisão:** helper puro novo `awaitingPromiseHeadline(report, opts?)` + tipo
+  `AwaitingPromiseHeadline` + constante `AWAITING_PROMISE_CRITICAL_DAYS`(=90) em
+  `src/lib/finance.ts`, espelho fiel dos irmãos `staleProposalsHeadline`/`bookingLeadTimeHeadline`:
+  recebe o `ReceivablesAwaitingPromise` já computado (D287) e destila o nudge — `show` quando
+  `count > 0`; `critical` quando o mais antigo do grupo já passou de `criticalDays` (padrão 90 —
+  o MESMO corte do balde "encalhado" do aging: passou de "esqueci de combinar" para "esfriou de
+  vez sem nenhuma cobrança"). `count`/`totalOutstanding`/`maxDaysOutstanding` repassados. O
+  `dashboard/page.tsx` computa `receivablesAwaitingPromise(receivables.rows)` sobre os recebíveis
+  JÁ carregados (zero I/O extra) e ganha um terceiro segmento "🔔 {total} sem cobrança iniciada
+  ({N})" no banner "🎤 Cachês a receber", âmbar por padrão e vermelho quando `critical`, ao lado
+  dos segmentos de encalhado (🚨) e promessas furadas (🤝).
+- **Justificativa:** fecha exatamente o adiamento explícito da D287(c). Segmento no banner de
+  recebíveis existente (não banner próprio) porque é o MESMO eixo — cobrança de cachê a receber —
+  dos dois sinais já ali (aging por idade, promessas por status); um terceiro banner separado
+  duplicaria o link `/shows/a-receber` e adensaria o Painel (a preocupação de densidade que a
+  própria D285/D286 levantou). Lógica pura testável fora do React, no molde do arquivo. Reusa o
+  report da D287 sem recomputar regra de cobrança.
+- **Alternativas consideradas:** (a) banner próprio no Painel (como conflitos/hiatos) —
+  descartado: adensaria a coluna de avisos e repetiria o mesmo destino; um segmento inline
+  agrupa os três eixos de cobrança de recebível sob um único cartão, mais legível. (b) `critical`
+  atrelado ao limiar de 30 dias (qualquer awaiting já crítico) — descartado: 30 dias é o piso de
+  "já devia ter uma promessa", não emergência; 90 dias (o corte do "encalhado") separa o alerta
+  operacional do vermelho de urgência, e reusa um limiar que o app já ancora. (c) mover a lógica
+  de gate para a página — descartado: mantê-la pura em `finance.ts` a torna testável e reusável
+  (mesmo espírito dos demais headlines do Painel).
+- **DoD:** build de produção OK, typecheck (`tsc --noEmit`, 0 erros), lint (`next lint`,
+  0 avisos); **1642 testes** (`vitest run`, +6 em `finance.test.ts`,
+  `describe("awaitingPromiseHeadline")`: não dispara sem awaiting; dispara não-crítico entre 30 e
+  90 dias; vira crítico acima de 90; soma total e reporta o maior atraso; respeita `criticalDays`
+  customizado; expõe a constante de 90 dias). Smoke (`next start`) → `/login` 200, `/dashboard` e
+  `/shows/a-receber` 307→/login (auth-gated, sem 500). `npm audit` **inalterado** vs. baseline
+  (10 advisories; ver D6).
+- **Nota de concorrência:** número **D288** escolhido como o próximo livre após o D287
+  (Sessão 293). Se uma PR paralela reivindicar D288, renumerar para o próximo livre no merge.

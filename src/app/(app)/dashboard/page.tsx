@@ -11,6 +11,8 @@ import {
   reconcileShowFees,
   bucketReceivablesByAge,
   summarizePaymentPromises,
+  receivablesAwaitingPromise,
+  awaitingPromiseHeadline,
   paymentLag,
   paymentLagHeadline,
   paymentLagByContact,
@@ -267,6 +269,12 @@ export default async function DashboardPage() {
   const hasStaleReceivables = staleReceivables != null && staleReceivables.count > 0;
   // Promessas de pagamento furadas: contratante prometeu pagar e a data passou.
   const receivablePromises = summarizePaymentPromises(receivables.rows);
+  // Cobrança que ainda nem começou: recebíveis vencidos há ≥30 dias para os quais
+  // NENHUMA promessa foi registrada — o dinheiro mais fácil de esquecer (D287). O
+  // sinal já vive na tela /shows/a-receber; aqui vira segmento do banner de recebíveis.
+  const awaitingPromiseHead = awaitingPromiseHeadline(
+    receivablesAwaitingPromise(receivables.rows),
+  );
 
   // Prazo de recebimento realizado (DSO): sobre o cachê que JÁ entrou, em quantos
   // dias depois do show o dinheiro caiu no caixa. Reaproveita os shows/transações
@@ -703,6 +711,25 @@ export default async function DashboardPage() {
               <span className="font-normal text-red-500">
                 {" "}
                 ({receivablePromises.brokenCount})
+              </span>
+            </span>
+          )}
+          {awaitingPromiseHead.show && (
+            <span
+              className={
+                "font-semibold " +
+                (awaitingPromiseHead.critical ? "text-red-700" : "text-amber-700")
+              }
+            >
+              🔔 {formatMoney(awaitingPromiseHead.totalOutstanding)} sem cobrança iniciada
+              <span
+                className={
+                  "font-normal " +
+                  (awaitingPromiseHead.critical ? "text-red-500" : "text-amber-600")
+                }
+              >
+                {" "}
+                ({awaitingPromiseHead.count})
               </span>
             </span>
           )}
