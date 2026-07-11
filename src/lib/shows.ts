@@ -2041,6 +2041,43 @@ export function stageTimeConcentration(
   return { shares, totalMedianDays, dominant };
 }
 
+/** Um segmento VISÍVEL da barra de composição do tempo do funil (naco positivo). */
+export interface StageTimeSegment {
+  /** Etapa do segmento (mesmo `status` de `StageTimeShare`). */
+  status: string;
+  /** Mediana de permanência da etapa (dias inteiros). */
+  medianDays: number;
+  /** Naco da etapa no tempo típico de percurso (0..1). */
+  share: number;
+  /** True para a etapa dominante (o maior naco — o gargalo de tempo). */
+  dominant: boolean;
+}
+
+/**
+ * Achata a composição do tempo do funil (`stageTimeConcentration`) nos segmentos
+ * VISÍVEIS de uma barra empilhada: só as etapas com naco positivo (`share > 0`), na
+ * ordem canônica de `concentration.shares`, cada uma marcada `dominant` quando é a
+ * etapa de maior naco. Etapas de mediana zero não ocupam largura e ficam de fora
+ * (nada a desenhar); sem base (`totalMedianDays === 0`) devolve lista vazia. É o
+ * complemento visual do `dominant` de `stageTimeConcentration` (D283): em vez de só
+ * NOMEAR o gargalo, mostra a FORMA inteira de onde o tempo se concentra num relance,
+ * o mesmo espírito das barras de composição de renda/despesa. Pura e determinística.
+ * Ver D286.
+ */
+export function stageTimeConcentrationSegments(
+  concentration: StageTimeConcentration,
+): StageTimeSegment[] {
+  const dominantStatus = concentration.dominant?.status ?? null;
+  return concentration.shares
+    .filter((s) => s.share > 0)
+    .map((s) => ({
+      status: s.status,
+      medianDays: s.medianDays,
+      share: s.share,
+      dominant: s.status === dominantStatus,
+    }));
+}
+
 // ── Manchete de gargalo de TEMPO no funil para o Painel (o percurso empaca na decisão?) ──
 // `stageTimeConcentration` (D283) já diz, de todo o tempo típico de travessia do
 // funil, que naco fica em cada etapa. Este headline destila o caso ACIONÁVEL disso

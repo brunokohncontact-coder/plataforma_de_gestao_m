@@ -4,12 +4,14 @@ import { prisma } from "@/lib/prisma";
 import {
   funnelStageDurations,
   stageTimeConcentration,
+  stageTimeConcentrationSegments,
   proposalOutcomeYears,
   compareFunnelStageDurations,
   indexStageDurationChanges,
   STAGE_DURATION_TREND_EPSILON,
   type StageDurationStat,
   type StageTimeShare,
+  type StageTimeSegment,
   type ProposalOutcomeShowLike,
   type FunnelStageDurationsComparison,
   type StageDurationChange,
@@ -101,6 +103,9 @@ export default async function StageDurationsPage({
   // share vira coluna "% do percurso" na tabela.
   const concentration = stageTimeConcentration(durations);
   const shareByStatus = new Map(concentration.shares.map((s) => [s.status, s.share]));
+  // Segmentos visíveis (naco > 0) da barra de composição — a FORMA de onde o tempo
+  // se concentra num relance, além de só nomear a etapa dominante.
+  const concentrationSegments = stageTimeConcentrationSegments(concentration);
 
   const exportHref =
     yearFilter === "all"
@@ -178,7 +183,10 @@ export default async function StageDurationsPage({
           </p>
 
           {concentration.dominant && (
-            <TimeConcentrationCard dominant={concentration.dominant} />
+            <TimeConcentrationCard
+              dominant={concentration.dominant}
+              segments={concentrationSegments}
+            />
           )}
 
           {comparison && (
@@ -294,8 +302,16 @@ export default async function StageDurationsPage({
  * tempo típico de percurso do funil (a etapa dominante de `stageTimeConcentration`,
  * D283) — o gargalo de tempo num relance. Composição das medianas (o mesmo espírito
  * de fontes de renda / composição de despesas), não a mediana do percurso inteiro.
+ * A barra empilhada (`stageTimeConcentrationSegments`, D286) mostra a FORMA inteira
+ * da composição além de nomear só a etapa dominante.
  */
-function TimeConcentrationCard({ dominant }: { dominant: StageTimeShare }) {
+function TimeConcentrationCard({
+  dominant,
+  segments,
+}: {
+  dominant: StageTimeShare;
+  segments: StageTimeSegment[];
+}) {
   const label = SHOW_STATUS_LABELS[dominant.status as ShowStatus] ?? dominant.status;
   return (
     <section className="card border-l-4 border-brand-400">
@@ -307,7 +323,62 @@ function TimeConcentrationCard({ dominant }: { dominant: StageTimeShare }) {
         <strong className="text-brand-700">{pctLabel(dominant.share)}</strong> do tempo típico de
         percurso do funil (mediana de {daysLabel(dominant.medianDays)}) — é o maior gargalo de tempo.
       </p>
+      {segments.length > 0 && <ConcentrationBar segments={segments} />}
     </section>
+  );
+}
+
+/**
+ * Barra empilhada da composição do tempo do funil: cada etapa de naco positivo
+ * (`stageTimeConcentrationSegments`, D286) vira uma fatia proporcional ao seu share,
+ * na ordem canônica, com legenda de etapa + percentual. A cor sólida de cada fatia
+ * reusa `SHOW_STATUS_DOT` (a mesma do ponto na tabela), e a etapa dominante ganha um
+ * anel para casar com o destaque textual do card.
+ */
+function ConcentrationBar({ segments }: { segments: StageTimeSegment[] }) {
+  return (
+    <div className="mt-3">
+      <div
+        className="flex h-3 w-full overflow-hidden rounded-full bg-gray-100"
+        role="img"
+        aria-label="Composição do tempo por etapa do funil"
+      >
+        {segments.map((seg) => {
+          const status = seg.status as ShowStatus;
+          return (
+            <div
+              key={seg.status}
+              className={
+                (SHOW_STATUS_DOT[status] ?? "bg-gray-400") +
+                (seg.dominant ? " ring-1 ring-inset ring-white/60" : "")
+              }
+              style={{ width: `${seg.share * 100}%` }}
+              title={`${SHOW_STATUS_LABELS[status] ?? seg.status}: ${pctLabel(seg.share)}`}
+            />
+          );
+        })}
+      </div>
+      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
+        {segments.map((seg) => {
+          const status = seg.status as ShowStatus;
+          return (
+            <li key={seg.status} className="flex items-center gap-1.5">
+              <span
+                className={
+                  "inline-block h-2.5 w-2.5 rounded-full " +
+                  (SHOW_STATUS_DOT[status] ?? "bg-gray-400")
+                }
+                aria-hidden
+              />
+              <span className={seg.dominant ? "font-semibold text-gray-800" : ""}>
+                {SHOW_STATUS_LABELS[status] ?? seg.status}
+              </span>
+              <span className="tabular-nums text-gray-400">{pctLabel(seg.share)}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 

@@ -9,7 +9,24 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1626 testes** verdes após o
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1630 testes** verdes após a
+**barra de composição do tempo do funil no card "Onde o tempo se concentra"** (Sessão 292, D286 — a D283
+deu à tela `/shows/funil/tempo-em-etapa` a leitura de COMPOSIÇÃO (`stageTimeConcentration`) e o card
+"Onde o tempo se concentra", mas o card só NOMEAVA a etapa dominante em texto; a composição inteira só
+aparecia como números na coluna "% do percurso" da tabela. Helper puro novo
+`stageTimeConcentrationSegments(concentration)` + tipo `StageTimeSegment` em `src/lib/shows.ts` achata a
+`StageTimeConcentration` já computada nos segmentos VISÍVEIS de uma barra empilhada — só etapas de naco
+positivo (`share > 0`), ordem canônica preservada, cada uma marcada `dominant` quando é o maior naco;
+etapas de mediana zero ficam de fora (nada a desenhar), sem base devolve lista vazia. O card
+`TimeConcentrationCard` ganha a barra empilhada `ConcentrationBar` (fatia proporcional ao share, cor
+sólida reusando `SHOW_STATUS_DOT`, dominante com anel) + legenda etapa/percentual — a FORMA de onde o
+tempo se concentra num relance, o mesmo espírito das barras de renda/despesa. Deriva do MESMO
+`stageTimeConcentration` já exibido: zero consulta, zero regra nova, zero migração, zero dependência.
+**+4 testes** (`shows.test.ts`, `describe("stageTimeConcentrationSegments")`: sem base → vazia; um
+segmento por etapa de naco positivo na ordem canônica marcando o dominante; mediana zero fica de fora dos
+visíveis mas segue na composição; todas as medianas zero → vazia). Build/typecheck/lint verdes; smoke →
+`/login` 200, `/shows/funil/tempo-em-etapa` e `?ano=2026` 307→/login (auth-gated, sem 500); `npm audit`
+inalterado (10 advisories). Ver D286. Antes disso, **1626 testes** verdes após o
 **nudge de gargalo de tempo no funil no Painel** (Sessão 291, D285 — leva ao Painel a leitura de
 COMPOSIÇÃO do tempo do funil (`stageTimeConcentration`/D283): quando a etapa PROPOSED concentra a MAIOR
 fatia (≥ 50%) do tempo típico de percurso até o palco — as propostas passam o grosso do caminho apenas
