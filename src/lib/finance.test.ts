@@ -102,6 +102,7 @@ import {
   feeDistribution,
   feeDistributionYears,
   compareFeeDistribution,
+  indexFeeBandShareChanges,
   feeDropHeadline,
   premiumBandShare,
   type FeeDistribution,
@@ -7164,6 +7165,60 @@ describe("compareFeeDistribution", () => {
     const dist = distOf(6_000_00, 6_000_00, 1_000_00, 1_000_00); // 2 de 4 premium
     expect(premiumBandShare(dist)).toBeCloseTo(0.5, 5);
     expect(premiumBandShare(feeDistribution([], { now }))).toBe(0); // vazio → 0
+  });
+
+  it("bandChanges traz sempre as 6 faixas na ordem canônica de FEE_BANDS", () => {
+    const cmp = compareFeeDistribution(distOf(1_000_00), distOf(6_000_00));
+    expect(cmp.bandChanges).toHaveLength(FEE_BANDS.length);
+    expect(cmp.bandChanges.map((c) => c.key)).toEqual(FEE_BANDS.map((b) => b.key));
+    expect(cmp.bandChanges.map((c) => c.label)).toEqual(FEE_BANDS.map((b) => b.label));
+  });
+
+  it("bandChanges capta a migração de faixa (delta da participação por degrau)", () => {
+    // Atual: 2 de 4 na faixa premium (50%). Anterior: 0 de 4 (0%) — subiu +50 p.p.
+    // no topo; a faixa "R$ 1.000 – 2.000" caiu de 100% para 50% (−50 p.p.).
+    const current = distOf(6_000_00, 6_000_00, 1_000_00, 1_000_00);
+    const previous = distOf(1_000_00, 1_000_00, 1_000_00, 1_000_00);
+    const cmp = compareFeeDistribution(current, previous);
+    const byKey = indexFeeBandShareChanges(cmp);
+    const premium = byKey.get("gte5k")!;
+    expect(premium.currentCountShare).toBeCloseTo(0.5, 5);
+    expect(premium.previousCountShare).toBe(0);
+    expect(premium.countShareDelta).toBeCloseTo(0.5, 5);
+    expect(premium.currentCount).toBe(2);
+    expect(premium.previousCount).toBe(0);
+    const mid = byKey.get("1kto2k")!;
+    expect(mid.previousCountShare).toBeCloseTo(1, 5);
+    expect(mid.currentCountShare).toBeCloseTo(0.5, 5);
+    expect(mid.countShareDelta).toBeCloseTo(-0.5, 5);
+  });
+
+  it("faixa vazia nos dois anos fica com delta zero (nada a comparar)", () => {
+    const cmp = compareFeeDistribution(distOf(1_000_00), distOf(1_000_00));
+    const byKey = indexFeeBandShareChanges(cmp);
+    const premium = byKey.get("gte5k")!;
+    expect(premium.currentCount).toBe(0);
+    expect(premium.previousCount).toBe(0);
+    expect(premium.countShareDelta).toBe(0);
+  });
+
+  it("sem base no ano anterior → cada faixa preenchida do atual vira +participação", () => {
+    const cmp = compareFeeDistribution(distOf(1_000_00), feeDistribution([], { now }));
+    const byKey = indexFeeBandShareChanges(cmp);
+    const mid = byKey.get("1kto2k")!;
+    expect(mid.previousCount).toBe(0);
+    expect(mid.previousCountShare).toBe(0);
+    expect(mid.currentCountShare).toBeCloseTo(1, 5);
+    expect(mid.countShareDelta).toBeCloseTo(1, 5);
+  });
+
+  it("indexFeeBandShareChanges mapeia cada faixa por chave", () => {
+    const cmp = compareFeeDistribution(distOf(6_000_00), distOf(1_000_00));
+    const byKey = indexFeeBandShareChanges(cmp);
+    expect(byKey.size).toBe(FEE_BANDS.length);
+    for (const b of FEE_BANDS) {
+      expect(byKey.get(b.key)?.key).toBe(b.key);
+    }
   });
 });
 

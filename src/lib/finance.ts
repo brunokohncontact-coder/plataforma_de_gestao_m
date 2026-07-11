@@ -7689,6 +7689,35 @@ export function premiumBandShare(dist: FeeDistribution): number {
   return band ? band.countShare : 0;
 }
 
+/**
+ * Variação, faixa a faixa, da participação (nº de shows) de um período para o
+ * outro — o "formato da tabela de cachês mudou?" no eixo de cada degrau. Espelha
+ * a granularidade das colunas "vs. {ano-1}" por linha já consolidadas no app
+ * (`ContactPipelineChange`/`StageDurationChange`, D238/D282), agora sobre as
+ * faixas de preço. A participação (`countShare`) é neutra por faixa: subir num
+ * degrau alto é bom, num baixo é o contrário — a leitura direcional fica com o
+ * veredito da mediana (`trend`); aqui só descrevemos o deslocamento.
+ */
+export interface FeeBandShareChange {
+  /** Chave da faixa (`FeeBandKey`), na ordem canônica de `FEE_BANDS`. */
+  key: FeeBandKey;
+  /** Rótulo legível da faixa (ex.: "Acima de R$ 5.000"). */
+  label: string;
+  /** Nº de shows na faixa no período atual. */
+  currentCount: number;
+  /** Nº de shows na faixa no período anterior. */
+  previousCount: number;
+  /** Participação (nº de shows, 0..1) da faixa no período atual. */
+  currentCountShare: number;
+  /** Participação (nº de shows, 0..1) da faixa no período anterior. */
+  previousCountShare: number;
+  /**
+   * Variação da participação (atual − anterior, em pontos 0..1). Positivo = mais
+   * da agenda caiu nesta faixa agora; negativo = menos.
+   */
+  countShareDelta: number;
+}
+
 export interface FeeDistributionComparison {
   /** Distribuição do período atual (tipicamente o ano selecionado). */
   current: FeeDistribution;
@@ -7730,6 +7759,13 @@ export interface FeeDistributionComparison {
    * informativo — não altera o veredito `trend`, que segue ancorado na mediana.
    */
   premiumShareDelta: number;
+  /**
+   * Deslocamento da participação (nº de shows) faixa a faixa, na ordem canônica
+   * de `FEE_BANDS` (sempre as 6 faixas, inclusive as zeradas). É o detalhe por
+   * degrau que a coluna "vs. {ano-1}" da tabela e do CSV consomem — mostra para
+   * ONDE a agenda migrou, complementando o resumo (mediana/premium).
+   */
+  bandChanges: FeeBandShareChange[];
 }
 
 /**
@@ -7761,6 +7797,24 @@ export function compareFeeDistribution(
   const material = absOver && relOver;
   const premiumShareCurrent = premiumBandShare(current);
   const premiumSharePrevious = premiumBandShare(previous);
+  // Deslocamento faixa a faixa: ambas as distribuições sempre trazem as 6 faixas
+  // canônicas, então casa por chave (robusto à ordem) preservando a ordem de
+  // `current.bands` (= ordem de FEE_BANDS). Faixa ausente no anterior conta como 0.
+  const previousByKey = new Map(previous.bands.map((b) => [b.key, b]));
+  const bandChanges: FeeBandShareChange[] = current.bands.map((cb) => {
+    const pb = previousByKey.get(cb.key);
+    const previousCount = pb ? pb.count : 0;
+    const previousCountShare = pb ? pb.countShare : 0;
+    return {
+      key: cb.key,
+      label: cb.label,
+      currentCount: cb.count,
+      previousCount,
+      currentCountShare: cb.countShare,
+      previousCountShare,
+      countShareDelta: cb.countShare - previousCountShare,
+    };
+  });
   return {
     current,
     previous,
@@ -7771,7 +7825,20 @@ export function compareFeeDistribution(
     premiumShareCurrent,
     premiumSharePrevious,
     premiumShareDelta: premiumShareCurrent - premiumSharePrevious,
+    bandChanges,
   };
+}
+
+/**
+ * Lookup O(1) `FeeBandKey` → `FeeBandShareChange` a partir de uma
+ * `FeeDistributionComparison` já computada, para a tabela e o CSV alinharem a
+ * coluna "vs. {ano-1}" a cada linha de faixa sem varrer `bandChanges`. Espelha
+ * `indexStageDurationChanges`/`indexContactPipelineChanges` (D238/D282). Pura.
+ */
+export function indexFeeBandShareChanges(
+  comparison: FeeDistributionComparison,
+): Map<FeeBandKey, FeeBandShareChange> {
+  return new Map(comparison.bandChanges.map((c) => [c.key, c]));
 }
 
 // ── Manchete de queda do cachê típico para o Painel (meu preço encolheu?) ────
