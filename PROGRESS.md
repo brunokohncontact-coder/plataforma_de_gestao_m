@@ -9,7 +9,21 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1672 testes** verdes após o
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 300 (D294) —
+diagnóstico do outage de produção + runbook de deploy:** o deploy na Vercel retorna `Application
+error: a server-side exception` em `/register` (e em toda ação que **grava** no banco; digest
+4246294862) porque produção roda **SQLite** (`DATABASE_URL="file:./dev.db"`, `provider="sqlite"`),
+inviável em serverless — o FS das Functions é somente-leitura/efêmero, então `prisma.user.create`
+no `registerAction` lança. Correção-raiz exige **Postgres gerenciado** (Vercel Postgres/Neon/Supabase,
+connection string *pooled*) + segredos reais na Vercel: **provisionamento é ação humana** (bloqueio
+notificado e registrado na D294). Nesta sessão, mudança **só de documentação** — novo runbook
+`docs/deploy.md` (passo a passo `SQLite→Postgres`: provisionar, `datasource` com `directUrl`, env vars,
+`prisma migrate deploy`, smoke, rollback) + entrada D294 — sem tocar código de runtime; build/typecheck/
+lint/testes inalterados (**1672 testes**), `npm audit` inalterado (10 advisories). A troca de `provider`
+para `postgresql` fica **coordenada** com o provisionamento (mesclá-la sozinha quebraria dev/CI, ambos
+SQLite, sem corrigir produção). Também nesta sessão: **consolidada e mesclada na `main` a PR #328**
+(`promisesDueSoonHeadline`/D291, CI verde) e **fechada a #325** (superseda), zerando as PRs abertas.
+Ver D294 e `docs/deploy.md`. Antes disso, **1672 testes** verdes após o
 **nudge de Painel das promessas de pagamento a vencer nos próximos dias** (Sessão 299, D291 — o banner
 "🎤 Cachês a receber" do Painel reunia três sinais de recebível, todos NEGATIVOS: encalhado (🚨), promessa
 furada (🤝, D284) e cobrança que nem começou (🔔, D288). Faltava o lado que planeja o caixa: das promessas

@@ -10273,3 +10273,41 @@ contexto, decisão, justificativa e alternativas consideradas.
 - **Nota de concorrência:** número **D293** escolhido como o próximo livre após o D292 (Sessão 297); o
   D291 segue reivindicado pela PR paralela #325 (aberta). Se outra PR reivindicar D293, renumerar para o
   próximo livre no merge.
+
+## 2026-07-11 — D294: Produção exige Postgres gerenciado (SQLite não roda em serverless) + runbook de deploy
+- **Contexto:** o deploy na Vercel (`plataforma-de-gestao-m.vercel.app`) retorna
+  `Application error: a server-side exception has occurred` em `/register` e em qualquer
+  ação que **grava** no banco (digest observado: 4246294862). Causa-raiz: a aplicação está
+  em produção com **SQLite** (`DATABASE_URL="file:./dev.db"`, `provider = "sqlite"`), e o
+  sistema de arquivos das Serverless Functions da Vercel é **somente-leitura e efêmero** —
+  toda escrita (`prisma.user.create` no `registerAction`) lança exceção. Isso **valida** o
+  "A revisar" da D3 ("se produção exigir Postgres desde já, migrar o `provider`"): produção
+  exige, sim, desde já.
+- **Decisão:** documentar a migração mínima `SQLite → Postgres` num runbook versionado
+  (`docs/deploy.md`) e registrar que **produção requer um Postgres gerenciado** (Vercel
+  Postgres / Neon / Supabase) com connection string *pooled* no runtime e *direct* nas
+  migrations. Dev e CI seguem em SQLite (D3) — a troca de `provider` para `postgresql` é uma
+  mudança de código **coordenada** com o provisionamento do banco e o ajuste do CI, e por
+  isso **não** foi mesclada nesta sessão (mesclá-la sozinha quebraria dev/CI sem corrigir a
+  produção, que só funciona depois que o banco existe).
+- **Justificativa:** SQLite em serverless não tem correção viável em código — o banco precisa
+  ser um serviço externo persistente. O provisionamento e os segredos de produção
+  (`DATABASE_URL`, `AUTH_SECRET`) são responsabilidade humana (exigem conta no provedor e
+  valores reais), fora do alcance de uma execução remota. O runbook deixa o caminho pronto
+  para execução em um passo coordenado.
+- **Alternativas consideradas:**
+  - *Trocar já o `provider` para postgresql nesta sessão* — descartado: quebraria o CI e o
+    dev (ambos SQLite) e **não** corrigiria a produção sem um banco provisionado; deixaria a
+    `main` vermelha sem benefício.
+  - *Tratar/silenciar a exceção nas ações de auth (try/catch)* — descartado como "correção":
+    mascara um outage total (o usuário continua sem conseguir criar conta); no máximo melhora
+    a mensagem, não o problema.
+  - *Prisma com `provider = env(...)`* — descartado: não é suportado de forma estável;
+    manteria dev/CI/testes frágeis.
+- **Bloqueio (humano):** provisionar o Postgres gerenciado e definir `DATABASE_URL`
+  (*pooled*), `DIRECT_URL` e `AUTH_SECRET` na Vercel. Passo a passo em `docs/deploy.md`.
+- **DoD:** mudança **somente de documentação** (`docs/deploy.md` + esta entrada + nota no
+  PROGRESS) — não altera código de runtime; build/typecheck/lint/testes inalterados
+  (1672 testes). `npm audit` inalterado (10 advisories; ver D6).
+- **Nota de concorrência:** número **D294** escolhido como o próximo livre após o D293
+  (Sessão 298). Se outra PR reivindicar D294, renumerar para o próximo livre no merge.
