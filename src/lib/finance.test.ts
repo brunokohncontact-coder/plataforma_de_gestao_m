@@ -68,6 +68,8 @@ import {
   AWAITING_PROMISE_MIN_DAYS,
   awaitingPromiseHeadline,
   AWAITING_PROMISE_CRITICAL_DAYS,
+  promisesDueSoonHeadline,
+  PROMISE_DUE_SOON_DAYS,
   awaitingPromiseByContact,
   computeDelta,
   compareSummaries,
@@ -4326,6 +4328,95 @@ describe("awaitingPromiseHeadline", () => {
 
   it("expõe o limiar crítico padrão de 90 dias", () => {
     expect(AWAITING_PROMISE_CRITICAL_DAYS).toBe(90);
+  });
+});
+
+describe("promisesDueSoonHeadline", () => {
+  const now = new Date("2026-03-15T12:00:00.000Z");
+
+  function gig(partial: Partial<PromisableShowLike>): PromisableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-02-01T00:00:00.000Z",
+      ...partial,
+    };
+  }
+
+  function headlineFor(
+    shows: PromisableShowLike[],
+    opts: { withinDays?: number } = {},
+  ) {
+    const summary = summarizePaymentPromises(
+      reconcileShowFees(shows, [], { now }).rows,
+      now,
+    );
+    return promisesDueSoonHeadline(summary, { now, ...opts });
+  }
+
+  it("não dispara quando não há promessa no prazo dentro da janela", () => {
+    const head = headlineFor([
+      gig({ id: "furada", paymentPromisedAt: "2026-03-10T00:00:00.000Z" }), // passou
+      gig({ id: "distante", paymentPromisedAt: "2026-04-10T00:00:00.000Z" }), // 26 dias
+      gig({ id: "sem-promessa" }), // ignorada
+    ]);
+    expect(head.show).toBe(false);
+    expect(head.count).toBe(0);
+    expect(head.totalOutstanding).toBe(0);
+    expect(head.nextDays).toBe(0);
+    expect(head.maxDays).toBe(0);
+  });
+
+  it("conta as promessas no prazo que vencem dentro da janela e soma o saldo em aberto", () => {
+    const head = headlineFor([
+      gig({ id: "a", fee: 100_00, paymentPromisedAt: "2026-03-17T00:00:00.000Z" }), // 2 dias
+      gig({ id: "b", fee: 50_00, paymentPromisedAt: "2026-03-20T00:00:00.000Z" }), // 5 dias
+      gig({ id: "fora", paymentPromisedAt: "2026-03-25T00:00:00.000Z" }), // 10 dias → fora
+    ]);
+    expect(head.show).toBe(true);
+    expect(head.count).toBe(2);
+    expect(head.totalOutstanding).toBe(150_00);
+    expect(head.nextDays).toBe(2);
+    expect(head.maxDays).toBe(5);
+  });
+
+  it("desconta o já recebido no total (usa o saldo em aberto)", () => {
+    const summary = summarizePaymentPromises(
+      reconcileShowFees(
+        [gig({ id: "a", fee: 100_00, paymentPromisedAt: "2026-03-18T00:00:00.000Z" })],
+        [tx({ type: "INCOME", amount: 40_00, received: true, showId: "a" })],
+        { now },
+      ).rows,
+      now,
+    );
+    const head = promisesDueSoonHeadline(summary, { now });
+    expect(head.count).toBe(1);
+    expect(head.totalOutstanding).toBe(60_00);
+  });
+
+  it("inclui a promessa que vence hoje (nextDays 0) e a que fecha a janela", () => {
+    const head = headlineFor([
+      gig({ id: "hoje", paymentPromisedAt: "2026-03-15T00:00:00.000Z" }), // 0 dias
+      gig({ id: "limite", paymentPromisedAt: "2026-03-22T00:00:00.000Z" }), // 7 dias
+    ]);
+    expect(head.count).toBe(2);
+    expect(head.nextDays).toBe(0);
+    expect(head.maxDays).toBe(7);
+  });
+
+  it("respeita uma janela customizada", () => {
+    const shows = [
+      gig({ id: "a", paymentPromisedAt: "2026-03-20T00:00:00.000Z" }), // 5 dias
+      gig({ id: "b", paymentPromisedAt: "2026-03-25T00:00:00.000Z" }), // 10 dias
+    ];
+    expect(headlineFor(shows, { withinDays: 3 }).count).toBe(0);
+    expect(headlineFor(shows, { withinDays: 7 }).count).toBe(1);
+    expect(headlineFor(shows, { withinDays: 14 }).count).toBe(2);
+  });
+
+  it("expõe a janela padrão de 7 dias", () => {
+    expect(PROMISE_DUE_SOON_DAYS).toBe(7);
   });
 });
 

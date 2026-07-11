@@ -9,7 +9,26 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1650 testes** verdes após a
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1656 testes** verdes após o
+**nudge de Painel das promessas de pagamento a vencer nos próximos dias** (Sessão 297, D291 — o banner
+"🎤 Cachês a receber" do Painel reunia três sinais de recebível, todos NEGATIVOS: encalhado (🚨), promessa
+furada (🤝, D284) e cobrança que nem começou (🔔, D288). Faltava o lado que planeja o caixa: das promessas
+que o contratante FEZ e ainda estão NO PRAZO (`summarizePaymentPromises().pending`, já computado no Painel),
+quais chegam já-já? Esse subconjunto só aparecia em `/shows/a-receber` (e `/por-contratante`), nunca no
+Painel. Helper puro novo `promisesDueSoonHeadline(summary, opts?)` + tipo `PromisesDueSoonHeadline` +
+constante `PROMISE_DUE_SOON_DAYS`(=7) em `src/lib/finance.ts`, espelho POSITIVO dos headlines irmãos: recebe
+o `PaymentPromiseSummary` já em mãos, varre `summary.pending` (promessas hoje/futuras, da mais próxima à mais
+distante) e retém as que caem em [hoje, hoje+`withinDays`]; devolve `show`(`count>0`), `count`,
+`totalOutstanding` (saldo em aberto), `nextDays` (dias até a mais próxima; 0=hoje) e `maxDays`. O
+`dashboard/page.tsx` deriva `promisesDueSoonHeadline(receivablePromises)` (zero I/O extra) e ganha um quarto
+segmento no MESMO banner — "💰 {total} prometido {para hoje | nos próximos 7 dias} ({N})", em verde
+(emerald), o único segmento positivo entre os alertas. Inline (não banner próprio) porque é o mesmo eixo —
+a carteira de recebíveis — dos três sinais já ali; zero regra nova, zero consulta, zero migração, zero
+dependência. **+8 testes** (`finance.test.ts`, `describe("promisesDueSoonHeadline")`: não dispara sem
+promessa no prazo na janela; conta as da janela e soma o saldo em aberto; desconta o já recebido; inclui a
+que vence hoje (`nextDays` 0) e a que fecha a janela; respeita janela customizada; expõe a constante de 7
+dias). Build/typecheck/lint verdes; smoke → `/login` 200, `/dashboard` 307→/login (auth-gated, sem 500);
+`npm audit` inalterado (10 advisories). Ver D291. Antes disso, **1650 testes** verdes após a
 **coluna "sem cobrança iniciada" no CSV dos cachês a receber por contratante** (Sessão 296, D290 — fecha o
 adiamento explícito da D289(a) ("um CSV pode vir depois se houver demanda"): a D289 deu à tela
 `/shows/a-receber/por-contratante` o selo âmbar "🔔 {N} sem cobrança iniciada" por devedor
