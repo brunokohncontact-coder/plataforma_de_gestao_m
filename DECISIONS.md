@@ -10145,6 +10145,47 @@ contexto, decisão, justificativa e alternativas consideradas.
 - **Nota de concorrência:** número **D290** escolhido como o próximo livre após o D289
   (Sessão 295). Se uma PR paralela reivindicar D290, renumerar para o próximo livre no merge.
 
+## 2026-07-11 — D291: Nudge de Painel das promessas de pagamento a vencer nos próximos dias (`promisesDueSoonHeadline`)
+- **Contexto:** o banner "🎤 Cachês a receber" do Painel já reunia TRÊS sinais de recebível, todos
+  NEGATIVOS: encalhado (🚨, parado há >90 dias), promessa furada (🤝, data prometida já passou —
+  D284) e cobrança que nem começou (🔔, vencido ≥30 dias sem nenhuma promessa — D288). Faltava o
+  lado que planeja o caixa: das promessas que o contratante FEZ e ainda estão no prazo
+  (`summarizePaymentPromises().pending`, já computado no Painel), quais chegam já-já? Esse
+  subconjunto só aparecia nas telas `/shows/a-receber` (e `/por-contratante`), nunca no Painel —
+  quem só bate o olho na primeira tela não via, num relance, "R$ X prometido deve pingar nesta
+  semana", justamente o dinheiro a esperar (e a cobrar de novo se não cair).
+- **Decisão:** helper puro novo `promisesDueSoonHeadline(summary, opts?)` + tipo
+  `PromisesDueSoonHeadline` + constante `PROMISE_DUE_SOON_DAYS`(=7) em `src/lib/finance.ts`,
+  espelho positivo dos headlines irmãos: recebe o `PaymentPromiseSummary` JÁ computado, varre
+  `summary.pending` (promessas hoje/futuras, ordenadas da mais próxima à mais distante) e retém as
+  que caem em [hoje, hoje+`withinDays`]; devolve `show` (`count > 0`), `count`, `totalOutstanding`
+  (saldo em aberto), `nextDays` (dias até a mais próxima; 0 = hoje) e `maxDays` (a mais distante da
+  janela). O `dashboard/page.tsx` deriva `promisesDueSoonHeadline(receivablePromises)` sobre o
+  summary já em mãos (zero I/O extra) e ganha um quarto segmento no MESMO banner de recebíveis —
+  "💰 {total} prometido {para hoje | nos próximos 7 dias} ({N})", em verde (emerald), o único
+  segmento POSITIVO entre os alertas. Segmento inline (não banner próprio) porque é o mesmo eixo —
+  a carteira de recebíveis — dos três sinais já ali. Zero regra nova (a lógica de promessa vive em
+  `summarizePaymentPromises`), zero consulta, zero migração, zero dependência.
+- **Justificativa:** completa a leitura de recebíveis no Painel com o eixo que faltava — o
+  planejamento de entrada de caixa —, reusando dado já computado e o padrão de "headline" puro que
+  a base repete (`awaitingPromiseHeadline`/`bookingLeadTimeHeadline`). Verde num banner âmbar/
+  vermelho é deliberado: é a boa notícia dentro do retrato de cobrança ("deste saldo, R$ X está
+  prometido a chegar já"), e o banner só renderiza quando há saldo em aberto.
+- **Alternativas consideradas:** (a) um banner verde próprio — descartado: adensaria o Painel e
+  separaria a promessa a vencer do resto da carteira a que pertence; inline no banner existente
+  agrupa os quatro sinais de recebível num cartão só. (b) janela de 14/30 dias — descartado por
+  ora: 7 dias é o horizonte de caixa da semana e mantém o nudge acionável; a janela é injetável
+  (`withinDays`) se surgir demanda. (c) somar também as promessas já vencidas (furadas) — não:
+  essas já têm o segmento 🤝 próprio; este é só o que ainda está NO PRAZO e a vencer.
+- **DoD:** build de produção OK, typecheck (`tsc --noEmit`, 0 erros), lint (`next lint`, 0 avisos);
+  **1656 testes** (`vitest run`, +8 em `finance.test.ts`, `describe("promisesDueSoonHeadline")`:
+  não dispara sem promessa no prazo na janela; conta as da janela e soma o saldo em aberto;
+  desconta o já recebido; inclui a que vence hoje (`nextDays` 0) e a que fecha a janela; respeita
+  janela customizada; expõe a constante de 7 dias). Smoke (`next start`) → `/login` 200,
+  `/dashboard` 307→/login (auth-gated, sem 500). `npm audit` **inalterado** vs. baseline
+  (10 advisories; ver D6).
+- **Nota de concorrência:** número **D291** escolhido como o próximo livre após o D290
+  (Sessão 296). Se uma PR paralela reivindicar D291, renumerar para o próximo livre no merge.
 ## D292 — Coluna "vs. {ano-1}" por faixa na tabela e no CSV das faixas de cachê (`bandChanges` + `indexFeeBandShareChanges` + `feeDistributionToCsv` com comparativo) (Sessão 297)
 - **Contexto:** a tela `/shows/faixas-de-cache` já tinha o recorte por ano (`?ano=`) e o card
   comparativo `FeeComparisonCard` (`compareFeeDistribution`/D187), mas o card só resumia o
