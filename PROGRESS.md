@@ -9,7 +9,24 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1649 testes** verdes após a
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **1650 testes** verdes após a
+**coluna "sem cobrança iniciada" no CSV dos cachês a receber por contratante** (Sessão 296, D290 — fecha o
+adiamento explícito da D289(a) ("um CSV pode vir depois se houver demanda"): a D289 deu à tela
+`/shows/a-receber/por-contratante` o selo âmbar "🔔 {N} sem cobrança iniciada" por devedor
+(`awaitingPromiseByContact`), mas o CSV da mesma tela (`receivablesByContactToCsv`) só levava as promessas
+vencidas (contagem + valor) — a cobrança que nem começou aparecia na página, não na planilha. Agora
+`RECEIVABLE_BY_CONTACT_CSV_HEADERS` ganha duas colunas fixas ao final — "Sem cobrança iniciada" (contagem)
+e "A receber sem promessa (R$)" (valor) — e `ReceivableByContactCsvRow` os campos
+`awaitingCount`/`awaitingOutstanding` em `src/lib/csv.ts`; a rota `.../por-contratante/export` computa
+`awaitingPromiseByContact(receivables.rows, getPayer)` sobre os MESMOS recebíveis já reconciliados e casa por
+id do contratante (grupo sem contratante = "") com as linhas de `outstandingByContact`, igual ao join da
+página (devedores sem cobrança iniciada saem `0`/`0,00`). Paridade tela↔CSV restaurada, espelho das colunas
+de promessas vencidas já presentes; zero consulta nova, zero regra nova (reusa a lógica pura de D287/D289),
+zero migração, zero dependência. **+1 teste líquido** (`csv.test.ts`: header atualizado com as duas colunas +
+linha base `0;0,00` ao final; novo "expõe a cobrança que ainda nem começou (contagem + valor)" → `3`/`1200,00`;
+factory `row()` com os novos campos). Build/typecheck/lint verdes; smoke → `/login` 200,
+`/shows/a-receber/por-contratante` e `.../export` 307→/login (auth-gated, sem 500); `npm audit` inalterado
+(10 advisories). Ver D290. Antes disso, **1649 testes** verdes após a
 **cobrança que ainda nem começou, por contratante** (Sessão 295, D289 — a D287/D288 criaram a leitura da
 carteira INTEIRA da "cobrança que nem começou" (`receivablesAwaitingPromise` — recebíveis vencidos há ≥30 dias
 SEM promessa registrada — banner na tela + segmento no Painel), mas nunca diziam de QUEM é essa cobrança nunca

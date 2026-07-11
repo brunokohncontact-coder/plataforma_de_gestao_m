@@ -5,7 +5,9 @@ import {
   reconcileShowFees,
   outstandingByContact,
   summarizePaymentPromises,
+  awaitingPromiseByContact,
   type ReceivableShowLike,
+  type PromisableShowLike,
   type TxLike,
 } from "@/lib/finance";
 import { pickPayerContact } from "@/lib/billing";
@@ -65,9 +67,22 @@ export async function GET() {
     getPayer as (s: ReceivableShowLike & ShowRow) => PayerContact | null,
   );
 
+  // Cobrança que ainda nem começou por devedor (D289): recebíveis vencidos há
+  // ≥30 dias SEM nenhuma promessa registrada. Espelha a página; o lookup por id
+  // do contratante casa a chave de `byContact` (grupo sem contratante = "").
+  const NO_CONTACT_KEY = "";
+  const awaiting = awaitingPromiseByContact(
+    receivables.rows,
+    getPayer as (s: PromisableShowLike & ShowRow) => PayerContact | null,
+  );
+  const awaitingByKey = new Map(
+    awaiting.rows.map((r) => [r.contact?.id ?? NO_CONTACT_KEY, r]),
+  );
+
   // Promessas vencidas por devedor (mesma chave da página): contagem + valor.
   const csvRows: ReceivableByContactCsvRow[] = byContact.rows.map((r) => {
     const promises = summarizePaymentPromises(r.rows.map((a) => a.row));
+    const await_ = awaitingByKey.get(r.contact?.id ?? NO_CONTACT_KEY);
     return {
       contact: r.contact ? { name: r.contact.name, role: r.contact.role } : null,
       outstanding: r.outstanding,
@@ -77,6 +92,8 @@ export async function GET() {
       share: r.share,
       brokenCount: promises.brokenCount,
       brokenOutstanding: promises.brokenOutstanding,
+      awaitingCount: await_?.count ?? 0,
+      awaitingOutstanding: await_?.totalOutstanding ?? 0,
     };
   });
 

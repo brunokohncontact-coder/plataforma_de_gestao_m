@@ -1028,6 +1028,8 @@ describe("receivablesByContactToCsv", () => {
     share: 0.6,
     brokenCount: 0,
     brokenOutstanding: 0,
+    awaitingCount: 0,
+    awaitingOutstanding: 0,
     ...over,
   });
 
@@ -1041,9 +1043,11 @@ describe("receivablesByContactToCsv", () => {
     const csv = receivablesByContactToCsv([row()]);
     const lines = csv.split("\r\n");
     expect(lines[0]).toBe(
-      "Contratante;Papel;A receber (R$);Shows;Pior atraso (dias);Atraso médio (dias);Participação;Promessas vencidas;A receber vencido (R$)",
+      "Contratante;Papel;A receber (R$);Shows;Pior atraso (dias);Atraso médio (dias);Participação;Promessas vencidas;A receber vencido (R$);Sem cobrança iniciada;A receber sem promessa (R$)",
     );
-    expect(lines[1]).toBe("Bar do Zé;Casa de show;1500,00;3;62;40;60%;0;0,00");
+    expect(lines[1]).toBe(
+      "Bar do Zé;Casa de show;1500,00;3;62;40;60%;0;0,00;0;0,00",
+    );
   });
 
   it("arredonda a participação para porcentagem inteira", () => {
@@ -1069,6 +1073,16 @@ describe("receivablesByContactToCsv", () => {
       .split(";");
     expect(cols[7]).toBe("2");
     expect(cols[8]).toBe("900,00");
+  });
+
+  it("expõe a cobrança que ainda nem começou (contagem + valor)", () => {
+    const cols = receivablesByContactToCsv([
+      row({ awaitingCount: 3, awaitingOutstanding: 120000 }),
+    ])
+      .split("\r\n")[1]
+      .split(";");
+    expect(cols[9]).toBe("3");
+    expect(cols[10]).toBe("1200,00");
   });
 
   it("preserva a ordem das linhas recebidas (maior devedor primeiro)", () => {

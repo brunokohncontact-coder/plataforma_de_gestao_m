@@ -10107,3 +10107,40 @@ contexto, decisão, justificativa e alternativas consideradas.
   **inalterado** vs. baseline (10 advisories; ver D6).
 - **Nota de concorrência:** número **D289** escolhido como o próximo livre após o D288
   (Sessão 294). Se uma PR paralela reivindicar D289, renumerar para o próximo livre no merge.
+
+## 2026-07-11 — D290: Coluna "sem cobrança iniciada" no CSV dos cachês a receber por contratante (`receivablesByContactToCsv`)
+- **Contexto:** a D289 (Sessão 295) deu à tela `/shows/a-receber/por-contratante` um selo âmbar
+  "🔔 {N} sem cobrança iniciada" por devedor (via `awaitingPromiseByContact`), ao lado do selo ⚠
+  de promessas vencidas. Mas o CSV da mesma tela (`receivablesByContactToCsv`, exportado por
+  `/shows/a-receber/por-contratante/export`) só levava as promessas vencidas (contagem + valor) —
+  a cobrança que nem começou aparecia na página, não na planilha. A própria D289, na alternativa
+  (a), ADIOU esse CSV: "um CSV pode vir depois se houver demanda". Ficava um descompasso de
+  paridade tela↔export: a planilha não sabia ordenar/filtrar pelo eixo "de quem a conversa de
+  cobrança nem começou".
+- **Decisão:** `RECEIVABLE_BY_CONTACT_CSV_HEADERS` ganha duas colunas fixas ao final — "Sem
+  cobrança iniciada" (contagem) e "A receber sem promessa (R$)" (valor) — e
+  `ReceivableByContactCsvRow` ganha os campos `awaitingCount`/`awaitingOutstanding`, preenchidos
+  por `receivablesByContactToCsv` com a mesma convenção pt-BR das demais (contagem inteira,
+  centavos → `centsToCsvAmount`). A rota de export computa `awaitingPromiseByContact(receivables.rows,
+  getPayer)` sobre os MESMOS recebíveis já reconciliados e casa o resultado por id do contratante
+  (grupo sem contratante = chave "") com as linhas de `outstandingByContact`, exatamente como a
+  página faz o join; devedores sem cobrança iniciada saem com `0`/`0,00`. Zero consulta nova,
+  zero regra nova (reusa a lógica pura de D287/D289), zero migração, zero dependência.
+- **Justificativa:** fecha exatamente o adiamento explícito da D289(a) e restaura a paridade
+  tela↔CSV que a base mantém como padrão (a planilha reflete o que a tabela mostra). As colunas
+  de promessas vencidas já estavam no CSV; as de cobrança nunca iniciada são o eixo simétrico e
+  pertencem à mesma linha por devedor. Serializador puro e testável, sem tocar no React.
+- **Alternativas consideradas:** (a) só o valor (R$), sem a contagem — descartado: o selo da tela
+  é a contagem ("N sem cobrança"), e a paridade com "Promessas vencidas" (que traz os dois) pede
+  contagem + valor. (b) uma coluna combinada "N (R$)" — descartado: colunas separadas mantêm a
+  planilha ordenável/filtrável por cada dimensão, como o resto do CSV. (c) recomputar o filtro de
+  promessa na própria rota — descartado: reusar `awaitingPromiseByContact` evita duplicar o
+  limiar/regra e mantém tela e export sobre a mesma lógica testada.
+- **DoD:** build de produção OK, typecheck (`tsc --noEmit`, 0 erros), lint (`next lint`,
+  0 avisos); **1650 testes** (`vitest run`, +1 líquido em `csv.test.ts`: header atualizado com as
+  duas colunas + linha base com `0;0,00` ao final; novo "expõe a cobrança que ainda nem começou
+  (contagem + valor)" → `3`/`1200,00`; factory de `row()` com os novos campos). Smoke (`next
+  start`) → `/login` 200, `/shows/a-receber/por-contratante` e `.../export` 307→/login
+  (auth-gated, sem 500). `npm audit` **inalterado** vs. baseline (10 advisories; ver D6).
+- **Nota de concorrência:** número **D290** escolhido como o próximo livre após o D289
+  (Sessão 295). Se uma PR paralela reivindicar D290, renumerar para o próximo livre no merge.
