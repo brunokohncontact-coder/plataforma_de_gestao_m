@@ -5,6 +5,30 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-12 — D302: Tendência (Subiu/Caiu/Estável) na coluna "vs. {ano-1}" das telas por cidade e por local
+- **Contexto:** o CSV do comparativo ano a ano por cidade/local (D300/D301) já traz uma coluna
+  "Tendência" (`classifyCityProfitChange` → Subiu/Caiu/Estável, ancorada no nº de shows com o
+  resultado como desempate), mas a coluna "vs. {ano-1}" das TABELAS on-screen (`/shows/cidades`,
+  `/shows/locais`) colorava só pelo **sinal do nº de shows** (`countDelta`) e exibia o delta cru.
+  Isso divergia da planilha num caso real: uma cidade/casa com a MESMA contagem de shows mas
+  resultado (net) maior/menor entre os anos — o CSV já dizia "Subiu"/"Caiu", mas a tela mostrava
+  um "0" cinza (estável). Era o 2º "Próximo possível" da D301.
+- **Decisão:** a célula da coluna passa a derivar a tendência com o MESMO `classifyCityProfitChange`
+  (via alias `classifyVenueProfitChange` na tela de locais) e a renderizar uma **seta** (↑/↓/→) +
+  a variação do nº de shows, colorida pela **tendência** (não mais pelo sinal cru): emerald ↑ /
+  vermelho ↓ / cinza →. Um mapa de apresentação local por página (`CITY_PROFIT_TREND` /
+  `VENUE_PROFIT_TREND`) traduz `CityProfitTrend` → {seta, tom, rótulo}, com rótulos ("Subiu"/"Caiu"/
+  "Estável") idênticos aos do CSV (`CITY_PROFIT_TREND_LABELS`). O `title` da célula passa a nomear a
+  tendência além do resultado nos dois anos; a nota de rodapé foi reescrita para explicar a seta.
+- **Justificativa:** alinha a leitura da tela com a da planilha (mesma disciplina, mesmos rótulos) e
+  corrige o ponto cego do "0 cinza" quando só o net se moveu. Zero regra de negócio nova (a
+  classificação é a função pura já testada da D300); mudança só de apresentação, reusando o helper.
+- **Alternativas consideradas:** (a) adicionar uma coluna "Tendência" separada — descartado por
+  gastar largura numa tabela já com 9 colunas quando a seta cabe na própria "vs."; (b) manter a cor
+  pelo sinal do nº de shows e só somar a seta — descartado por deixar tela e CSV ainda divergindo no
+  caso empate-de-contagem/net-mudou. Sem novos testes: nenhuma lógica pura nova (a classificação já
+  tem cobertura); build/typecheck/lint/1719 testes verdes, `npm audit` inalterado (10 advisories).
+
 ## 2026-06-15 — D1: Foco do produto = back-office de gestão, não divulgação/distribuição
 - **Decisão:** posicionar a plataforma como o "sistema operacional de gestão de carreira"
   (agenda, finanças, contatos, contratos), e **não** competir de frente com distribuição

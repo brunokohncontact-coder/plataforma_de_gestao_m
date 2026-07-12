@@ -8,6 +8,7 @@ import {
   compareVenuesByProfit,
   venueProfitMovers,
   indexVenueProfitChanges,
+  classifyVenueProfitChange,
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
@@ -18,6 +19,7 @@ import {
   type GeoConcentrationComparison,
   type VenueProfitChange,
   type VenueProfitMovers,
+  type CityProfitTrend,
   type DiversificationLevel,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
@@ -314,11 +316,13 @@ export default async function VenueProfitabilityPage({
             confiável).{" "}
             {venueChangeByKey && (
               <>
-                A coluna <strong>vs. {previousYear}</strong> mostra quantos shows a mais (
-                <span className="text-emerald-600">+</span>) ou a menos (
-                <span className="text-red-600">−</span>) você tocou na casa em relação ao ano
-                anterior — para onde a agenda migrou (passe o mouse para ver o resultado nos dois
-                anos).
+                A coluna <strong>vs. {previousYear}</strong> mostra a tendência da casa em relação
+                ao ano anterior — a seta resume se você tocou mais (
+                <span className="text-emerald-600">↑</span>), menos (
+                <span className="text-red-600">↓</span>) ou igual (
+                <span className="text-gray-400">→</span>), seguida da variação do nº de shows; quando
+                a contagem empata, o resultado desempata a tendência (passe o mouse para ver o
+                resultado nos dois anos).
               </>
             )}
           </p>
@@ -505,6 +509,21 @@ function signedCount(delta: number): string {
 }
 
 /**
+ * Apresentação da tendência de uma casa no comparativo (seta + tom + rótulo), o
+ * mesmo veredito da coluna "Tendência" do CSV (`classifyVenueProfitChange`, alias
+ * de `classifyCityProfitChange`): ancora no nº de shows e usa o resultado como
+ * desempate. Os rótulos casam com os do CSV, para a tela e a planilha lerem igual.
+ */
+const VENUE_PROFIT_TREND: Record<
+  CityProfitTrend,
+  { arrow: string; tone: string; label: string }
+> = {
+  up: { arrow: "↑", tone: "text-emerald-600", label: "Subiu" },
+  down: { arrow: "↓", tone: "text-red-600", label: "Caiu" },
+  flat: { arrow: "→", tone: "text-gray-400", label: "Estável" },
+};
+
+/**
  * Card "Quais casas cresceram e caíram": os dois movers do ano — a casa que mais
  * ganhou e a que mais perdeu shows em relação ao ano anterior. Espelha o card de
  * movers da tela irmã por cidade (D298); distinto do card de concentração
@@ -591,12 +610,15 @@ function VenueMover({
 }
 
 /**
- * Célula "vs. {ano-1}" de uma casa: variação do nº de shows do ano anterior para
- * o atual, colorida por sinal (verde subiu, vermelho caiu, cinza estável). O
- * `title` traz o resultado (net) nos dois anos, dando a dimensão financeira sem
- * gastar uma segunda coluna. `change` nulo (casa sem par no comparativo) cai em
- * "—" — defensivo; as linhas atuais sempre têm entrada. Espelha a tela por
- * cidade (D297).
+ * Célula "vs. {ano-1}" de uma casa: a tendência do ano anterior para o atual
+ * (`classifyVenueProfitChange` — mesma disciplina do CSV: nº de shows com o
+ * resultado de desempate), como seta + variação do nº de shows, colorida pela
+ * tendência (verde subiu, vermelho caiu, cinza estável). A seta capta os casos
+ * que o sinal do nº de shows sozinho perde — mesma contagem, mas resultado
+ * melhor/pior. O `title` nomeia a tendência e traz o resultado (net) nos dois
+ * anos, dando a dimensão financeira sem gastar uma segunda coluna. `change` nulo
+ * (casa sem par no comparativo) cai em "—" — defensivo; as linhas atuais sempre
+ * têm entrada. Espelha a tela por cidade (D297).
  */
 function VenueTrendCell({
   change,
@@ -608,20 +630,15 @@ function VenueTrendCell({
   if (!change) {
     return <td className="px-4 py-3 text-right text-gray-300">—</td>;
   }
-  const tone =
-    change.countDelta > 0
-      ? "text-emerald-600"
-      : change.countDelta < 0
-        ? "text-red-600"
-        : "text-gray-400";
+  const { arrow, tone, label } = VENUE_PROFIT_TREND[classifyVenueProfitChange(change)];
   return (
     <td
       className={"px-4 py-3 text-right font-medium " + tone}
-      title={`Resultado: ${formatMoney(change.previousNet)} (${previousYear}) → ${formatMoney(
+      title={`${label} · resultado ${formatMoney(change.previousNet)} (${previousYear}) → ${formatMoney(
         change.currentNet,
       )}`}
     >
-      {signedCount(change.countDelta)}
+      <span aria-hidden="true">{arrow}</span> {signedCount(change.countDelta)}
     </td>
   );
 }
