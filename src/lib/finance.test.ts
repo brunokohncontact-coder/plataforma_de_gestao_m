@@ -10,6 +10,8 @@ import {
   rankCitiesByProfit,
   compareCitiesByProfit,
   cityProfitMovers,
+  classifyCityProfitChange,
+  type CityProfitChange,
   indexCityProfitChanges,
   rankContactsByProfit,
   rankRolesByProfit,
@@ -749,6 +751,37 @@ describe("cityProfitMovers", () => {
     );
     expect(movers.biggestGain?.key).toBe("recife");
     expect(movers.biggestDrop).toBeNull();
+  });
+});
+
+describe("classifyCityProfitChange", () => {
+  const mk = (over: Partial<CityProfitChange> = {}): CityProfitChange => ({
+    key: "recife",
+    name: "Recife",
+    currentCount: 0,
+    previousCount: 0,
+    countDelta: 0,
+    currentNet: 0,
+    previousNet: 0,
+    netDelta: 0,
+    ...over,
+  });
+
+  it("ganhou shows → 'up'", () => {
+    expect(classifyCityProfitChange(mk({ countDelta: 2 }))).toBe("up");
+  });
+
+  it("perdeu shows → 'down'", () => {
+    expect(classifyCityProfitChange(mk({ countDelta: -1 }))).toBe("down");
+  });
+
+  it("nº de shows igual → o resultado desempata (net sobe → 'up')", () => {
+    expect(classifyCityProfitChange(mk({ countDelta: 0, netDelta: 500_00 }))).toBe("up");
+    expect(classifyCityProfitChange(mk({ countDelta: 0, netDelta: -500_00 }))).toBe("down");
+  });
+
+  it("sem nenhuma variação → 'flat'", () => {
+    expect(classifyCityProfitChange(mk())).toBe("flat");
   });
 });
 

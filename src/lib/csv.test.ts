@@ -11,6 +11,8 @@ import {
   quarterlySummaryToCsv,
   showProfitToCsv,
   venueProfitToCsv,
+  cityProfitComparisonToCsv,
+  CITY_PROFIT_COMPARISON_CSV_HEADERS,
   contactProfitToCsv,
   roleProfitToCsv,
   contactActivityToCsv,
@@ -787,6 +789,65 @@ describe("venueProfitToCsv", () => {
     const changes = new Map<string, CityProfitChange>();
     const csv = venueProfitToCsv([row()], "Cidade", undefined, changes, 2025);
     expect(csv.split("\r\n")[1].split(";").at(-1)).toBe("");
+  });
+});
+
+describe("cityProfitComparisonToCsv", () => {
+  const change = (over: Partial<CityProfitChange> = {}): CityProfitChange => ({
+    key: "sao-paulo",
+    name: "São Paulo",
+    currentCount: 5,
+    previousCount: 2,
+    countDelta: 3,
+    currentNet: 600000,
+    previousNet: 200000,
+    netDelta: 400000,
+    ...over,
+  });
+
+  it("emite só cabeçalho + Total zerado quando não há mudanças", () => {
+    const csv = cityProfitComparisonToCsv([]);
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(CITY_PROFIT_COMPARISON_CSV_HEADERS.join(";"));
+    expect(lines[1]).toBe("Total;0;0;0;0,00;0,00;0,00;");
+    expect(lines.length).toBe(2);
+  });
+
+  it("serializa uma cidade que cresceu com Δ assinados e tendência 'Subiu'", () => {
+    const csv = cityProfitComparisonToCsv([change()]);
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(
+      "Cidade;Shows (ano anterior);Shows (ano corrente);Δ shows;Resultado (ano anterior) (R$);Resultado (ano corrente) (R$);Δ resultado (R$);Tendência",
+    );
+    expect(lines[1]).toBe("São Paulo;2;5;+3;2000,00;6000,00;4000,00;Subiu");
+  });
+
+  it("marca 'Caiu' e Δ negativos numa cidade que perdeu shows", () => {
+    const csv = cityProfitComparisonToCsv([
+      change({ currentCount: 1, previousCount: 4, countDelta: -3, currentNet: 100000, previousNet: 500000, netDelta: -400000 }),
+    ]);
+    const cols = csv.split("\r\n")[1].split(";");
+    expect(cols[3]).toBe("-3");
+    expect(cols[6]).toBe("-4000,00");
+    expect(cols[7]).toBe("Caiu");
+  });
+
+  it("desempata a tendência pelo resultado quando o nº de shows não muda", () => {
+    const csv = cityProfitComparisonToCsv([
+      change({ countDelta: 0, currentCount: 3, previousCount: 3, currentNet: 500000, previousNet: 300000, netDelta: 200000 }),
+    ]);
+    expect(csv.split("\r\n")[1].split(";")[7]).toBe("Subiu");
+  });
+
+  it("inclui a 'Sem cidade' (dado real) e soma o Total das duas colunas de ano", () => {
+    const csv = cityProfitComparisonToCsv([
+      change(),
+      change({ key: "", name: "Sem cidade", currentCount: 1, previousCount: 0, countDelta: 1, currentNet: 50000, previousNet: 0, netDelta: 50000 }),
+    ]);
+    const lines = csv.split("\r\n");
+    expect(lines[2].startsWith("Sem cidade;")).toBe(true);
+    // Total: shows anterior 2+0=2, corrente 5+1=6, Δ +4; resultado -> 2000/6500.
+    expect(lines[3]).toBe("Total;2;6;+4;2000,00;6500,00;4500,00;");
   });
 });
 

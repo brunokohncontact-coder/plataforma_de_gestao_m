@@ -10530,3 +10530,52 @@ contexto, decisão, justificativa e alternativas consideradas.
   (auth-gated, sem 500); `npm audit` inalterado (10 advisories; ver D6). Zero migração, zero dependência nova.
 - **Nota de concorrência:** número **D299** escolhido como o próximo livre após o D298 (Sessão 304). Se outra
   PR reivindicar D299, renumerar para o próximo livre no merge.
+
+## D300 — Exportação CSV do comparativo ano a ano por cidade (`cityProfitComparisonToCsv` + `classifyCityProfitChange`) + rota `/shows/cidades/comparativo/export` (Sessão 306)
+- **Contexto:** a tela `/shows/cidades` já destilava a migração da agenda de um ano para o outro em duas
+  peças on-screen: o card "Para onde a agenda migrou" (só os dois *movers* — a cidade que mais cresceu / mais
+  caiu, D298) e a coluna "vs. {ano-1}" da tabela (só o Δ de shows por cidade ATIVA no ano, D297). Mas, ao
+  contrário das telas irmãs de comparativo (sazonalidade/D223, dia da semana), não havia como baixar a lista
+  COMPLETA de mudanças por cidade numa planilha. Duas informações não aparecem em nenhuma das duas peças: as
+  cidades ABANDONADAS (a tabela lista só as com atuação no ano atual, então uma praça que sumiu não está no
+  CSV atual — justo o "para onde a agenda migrou de saída"), e a dimensão financeira por cidade (resultado
+  dos dois anos + Δ; a coluna da tabela é só nº de shows).
+- **Decisão:** espelhar `gigSeasonalityComparisonToCsv`/D223 no eixo geográfico, reusando o motor puro já
+  testado. Em `src/lib/finance.ts`: `classifyCityProfitChange(change): CityProfitTrend` (`up`/`down`/`flat`)
+  — ancora no nº de shows (`countDelta`), com o resultado (`netDelta`) como desempate quando a contagem não
+  muda, a MESMA disciplina de `cityProfitMovers` (D298) e do irmão `classifyGigSeasonalityMonthChange`; mais
+  o alias de eixo-casa `classifyVenueProfitChange` (paridade com os aliases da D299). Em `src/lib/csv.ts`:
+  `cityProfitComparisonToCsv(changes)` + `CITY_PROFIT_COMPARISON_CSV_HEADERS` (Cidade / Shows ano anterior /
+  Shows ano corrente / Δ shows / Resultado ano anterior / Resultado ano corrente / Δ resultado / Tendência),
+  uma linha por cidade na ordem de `compareCitiesByProfit` (resultado do ano atual desc, com as SUMIDAS
+  anexadas ao final com `currentCount=0`) + linha Total somando as duas colunas de ano; inclui a "Sem cidade"
+  (dado real, como a tabela faz — só fica de fora dos movers), Δ de shows assinados (`csvSignedCount`) e
+  dinheiro via `centsToCsvAmount`. Nova rota `/shows/cidades/comparativo/export?ano=YYYY` com o MESMO gate do
+  card (404 sem ano específico ou sem shows no ano anterior), recomputando os dois rankings sobre os MESMOS
+  registros já carregados (recorte UTC da D108, zero I/O extra); nome
+  `cidades-comparativo-{ano}-vs-{ano-1}.csv`. Link "⬇ CSV" no cabeçalho do card `CityMoversCard` da página.
+- **Justificativa:** o CSV do comparativo é a forma tabular COMPLETA que as duas peças on-screen não dão — o
+  card mostra só 2 extremos e a coluna da tabela só o Δ de shows das cidades ativas, omitindo as abandonadas
+  e o dinheiro. Numa planilha o músico ordena/filtra por quem cresceu/caiu e vê a conta dos dois anos. É o
+  mesmo padrão já aplicado a sazonalidade (D223) e dia da semana, fechando a assimetria em que só o eixo
+  geográfico ficava sem export dedicado do comparativo. Reusar o motor puro (`compareCitiesByProfit`) e
+  espelhar o serializador irmão mantém a mudança quase toda em serialização + roteamento, com a tendência
+  ancorada na mesma regra dos movers (auto-consistente com o card).
+- **Alternativas consideradas:**
+  - *Só a coluna já existente no CSV da tabela (`venueProfitToCsv` com `changes`), sem export dedicado* —
+    descartado: essa coluna omite as cidades abandonadas (a tabela é só do ano atual) e a dimensão financeira;
+    o comparativo dedicado é justamente onde essas duas leituras cabem.
+  - *Reaproveitar a estrutura de "movers" só (biggestGain/biggestDrop) no CSV* — descartado: perderia a cauda
+    (todas as outras cidades), que é o ganho do dump tabular sobre o card.
+  - *Fazer cidades E locais na mesma sessão* — adiado para manter o escopo pequeno e mergeável; os aliases de
+    eixo-casa da D299 já deixam o serializador reutilizável, então locais é uma sessão curta seguinte (ver
+    "próximo possível" no PROGRESS).
+- **DoD:** build/typecheck/lint verdes; **1718 testes** (+10: `finance.test.ts`,
+  `describe("classifyCityProfitChange")` — ganhou→up, perdeu→down, contagem empatada desempata pelo
+  resultado, sem variação→flat; `csv.test.ts`, `describe("cityProfitComparisonToCsv")` — só cabeçalho+Total
+  zerado sem mudanças; cidade que cresceu com Δ assinados e "Subiu"; cidade que caiu com Δ negativos e
+  "Caiu"; desempate pelo resultado; inclui a "Sem cidade" e soma o Total das duas colunas de ano); smoke →
+  `/login` 200, `/shows/cidades?ano=2026` e `/shows/cidades/comparativo/export?ano=2026` 307→/login
+  (auth-gated, sem 500); `npm audit` inalterado (10 advisories; ver D6). Zero migração, zero dependência nova.
+- **Nota de concorrência:** número **D300** escolhido como o próximo livre após o D299 (Sessão 305). Se outra
+  PR reivindicar D300, renumerar para o próximo livre no merge.

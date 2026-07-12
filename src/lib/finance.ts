@@ -468,6 +468,25 @@ export function cityProfitMovers(changes: CityProfitChange[]): CityProfitMovers 
   return { biggestGain, biggestDrop };
 }
 
+/** Direção da variação de uma cidade no comparativo (para CSV/UI). */
+export type CityProfitTrend = "up" | "down" | "flat";
+
+/**
+ * Classifica a variação de uma cidade entre dois períodos numa tendência
+ * (subiu / caiu / estável), na MESMA disciplina dos movers (`cityProfitMovers`)
+ * e do irmão `classifyGigSeasonalityMonthChange`: ancora no nº de shows
+ * (`countDelta`), com o resultado (`netDelta`) como desempate quando a contagem
+ * não muda — uma cidade que trocou um show barato por um caro conta como
+ * "subiu". Pura. Serve à coluna "Tendência" do CSV do comparativo por cidade.
+ */
+export function classifyCityProfitChange(change: CityProfitChange): CityProfitTrend {
+  if (change.countDelta > 0) return "up";
+  if (change.countDelta < 0) return "down";
+  if (change.netDelta > 0) return "up";
+  if (change.netDelta < 0) return "down";
+  return "flat";
+}
+
 // ── Comparativo ano a ano por local (mesmo motor, eixo de casa/palco) ─────────
 //
 // O comparativo de rentabilidade opera sobre `CitiesProfitability`, que é um
@@ -496,6 +515,9 @@ export const indexVenueProfitChanges = indexCityProfitChanges;
 
 /** Destila os dois movers por local (maior ganho / maior perda de shows). */
 export const venueProfitMovers = cityProfitMovers;
+
+/** Classifica a variação de um local numa tendência (alias de `classifyCityProfitChange`). */
+export const classifyVenueProfitChange = classifyCityProfitChange;
 
 // ── Concentração geográfica (risco de depender de poucas cidades) ────────────
 

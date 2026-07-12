@@ -536,6 +536,12 @@ function CityMoversCard({
         <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
           Para onde a agenda migrou · {currentYear} vs. {previousYear}
         </p>
+        <a
+          href={`/shows/cidades/comparativo/export?ano=${currentYear}`}
+          className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
+        >
+          ⬇ CSV
+        </a>
       </div>
       <div className="mt-3 grid gap-4 sm:grid-cols-2">
         <CityMover label="Mais cresceu" change={biggestGain} tone="emerald" />

@@ -27,6 +27,8 @@ import {
   type ShowProfitRow,
   type VenueProfitRow,
   type CityProfitChange,
+  type CityProfitTrend,
+  classifyCityProfitChange,
   type ContactProfitRow,
   type RoleProfitRow,
   type PaymentPromiseStatus,
@@ -774,6 +776,84 @@ export function venueProfitToCsv(
     }
     out.push(cols);
   }
+  return toCsv(out, delimiter);
+}
+
+export const CITY_PROFIT_COMPARISON_CSV_HEADERS = [
+  "Cidade",
+  "Shows (ano anterior)",
+  "Shows (ano corrente)",
+  "Δ shows",
+  "Resultado (ano anterior) (R$)",
+  "Resultado (ano corrente) (R$)",
+  "Δ resultado (R$)",
+  "Tendência",
+] as const;
+
+/** Rótulo pt-BR da tendência de uma cidade no comparativo, espelhando a cor da UI. */
+const CITY_PROFIT_TREND_LABELS: Record<CityProfitTrend, string> = {
+  up: "Subiu",
+  down: "Caiu",
+  flat: "Estável",
+};
+
+/**
+ * Serializa o comparativo ano a ano da atuação por cidade
+ * (`compareCitiesByProfit`) em CSV, pronto para download — a lista COMPLETA de
+ * "para onde a agenda migrou", que o card da página (`/shows/cidades`) só destila
+ * em dois movers e a coluna "vs. {ano-1}" da tabela só resume num Δ de shows.
+ * Uma linha por cidade na ordem do comparativo (resultado do ano atual desc, com
+ * as cidades que SUMIRAM — presentes só no ano anterior — anexadas ao final,
+ * `currentCount = 0`), trazendo o nº de shows e o resultado de cada ano, os dois
+ * deltas e a tendência (Subiu / Caiu / Estável), seguida de uma linha "Total".
+ *
+ * O ganho sobre a coluna da tabela (`venueProfitToCsv`) é justamente as cidades
+ * abandonadas (a tabela lista só as com atuação no ano atual) e a dimensão
+ * financeira (resultado dos dois anos + Δ). A "Tendência" reusa
+ * `classifyCityProfitChange` (ancora no nº de shows, com o resultado de
+ * desempate), tornando a planilha filtrável por quem cresceu/caiu. Os deltas de
+ * shows saem assinados (`csvSignedCount`); os de dinheiro via `centsToCsvAmount`
+ * (que já emite o "-" nos negativos). Inclui a "Sem cidade" (`key === ""`) como a
+ * tabela faz — é dado real, só fica de fora dos movers. Os anos concretos vão no
+ * nome do arquivo, não nos cabeçalhos (mesma convenção de
+ * `gigSeasonalityComparisonToCsv`/D223). Convenção pt-BR (";" e decimal com
+ * vírgula). Pura.
+ */
+export function cityProfitComparisonToCsv(
+  changes: CityProfitChange[],
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(CITY_PROFIT_COMPARISON_CSV_HEADERS)];
+  let totalPrevCount = 0;
+  let totalCurCount = 0;
+  let totalPrevNet = 0;
+  let totalCurNet = 0;
+  for (const c of changes) {
+    totalPrevCount += c.previousCount;
+    totalCurCount += c.currentCount;
+    totalPrevNet += c.previousNet;
+    totalCurNet += c.currentNet;
+    out.push([
+      c.name,
+      String(c.previousCount),
+      String(c.currentCount),
+      csvSignedCount(c.countDelta),
+      centsToCsvAmount(c.previousNet),
+      centsToCsvAmount(c.currentNet),
+      centsToCsvAmount(c.netDelta),
+      CITY_PROFIT_TREND_LABELS[classifyCityProfitChange(c)],
+    ]);
+  }
+  out.push([
+    "Total",
+    String(totalPrevCount),
+    String(totalCurCount),
+    csvSignedCount(totalCurCount - totalPrevCount),
+    centsToCsvAmount(totalPrevNet),
+    centsToCsvAmount(totalCurNet),
+    centsToCsvAmount(totalCurNet - totalPrevNet),
+    "",
+  ]);
   return toCsv(out, delimiter);
 }
 
