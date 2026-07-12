@@ -5,6 +5,61 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-12 — D306: Migração do `provider` do Prisma para PostgreSQL em dev/CI/produção (fecha a D294)
+- **Contexto:** a D294 (sessão anterior) diagnosticou o `Application error` em `/register` na Vercel
+  (digest 4246294862): produção rodava SQLite (`provider = "sqlite"`, `file:./dev.db`) e o sistema de
+  arquivos das Serverless Functions é somente-leitura/efêmero — toda escrita (`prisma.user.create`)
+  lançava exceção. A D294 documentou o runbook (`docs/deploy.md`) mas **não** trocou o `provider`,
+  porque a troca é coordenada com o provisionamento humano de um Postgres real e quebraria dev/CI
+  (ambos SQLite) sem corrigir produção sozinha. Nesta sessão o usuário pediu explicitamente para seguir
+  com a migração e se comprometeu a provisionar o Postgres de produção na Vercel (Storage → Postgres) e
+  configurar `DATABASE_URL`/`DIRECT_URL`/`AUTH_SECRET` — o gatilho coordenado que a D294 esperava.
+- **Decisão:**
+  - `prisma/schema.prisma`: `provider = "postgresql"`, com `directUrl = env("DIRECT_URL")` (migrations
+    rodam pela conexão direta; o runtime usa a `DATABASE_URL` pooled).
+  - Gerada a migration baseline `prisma/migrations/20260712194456_init` (o projeto vinha evoluindo via
+    `prisma db push`, sem migrations versionadas) a partir de um Postgres local nesta sessão remota
+    (pacote `postgresql-16` já presente na imagem — sem depender de rede).
+  - `package.json`: `build` passa a rodar `prisma migrate deploy` antes do `next build`, para que cada
+    deploy na Vercel aplique as migrations pendentes automaticamente.
+  - CI (`.github/workflows/ci.yml`): troca o `DATABASE_URL` de arquivo SQLite por um serviço
+    `postgres:16` (com healthcheck); o job usa dois bancos no mesmo serviço — `postgres` (banco default,
+    valida `prisma migrate deploy` do build contra um schema limpo) e `palco_test` (usado pelos testes,
+    via `db push --force-reset`, como já era).
+  - `scripts/session-setup.sh`: sobe o Postgres local (`service postgresql start`) e garante os bancos
+    `palco_dev`/`palco_test`, em vez de só criar um `dev.db` SQLite.
+  - `.env`/`.env.example`: `DATABASE_URL`/`DIRECT_URL` apontando para o Postgres local.
+  - `docs/deploy.md`: runbook atualizado — o Passo 2 (trocar o `provider`) já está feito; o Passo 4
+    (aplicar migrations) já roda sozinho no build; resta ao humano só os Passos 1 e 3 (provisionar o
+    banco de produção e configurar as env vars na Vercel).
+- **Justificativa:** SQLite em serverless não tinha correção viável em código (D294); a única saída é
+  Postgres real. Unificar dev/CI/produção no mesmo `provider` evita a divergência que a D294 apontava
+  como risco ("SQLite ≠ Postgres" escondendo bugs de dialeto SQL) e permite testar o fluxo de
+  registro/login ponta a ponta contra o banco real desta sessão (smoke test manual + Playwright:
+  `/register` → preencher formulário → redireciona a `/dashboard`, sem exceção). Migrations versionadas
+  (em vez de só `db push`) são o padrão recomendado para produção: repetíveis, auditáveis, aplicadas via
+  `migrate deploy` no build em vez de um passo manual esquecível.
+- **Alternativas consideradas:**
+  - *Manter `db push` em produção (sem migrations versionadas)* — descartado: `db push` não gera
+    histórico nem é seguro para dados reais (pode inferir mudanças destrutivas sem confirmação);
+    migrations são o caminho documentado do próprio Prisma para produção.
+  - *CI sem Postgres real (mockar o Prisma client)* — descartado: os testes de integração das server
+    actions (`resetDb`, transações, upsert de metas) dependem de comportamento real do banco; um mock
+    esconderia justamente o tipo de incompatibilidade SQLite↔Postgres que motivou esta migração.
+  - *Rodar `prisma migrate dev --name init` só localmente e commitar sem validar contra CI* — descartado:
+    validei a migration baseline recém-gerada rodando o pipeline completo (typecheck, lint, 1719 testes,
+    build) com as mesmas env vars que o CI usará, incluindo `prisma migrate deploy` contra um banco
+    limpo, antes de ajustar o workflow.
+- **DoD:** `npx tsc --noEmit` 0 erros; `next lint` 0 avisos; **1719 testes** (`vitest run`) verdes contra
+  Postgres real (antes rodavam contra SQLite); `npm run build` OK (`prisma generate && prisma migrate
+  deploy && next build`); smoke test manual via Playwright do fluxo `/register` → criação de conta →
+  redirect para `/dashboard`, sem exceção, contra o Postgres local desta sessão.
+- **Pendências (fora do alcance de código, humanas):** provisionar o Postgres de produção na Vercel
+  (Storage → Create Database → Postgres, ou Neon/Supabase) e configurar `DATABASE_URL` (pooled),
+  `DIRECT_URL` (direta) e um `AUTH_SECRET` de produção novo nas Environment Variables do projeto — ver
+  `docs/deploy.md` Passos 1 e 3. Sem isso, o deploy na Vercel falha no build (`prisma migrate deploy`
+  sem banco acessível) em vez do erro de escrita silencioso de antes — uma falha mais cedo e mais clara.
+
 ## 2026-07-12 — D305: Seta de tendência (↑/↓/→) na coluna "Δ shows" do detalhe dos 12 meses em `/shows/sazonalidade`
 - **Contexto:** a tabela recolhida "Ver os 12 meses" do comparativo de temporada (`SeasonComparisonDetail`,
   D217) já **colore** as células Δ pelo veredito de `classifyGigSeasonalityMonthChange` (nº de shows com o
