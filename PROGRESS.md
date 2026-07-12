@@ -9,7 +9,31 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 310 (D304) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 311 (D305) —
+seta de tendência (↑/↓/→) na coluna "Δ shows" do detalhe dos 12 meses em `/shows/sazonalidade`
+(levando a mesma "seta de tendência" da D303 ao último detalhe de comparativo por linha que ainda
+mostrava só o delta cru):** a tabela recolhida "Ver os 12 meses" do comparativo de temporada (D217)
+já **coloria** as células Δ pelo veredito de `classifyGigSeasonalityMonthChange` (nº de shows com o
+faturamento como desempate — a mesma disciplina dos movers), mas não exibia a seta; um mês que manteve
+a MESMA contagem de shows porém trocou um show barato por um caro (`countDelta === 0`, `feeDelta > 0`)
+saía com a linha verde mas a coluna "Δ shows" mostrava um "—" neutro — a cor dizia "subiu", o texto
+parecia "sem mudança". Espelhando o `TREND_ARROW`/detalhe dos 7 dias da D303 (que por sua vez espelha o
+`CITY_PROFIT_TREND`/D302), um mapa de apresentação local `TREND_ARROW` (`up:↑`/`down:↓`/`flat:→`)
+prefixa a seta ao Δ de shows: linha `flat` (ambos os deltas zero) segue como "—" limpo (meses
+verdadeiramente sem mudança não ganham ruído), e linha com rumo passa a mostrar **seta + variação**
+(`↑ +2 shows`, ou `↑ 0 shows` no caso do desempate por faturamento — o "—" ambíguo vira legível),
+colorida pela MESMA tendência já usada. Nota de rodapé nova sob o detalhe explica a seta (idêntica em
+espírito à do detalhe dos 7 dias). Zero regra de negócio nova (a classificação é a função pura já
+testada da D224), zero rota/consulta/migração/dependência; mudança só de apresentação em
+`src/app/(app)/shows/sazonalidade/page.tsx`. Sem novos testes (nenhuma lógica pura nova).
+Build/typecheck/lint verdes (**1719 testes**); smoke → `/login` 200, `/shows/sazonalidade?ano=2026` e
+`/shows/sazonalidade/comparativo/export?ano=2026` 307→/login (auth-gated, sem 500); `npm audit`
+inalterado (10 advisories). **Próximo possível** — com todas as colunas/detalhes "vs." on-screen já com
+a seta de direção (cidade/local/dia/faixa/temporada), unificar a descoberta dos exports de comparativo
+nos cards de movers das telas que ainda não têm o link "⬇ CSV" no cabeçalho do card, ou levar a
+"Tendência (Subiu/Caiu/Estável)" já no CSV também às telas on-screen que ainda mostram só a métrica crua.
+Ver D305.
+Antes disso, **Sessão 310 (D304) —
 seta NEUTRA de direção (↑/↓/→ em cinza) na coluna "vs. {ano-1}" das faixas de cachê
 (`/shows/faixas-de-cache`), fechando a última coluna "vs." que ainda mostrava só o delta cru:** a coluna
 "vs. {ano-1}" da tabela de faixas de cachê (D292) exibia apenas o delta cru em p.p.
