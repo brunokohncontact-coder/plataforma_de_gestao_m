@@ -9,7 +9,38 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 305 (D299) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 306 (D300) —
+exportação CSV do comparativo ano a ano por cidade (a lista completa de "para onde a agenda migrou"):**
+a tela `/shows/cidades` já destilava a migração da agenda em duas peças — o card "Para onde a agenda
+migrou" (só os dois *movers*, D298) e a coluna "vs. {ano-1}" da tabela (só um Δ de shows por cidade
+ATIVA, D297) — mas, ao contrário das telas irmãs de comparativo (sazonalidade/D223 e dia da semana),
+não dava para baixar a lista COMPLETA de mudanças por cidade numa planilha. Faltavam duas informações
+que nenhuma das duas peças mostra: as cidades ABANDONADAS (só a tabela do ano atual é listada, então uma
+praça que sumiu não aparece em lugar nenhum do CSV atual) e a dimensão financeira por cidade (resultado
+dos dois anos + Δ). Em `src/lib/finance.ts` adicionei `classifyCityProfitChange(change)` + tipo
+`CityProfitTrend` (`up`/`down`/`flat`, ancora no nº de shows com o resultado de desempate — a MESMA
+disciplina dos movers `cityProfitMovers` e do irmão `classifyGigSeasonalityMonthChange`) + alias de
+eixo-casa `classifyVenueProfitChange`. Em `src/lib/csv.ts`, `cityProfitComparisonToCsv(changes)` +
+`CITY_PROFIT_COMPARISON_CSV_HEADERS` (Cidade / Shows ano anterior / Shows ano corrente / Δ shows /
+Resultado ano anterior / Resultado ano corrente / Δ resultado / Tendência) — uma linha por cidade na
+ordem de `compareCitiesByProfit` (resultado do ano atual desc, com as SUMIDAS anexadas ao final,
+`currentCount=0`) + linha Total somando as duas colunas de ano; inclui a "Sem cidade" (dado real, só
+fica de fora dos movers), espelho fiel de `gigSeasonalityComparisonToCsv`/D223. Nova rota
+`/shows/cidades/comparativo/export?ano=YYYY` (mesmo gate do card: 404 sem ano específico ou sem shows no
+ano anterior; recomputa os dois rankings sobre os MESMOS registros já carregados — recorte UTC da D108,
+zero I/O extra; nome `cidades-comparativo-{ano}-vs-{ano-1}.csv`) + link "⬇ CSV" no cabeçalho do card
+`CityMoversCard` de `/shows/cidades`. Zero regra de negócio nova, zero consulta nova, zero migração, zero
+dependência. **+10 testes** (`finance.test.ts`, `describe("classifyCityProfitChange")`: ganhou→up,
+perdeu→down, contagem empatada desempata pelo resultado, sem variação→flat; `csv.test.ts`,
+`describe("cityProfitComparisonToCsv")`: só cabeçalho+Total zerado sem mudanças; cidade que cresceu com
+Δ assinados e "Subiu"; cidade que caiu com Δ negativos e "Caiu"; desempate pelo resultado; inclui a "Sem
+cidade" e soma o Total das duas colunas de ano). Build/typecheck/lint verdes (**1718 testes**); smoke →
+`/login` 200, `/shows/cidades?ano=2026` e `/shows/cidades/comparativo/export?ano=2026` 307→/login
+(auth-gated, sem 500); `npm audit` inalterado (10 advisories). **Próximo possível** — a mesma exportação
+dedicada do comparativo para LOCAIS (`/shows/locais/comparativo/export`, reusando `cityProfitComparisonToCsv`
+via os aliases de eixo-casa da D299 + o link no `CityMoversCard` da tela de locais), fechando a paridade
+cidades↔locais também no CSV do comparativo. Ver D300.
+Antes disso, **Sessão 305 (D299) —
 paridade da rentabilidade por local com a atuação por cidade (coluna "vs. {ano-1}" + CSV + card de
 movers):** a tela `/shows/locais` já tinha recorte por ano (`?ano=`) e o card comparativo agregado da
 concentração por casa (`compareGeoConcentration`/D116), mas — ao contrário da tela irmã `/shows/cidades`
