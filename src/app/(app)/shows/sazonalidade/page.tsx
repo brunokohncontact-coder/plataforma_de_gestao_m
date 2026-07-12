@@ -356,6 +356,22 @@ function trendTone(trend: GigSeasonalityMonthTrend): string {
 }
 
 /**
+ * Seta da tendência de um mês no comparativo — a mesma leitura de
+ * `classifyGigSeasonalityMonthChange` que já colore a linha (nº de shows com o
+ * faturamento como desempate), espelhando a "seta de tendência" do detalhe dos 7
+ * dias (`TREND_ARROW`, D303) e das telas por cidade/local (`CITY_PROFIT_TREND`,
+ * D302). Capta o caso que o sinal do nº de shows sozinho perde — mesma contagem,
+ * mas o mês trocou um show barato por um caro (`countDelta === 0`, `feeDelta > 0`):
+ * a linha já saía verde, mas a coluna "Δ shows" mostrava um "—" neutro; agora a
+ * seta ↑ nomeia o rumo.
+ */
+const TREND_ARROW: Record<GigSeasonalityMonthTrend, string> = {
+  up: "↑",
+  down: "↓",
+  flat: "→",
+};
+
+/**
  * Detalhe opcional (recolhido por padrão) com os 12 meses do comparativo. Os movers
  * acima entregam o sinal; esta tabela é para quem quiser conferir mês a mês sem sair
  * da tela. Reusa os `months` já computados por `compareGigSeasonality` (zero I/O).
@@ -404,7 +420,14 @@ function SeasonComparisonDetail({
                     {m.currentCount === 0 ? "—" : m.currentCount}
                   </td>
                   <td className={"py-2 px-3 text-right font-medium " + trendTone(trend)}>
-                    {m.countDelta === 0 ? "—" : signedShows(m.countDelta)}
+                    {trend === "flat" ? (
+                      "—"
+                    ) : (
+                      <>
+                        <span aria-hidden="true">{TREND_ARROW[trend]}</span>{" "}
+                        {signedShows(m.countDelta)}
+                      </>
+                    )}
                   </td>
                   <td className={"py-2 pl-3 text-right " + trendTone(trend)}>
                     {m.feeDelta === 0 ? "—" : signedMoney(m.feeDelta)}
@@ -431,6 +454,14 @@ function SeasonComparisonDetail({
             </tr>
           </tfoot>
         </table>
+        <p className="mt-3 text-xs text-gray-500">
+          A seta na coluna <strong>Δ shows</strong> indica o rumo do mês: mais
+          shows (<span className="text-emerald-600">↑</span>), menos (
+          <span className="text-red-600">↓</span>) ou estável (
+          <span className="text-gray-400">→</span>). Quando o nº de shows empata,
+          o faturamento desempata — trocar um show barato por um caro conta como
+          alta.
+        </p>
       </div>
     </details>
   );

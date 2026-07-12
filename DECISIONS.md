@@ -5,7 +5,7 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
-## 2026-07-12 — D305: Migração do `provider` do Prisma para PostgreSQL em dev/CI/produção (fecha a D294)
+## 2026-07-12 — D306: Migração do `provider` do Prisma para PostgreSQL em dev/CI/produção (fecha a D294)
 - **Contexto:** a D294 (sessão anterior) diagnosticou o `Application error` em `/register` na Vercel
   (digest 4246294862): produção rodava SQLite (`provider = "sqlite"`, `file:./dev.db`) e o sistema de
   arquivos das Serverless Functions é somente-leitura/efêmero — toda escrita (`prisma.user.create`)
@@ -59,6 +59,33 @@ contexto, decisão, justificativa e alternativas consideradas.
   `DIRECT_URL` (direta) e um `AUTH_SECRET` de produção novo nas Environment Variables do projeto — ver
   `docs/deploy.md` Passos 1 e 3. Sem isso, o deploy na Vercel falha no build (`prisma migrate deploy`
   sem banco acessível) em vez do erro de escrita silencioso de antes — uma falha mais cedo e mais clara.
+
+## 2026-07-12 — D305: Seta de tendência (↑/↓/→) na coluna "Δ shows" do detalhe dos 12 meses em `/shows/sazonalidade`
+- **Contexto:** a tabela recolhida "Ver os 12 meses" do comparativo de temporada (`SeasonComparisonDetail`,
+  D217) já **colore** as células Δ pelo veredito de `classifyGigSeasonalityMonthChange` (nº de shows com o
+  faturamento como desempate — a mesma disciplina dos movers), mas não exibia a seta de direção. Um mês que
+  manteve a MESMA contagem de shows porém trocou um show barato por um caro (`countDelta === 0`,
+  `feeDelta > 0`) saía com a linha verde mas com a coluna "Δ shows" mostrando um "—" neutro — a cor dizia
+  "subiu", o texto parecia "sem mudança". Era o exato ponto cego que a D303 corrigiu na tela irmã de dia da
+  semana, e o último detalhe de comparativo por linha sem a "seta de direção" da D302/D303/D304.
+- **Decisão:** espelhando o `TREND_ARROW`/detalhe dos 7 dias da D303 (que por sua vez espelha o
+  `CITY_PROFIT_TREND`/D302), a célula "Δ shows" passa a prefixar uma **seta** (↑/↓/→, via um mapa de
+  apresentação local `TREND_ARROW`) à variação do nº de shows, colorida pela MESMA tendência já usada na
+  linha. Linha `flat` (ambos os deltas zero) segue como "—" limpo — meses verdadeiramente sem mudança não
+  ganham ruído; linha com rumo mostra seta + variação (`↑ +2 shows`, ou `↑ 0 shows` no caso do desempate por
+  faturamento, que torna legível o antigo "—" ambíguo). Nota de rodapé nova sob o detalhe explica a seta,
+  idêntica em espírito à do detalhe dos 7 dias.
+- **Justificativa:** completa a paridade da "seta de tendência" em TODOS os detalhes/colunas "vs." on-screen
+  (cidade/local/dia/faixa já tinham; temporada era o último) e corrige o ponto cego do "—" colorido quando só
+  o faturamento se moveu. Zero regra de negócio nova (a classificação é a função pura já testada da D224);
+  mudança só de apresentação em `sazonalidade/page.tsx`, reusando o helper.
+- **Alternativas consideradas:** (a) mostrar "0 shows" em vez de "—" para TODA linha zerada — descartado por
+  poluir os meses vazios (sem shows em nenhum ano) com "→ 0 shows"; manter o "—" para `flat` preserva o
+  sinal-ruído, idêntico à decisão da D303(a). (b) extrair o `TREND_ARROW` para um módulo compartilhado entre
+  as telas de comparativo — descartado por ora: cada página mantém o seu mapa de apresentação local (três
+  pares chave→glyph triviais), consistente com o padrão D302/D303 de não abstrair prematuramente três linhas.
+  Sem novos testes: nenhuma lógica pura nova (a classificação já tem cobertura); build/typecheck/lint/1719
+  testes verdes, `npm audit` inalterado (10 advisories).
 
 ## 2026-07-12 — D304: Seta NEUTRA de direção (↑/↓/→ em cinza) na coluna "vs. {ano-1}" das faixas de cachê (`/shows/faixas-de-cache`)
 - **Contexto:** a coluna "vs. {ano-1}" da tabela de `/shows/faixas-de-cache` (D292) mostrava só o
