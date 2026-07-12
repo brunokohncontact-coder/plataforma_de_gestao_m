@@ -5,6 +5,9 @@ import {
   rankVenuesByProfit,
   geoConcentration,
   compareGeoConcentration,
+  compareVenuesByProfit,
+  venueProfitMovers,
+  indexVenueProfitChanges,
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
@@ -13,6 +16,8 @@ import {
   type VenueShowLike,
   type GeoConcentration,
   type GeoConcentrationComparison,
+  type VenueProfitChange,
+  type VenueProfitMovers,
   type DiversificationLevel,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
@@ -83,12 +88,26 @@ export default async function VenueProfitabilityPage({
   // caso contrário a leitura "melhorou/piorou" seria enganosa. Reaproveita o
   // mesmo recorte por ano UTC (D108) sobre os shows já carregados.
   let venueComparison: GeoConcentrationComparison | null = null;
+  // Coluna "vs. {ano-1}" por local (para onde a agenda migrou): variação do nº
+  // de shows de cada casa de um ano para o outro. Distinta do card de
+  // concentração (agregado) — aqui é linha a linha, espelho da tela irmã por
+  // cidade (D297).
+  let venueChangeByKey: Map<string, VenueProfitChange> | null = null;
+  // Card "Quais casas cresceram e caíram": os dois movers (maior ganho / maior
+  // perda de shows) destilados da MESMA lista de mudanças, espelho do card de
+  // movers da tela por cidade (D298).
+  let venueMovers: VenueProfitMovers | null = null;
   let previousYear = 0;
   if (yearFilter !== "all") {
     previousYear = yearFilter - 1;
-    const previousConcentration = geoConcentration(
-      rankVenuesByProfit(filterShowsByYear(venueShows, previousYear), txs).rows,
-    );
+    const previousReport = rankVenuesByProfit(filterShowsByYear(venueShows, previousYear), txs);
+    // A coluna por local só exige o ano anterior ter tido shows (para comparar).
+    if (previousReport.count > 0) {
+      const venueChanges = compareVenuesByProfit(report, previousReport);
+      venueChangeByKey = indexVenueProfitChanges(venueChanges);
+      venueMovers = venueProfitMovers(venueChanges);
+    }
+    const previousConcentration = geoConcentration(previousReport.rows);
     // Exige casa identificada nos DOIS períodos para comparar de verdade.
     if (concentration.placeCount > 0 && previousConcentration.placeCount > 0) {
       venueComparison = compareGeoConcentration(concentration, previousConcentration);
@@ -204,6 +223,14 @@ export default async function VenueProfitabilityPage({
             />
           )}
 
+          {venueMovers && (venueMovers.biggestGain || venueMovers.biggestDrop) && (
+            <VenueMoversCard
+              movers={venueMovers}
+              currentYear={yearFilter as number}
+              previousYear={previousYear}
+            />
+          )}
+
           <div className="card overflow-x-auto p-0">
             <table className="w-full text-sm">
               <thead>
@@ -216,6 +243,9 @@ export default async function VenueProfitabilityPage({
                   <th className="px-4 py-3 text-right font-medium">Despesas</th>
                   <th className="px-4 py-3 text-right font-medium">Resultado</th>
                   <th className="px-4 py-3 text-right font-medium">Média/show</th>
+                  {venueChangeByKey && (
+                    <th className="px-4 py-3 text-right font-medium">vs. {previousYear}</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -264,6 +294,12 @@ export default async function VenueProfitabilityPage({
                     <td className="px-4 py-3 text-right text-gray-500">
                       {formatMoney(row.avgNet)}
                     </td>
+                    {venueChangeByKey && (
+                      <VenueTrendCell
+                        change={venueChangeByKey.get(row.key) ?? null}
+                        previousYear={previousYear}
+                      />
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -275,7 +311,16 @@ export default async function VenueProfitabilityPage({
             sem local nem cidade aparecem como “Sem local”. O <strong>cachê mediano</strong> é o
             preço típico do palco (metade dos shows acima, metade abaixo), robusto a um show fora da
             curva; aparece só com {MIN_MEDIAN_FEE_SAMPLE} shows ou mais (com poucos, a mediana não é
-            confiável).
+            confiável).{" "}
+            {venueChangeByKey && (
+              <>
+                A coluna <strong>vs. {previousYear}</strong> mostra quantos shows a mais (
+                <span className="text-emerald-600">+</span>) ou a menos (
+                <span className="text-red-600">−</span>) você tocou na casa em relação ao ano
+                anterior — para onde a agenda migrou (passe o mouse para ver o resultado nos dois
+                anos).
+              </>
+            )}
           </p>
         </>
       )}
@@ -450,6 +495,128 @@ function VenueComparisonCard({
       </div>
       <p className="mt-3 text-xs opacity-90">{trend.note}</p>
     </div>
+  );
+}
+
+/** Contagem com sinal para exibição: 3 → "+3", −2 → "−2", 0 → "0". */
+function signedCount(delta: number): string {
+  if (delta === 0) return "0";
+  return `${delta > 0 ? "+" : "−"}${Math.abs(delta)}`;
+}
+
+/**
+ * Card "Quais casas cresceram e caíram": os dois movers do ano — a casa que mais
+ * ganhou e a que mais perdeu shows em relação ao ano anterior. Espelha o card de
+ * movers da tela irmã por cidade (D298); distinto do card de concentração
+ * (agregado) e da coluna por linha (todas as casas) — aqui é o destaque das duas
+ * pontas do movimento. Só entra com ao menos um mover (garantido pelo chamador).
+ */
+function VenueMoversCard({
+  movers,
+  currentYear,
+  previousYear,
+}: {
+  movers: VenueProfitMovers;
+  currentYear: number;
+  previousYear: number;
+}) {
+  const { biggestGain, biggestDrop } = movers;
+  return (
+    <div className="card">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+          Quais casas cresceram e caíram · {currentYear} vs. {previousYear}
+        </p>
+      </div>
+      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+        <VenueMover label="Mais cresceu" change={biggestGain} tone="emerald" />
+        <VenueMover label="Mais caiu" change={biggestDrop} tone="red" />
+      </div>
+      <p className="mt-3 text-xs text-gray-400">
+        Ancora no nº de shows por casa; quando duas empatam, o resultado do ano desempata. Casas sem
+        local informado (“Sem local”) ficam de fora.
+      </p>
+    </div>
+  );
+}
+
+/** Uma ponta do card de movers (ganho ou perda), ou "—" quando não houve. */
+function VenueMover({
+  label,
+  change,
+  tone,
+}: {
+  label: string;
+  change: VenueProfitChange | null;
+  tone: "emerald" | "red";
+}) {
+  const tones: Record<string, string> = {
+    emerald: "text-emerald-600",
+    red: "text-red-600",
+  };
+  if (!change) {
+    return (
+      <div>
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
+        <p className="mt-1 text-xl font-bold text-gray-300">—</p>
+        <p className="text-xs text-gray-400">
+          Nenhuma casa {tone === "emerald" ? "ganhou" : "perdeu"} shows.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
+      <p className="mt-1 flex items-baseline gap-2">
+        <span className="truncate font-medium text-gray-900">{change.name}</span>
+        <span className={"text-xl font-bold " + tones[tone]}>
+          {signedCount(change.countDelta)}{" "}
+          <span className="text-sm font-normal">
+            {Math.abs(change.countDelta) === 1 ? "show" : "shows"}
+          </span>
+        </span>
+      </p>
+      <p className="text-xs text-gray-500">
+        resultado {formatMoney(change.previousNet)} → {formatMoney(change.currentNet)}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Célula "vs. {ano-1}" de uma casa: variação do nº de shows do ano anterior para
+ * o atual, colorida por sinal (verde subiu, vermelho caiu, cinza estável). O
+ * `title` traz o resultado (net) nos dois anos, dando a dimensão financeira sem
+ * gastar uma segunda coluna. `change` nulo (casa sem par no comparativo) cai em
+ * "—" — defensivo; as linhas atuais sempre têm entrada. Espelha a tela por
+ * cidade (D297).
+ */
+function VenueTrendCell({
+  change,
+  previousYear,
+}: {
+  change: VenueProfitChange | null;
+  previousYear: number;
+}) {
+  if (!change) {
+    return <td className="px-4 py-3 text-right text-gray-300">—</td>;
+  }
+  const tone =
+    change.countDelta > 0
+      ? "text-emerald-600"
+      : change.countDelta < 0
+        ? "text-red-600"
+        : "text-gray-400";
+  return (
+    <td
+      className={"px-4 py-3 text-right font-medium " + tone}
+      title={`Resultado: ${formatMoney(change.previousNet)} (${previousYear}) → ${formatMoney(
+        change.currentNet,
+      )}`}
+    >
+      {signedCount(change.countDelta)}
+    </td>
   );
 }
 

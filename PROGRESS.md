@@ -9,7 +9,30 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 304 (D298) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 305 (D299) —
+paridade da rentabilidade por local com a atuação por cidade (coluna "vs. {ano-1}" + CSV + card de
+movers):** a tela `/shows/locais` já tinha recorte por ano (`?ano=`) e o card comparativo agregado da
+concentração por casa (`compareGeoConcentration`/D116), mas — ao contrário da tela irmã `/shows/cidades`
+(D297/D298) — a TABELA (uma linha por casa) não dizia, casa a casa, para onde a agenda migrou de um ano
+para o outro, o CSV saía sem essa coluna e não havia o card de destaque dos dois *movers*. Como o motor
+puro de comparação de rentabilidade opera sobre `CitiesProfitability`, que é **alias** de
+`VenuesProfitability` (`rankCitiesByProfit` é rollup acima de `rankVenuesByProfit`, mesma forma de
+linha), a comparação é genérica sobre qualquer ranking de rentabilidade agregado. Em `src/lib/finance.ts`
+adicionei **aliases de eixo-casa** — `compareVenuesByProfit`/`indexVenueProfitChanges`/`venueProfitMovers`
++ tipos `VenueProfitChange`/`VenueProfitMovers` — apontando para os helpers de cidade (D297/D298), para a
+tela de locais não importar helpers de nome "cidade" (espelha como o repo já aliasa `CityProfitRow =
+VenueProfitRow`). O `locais/page.tsx` deriva as mudanças e os movers do ranking do ano anterior (recomputado
+sobre os MESMOS registros já carregados, recorte UTC da D108 — zero I/O extra) e ganha: a coluna "vs. {ano-1}"
+por linha (variação do nº de shows por casa, verde subiu / vermelho caiu, resultado dos dois anos no `title`)
+e o card "Quais casas cresceram e caíram · {ano} vs. {ano-1}" (as duas pontas; "Sem local" fica de fora dos
+movers, como a "Sem cidade"). A rota `.../export` passa `changes`/`previousYear` ao `venueProfitToCsv` já
+preparado na D297 (a coluna "vs. {ano-1} (shows)" ao final). Zero rota nova, zero regra de negócio nova,
+zero consulta nova, zero migração, zero dependência. **+3 testes** (`finance.test.ts`,
+`describe("compareVenuesByProfit / venueProfitMovers (por local)")`: casa as casas pela chave de local e
+computa deltas + casa nova; aponta o maior ganho e a maior perda por casa; ignora a "Sem local").
+Build/typecheck/lint verdes (**1709 testes**); smoke → `/login` 200, `/shows/locais`, `?ano=2026` e
+`/export?ano=2026` 307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories). Ver D299.
+Antes disso, **Sessão 304 (D298) —
 card "Para onde a agenda migrou" (movers por cidade) na atuação por cidade:** a Sessão 303 (D297) já
 trouxe a coluna "vs. {ano-1}" por linha na tabela de `/shows/cidades` (variação do nº de shows de cada
 praça de um ano para o outro), mas faltava a **peça de destaque** que as telas irmãs do comparativo por

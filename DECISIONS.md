@@ -10484,3 +10484,49 @@ contexto, decisão, justificativa e alternativas consideradas.
   dependência nova.
 - **Nota de concorrência:** número **D298** escolhido como o próximo livre após o D297 (Sessão 303).
   Se outra PR reivindicar D298, renumerar para o próximo livre no merge.
+
+## D299 — Paridade da rentabilidade por local (`/shows/locais`) com a atuação por cidade: coluna "vs. {ano-1}" + CSV + card de movers (aliases `compareVenuesByProfit`/`indexVenueProfitChanges`/`venueProfitMovers`) (Sessão 305)
+- **Contexto:** a tela irmã `/shows/cidades` ganhou, nas D297/D298, o par completo do comparativo por
+  linha — coluna "vs. {ano-1}" por praça (nº de shows a mais/menos de um ano para o outro) na tabela e no
+  CSV, mais o card de destaque dos dois *movers* (a que mais cresceu / mais caiu). A tela `/shows/locais`
+  (rentabilidade por casa/palco, o recorte mais granular do mesmo eixo geográfico) já tinha recorte por ano
+  (`?ano=`) e o card comparativo AGREGADO da concentração por casa (`compareGeoConcentration`/D116), mas a
+  TABELA (uma linha por casa) não dizia, casa a casa, para onde a agenda migrou; o CSV saía sem essa coluna
+  (a D297 já preparou `venueProfitToCsv` com os parâmetros `changes`/`previousYear`, mas a rota de locais
+  não os passava — "os locais não passam comparativo, saída inalterada"); e não havia o card de movers.
+- **Decisão:** o motor puro de comparação de rentabilidade (`compareCitiesByProfit`/`indexCityProfitChanges`/
+  `cityProfitMovers`, D297/D298) opera sobre `CitiesProfitability`, que é **alias** de `VenuesProfitability`
+  (`rankCitiesByProfit` é rollup acima de `rankVenuesByProfit`, mesma forma de linha `VenueProfitRow`) — ou
+  seja, é genérico sobre qualquer ranking de rentabilidade agregado por chave. Em `src/lib/finance.ts`
+  adicionei **aliases de eixo-casa** — `export const compareVenuesByProfit = compareCitiesByProfit`,
+  `indexVenueProfitChanges`, `venueProfitMovers` + tipos `VenueProfitChange`/`VenueProfitMovers` — para a
+  tela de locais não importar helpers de nome "cidade", espelhando como o repo já aliasa os tipos
+  (`CityProfitRow = VenueProfitRow`). O `locais/page.tsx` deriva as mudanças (`indexVenueProfitChanges`) e os
+  movers (`venueProfitMovers`) do ranking do ano anterior — recomputado sobre os MESMOS shows já carregados
+  (recorte UTC da D108), zero I/O extra — e ganha a coluna "vs. {ano-1}" por linha (variação do nº de shows
+  por casa, verde subiu / vermelho caiu, resultado dos dois anos no `title`) e o card "Quais casas cresceram
+  e caíram · {ano} vs. {ano-1}" (as duas pontas). A "Sem local" (`key === ""`) fica de fora dos movers (já
+  garantido por `cityProfitMovers`), como a "Sem cidade". A rota `.../export` passa `changes`/`previousYear`
+  ao `venueProfitToCsv` (label "Local"), anexando a coluna "vs. {ano-1} (shows)". Zero rota nova, zero regra
+  de negócio nova, zero consulta nova, zero migração, zero dependência.
+- **Justificativa:** completa a paridade das duas telas do eixo geográfico (cidade = rollup, local =
+  detalhe): ambas passam a ter resumo agregado (concentração) + detalhe por linha (coluna "vs. {ano-1}") +
+  destaque (movers) na tela e no CSV. Reaproveitar o motor via alias mantém um único helper puro testado (a
+  âncora, os desempates e a exclusão do balde vazio são idênticos aos de cidades) e a mudança fica quase toda
+  em UI/roteamento. O prefixo "City" nas funções é histórico (a comparação nasceu na tela de cidades); os
+  aliases evitam nome enganoso na tela de locais sem duplicar lógica.
+- **Alternativas consideradas:**
+  - *Renomear os helpers para um nome genérico (`compareProfitRankings`)* — descartado por ora: mexeria nos
+    call sites de cidades (tela + export), aumentando o raio de colisão com sessões paralelas; os aliases dão
+    o nome legível na tela de locais sem tocar o existente.
+  - *Duplicar a lógica de comparação para venues* — descartado: violaria a disciplina de motor puro único do
+    repo; qualquer ajuste futuro teria de ser feito em dois lugares.
+  - *Só a coluna/CSV, sem o card de movers* — descartado: quebraria a paridade que motiva a sessão; o card é
+    barato (reusa a mesma lista já computada) e traz o "para onde migrou?" num relance.
+- **DoD:** build/typecheck/lint verdes; **1709 testes** (+3: `finance.test.ts`,
+  `describe("compareVenuesByProfit / venueProfitMovers (por local)")` — casa as casas pela chave de local e
+  computa deltas + casa nova do ano; aponta o maior ganho e a maior perda por casa; ignora a "Sem local");
+  smoke → `/login` 200, `/shows/locais`, `?ano=2026` e `/shows/locais/export?ano=2026` 307→/login
+  (auth-gated, sem 500); `npm audit` inalterado (10 advisories; ver D6). Zero migração, zero dependência nova.
+- **Nota de concorrência:** número **D299** escolhido como o próximo livre após o D298 (Sessão 304). Se outra
+  PR reivindicar D299, renumerar para o próximo livre no merge.

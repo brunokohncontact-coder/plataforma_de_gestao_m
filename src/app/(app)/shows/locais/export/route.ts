@@ -3,11 +3,14 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   rankVenuesByProfit,
+  compareVenuesByProfit,
+  indexVenueProfitChanges,
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
   type TxLike,
   type VenueShowLike,
+  type VenueProfitChange,
 } from "@/lib/finance";
 import { venueProfitToCsv } from "@/lib/csv";
 
@@ -62,7 +65,28 @@ export async function GET(req: NextRequest) {
   }));
 
   const report = rankVenuesByProfit(periodShows, txs);
-  const csv = venueProfitToCsv(report.rows, "Local");
+
+  // Comparativo ano a ano por local (mesma coluna "vs. {ano-1}" da página):
+  // só com um ano específico e o ano anterior tendo shows, recomputando o
+  // ranking do ano anterior sobre os MESMOS registros já carregados (recorte
+  // UTC da D108). Sem isso, a planilha sai idêntica à anterior. Espelha o
+  // export por cidade (D297).
+  let changeByKey: Map<string, VenueProfitChange> | null = null;
+  let previousYear: number | null = null;
+  if (yearFilter !== "all") {
+    const previousReport = rankVenuesByProfit(
+      filterShowsByYear(venueShows, yearFilter - 1),
+      txs,
+    );
+    if (previousReport.count > 0) {
+      previousYear = yearFilter - 1;
+      changeByKey = indexVenueProfitChanges(
+        compareVenuesByProfit(report, previousReport),
+      );
+    }
+  }
+
+  const csv = venueProfitToCsv(report.rows, "Local", undefined, changeByKey, previousYear);
 
   // BOM UTF-8 para preservar acentuação ao abrir no Excel.
   const body = "\uFEFF" + csv;
