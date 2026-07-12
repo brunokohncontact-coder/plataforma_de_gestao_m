@@ -252,10 +252,12 @@ export default async function FeeDistributionPage({
             {bandChangeByKey && (
               <p className="mt-3 text-xs text-gray-500">
                 A coluna <strong>vs. {previousYear}</strong> mostra quantos pontos
-                percentuais da agenda cada faixa ganhou (+) ou perdeu (−) frente ao
-                ano anterior — para ONDE seus cachês migraram. É uma leitura neutra
-                por faixa; o rumo geral (para cima ou para baixo) está no cartão
-                acima.
+                percentuais da agenda cada faixa ganhou (↑ +) ou perdeu (↓ −) frente
+                ao ano anterior — para ONDE seus cachês migraram. A seta (↑/↓/→) só
+                indica o rumo e é <strong>neutra</strong> de propósito (cinza, sem
+                verde/vermelho): ganhar participação numa faixa barata não é
+                necessariamente uma melhora. O rumo geral do cachê (para cima ou para
+                baixo) está no cartão acima.
               </p>
             )}
           </section>
@@ -309,6 +311,30 @@ function pointsDelta(delta: number): string {
   const rounded = Math.round(delta * 100);
   if (rounded === 0) return "0 p.p.";
   return `${rounded > 0 ? "+" : "−"}${Math.abs(rounded)} p.p.`;
+}
+
+/**
+ * Seta NEUTRA de direção para a coluna "vs. {ano-1}" das faixas de cachê. Ao
+ * contrário da "seta de tendência" colorida das telas por cidade/local/dia da
+ * semana (`CITY_PROFIT_TREND`/`TREND_ARROW`, D302/D303 — onde subir é "bom"),
+ * aqui a leitura é intencionalmente **neutra** por faixa: ganhar participação
+ * numa faixa barata não é uma melhora, então a seta só nomeia o RUMO (↑/↓/→)
+ * sem verde/vermelho — o rumo geral do cachê vive no cartão comparativo acima.
+ * A direção espelha o mesmo arredondamento em p.p. do texto exibido, para seta
+ * e número nunca se contradizerem (um Δ que arredonda a 0 p.p. sai como "→").
+ */
+const NEUTRAL_TREND_ARROW: Record<"up" | "down" | "flat", string> = {
+  up: "↑",
+  down: "↓",
+  flat: "→",
+};
+
+/** Direção da variação de participação a partir do delta arredondado em p.p. */
+function bandShareDirection(delta: number): "up" | "down" | "flat" {
+  const rounded = Math.round(delta * 100);
+  if (rounded > 0) return "up";
+  if (rounded < 0) return "down";
+  return "flat";
 }
 
 /**
@@ -413,9 +439,16 @@ function BandRow({
       </td>
       {change && (
         <td className="py-2 pl-3 text-right text-xs text-gray-500">
-          {change.countShareDelta === 0 && change.currentCount === 0
-            ? "—"
-            : pointsDelta(change.countShareDelta)}
+          {change.countShareDelta === 0 && change.currentCount === 0 ? (
+            "—"
+          ) : (
+            <>
+              <span aria-hidden="true">
+                {NEUTRAL_TREND_ARROW[bandShareDirection(change.countShareDelta)]}
+              </span>{" "}
+              {pointsDelta(change.countShareDelta)}
+            </>
+          )}
         </td>
       )}
     </tr>
