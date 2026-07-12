@@ -9,7 +9,24 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 310 (D304) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 311 (D305) —
+migração do `provider` do Prisma de SQLite para PostgreSQL em dev/CI/produção, fechando a D294:**
+o `Application error` em `/register` na Vercel (D294) era causado pelo app rodar SQLite em produção,
+cujo sistema de arquivos serverless é somente-leitura/efêmero — toda escrita no banco lançava exceção.
+A D294 documentou o runbook (`docs/deploy.md`) mas não trocou o `provider` sozinha, por ser uma mudança
+coordenada com o provisionamento humano de um Postgres real; nesta sessão o usuário confirmou que vai
+provisionar o Postgres de produção na Vercel, então a troca foi feita: `prisma/schema.prisma` agora usa
+`provider = "postgresql"` (+ `directUrl`); gerada a migration baseline `prisma/migrations/20260712194456_init`;
+`package.json` (`build`) roda `prisma migrate deploy` antes do `next build`, para aplicar migrations em
+todo deploy; CI (`.github/workflows/ci.yml`) sobe um serviço `postgres:16` no lugar do SQLite em arquivo;
+`scripts/session-setup.sh` agora sobe um Postgres local e cria os bancos `palco_dev`/`palco_test`. Validado
+localmente com um Postgres real: typecheck, lint, **1719 testes** e build verdes; smoke test manual via
+Playwright do fluxo completo `/register` → preencher formulário → criar conta → redirect para `/dashboard`,
+sem exceção. **Pendências humanas (fora do alcance de código):** provisionar o Postgres de produção na
+Vercel e configurar `DATABASE_URL`/`DIRECT_URL`/`AUTH_SECRET` nas Environment Variables do projeto — ver
+`docs/deploy.md` Passos 1 e 3; sem isso o próximo deploy falha no build (`prisma migrate deploy` sem banco
+acessível), não mais na tela de registro. Ver D305.
+Antes disso, **Sessão 310 (D304) —
 seta NEUTRA de direção (↑/↓/→ em cinza) na coluna "vs. {ano-1}" das faixas de cachê
 (`/shows/faixas-de-cache`), fechando a última coluna "vs." que ainda mostrava só o delta cru:** a coluna
 "vs. {ano-1}" da tabela de faixas de cachê (D292) exibia apenas o delta cru em p.p.

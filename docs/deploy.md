@@ -1,28 +1,29 @@
 # Deploy em produção — runbook
 
-> **Contexto:** o MVP usa **SQLite** em desenvolvimento por escolha deliberada
-> (container remoto efêmero, zero dependência externa — ver `DECISIONS.md` D3/D5).
-> SQLite **não funciona** em produção na Vercel: o sistema de arquivos das
-> Serverless Functions é **somente-leitura e efêmero**, então qualquer *escrita*
-> no banco (criar conta, lançar show, etc.) lança uma exceção — a tela mostra
-> "Application error: a server-side exception has occurred".
->
-> **Produção exige um banco Postgres gerenciado.** Este runbook descreve a
-> migração mínima `SQLite → Postgres`, já prevista no schema
-> (`prisma/schema.prisma` é mantido portável) e no "A revisar" da D3.
+> **Contexto:** a aplicação usa **PostgreSQL** em dev, CI e produção (ver
+> `DECISIONS.md` D3/D294/D305). Antes disso, o dev rodava em SQLite — que
+> **não funciona** em produção na Vercel: o sistema de arquivos das Serverless
+> Functions é **somente-leitura e efêmero**, então qualquer *escrita* no banco
+> (criar conta, lançar show, etc.) lançava uma exceção — a tela mostrava
+> "Application error: a server-side exception has occurred". A troca de
+> `provider` já foi feita no código (D305); este runbook cobre o que falta,
+> que é **humano**: provisionar o banco de produção e configurar os segredos
+> na Vercel.
 
 ## Sintoma que este runbook resolve
 
 - `/register` (ou qualquer ação que grava no banco) retorna
   `Application error: a server-side exception has occurred` na Vercel.
-- Causa: `DATABASE_URL="file:./dev.db"` (SQLite) em produção, e/ou o `provider`
-  do Prisma ainda em `sqlite`.
+- Causa: falta um Postgres de produção provisionado e/ou as variáveis
+  `DATABASE_URL`/`DIRECT_URL`/`AUTH_SECRET` configuradas no projeto na Vercel.
 
 ## Pré-requisitos
 
 - Acesso ao projeto na **Vercel** (Settings → Environment Variables).
 - Uma conta em um provedor de **Postgres gerenciado**. Opções comuns:
-  - **Vercel Postgres** (integra direto com o projeto; já entrega URL *pooled*).
+  - **Vercel Postgres** (integração nativa via Neon; já entrega URL *pooled*
+    e *direct*). No dashboard do projeto: **Storage → Create Database →
+    Postgres**.
   - **Neon** ou **Supabase** (plano gratuito serve para começar).
 
 > ⚠️ **Sempre use a connection string *pooled*** (com PgBouncer / `-pooler` no
@@ -37,10 +38,9 @@
    - `DATABASE_URL` → a **pooled** (runtime).
    - `DIRECT_URL` → a **direta** (migrations). Em alguns provedores é a mesma.
 
-## Passo 2 — Ajustar o schema do Prisma (mudança de código, coordenada)
+## Passo 2 — Schema do Prisma (já feito no código, D305)
 
-Esta é a única alteração de código e precisa ser **coordenada** com o deploy,
-porque dev/CI continuam em SQLite. Em `prisma/schema.prisma`:
+`prisma/schema.prisma` já aponta para Postgres:
 
 ```prisma
 datasource db {
@@ -50,10 +50,7 @@ datasource db {
 }
 ```
 
-> Trocar o `provider` quebra o CI e o ambiente de dev atuais (ambos SQLite). Ao
-> promover produção para Postgres, alinhar também o CI para subir um Postgres de
-> serviço (`services: postgres` no workflow) ou manter dois schemas. Registrar a
-> decisão em `DECISIONS.md` antes de mesclar a troca de `provider`.
+Dev, CI e produção usam o mesmo `provider` — nada a mudar aqui neste runbook.
 
 ## Passo 3 — Configurar as variáveis na Vercel
 
@@ -70,17 +67,18 @@ Em **Settings → Environment Variables** (ambiente *Production*):
 
 ## Passo 4 — Aplicar as migrations no Postgres
 
-Localmente, apontando para o banco novo (use a URL **direta**):
+As migrations já estão versionadas em `prisma/migrations/` (baseline `init`,
+D305). O próprio `build` do projeto (`prisma migrate deploy` — ver
+`package.json`) já as aplica a cada deploy na Vercel, então normalmente **não
+há nada manual a fazer aqui**: basta a `DATABASE_URL`/`DIRECT_URL` estarem
+configuradas (Passo 3) antes do primeiro deploy.
+
+Só rode manualmente se precisar aplicar as migrations fora de um deploy (ex.:
+para inspecionar o banco antes de configurar a Vercel), apontando para a URL
+**direta**:
 
 ```bash
 DATABASE_URL="<direct-url>" npx prisma migrate deploy
-```
-
-Se ainda não houver migrations versionadas (o MVP evoluiu via `db push` em dev),
-gere a baseline uma vez antes:
-
-```bash
-DATABASE_URL="<direct-url>" npx prisma migrate dev --name init
 ```
 
 ## Passo 5 — Redeploy e verificação
@@ -93,14 +91,16 @@ DATABASE_URL="<direct-url>" npx prisma migrate dev --name init
 
 ## Rollback
 
-Se algo falhar, reverta a troca do `provider` no `prisma.schema` e o deploy
-anterior continua servindo (embora as *escritas* sigam quebradas em SQLite). O
-caminho correto é sempre concluir a migração para Postgres — SQLite em serverless
-não tem correção viável.
+Se o deploy falhar por falta de banco/variáveis, corrija o Passo 1/3 (banco
+provisionado + env vars corretas na Vercel) e faça "Redeploy" — não há nada a
+reverter no código: `provider = "postgresql"` já é o estado permanente do
+schema (D305).
 
 ## Notas
 
-- O `build` (`prisma generate && next build`) roda `prisma generate`, que apenas
-  gera o client a partir do schema — não precisa de banco acessível no build.
+- O `build` (`prisma generate && prisma migrate deploy && next build`) precisa
+  de `DATABASE_URL`/`DIRECT_URL` acessíveis **no momento do build** (a Vercel
+  expõe env vars de Production também ao processo de build, não só ao
+  runtime) — sem isso, `prisma migrate deploy` falha e o deploy não completa.
 - Conexões: prefira a URL *pooled* no runtime; a *direct* só nas migrations.
 - Backups: habilite os backups automáticos do provedor gerenciado.

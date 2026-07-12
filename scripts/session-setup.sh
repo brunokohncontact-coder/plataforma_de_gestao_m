@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Prepara o ambiente no início de cada sessão remota (idempotente):
-# instala dependências (se faltarem), garante .env de dev, gera o client
-# Prisma e sincroniza o banco SQLite. Mantém a base pronta para build/test/run.
+# instala dependências (se faltarem), sobe um Postgres local, garante .env de
+# dev, gera o client Prisma e sincroniza o schema. Mantém a base pronta para
+# build/test/run. Ver DECISIONS.md D294/D305 (produção exige Postgres — dev e
+# CI agora usam o mesmo banco, sem divergência de provider).
 #
 # RESILIÊNCIA A PROXY (ver D112): em sessões remotas o tráfego sai por um proxy
 # que NÃO é respeitado pelo downloader embutido do Prisma — a baixa dos "engines"
@@ -18,10 +20,29 @@ if [ ! -f package.json ]; then
   exit 0
 fi
 
+DEV_DB_URL="postgresql://postgres:postgres@localhost:5432/palco_dev"
+
 if [ ! -f .env ]; then
-  echo 'DATABASE_URL="file:./dev.db"' > .env
+  echo "DATABASE_URL=\"${DEV_DB_URL}\"" > .env
+  echo "DIRECT_URL=\"${DEV_DB_URL}\"" >> .env
   echo 'AUTH_SECRET="dev-secret-only-change-in-production-aaaaaaaaaaaaaaaaaaaa"' >> .env
   echo "session-setup: .env de desenvolvimento criado."
+fi
+
+# Sobe o Postgres local (pacote `postgresql` já instalado na imagem) e garante
+# os bancos de dev/teste. Idempotente: `service start` e `CREATE DATABASE ...
+# IF NOT EXISTS` não falham se já estiverem prontos.
+if command -v pg_lsclusters >/dev/null 2>&1; then
+  if ! pg_lsclusters 2>/dev/null | grep -q online; then
+    service postgresql start >/dev/null 2>&1 || sudo service postgresql start >/dev/null 2>&1 || true
+  fi
+  sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';" >/dev/null 2>&1 || true
+  sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname = 'palco_dev'" | grep -q 1 \
+    || sudo -u postgres psql -c "CREATE DATABASE palco_dev;" >/dev/null 2>&1 || true
+  sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname = 'palco_test'" | grep -q 1 \
+    || sudo -u postgres psql -c "CREATE DATABASE palco_test;" >/dev/null 2>&1 || true
+else
+  echo "session-setup: aviso — Postgres não encontrado nesta imagem; build/test/db precisam de DATABASE_URL apontando para um Postgres acessível."
 fi
 
 # CA do proxy, quando presente — usada apenas pelo fallback via curl.

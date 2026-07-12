@@ -8,8 +8,28 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: palco_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
-      DATABASE_URL: "file:./dev.db"
+      # Usada pelo `prisma generate` e pelo `prisma migrate deploy` do build —
+      # o banco "postgres" (sempre presente numa imagem Postgres nova) valida
+      # que as migrations aplicam limpas, sem colidir com o banco dos testes.
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/postgres"
+      DIRECT_URL: "postgresql://postgres:postgres@localhost:5432/postgres"
+      # Banco isolado dos testes (globalSetup faz `db push --force-reset`).
+      TEST_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/palco_test"
       AUTH_SECRET: "ci-secret-not-used-in-production"
       NEXT_TELEMETRY_DISABLED: "1"
     steps:

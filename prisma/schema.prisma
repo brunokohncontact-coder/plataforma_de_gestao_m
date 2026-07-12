@@ -1,20 +1,21 @@
 // Palco — schema de dados do MVP.
-// Banco: SQLite em desenvolvimento (zero dependência externa). Schema mantido
-// portável para PostgreSQL em produção (trocar `provider` para "postgresql").
-// Ver DECISIONS.md (D3).
+// Banco: PostgreSQL (dev, CI e produção — ver DECISIONS.md D3/D294/D305).
 //
-// NOTA: SQLite no Prisma não suporta `enum` nativo. Por isso os campos de
-// "enum" são `String` com valores validados na camada de aplicação (Zod em
-// src/lib/validation.ts e constantes em src/lib/domain.ts). Ao migrar para
-// PostgreSQL, podem ser promovidos a enums nativos.
+// NOTA: os campos de "enum" (status do show, tipo de transação, papel do
+// contato) são `String` com valores validados na camada de aplicação (Zod em
+// src/lib/validation.ts e constantes em src/lib/domain.ts) — herança da época
+// em que o dev rodava em SQLite (sem enum nativo). Mantido assim por
+// estabilidade do schema; podem ser promovidos a enums nativos do Postgres
+// depois, como mudança à parte.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ── F1: Autenticação e workspace ────────────────────────────────────────────
