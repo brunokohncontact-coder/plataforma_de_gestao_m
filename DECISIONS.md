@@ -5,6 +5,31 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-12 — D303: Seta de tendência (↑/↓/→) na coluna "Δ shows" do detalhe dos 7 dias em `/shows/dias-semana`
+- **Contexto:** a tabela recolhida "Ver os 7 dias" do comparativo por dia da semana já **colore** as
+  células Δ pelo veredito de `classifyWeekdayPerformanceDayChange` (nº de shows com o faturamento como
+  desempate — a mesma disciplina dos movers da D46), mas não exibia a seta de direção. Um dia que
+  manteve a MESMA contagem de shows porém trocou um show barato por um caro (`countDelta === 0`,
+  `feeDelta > 0`) saía com a linha verde mas com a coluna "Δ shows" mostrando um "—" neutro — a cor
+  dizia "subiu", o texto parecia "sem mudança". Era o 1º "Próximo possível" da D302 (levar a seta de
+  tendência às demais colunas "vs." que ainda mostram só o delta cru).
+- **Decisão:** espelhando o `CITY_PROFIT_TREND`/`CityTrendCell` da D302, a célula "Δ shows" passa a
+  prefixar uma **seta** (↑/↓/→, via um mapa de apresentação local `TREND_ARROW`) à variação do nº de
+  shows, colorida pela MESMA tendência já usada na linha. Linha `flat` (ambos os deltas zero) segue
+  como "—" limpo — dias verdadeiramente sem mudança não ganham ruído; linha com rumo mostra seta +
+  variação (`↑ +2 shows`, ou `↑ 0 shows` no caso do desempate por faturamento, que torna legível o
+  antigo "—" ambíguo). Nota de rodapé nova sob o detalhe explica a seta.
+- **Justificativa:** completa a paridade da "seta de tendência" entre as telas de comparativo por linha
+  (cidade/local já tinham após a D302; dia da semana ainda não) e corrige o ponto cego do "—" colorido
+  quando só o faturamento se moveu. Zero regra de negócio nova (a classificação é a função pura já
+  testada da D46); mudança só de apresentação em `dias-semana/page.tsx`, reusando o helper.
+- **Alternativas consideradas:** (a) mostrar "0 shows" em vez de "—" para TODA linha zerada —
+  descartado por poluir os dias vazios (sem shows em nenhum ano) com "→ 0 shows"; manter o "—" para
+  `flat` preserva o sinal-ruído. (b) pôr a seta na coluna "Dia" (rótulo da linha) em vez do Δ —
+  descartado por divergir do padrão da D302, que ancora a seta na própria métrica primária. Sem novos
+  testes: nenhuma lógica pura nova (a classificação já tem cobertura); build/typecheck/lint/1719 testes
+  verdes, `npm audit` inalterado (10 advisories).
+
 ## 2026-07-12 — D302: Tendência (Subiu/Caiu/Estável) na coluna "vs. {ano-1}" das telas por cidade e por local
 - **Contexto:** o CSV do comparativo ano a ano por cidade/local (D300/D301) já traz uma coluna
   "Tendência" (`classifyCityProfitChange` → Subiu/Caiu/Estável, ancorada no nº de shows com o

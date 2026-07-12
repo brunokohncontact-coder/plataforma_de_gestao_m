@@ -9,7 +9,30 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 308 (D302) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 309 (D303) —
+seta de tendência (↑/↓/→) na coluna "Δ shows" do detalhe dos 7 dias em `/shows/dias-semana` (levando a
+mesma "seta de tendência" da D302 a mais uma coluna "vs." que ainda mostrava só o delta cru):** a tabela
+recolhida "Ver os 7 dias" do comparativo por dia da semana já **coloria** as células Δ pelo veredito de
+`classifyWeekdayPerformanceDayChange` (nº de shows com o faturamento como desempate — a mesma disciplina
+dos movers da D46), mas não exibia a seta; um dia que manteve a MESMA contagem de shows porém trocou um
+show barato por um caro (`countDelta === 0`, `feeDelta > 0`) saía com a linha verde mas a coluna "Δ shows"
+mostrava um "—" neutro — a cor dizia "subiu", o texto parecia "sem mudança". Agora, espelhando o
+`CITY_PROFIT_TREND`/`CityTrendCell` da D302, um mapa de apresentação local `TREND_ARROW`
+(`up:↑`/`down:↓`/`flat:→`) prefixa a seta ao Δ de shows: linha `flat` segue como "—" limpo (dias
+verdadeiramente sem mudança não ganham ruído), e linha com rumo passa a mostrar **seta + variação**
+(`↑ +2 shows`, ou `↑ 0 shows` no caso do desempate por faturamento — o "—" ambíguo vira legível), colorida
+pela MESMA tendência já usada. Nota de rodapé nova sob o detalhe explica a seta (idêntica em espírito à
+legenda da tela de cidades). Zero regra de negócio nova (a classificação é a função pura já testada da D46),
+zero rota/consulta/migração/dependência; mudança só de apresentação em
+`src/app/(app)/shows/dias-semana/page.tsx`. Sem novos testes (nenhuma lógica pura nova). Build/typecheck/lint
+verdes (**1719 testes**); smoke → `/login` 200, `/shows/dias-semana?ano=2026` e
+`/shows/dias-semana/comparativo/export?ano=2026` 307→/login (auth-gated, sem 500); `npm audit` inalterado
+(10 advisories). **Próximo possível** — a coluna "vs. {ano-1}" das faixas de cachê (`/shows/faixas-de-cache`,
+D292) segue mostrando só o delta cru em p.p. cinza; ali a leitura é intencionalmente **neutra** por faixa
+(ganhar participação numa faixa barata não é "bom"), então caberia uma seta NEUTRA de direção (↑/↓/→ em
+cinza, sem verde/vermelho) em vez da colorida — decidir se vale. Ou unificar a descoberta dos exports de
+comparativo nos cards de movers das telas que ainda não têm o link. Ver D303.
+Antes disso, **Sessão 308 (D302) —
 Tendência (Subiu/Caiu/Estável) na coluna "vs. {ano-1}" das telas por cidade e por local (alinhando
 tela↔CSV):** o CSV do comparativo (D300/D301) já trazia a coluna "Tendência" (`classifyCityProfitChange`
 → Subiu/Caiu/Estável, ancorada no nº de shows com o resultado de desempate), mas a coluna "vs. {ano-1}"
