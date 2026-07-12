@@ -321,6 +321,21 @@ function trendTone(trend: WeekdayPerformanceDayTrend): string {
 }
 
 /**
+ * Seta da tendência de um dia no comparativo — a mesma leitura de
+ * `classifyWeekdayPerformanceDayChange` que já colore a linha (nº de shows com o
+ * faturamento como desempate), espelhando a "seta de tendência" das telas por
+ * cidade/local (`CITY_PROFIT_TREND`, D302). Capta o caso que o sinal do nº de
+ * shows sozinho perde — mesma contagem, mas o dia trocou um show barato por um
+ * caro (`countDelta === 0`, `feeDelta > 0`): a linha já saía verde, mas a coluna
+ * "Δ shows" mostrava um "—" neutro; agora a seta ↑ nomeia o rumo.
+ */
+const TREND_ARROW: Record<WeekdayPerformanceDayTrend, string> = {
+  up: "↑",
+  down: "↓",
+  flat: "→",
+};
+
+/**
  * Card do comparativo ano a ano: os dois movers (dia que mais cresceu / mais caiu
  * em nº de shows) e, recolhido, a tabela dos 7 dias. Espelho do `SeasonComparison`
  * de `/shows/sazonalidade`. Reusa o `comparison` já computado (zero I/O extra).
@@ -441,7 +456,14 @@ function WeekdayComparisonDetail({
                     {d.currentCount === 0 ? "—" : d.currentCount}
                   </td>
                   <td className={"py-2 px-3 text-right font-medium " + trendTone(trend)}>
-                    {d.countDelta === 0 ? "—" : signedShows(d.countDelta)}
+                    {trend === "flat" ? (
+                      "—"
+                    ) : (
+                      <>
+                        <span aria-hidden="true">{TREND_ARROW[trend]}</span>{" "}
+                        {signedShows(d.countDelta)}
+                      </>
+                    )}
                   </td>
                   <td className={"py-2 pl-3 text-right " + trendTone(trend)}>
                     {d.feeDelta === 0 ? "—" : signedMoney(d.feeDelta)}
@@ -468,6 +490,14 @@ function WeekdayComparisonDetail({
             </tr>
           </tfoot>
         </table>
+        <p className="mt-3 text-xs text-gray-500">
+          A seta na coluna <strong>Δ shows</strong> indica o rumo do dia: mais
+          shows (<span className="text-emerald-600">↑</span>), menos (
+          <span className="text-red-600">↓</span>) ou estável (
+          <span className="text-gray-400">→</span>). Quando o nº de shows empata,
+          o faturamento desempata — trocar um show barato por um caro conta como
+          alta.
+        </p>
       </div>
     </details>
   );
