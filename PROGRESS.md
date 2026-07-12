@@ -9,7 +9,28 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 303 (D297) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 304 (D298) —
+card "Para onde a agenda migrou" (movers por cidade) na atuação por cidade:** a Sessão 303 (D297) já
+trouxe a coluna "vs. {ano-1}" por linha na tabela de `/shows/cidades` (variação do nº de shows de cada
+praça de um ano para o outro), mas faltava a **peça de destaque** que as telas irmãs do comparativo por
+linha já têm — a tela por dia da semana destila os dois *movers* (`compareWeekdayPerformance`/D46) num
+card, e a por cidade despejava só a tabela. Agora, em `src/lib/finance.ts`, o helper puro novo
+`cityProfitMovers(changes)` + tipo `CityProfitMovers` destila da MESMA lista de `compareCitiesByProfit`
+(D297) os dois extremos: `biggestGain` (cidade que mais ganhou shows) e `biggestDrop` (a que mais
+perdeu), espelho fiel dos movers da D46 — ancora no `countDelta` (nº de shows, o eixo primário da
+página) com o `netDelta` (resultado) como desempate, e como a lista já vem na ordem do relatório atual
+(resultado desc, sumidas ao final) o desempate estrito faz a primeira vencer empates (determinístico). A
+"Sem cidade" (`key === ""`) fica **de fora** dos movers — é um balde de shows sem praça, não um destino
+para onde a agenda "migrou" (segue na tabela e na coluna por linha). O `cidades/page.tsx` deriva
+`cityProfitMovers(cityChanges)` (zero I/O extra — reusa as mudanças já computadas para a coluna) e ganha
+o card "Para onde a agenda migrou · {ano} vs. {ano-1}" com as duas pontas (verde/vermelho, nome + nº de
+shows com sinal + resultado dos dois anos), exibido só quando há ao menos um mover. Zero rota nova, zero
+regra de negócio nova, zero consulta, zero migração, zero dependência. **+5 testes** (`finance.test.ts`,
+`describe("cityProfitMovers")`: sem mudança → ambos nulos; aponta o maior ganho e a maior perda; empate
+no nº de shows desempatado pelo `netDelta`; ignora a "Sem cidade"; só ganhos → `biggestDrop` nulo).
+Build/typecheck/lint verdes (**1706 testes**); smoke → `/login` 200, `/shows/cidades`, `?ano=2026` e
+`/export?ano=2026` 307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories). Ver D298.
+Antes disso, **Sessão 303 (D297) —
 coluna "vs. {ano-1}" por cidade na tabela e no CSV da atuação por cidade:** a tela
 `/shows/cidades` já tinha recorte por ano (`?ano=`) e o card comparativo agregado da concentração
 geográfica (`compareGeoConcentration`/D114), mas a TABELA (uma linha por cidade) não dizia, cidade a

@@ -6,6 +6,7 @@ import {
   rankVenuesByProfit,
   rankCitiesByProfit,
   compareCitiesByProfit,
+  cityProfitMovers,
   indexCityProfitChanges,
   rankContactsByProfit,
   rankRolesByProfit,
@@ -670,6 +671,81 @@ describe("compareCitiesByProfit", () => {
     const map = indexCityProfitChanges(changes);
     expect(map.size).toBe(changes.length);
     for (const c of changes) expect(map.get(c.key)).toBe(c);
+  });
+});
+
+describe("cityProfitMovers", () => {
+  it("sem mudança em nenhuma cidade → ambos os movers nulos", () => {
+    // Mesmos shows nos dois períodos: todo countDelta = 0.
+    const shows: VenueShowLike[] = [
+      { id: "a", fee: 100_00, status: "PLAYED", venue: "Bar", city: "Recife" },
+    ];
+    const report = rankCitiesByProfit(shows, []);
+    const movers = cityProfitMovers(compareCitiesByProfit(report, report));
+    expect(movers.biggestGain).toBeNull();
+    expect(movers.biggestDrop).toBeNull();
+  });
+
+  it("aponta a cidade que mais ganhou e a que mais perdeu shows", () => {
+    // Atual: Recife 3 shows, Olinda 1. Anterior: Recife 1, Olinda 3.
+    const currentShows: VenueShowLike[] = [
+      { id: "a", fee: 100_00, status: "PLAYED", venue: "B", city: "Recife" },
+      { id: "b", fee: 100_00, status: "PLAYED", venue: "C", city: "Recife" },
+      { id: "c", fee: 100_00, status: "PLAYED", venue: "D", city: "Recife" },
+      { id: "d", fee: 100_00, status: "PLAYED", venue: "E", city: "Olinda" },
+    ];
+    const previousShows: VenueShowLike[] = [
+      { id: "p1", fee: 100_00, status: "PLAYED", venue: "B", city: "Recife" },
+      { id: "p2", fee: 100_00, status: "PLAYED", venue: "C", city: "Olinda" },
+      { id: "p3", fee: 100_00, status: "PLAYED", venue: "D", city: "Olinda" },
+      { id: "p4", fee: 100_00, status: "PLAYED", venue: "E", city: "Olinda" },
+    ];
+    const movers = cityProfitMovers(
+      compareCitiesByProfit(
+        rankCitiesByProfit(currentShows, []),
+        rankCitiesByProfit(previousShows, []),
+      ),
+    );
+    expect(movers.biggestGain?.key).toBe("recife"); // +2 shows
+    expect(movers.biggestGain?.countDelta).toBe(2);
+    expect(movers.biggestDrop?.key).toBe("olinda"); // −2 shows
+    expect(movers.biggestDrop?.countDelta).toBe(-2);
+  });
+
+  it("empate no nº de shows é desempatado pelo resultado (netDelta)", () => {
+    // Recife e Olinda ambas +1 show; Recife com show mais caro (maior netDelta).
+    const currentShows: VenueShowLike[] = [
+      { id: "a", fee: 500_00, status: "PLAYED", venue: "B", city: "Recife" },
+      { id: "b", fee: 50_00, status: "PLAYED", venue: "C", city: "Olinda" },
+    ];
+    const movers = cityProfitMovers(
+      compareCitiesByProfit(rankCitiesByProfit(currentShows, []), rankCitiesByProfit([], [])),
+    );
+    expect(movers.biggestGain?.key).toBe("recife");
+    expect(movers.biggestGain?.netDelta).toBe(500_00);
+  });
+
+  it("ignora a 'Sem cidade' — não é destino de migração", () => {
+    // Único movimento é no balde sem cidade: não deve virar mover.
+    const currentShows: VenueShowLike[] = [
+      { id: "a", fee: 100_00, status: "PLAYED", venue: "Bar", city: null },
+    ];
+    const movers = cityProfitMovers(
+      compareCitiesByProfit(rankCitiesByProfit(currentShows, []), rankCitiesByProfit([], [])),
+    );
+    expect(movers.biggestGain).toBeNull();
+    expect(movers.biggestDrop).toBeNull();
+  });
+
+  it("só ganhos (nenhuma cidade caiu) → biggestDrop nulo", () => {
+    const currentShows: VenueShowLike[] = [
+      { id: "a", fee: 100_00, status: "PLAYED", venue: "Bar", city: "Recife" },
+    ];
+    const movers = cityProfitMovers(
+      compareCitiesByProfit(rankCitiesByProfit(currentShows, []), rankCitiesByProfit([], [])),
+    );
+    expect(movers.biggestGain?.key).toBe("recife");
+    expect(movers.biggestDrop).toBeNull();
   });
 });
 

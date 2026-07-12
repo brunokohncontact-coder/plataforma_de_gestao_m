@@ -10442,3 +10442,45 @@ contexto, decisão, justificativa e alternativas consideradas.
   dependência nova.
 - **Nota de concorrência:** número **D297** escolhido como o próximo livre após o D296 (Sessão 302).
   Se outra PR reivindicar D297, renumerar para o próximo livre no merge.
+
+---
+
+## D298 — Card "Para onde a agenda migrou" (movers por cidade) na atuação por cidade (`cityProfitMovers` + `CityProfitMovers`) (Sessão 304)
+- **Contexto:** a D297 (Sessão 303) trouxe a coluna "vs. {ano-1}" por linha na tabela de
+  `/shows/cidades` (variação do nº de shows de cada praça de um ano para o outro), completando o
+  detalhe linha a linha. Mas faltava a **peça de destaque** que as telas irmãs do comparativo por
+  linha já têm: a tela por dia da semana (`compareWeekdayPerformance`/D46) destila os dois *movers* —
+  o dia que mais cresceu e o que mais caiu — num card enxuto, em vez de despejar a tabela inteira. A
+  de cidades só tinha a tabela (mais o card de concentração *agregado*, D114), sem apontar as duas
+  pontas do movimento num relance.
+- **Decisão:** em `src/lib/finance.ts`, helper puro novo `cityProfitMovers(changes)` + tipo
+  `CityProfitMovers` destila da MESMA lista de `compareCitiesByProfit` (D297) os dois extremos —
+  `biggestGain` (cidade que mais ganhou shows) e `biggestDrop` (a que mais perdeu). Espelho fiel dos
+  movers da D46: ancora no `countDelta` (nº de shows, o eixo primário da página) com o `netDelta`
+  (resultado) como desempate; como a lista já vem na ordem do relatório atual (resultado desc, sumidas
+  ao final), o desempate estrito (`>`/`<`) faz a primeira da lista vencer empates (determinístico). A
+  "Sem cidade" (`key === ""`) fica **de fora** dos movers. A página `cidades/page.tsx` deriva
+  `cityProfitMovers(cityChanges)` (reusa as mudanças já computadas para a coluna — zero I/O extra) e
+  ganha o card "Para onde a agenda migrou · {ano} vs. {ano-1}" com as duas pontas (verde/vermelho, nome
+  + nº de shows com sinal + resultado dos dois anos), exibido só quando há ao menos um mover. Zero rota
+  nova, zero regra nova, zero consulta, zero migração, zero dependência.
+- **Justificativa:** paridade com as telas irmãs do comparativo por linha — cada uma tem agora resumo
+  agregado (card de concentração) + detalhe (coluna por linha) + **destaque** (os dois movers). O card
+  responde "para onde migrou?" num relance, sem o leitor varrer a tabela. Reusar a lista de
+  `compareCitiesByProfit` mantém o motor puro único e o custo zero.
+- **Alternativas consideradas:**
+  - *Incluir a "Sem cidade" nos movers* — descartado: é um balde de shows sem praça informada, não um
+    destino para onde a agenda "migrou"; poluiria a narrativa. Segue na tabela e na coluna por linha.
+  - *Ancorar os movers no resultado (netDelta) em vez do nº de shows* — descartado: manter a mesma
+    âncora da coluna (D297) e dos movers da D46 (contagem, menos ruidosa que o net); o `netDelta` entra
+    só como desempate e como contexto no card.
+  - *Não adicionar card, deixar só a tabela* — descartado: quebraria a paridade com as telas irmãs, que
+    todas têm a peça de destaque; a tabela sozinha exige o leitor caçar as pontas.
+- **DoD:** build/typecheck/lint verdes; **1706 testes** (+5: `finance.test.ts`,
+  `describe("cityProfitMovers")` — sem mudança → ambos nulos; aponta o maior ganho e a maior perda;
+  empate no nº de shows desempatado pelo `netDelta`; ignora a "Sem cidade"; só ganhos → `biggestDrop`
+  nulo); smoke → `/login` 200, `/shows/cidades`, `?ano=2026` e `/shows/cidades/export?ano=2026`
+  307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories; ver D6). Zero migração, zero
+  dependência nova.
+- **Nota de concorrência:** número **D298** escolhido como o próximo livre após o D297 (Sessão 303).
+  Se outra PR reivindicar D298, renumerar para o próximo livre no merge.
