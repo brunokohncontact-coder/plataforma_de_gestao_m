@@ -55,6 +55,7 @@ import {
   DUE_BUCKET_LABELS,
   type YearlyHistory,
   type IncomeMix,
+  type IncomeMixComparison,
   type ExpenseMix,
   type ExpenseMixComparison,
   type MetricDelta,
@@ -1780,6 +1781,95 @@ export function incomeMixToCsv(
     ]);
   }
   out.push(["Total", "", centsToCsvAmount(mix.total), ""]);
+  return toCsv(out, delimiter);
+}
+
+export const INCOME_MIX_COMPARISON_CSV_HEADERS = [
+  "Fonte",
+  "Receita (ano anterior) (R$)",
+  "Receita (ano corrente) (R$)",
+  "Δ receita (R$)",
+  "Participação (ano anterior)",
+  "Participação (ano corrente)",
+  "Situação",
+] as const;
+
+/** Rótulo pt-BR do rumo de uma fonte no comparativo (só para as presentes nos
+ * dois anos): "Subiu" rendeu mais, "Caiu" rendeu menos, "Estável" mesmo valor. */
+function incomeChangeSituation(amountDelta: number): string {
+  if (amountDelta > 0) return "Subiu";
+  if (amountDelta < 0) return "Caiu";
+  return "Estável";
+}
+
+/**
+ * Serializa o comparativo ano a ano das fontes de renda (`compareIncomeMix`) em
+ * CSV, pronto para download — a forma completa, fonte a fonte, do card "De onde
+ * veio a mudança · {ano} vs. {ano-1}" de `/financas/fontes-de-renda` (que na tela
+ * só destila os dois movers). Espelho simétrico de `expenseMixComparisonToCsv`
+ * (D224) no eixo de receita: uma linha por fonte em três blocos na ordem da tela
+ * — primeiro as fontes presentes nos DOIS anos (ordem de `changes`: maior
+ * crescimento → maior queda), depois as "Novas" (só no ano corrente) e por fim as
+ * que "Sumiram" (só no anterior), seguidas de uma linha "Total". Cada linha traz
+ * a receita de cada ano, a variação assinada, a participação de cada ano e a
+ * situação (Subiu / Caiu / Estável / Nova / Sumiu), tornando a planilha ordenável
+ * e filtrável por rumo — o valor que o card não cabe mostrar.
+ *
+ * Mesmas convenções do irmão de despesa: o Δ sai via `centsToCsvAmount` (emite o
+ * "-" nos negativos, sem "+" nos positivos); fontes novas têm ano anterior 0 e
+ * participação anterior 0%, as que sumiram têm ano corrente 0 e participação
+ * corrente 0% — legível por máquina, sem os "—" da UI. As participações do Total
+ * ficam em branco (são sempre 100% por construção). O chamador garante o mesmo
+ * gate do card (um ano específico, ambos com receita). Convenção pt-BR (";" e
+ * decimal com vírgula). Pura.
+ */
+export function incomeMixComparisonToCsv(
+  comparison: IncomeMixComparison,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(INCOME_MIX_COMPARISON_CSV_HEADERS)];
+  for (const s of comparison.changes) {
+    out.push([
+      s.category,
+      centsToCsvAmount(s.previousAmount),
+      centsToCsvAmount(s.currentAmount),
+      centsToCsvAmount(s.amountDelta),
+      csvShare(s.previousShare),
+      csvShare(s.currentShare),
+      incomeChangeSituation(s.amountDelta),
+    ]);
+  }
+  for (const s of comparison.newSources) {
+    out.push([
+      s.category,
+      centsToCsvAmount(0),
+      centsToCsvAmount(s.amount),
+      centsToCsvAmount(s.amount),
+      csvShare(0),
+      csvShare(s.share),
+      "Nova",
+    ]);
+  }
+  for (const s of comparison.droppedSources) {
+    out.push([
+      s.category,
+      centsToCsvAmount(s.amount),
+      centsToCsvAmount(0),
+      centsToCsvAmount(-s.amount),
+      csvShare(s.share),
+      csvShare(0),
+      "Sumiu",
+    ]);
+  }
+  out.push([
+    "Total",
+    centsToCsvAmount(comparison.previousTotal),
+    centsToCsvAmount(comparison.currentTotal),
+    centsToCsvAmount(comparison.totalDelta),
+    "",
+    "",
+    "",
+  ]);
   return toCsv(out, delimiter);
 }
 

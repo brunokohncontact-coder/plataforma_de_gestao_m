@@ -322,9 +322,17 @@ function IncomeMixComparisonCard({
         <h2 className="font-semibold">
           De onde veio a mudança · {year} vs. {previousYear}
         </h2>
-        <span className={"text-sm font-semibold " + totalTone}>
-          {signedMoney(totalDelta)} no total
-        </span>
+        <div className="flex items-baseline gap-3">
+          <span className={"text-sm font-semibold " + totalTone}>
+            {signedMoney(totalDelta)} no total
+          </span>
+          <a
+            href={`/financas/fontes-de-renda/comparativo/export?ano=${year}`}
+            className="text-xs text-brand-700 hover:underline"
+          >
+            ⬇ CSV
+          </a>
+        </div>
       </div>
       <p className="mb-4 text-xs text-gray-500">
         Que fontes de renda cresceram ou encolheram frente ao ano anterior — onde o

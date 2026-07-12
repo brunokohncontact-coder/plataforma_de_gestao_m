@@ -9,7 +9,32 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 312 (D306) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 313 (D307) —
+exportação CSV do comparativo ano a ano das FONTES DE RENDA (`/financas/fontes-de-renda/comparativo/export`),
+fechando a paridade despesa↔receita no CSV do comparativo:** a tela `/financas/fontes-de-renda` já tinha o
+card de movers "De onde veio a mudança · {ano} vs. {ano-1}" (`compareIncomeMix`/D224) mas — ao contrário da
+tela irmã `/financas/composicao-despesas`, que ganhou o export dedicado do comparativo na D224 — não dava
+para baixar a lista COMPLETA de mudanças fonte a fonte numa planilha (o card só destila os dois movers;
+faltavam as demais fontes, as NOVAS e as que SUMIRAM). Como o tipo `IncomeMixComparison` é espelho simétrico
+de `ExpenseMixComparison`, o serializador é um mirror fiel: em `src/lib/csv.ts` adicionei
+`incomeMixComparisonToCsv(comparison)` + `INCOME_MIX_COMPARISON_CSV_HEADERS` (Fonte / Receita ano anterior /
+Receita ano corrente / Δ receita / Participação ano anterior / Participação ano corrente / Situação) — uma
+linha por fonte em três blocos na ordem da tela (presentes nos dois anos por `changes` maior crescimento →
+maior queda; depois "Novas"; depois "Sumiram") + linha Total; situação Subiu/Caiu/Estável/Nova/Sumiu, mesma
+convenção do irmão `expenseMixComparisonToCsv`. Nova rota `/financas/fontes-de-renda/comparativo/export?ano=YYYY`
+(mesmo gate do card: 404 sem ano específico ou sem receita nos dois anos; recomputa os dois `incomeMix` sobre
+os MESMOS registros já carregados via `filterShowsByYear`, recorte UTC da D108, zero I/O extra; nome
+`fontes-de-renda-comparativo-{ano}-vs-{ano-1}.csv`) + link "⬇ CSV" no cabeçalho do card `IncomeMixComparisonCard`
+(espelho do `ExpenseMixComparisonCard`). Zero regra de negócio nova (`compareIncomeMix` já era testada), zero
+consulta nova, zero migração, zero dependência. **+4 testes** (`csv.test.ts`, `describe("incomeMixComparisonToCsv")`:
+só cabeçalho+Total zerado sem receita; fonte que cresceu com Δ assinado e "Subiu"; "Estável" sem mudança; Novas
+(ano anterior 0) e Sumidas (ano corrente 0)). Build/typecheck/lint verdes (**1723 testes**); smoke → `/login` 200,
+`/financas/fontes-de-renda` e `/financas/fontes-de-renda/comparativo/export?ano=2026` 307→/login (auth-gated,
+sem 500); `npm audit` inalterado (10 advisories). **Próximo possível** — a tela `/financas/composicao-despesas`
+já tem a "Situação (Subiu/Caiu/Estável)" no CSV do comparativo mas não na tabela on-screen (que mostra só os
+movers); levar a mesma seta/tendência às tabelas de fontes/composição on-screen, ou unificar as fontes de renda
+com um comparativo de participação (p.p.) além do valor. Ver D307.
+Antes disso, **Sessão 312 (D306) —
 migração do `provider` do Prisma de SQLite para PostgreSQL em dev/CI/produção, fechando a D294:**
 o `Application error` em `/register` na Vercel (D294) era causado pelo app rodar SQLite em produção,
 cujo sistema de arquivos serverless é somente-leitura/efêmero — toda escrita no banco lançava exceção.
