@@ -8,6 +8,7 @@ import {
   compareCitiesByProfit,
   cityProfitMovers,
   indexCityProfitChanges,
+  classifyCityProfitChange,
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
@@ -18,6 +19,7 @@ import {
   type GeoConcentrationComparison,
   type CityProfitChange,
   type CityProfitMovers,
+  type CityProfitTrend,
   type DiversificationLevel,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
@@ -325,11 +327,13 @@ export default async function CityProfitabilityPage({
             confiável).{" "}
             {cityChangeByKey && (
               <>
-                A coluna <strong>vs. {previousYear}</strong> mostra quantos shows a mais (
-                <span className="text-emerald-600">+</span>) ou a menos (
-                <span className="text-red-600">−</span>) você tocou na cidade em relação ao ano
-                anterior — para onde a agenda migrou (passe o mouse para ver o resultado nos dois
-                anos).{" "}
+                A coluna <strong>vs. {previousYear}</strong> mostra a tendência da cidade em
+                relação ao ano anterior — a seta resume se você tocou mais (
+                <span className="text-emerald-600">↑</span>), menos (
+                <span className="text-red-600">↓</span>) ou igual (
+                <span className="text-gray-400">→</span>), seguida da variação do nº de shows; quando
+                a contagem empata, o resultado desempata a tendência (passe o mouse para ver o
+                resultado nos dois anos).{" "}
               </>
             )}
             Para o detalhe por casa, veja{" "}
@@ -606,11 +610,31 @@ function signedCount(delta: number): string {
 }
 
 /**
- * Célula "vs. {ano-1}" de uma cidade: variação do nº de shows do ano anterior
- * para o atual, colorida por sinal (verde subiu, vermelho caiu, cinza estável).
- * O `title` traz o resultado (net) nos dois anos, dando a dimensão financeira
- * sem gastar uma segunda coluna. `change` nulo (cidade sem par no comparativo)
- * cai em "—" — defensivo; as linhas atuais sempre têm entrada.
+ * Apresentação da tendência de uma cidade no comparativo (seta + tom + rótulo),
+ * o mesmo veredito da coluna "Tendência" do CSV (`classifyCityProfitChange`):
+ * ancora no nº de shows e usa o resultado como desempate. Os rótulos casam com
+ * os do CSV (`CITY_PROFIT_TREND_LABELS`), para a tela e a planilha lerem igual.
+ */
+const CITY_PROFIT_TREND: Record<
+  CityProfitTrend,
+  { arrow: string; tone: string; label: string }
+> = {
+  up: { arrow: "↑", tone: "text-emerald-600", label: "Subiu" },
+  down: { arrow: "↓", tone: "text-red-600", label: "Caiu" },
+  flat: { arrow: "→", tone: "text-gray-400", label: "Estável" },
+};
+
+/**
+ * Célula "vs. {ano-1}" de uma cidade: a tendência do ano anterior para o atual
+ * (`classifyCityProfitChange` — mesma disciplina do CSV: nº de shows com o
+ * resultado de desempate), como seta + variação do nº de shows, colorida pela
+ * tendência (verde subiu, vermelho caiu, cinza estável). A seta capta os casos
+ * que o sinal do nº de shows sozinho perde — mesma contagem, mas resultado
+ * melhor/pior (aí a planilha já dizia "Subiu"/"Caiu" e a tela mostrava "0"
+ * cinza). O `title` nomeia a tendência e traz o resultado (net) nos dois anos,
+ * dando a dimensão financeira sem gastar uma segunda coluna. `change` nulo
+ * (cidade sem par no comparativo) cai em "—" — defensivo; as linhas atuais
+ * sempre têm entrada.
  */
 function CityTrendCell({
   change,
@@ -622,20 +646,15 @@ function CityTrendCell({
   if (!change) {
     return <td className="px-4 py-3 text-right text-gray-300">—</td>;
   }
-  const tone =
-    change.countDelta > 0
-      ? "text-emerald-600"
-      : change.countDelta < 0
-        ? "text-red-600"
-        : "text-gray-400";
+  const { arrow, tone, label } = CITY_PROFIT_TREND[classifyCityProfitChange(change)];
   return (
     <td
       className={"px-4 py-3 text-right font-medium " + tone}
-      title={`Resultado: ${formatMoney(change.previousNet)} (${previousYear}) → ${formatMoney(
+      title={`${label} · resultado ${formatMoney(change.previousNet)} (${previousYear}) → ${formatMoney(
         change.currentNet,
       )}`}
     >
-      {signedCount(change.countDelta)}
+      <span aria-hidden="true">{arrow}</span> {signedCount(change.countDelta)}
     </td>
   );
 }

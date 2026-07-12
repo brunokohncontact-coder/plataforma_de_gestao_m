@@ -9,7 +9,27 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 307 (D301) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 308 (D302) —
+Tendência (Subiu/Caiu/Estável) na coluna "vs. {ano-1}" das telas por cidade e por local (alinhando
+tela↔CSV):** o CSV do comparativo (D300/D301) já trazia a coluna "Tendência" (`classifyCityProfitChange`
+→ Subiu/Caiu/Estável, ancorada no nº de shows com o resultado de desempate), mas a coluna "vs. {ano-1}"
+das TABELAS de `/shows/cidades` e `/shows/locais` colorava só pelo **sinal do nº de shows** (`countDelta`)
+e exibia o delta cru — divergindo da planilha quando uma cidade/casa mantinha a mesma contagem mas o
+resultado (net) subia/caía (o CSV dizia "Subiu"/"Caiu", a tela mostrava "0" cinza). Agora `CityTrendCell`/
+`VenueTrendCell` derivam a tendência com o MESMO `classifyCityProfitChange` (alias `classifyVenueProfitChange`
+na tela de locais) e renderizam **seta ↑/↓/→ + variação do nº de shows**, coloridas pela **tendência**
+(emerald/vermelho/cinza), via um mapa de apresentação local por página (`CITY_PROFIT_TREND`/
+`VENUE_PROFIT_TREND` → {seta, tom, rótulo}) com rótulos idênticos aos do CSV. O `title` passa a nomear a
+tendência além do resultado nos dois anos; nota de rodapé reescrita para explicar a seta. Zero regra de
+negócio nova (a classificação é a função pura já testada da D300), zero rota/consulta/migração/dependência;
+mudança só de apresentação em `src/app/(app)/shows/cidades/page.tsx` e `.../locais/page.tsx`. Sem novos
+testes (nenhuma lógica pura nova). Build/typecheck/lint verdes (**1719 testes**); smoke → `/login` 200,
+`/shows/cidades?ano=2026`, `/shows/locais?ano=2026` e `/shows/cidades/comparativo/export?ano=2026`
+307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories). **Próximo possível** — levar a
+mesma seta de tendência às demais colunas "vs." on-screen que ainda mostram só o delta cru (faixas de cachê
+/D292, dia da semana/D46), ou unificar a descoberta dos exports de comparativo nos cards de movers das telas
+que ainda não têm o link. Ver D302.
+Antes disso, **Sessão 307 (D301) —
 exportação CSV do comparativo ano a ano por LOCAL (fechando a paridade cidades↔locais no comparativo):**
 a D300 (Sessão 306) trouxe o export dedicado do comparativo por CIDADE (`/shows/cidades/comparativo/export`)
 e **adiou** explicitamente o eixo LOCAL — deixando `/shows/locais` assimétrica: já tinha a coluna "vs. {ano-1}"
