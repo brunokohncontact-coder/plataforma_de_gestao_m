@@ -468,6 +468,35 @@ export function cityProfitMovers(changes: CityProfitChange[]): CityProfitMovers 
   return { biggestGain, biggestDrop };
 }
 
+// ── Comparativo ano a ano por local (mesmo motor, eixo de casa/palco) ─────────
+//
+// O comparativo de rentabilidade opera sobre `CitiesProfitability`, que é um
+// alias de `VenuesProfitability` (`rankCitiesByProfit` é um rollup acima de
+// `rankVenuesByProfit`, mesma forma de linha). Como o motor puro
+// (`compareCitiesByProfit`/`indexCityProfitChanges`/`cityProfitMovers`) é, na
+// prática, genérico sobre qualquer ranking de rentabilidade agregado, a tela de
+// rentabilidade por local (`/shows/locais`) reaproveita exatamente a mesma
+// lógica sob nomes de eixo-casa — espelhando como o repo já aliasa os tipos
+// (`CityProfitRow = VenueProfitRow`). O prefixo "City" nas funções é histórico
+// (a comparação nasceu na tela de cidades, D297/D298); os aliases abaixo evitam
+// que a tela de locais importe helpers de nome "cidade". A "Sem local"
+// (`key === ""`) já fica de fora dos movers pela mesma regra da "Sem cidade".
+
+/** Variação de um local entre dois períodos (alias de `CityProfitChange`). */
+export type VenueProfitChange = CityProfitChange;
+
+/** Os dois maiores movers por local (alias de `CityProfitMovers`). */
+export type VenueProfitMovers = CityProfitMovers;
+
+/** Compara a rentabilidade por local entre dois períodos (mesmo motor de cidades). */
+export const compareVenuesByProfit = compareCitiesByProfit;
+
+/** Índice O(1) por chave de local sobre a saída de `compareVenuesByProfit`. */
+export const indexVenueProfitChanges = indexCityProfitChanges;
+
+/** Destila os dois movers por local (maior ganho / maior perda de shows). */
+export const venueProfitMovers = cityProfitMovers;
+
 // ── Concentração geográfica (risco de depender de poucas cidades) ────────────
 
 export interface GeoShareSlice {

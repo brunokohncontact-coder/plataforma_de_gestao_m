@@ -4,6 +4,9 @@ import {
   rankShowsByProfit,
   compareShowsProfitability,
   rankVenuesByProfit,
+  compareVenuesByProfit,
+  venueProfitMovers,
+  indexVenueProfitChanges,
   rankCitiesByProfit,
   compareCitiesByProfit,
   cityProfitMovers,
@@ -745,6 +748,79 @@ describe("cityProfitMovers", () => {
       compareCitiesByProfit(rankCitiesByProfit(currentShows, []), rankCitiesByProfit([], [])),
     );
     expect(movers.biggestGain?.key).toBe("recife");
+    expect(movers.biggestDrop).toBeNull();
+  });
+});
+
+// A comparação de rentabilidade por local reaproveita o mesmo motor puro da de
+// cidades (aliases `compareVenuesByProfit`/`indexVenueProfitChanges`/
+// `venueProfitMovers`), agora sobre um eixo de CASA/palco em vez de cidade. Estes
+// testes exercitam os aliases sobre `rankVenuesByProfit` (chave = local, caindo
+// para a cidade; balde "" = "Sem local") para travar a paridade e evitar que uma
+// eventual divergência futura entre os dois eixos passe despercebida.
+describe("compareVenuesByProfit / venueProfitMovers (por local)", () => {
+  it("casa as casas pela chave de local e computa a variação de shows e resultado", () => {
+    const currentShows: VenueShowLike[] = [
+      { id: "a", fee: 100_00, status: "PLAYED", venue: "Bar do Zé", city: "Recife" },
+      { id: "b", fee: 200_00, status: "CONFIRMED", venue: "Bar do Zé", city: "Recife" },
+      { id: "c", fee: 50_00, status: "CONFIRMED", venue: "Teatro", city: "Olinda" },
+    ];
+    const previousShows: VenueShowLike[] = [
+      { id: "p1", fee: 100_00, status: "PLAYED", venue: "Bar do Zé", city: "Recife" },
+    ];
+    const changes = compareVenuesByProfit(
+      rankVenuesByProfit(currentShows, []),
+      rankVenuesByProfit(previousShows, []),
+    );
+    const byKey = indexVenueProfitChanges(changes);
+
+    // Bar do Zé existia nos dois anos: 1 → 2 shows (+1), net 100 → 300 (+200).
+    const bar = byKey.get("bar do ze")!;
+    expect(bar.currentCount).toBe(2);
+    expect(bar.previousCount).toBe(1);
+    expect(bar.countDelta).toBe(1);
+    expect(bar.netDelta).toBe(200_00);
+    // Teatro é casa nova do ano (sem par no anterior) → +tudo.
+    const teatro = byKey.get("teatro")!;
+    expect(teatro.previousCount).toBe(0);
+    expect(teatro.countDelta).toBe(1);
+    expect(teatro.netDelta).toBe(50_00);
+  });
+
+  it("aponta a casa que mais ganhou e a que mais perdeu shows", () => {
+    const currentShows: VenueShowLike[] = [
+      { id: "a", fee: 100_00, status: "PLAYED", venue: "Bar", city: "Recife" },
+      { id: "b", fee: 100_00, status: "PLAYED", venue: "Bar", city: "Recife" },
+      { id: "c", fee: 100_00, status: "PLAYED", venue: "Bar", city: "Recife" },
+      { id: "d", fee: 100_00, status: "PLAYED", venue: "Café", city: "Recife" },
+    ];
+    const previousShows: VenueShowLike[] = [
+      { id: "p1", fee: 100_00, status: "PLAYED", venue: "Bar", city: "Recife" },
+      { id: "p2", fee: 100_00, status: "PLAYED", venue: "Café", city: "Recife" },
+      { id: "p3", fee: 100_00, status: "PLAYED", venue: "Café", city: "Recife" },
+      { id: "p4", fee: 100_00, status: "PLAYED", venue: "Café", city: "Recife" },
+    ];
+    const movers = venueProfitMovers(
+      compareVenuesByProfit(
+        rankVenuesByProfit(currentShows, []),
+        rankVenuesByProfit(previousShows, []),
+      ),
+    );
+    expect(movers.biggestGain?.key).toBe("bar"); // +2 shows
+    expect(movers.biggestGain?.countDelta).toBe(2);
+    expect(movers.biggestDrop?.key).toBe("cafe"); // −2 shows
+    expect(movers.biggestDrop?.countDelta).toBe(-2);
+  });
+
+  it("ignora a 'Sem local' — não é destino de migração", () => {
+    // Único movimento é no balde sem local nem cidade: não deve virar mover.
+    const currentShows: VenueShowLike[] = [
+      { id: "a", fee: 100_00, status: "PLAYED", venue: null, city: null },
+    ];
+    const movers = venueProfitMovers(
+      compareVenuesByProfit(rankVenuesByProfit(currentShows, []), rankVenuesByProfit([], [])),
+    );
+    expect(movers.biggestGain).toBeNull();
     expect(movers.biggestDrop).toBeNull();
   });
 });
