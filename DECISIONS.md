@@ -5,6 +5,41 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-12 — D307: Exportação CSV do comparativo ano a ano das fontes de renda (paridade despesa↔receita)
+- **Contexto:** a tela `/financas/fontes-de-renda` já tinha o card de movers "De onde veio a mudança ·
+  {ano} vs. {ano-1}" (`compareIncomeMix`/D224), mas — ao contrário da tela irmã `/financas/composicao-despesas`,
+  que na própria D224 ganhou o export dedicado do comparativo (`.../comparativo/export` +
+  `expenseMixComparisonToCsv`) — a receita não tinha o CSV completo do comparativo. O card só destila os dois
+  movers (a fonte que mais cresceu e a que mais caiu); ficavam de fora as demais fontes presentes nos dois
+  anos, as NOVAS e as que SUMIRAM — exatamente a lista completa que uma planilha ordenável/filtrável entrega.
+- **Decisão:**
+  - `src/lib/csv.ts`: `incomeMixComparisonToCsv(comparison)` + `INCOME_MIX_COMPARISON_CSV_HEADERS` (Fonte /
+    Receita ano anterior / Receita ano corrente / Δ receita / Participação ano anterior / Participação ano
+    corrente / Situação), espelho simétrico de `expenseMixComparisonToCsv` — o tipo `IncomeMixComparison` já
+    é mirror de `ExpenseMixComparison`. Uma linha por fonte em três blocos na ordem da tela (presentes nos dois
+    anos por `changes` maior crescimento → maior queda; "Novas"; "Sumiram") + linha Total; situação
+    Subiu/Caiu/Estável/Nova/Sumiu, mesma convenção pt-BR (";", decimal com vírgula, Δ sem "+" via
+    `centsToCsvAmount`) do irmão de despesa.
+  - Nova rota `src/app/(app)/financas/fontes-de-renda/comparativo/export/route.ts` (`?ano=YYYY`): mesmo gate
+    do card (404 sem ano específico ou sem receita nos dois anos), recomputa os dois `incomeMix` sobre os
+    MESMOS registros já carregados (`filterShowsByYear`, recorte UTC da D108 — zero I/O extra); nome
+    `fontes-de-renda-comparativo-{ano}-vs-{ano-1}.csv`; BOM UTF-8 para acento no Excel — mirror fiel do route
+    de composição de despesas.
+  - `src/app/(app)/financas/fontes-de-renda/page.tsx`: link "⬇ CSV" no cabeçalho do `IncomeMixComparisonCard`,
+    espelho do `ExpenseMixComparisonCard`.
+  - **+4 testes** em `csv.test.ts` (`describe("incomeMixComparisonToCsv")`), simétricos aos de despesa.
+- **Justificativa:** paridade despesa↔receita reduz surpresa (as duas telas de mix agora oferecem o mesmo
+  comparativo baixável). Zero regra de negócio nova — a comparação (`compareIncomeMix`) já era pura e testada;
+  a sessão só serializa e embrulha no HTTP, no molde já validado da despesa. Zero consulta/migração/dependência.
+- **Alternativas consideradas:** (a) generalizar um único serializador para os dois eixos via um `groupLabel`
+  (como se fez para cidade↔local em `cityProfitComparisonToCsv`/D301) — descartado porque, além do rótulo da
+  1ª coluna, os cabeçalhos de valor diferem ("Gasto" vs. "Receita") e a `IncomeMixComparison` usa `newSources`/
+  `droppedSources` (não `newCategories`/`droppedCategories`): um mirror explícito é mais legível que um
+  serializador com dois modos. (b) Deixar só os movers na tela sem CSV — mantém a assimetria com a despesa e
+  esconde as fontes novas/sumidas, que é justamente o que a planilha revela.
+
+---
+
 ## 2026-07-12 — D306: Migração do `provider` do Prisma para PostgreSQL em dev/CI/produção (fecha a D294)
 - **Contexto:** a D294 (sessão anterior) diagnosticou o `Application error` em `/register` na Vercel
   (digest 4246294862): produção rodava SQLite (`provider = "sqlite"`, `file:./dev.db`) e o sistema de

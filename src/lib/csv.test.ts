@@ -49,6 +49,8 @@ import {
   FEE_DISTRIBUTION_CSV_HEADERS,
   incomeMixToCsv,
   INCOME_MIX_CSV_HEADERS,
+  incomeMixComparisonToCsv,
+  INCOME_MIX_COMPARISON_CSV_HEADERS,
   expenseMixToCsv,
   EXPENSE_MIX_CSV_HEADERS,
   expenseMixComparisonToCsv,
@@ -180,6 +182,7 @@ import {
   compareFeeDistribution,
   showPipeline,
   incomeMix,
+  compareIncomeMix,
   expenseMix,
   compareExpenseMix,
   compareCategoryReports,
@@ -2170,6 +2173,95 @@ describe("expenseMixComparisonToCsv", () => {
     // Sumida: Estúdio (só no anterior).
     const sumida = lines[2].split(";");
     expect(sumida[0]).toBe("Estúdio");
+    expect(sumida[1]).toBe("1200,00"); // ano anterior
+    expect(sumida[2]).toBe("0,00"); // ano corrente
+    expect(sumida[3]).toBe("-1200,00"); // Δ = -anterior
+    expect(sumida[4]).toBe("100%");
+    expect(sumida[5]).toBe("0%");
+    expect(sumida[6]).toBe("Sumiu");
+    expect(lines[3]).toBe("Total;1200,00;800,00;-400,00;;;");
+  });
+});
+
+describe("incomeMixComparisonToCsv", () => {
+  const inc = (over: Partial<TxLike> = {}): TxLike => ({
+    type: "INCOME",
+    amount: 100000,
+    category: "Show",
+    date: "2024-03-10T00:00:00.000Z",
+    received: true,
+    ...over,
+  });
+
+  it("emite só o cabeçalho + a linha Total (zerada) sem receita nos dois anos", () => {
+    const csv = incomeMixComparisonToCsv(
+      compareIncomeMix(incomeMix([]), incomeMix([])),
+    );
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(INCOME_MIX_COMPARISON_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe("Total;0,00;0,00;0,00;;;");
+  });
+
+  it("serializa fontes presentes nos dois anos (maior crescimento → maior queda) com Δ e situação", () => {
+    // Corrente: Show 4000 (subiu), Aula 500 (caiu).
+    // Anterior: Show 1000, Aula 1500.
+    const current = incomeMix([
+      inc({ category: "Show", amount: 400000 }),
+      inc({ category: "Aula", amount: 50000 }),
+    ]);
+    const previous = incomeMix([
+      inc({ category: "Show", amount: 100000 }),
+      inc({ category: "Aula", amount: 150000 }),
+    ]);
+    const lines = incomeMixComparisonToCsv(
+      compareIncomeMix(current, previous),
+    ).split("\r\n");
+    // Show subiu +3000 → vem primeiro.
+    const show = lines[1].split(";");
+    expect(show[0]).toBe("Show");
+    expect(show[1]).toBe("1000,00"); // ano anterior
+    expect(show[2]).toBe("4000,00"); // ano corrente
+    expect(show[3]).toBe("3000,00"); // Δ (sem "+", como o irmão de despesa)
+    expect(show[6]).toBe("Subiu");
+    // Aula caiu -1000.
+    const aula = lines[2].split(";");
+    expect(aula[0]).toBe("Aula");
+    expect(aula[3]).toBe("-1000,00"); // Δ negativo
+    expect(aula[6]).toBe("Caiu");
+    // Total: 2500 anterior → 4500 corrente, Δ +2000, participações em branco.
+    expect(lines[3]).toBe("Total;2500,00;4500,00;2000,00;;;");
+  });
+
+  it("marca 'Estável' quando a fonte não mudou de valor", () => {
+    const mix = incomeMix([inc({ category: "Streaming", amount: 200000 })]);
+    const lines = incomeMixComparisonToCsv(compareIncomeMix(mix, mix)).split(
+      "\r\n",
+    );
+    const streaming = lines[1].split(";");
+    expect(streaming[3]).toBe("0,00");
+    expect(streaming[6]).toBe("Estável");
+  });
+
+  it("registra fontes novas (ano anterior 0) e sumidas (ano corrente 0)", () => {
+    const current = incomeMix([inc({ category: "Casamento", amount: 80000 })]);
+    const previous = incomeMix([inc({ category: "Festival", amount: 120000 })]);
+    const lines = incomeMixComparisonToCsv(
+      compareIncomeMix(current, previous),
+    ).split("\r\n");
+    // Sem fonte em comum: só bloco Novas + Sumidas + Total.
+    // Nova: Casamento (só no corrente).
+    const nova = lines[1].split(";");
+    expect(nova[0]).toBe("Casamento");
+    expect(nova[1]).toBe("0,00"); // ano anterior
+    expect(nova[2]).toBe("800,00"); // ano corrente
+    expect(nova[3]).toBe("800,00"); // Δ = +corrente
+    expect(nova[4]).toBe("0%"); // participação anterior
+    expect(nova[5]).toBe("100%"); // participação corrente
+    expect(nova[6]).toBe("Nova");
+    // Sumida: Festival (só no anterior).
+    const sumida = lines[2].split(";");
+    expect(sumida[0]).toBe("Festival");
     expect(sumida[1]).toBe("1200,00"); // ano anterior
     expect(sumida[2]).toBe("0,00"); // ano corrente
     expect(sumida[3]).toBe("-1200,00"); // Δ = -anterior
