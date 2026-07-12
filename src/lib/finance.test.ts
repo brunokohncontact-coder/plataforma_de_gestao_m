@@ -5,6 +5,8 @@ import {
   compareShowsProfitability,
   rankVenuesByProfit,
   rankCitiesByProfit,
+  compareCitiesByProfit,
+  indexCityProfitChanges,
   rankContactsByProfit,
   rankRolesByProfit,
   roleConcentration,
@@ -595,6 +597,79 @@ describe("rankCitiesByProfit", () => {
     const recife = r.rows.find((row) => row.key === "recife")!;
     expect(recife.medianFee).toBe(200_00);
     expect(recife.medianFee).not.toBe(Math.round(recife.totalFee / recife.showCount));
+  });
+});
+
+describe("compareCitiesByProfit", () => {
+  // Ano atual: Recife (2 shows, net 300), Olinda (1 show, net 50).
+  const currentShows: VenueShowLike[] = [
+    { id: "a", fee: 100_00, status: "PLAYED", venue: "Bar", city: "Recife" },
+    { id: "b", fee: 200_00, status: "CONFIRMED", venue: "Café", city: "Recife" },
+    { id: "c", fee: 50_00, status: "CONFIRMED", venue: "Teatro", city: "Olinda" },
+  ];
+  // Ano anterior: Recife (1 show, net 100), João Pessoa (1 show, net 80).
+  const previousShows: VenueShowLike[] = [
+    { id: "p1", fee: 100_00, status: "PLAYED", venue: "Bar", city: "Recife" },
+    { id: "p2", fee: 80_00, status: "PLAYED", venue: "Casa", city: "João Pessoa" },
+  ];
+
+  const current = () => rankCitiesByProfit(currentShows, []);
+  const previous = () => rankCitiesByProfit(previousShows, []);
+
+  it("casa as cidades pela chave e computa a variação de shows e resultado", () => {
+    const changes = compareCitiesByProfit(current(), previous());
+    const byKey = indexCityProfitChanges(changes);
+
+    // Recife existia nos dois anos: 1 → 2 shows (+1), net 100 → 300 (+200).
+    const recife = byKey.get("recife")!;
+    expect(recife.currentCount).toBe(2);
+    expect(recife.previousCount).toBe(1);
+    expect(recife.countDelta).toBe(1);
+    expect(recife.currentNet).toBe(300_00);
+    expect(recife.previousNet).toBe(100_00);
+    expect(recife.netDelta).toBe(200_00);
+  });
+
+  it("trata cidade nova do ano (sem par no anterior) como +tudo", () => {
+    const olinda = indexCityProfitChanges(compareCitiesByProfit(current(), previous())).get(
+      "olinda",
+    )!;
+    expect(olinda.previousCount).toBe(0);
+    expect(olinda.previousNet).toBe(0);
+    expect(olinda.countDelta).toBe(1);
+    expect(olinda.netDelta).toBe(50_00);
+  });
+
+  it("anexa cidades que sumiram (existiam no anterior, não no atual) com delta negativo", () => {
+    const changes = compareCitiesByProfit(current(), previous());
+    const jp = changes.find((c) => c.key === "joao pessoa")!;
+    expect(jp).toBeDefined();
+    expect(jp.currentCount).toBe(0);
+    expect(jp.currentNet).toBe(0);
+    expect(jp.previousCount).toBe(1);
+    expect(jp.countDelta).toBe(-1);
+    expect(jp.netDelta).toBe(-80_00);
+  });
+
+  it("preserva a ordem do relatório atual (resultado desc), com as sumidas ao final", () => {
+    const keys = compareCitiesByProfit(current(), previous()).map((c) => c.key);
+    // Atual ordenado por net desc: Recife (300), Olinda (50); depois a sumida.
+    expect(keys).toEqual(["recife", "olinda", "joao pessoa"]);
+  });
+
+  it("sem base anterior (relatório vazio) → cada cidade atual vira +participação", () => {
+    const changes = compareCitiesByProfit(current(), rankCitiesByProfit([], []));
+    expect(changes).toHaveLength(2);
+    expect(changes.every((c) => c.previousCount === 0 && c.countDelta === c.currentCount)).toBe(
+      true,
+    );
+  });
+
+  it("indexCityProfitChanges mapeia por chave para lookup O(1)", () => {
+    const changes = compareCitiesByProfit(current(), previous());
+    const map = indexCityProfitChanges(changes);
+    expect(map.size).toBe(changes.length);
+    for (const c of changes) expect(map.get(c.key)).toBe(c);
   });
 });
 

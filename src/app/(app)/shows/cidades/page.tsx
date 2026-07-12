@@ -5,6 +5,8 @@ import {
   rankCitiesByProfit,
   geoConcentration,
   compareGeoConcentration,
+  compareCitiesByProfit,
+  indexCityProfitChanges,
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
@@ -13,6 +15,7 @@ import {
   type VenueShowLike,
   type GeoConcentration,
   type GeoConcentrationComparison,
+  type CityProfitChange,
   type DiversificationLevel,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
@@ -83,13 +86,21 @@ export default async function CityProfitabilityPage({
   // caso contrário a leitura "melhorou/piorou" seria enganosa. Reaproveita o
   // mesmo recorte por ano UTC (D108) sobre os shows já carregados.
   let geoComparison: GeoConcentrationComparison | null = null;
+  // Coluna "vs. {ano-1}" por cidade (para onde a agenda migrou): variação do nº
+  // de shows de cada praça de um ano para o outro. Distinta do card de
+  // concentração (agregado) — aqui é linha a linha, espelho da coluna
+  // "vs. {ano-1}" das faixas de cachê (D292).
+  let cityChangeByKey: Map<string, CityProfitChange> | null = null;
   let previousYear = 0;
   if (yearFilter !== "all") {
     previousYear = yearFilter - 1;
-    const previousConcentration = geoConcentration(
-      rankCitiesByProfit(filterShowsByYear(cityShows, previousYear), txs).rows,
-    );
-    // Exige praça identificada nos DOIS períodos para comparar de verdade.
+    const previousReport = rankCitiesByProfit(filterShowsByYear(cityShows, previousYear), txs);
+    // A coluna por cidade só exige o ano anterior ter tido shows (para comparar).
+    if (previousReport.count > 0) {
+      cityChangeByKey = indexCityProfitChanges(compareCitiesByProfit(report, previousReport));
+    }
+    const previousConcentration = geoConcentration(previousReport.rows);
+    // O card comparativo exige praça identificada nos DOIS períodos (agregado).
     if (concentration.placeCount > 0 && previousConcentration.placeCount > 0) {
       geoComparison = compareGeoConcentration(concentration, previousConcentration);
     }
@@ -219,6 +230,9 @@ export default async function CityProfitabilityPage({
                   <th className="px-4 py-3 text-right font-medium">Despesas</th>
                   <th className="px-4 py-3 text-right font-medium">Resultado</th>
                   <th className="px-4 py-3 text-right font-medium">Média/show</th>
+                  {cityChangeByKey && (
+                    <th className="px-4 py-3 text-right font-medium">vs. {previousYear}</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -275,6 +289,12 @@ export default async function CityProfitabilityPage({
                     <td className="px-4 py-3 text-right text-gray-500">
                       {formatMoney(row.avgNet)}
                     </td>
+                    {cityChangeByKey && (
+                      <CityTrendCell
+                        change={cityChangeByKey.get(row.key) ?? null}
+                        previousYear={previousYear}
+                      />
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -286,7 +306,17 @@ export default async function CityProfitabilityPage({
             cidade informada aparecem como “Sem cidade”. O <strong>cachê mediano</strong> é o preço
             típico da praça (metade dos shows acima, metade abaixo), robusto a um show fora da curva;
             aparece só com {MIN_MEDIAN_FEE_SAMPLE} shows ou mais (com poucos, a mediana não é
-            confiável). Para o detalhe por casa, veja{" "}
+            confiável).{" "}
+            {cityChangeByKey && (
+              <>
+                A coluna <strong>vs. {previousYear}</strong> mostra quantos shows a mais (
+                <span className="text-emerald-600">+</span>) ou a menos (
+                <span className="text-red-600">−</span>) você tocou na cidade em relação ao ano
+                anterior — para onde a agenda migrou (passe o mouse para ver o resultado nos dois
+                anos).{" "}
+              </>
+            )}
+            Para o detalhe por casa, veja{" "}
             <Link href="/shows/locais" className="text-brand-700 hover:underline">
               Por local
             </Link>
@@ -463,6 +493,47 @@ function GeoComparisonCard({
       </div>
       <p className="mt-3 text-xs opacity-90">{trend.note}</p>
     </div>
+  );
+}
+
+/** Contagem com sinal para exibição: 3 → "+3", −2 → "−2", 0 → "0". */
+function signedCount(delta: number): string {
+  if (delta === 0) return "0";
+  return `${delta > 0 ? "+" : "−"}${Math.abs(delta)}`;
+}
+
+/**
+ * Célula "vs. {ano-1}" de uma cidade: variação do nº de shows do ano anterior
+ * para o atual, colorida por sinal (verde subiu, vermelho caiu, cinza estável).
+ * O `title` traz o resultado (net) nos dois anos, dando a dimensão financeira
+ * sem gastar uma segunda coluna. `change` nulo (cidade sem par no comparativo)
+ * cai em "—" — defensivo; as linhas atuais sempre têm entrada.
+ */
+function CityTrendCell({
+  change,
+  previousYear,
+}: {
+  change: CityProfitChange | null;
+  previousYear: number;
+}) {
+  if (!change) {
+    return <td className="px-4 py-3 text-right text-gray-300">—</td>;
+  }
+  const tone =
+    change.countDelta > 0
+      ? "text-emerald-600"
+      : change.countDelta < 0
+        ? "text-red-600"
+        : "text-gray-400";
+  return (
+    <td
+      className={"px-4 py-3 text-right font-medium " + tone}
+      title={`Resultado: ${formatMoney(change.previousNet)} (${previousYear}) → ${formatMoney(
+        change.currentNet,
+      )}`}
+    >
+      {signedCount(change.countDelta)}
+    </td>
   );
 }
 

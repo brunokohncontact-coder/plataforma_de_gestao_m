@@ -10391,3 +10391,54 @@ contexto, decisão, justificativa e alternativas consideradas.
   dependência nova.
 - **Nota de concorrência:** número **D296** escolhido como o próximo livre após o D295
   (Sessão 301). Se outra PR reivindicar D296, renumerar para o próximo livre no merge.
+
+## D297 — Coluna "vs. {ano-1}" por cidade na tabela e no CSV da atuação por cidade (`compareCitiesByProfit` + `indexCityProfitChanges` + `venueProfitToCsv` com comparativo) (Sessão 303)
+- **Contexto:** a tela `/shows/cidades` já tinha recorte por ano (`?ano=`, D108/D115) e o card
+  comparativo agregado da **concentração geográfica** (`compareGeoConcentration`/D114 — quanto a
+  receita depende da maior praça de um ano para o outro), mas a TABELA de rentabilidade por cidade
+  (uma linha por cidade) não dizia, cidade a cidade, para ONDE a agenda migrou de um ano para o
+  outro. As telas irmãs de comparativo já expõem esse detalhe por linha (`compareWeekdayPerformance`/
+  D46 no dia da semana, `bandChanges`/`indexFeeBandShareChanges`/D292 nas faixas de cachê); a de
+  cidades só tinha o resumo agregado.
+- **Decisão:** em `src/lib/finance.ts`, `compareCitiesByProfit(current, previous)` recebe dois
+  `rankCitiesByProfit` já computados, casa as cidades pela chave normalizada e devolve
+  `CityProfitChange[]` — por cidade: nº de shows e resultado (net) em cada ano + os deltas
+  (`countDelta`/`netDelta`). Percorre primeiro as cidades do ano atual **preservando a ordem do
+  relatório atual** (resultado desc) e depois anexa as que existiam no anterior e sumiram (delta
+  negativo). Diferente dos comparativos de conjunto fechado (7 dias, 6 faixas), o de cidades opera
+  sobre um conjunto **aberto** — por isso casa por chave e anexa as sumidas, espelhando `bandChanges`.
+  Mais o lookup O(1) `indexCityProfitChanges`. A tabela ganha a coluna "vs. {ano-1}" (só quando o ano
+  anterior teve shows — `previousReport.count > 0`) com a variação do nº de shows por cidade, colorida
+  por sinal (verde subiu / vermelho caiu / cinza estável) e com o resultado dos dois anos no `title`.
+  `venueProfitToCsv` (compartilhado com `/shows/locais`) ganha os parâmetros opcionais
+  `changes`/`previousYear`; quando ambos vêm, anexa a coluna "vs. {ano-1} (shows)" ao final
+  (`csvSignedCount`), espelho de `feeDistributionToCsv`. A rota `.../export` recomputa o ranking do
+  ano anterior sobre os MESMOS registros já carregados (recorte UTC da D108). Zero consulta nova, zero
+  regra nova, zero migração, zero dependência.
+- **Justificativa:** completa o par resumo (card de concentração agregado) + detalhe (linha a linha na
+  tabela/CSV), como nas faixas de cachê (D292). A coluna ancora no **nº de shows** — o sinal de
+  "migração da agenda" menos ruidoso que o resultado líquido (que pode virar com uma despesa/um cachê
+  fora da curva), e cuja leitura agregada já vive no card de concentração e nos totais. Reaproveitar
+  `venueProfitToCsv` com parâmetros opcionais mantém os locais intocados (não passam comparativo) —
+  mesma disciplina serializador-puro do resto do app.
+- **Alternativas consideradas:**
+  - *Coluna com o delta do resultado (R$) em vez do nº de shows* — descartado: o net por cidade é
+    ruidoso (um show caro ou uma despesa alta viram o sinal); o `netDelta` fica disponível no
+    `title`/no objeto para quem quiser, mas a coluna visível ancora na contagem, como os movers de
+    `compareWeekdayPerformance`.
+  - *Serializador de CSV separado só para cidades* — descartado: `venueProfitToCsv` já serve local e
+    cidade; parâmetros opcionais no fim (como `feeDistributionToCsv`) evitam a duplicação.
+  - *Manter as cidades sumidas fora do resultado* — descartado: anexá-las (delta negativo) torna
+    `compareCitiesByProfit` um diff completo e reutilizável; a tabela/CSV, que iteram só as linhas do
+    ano atual, simplesmente as ignoram.
+- **DoD:** build/typecheck/lint verdes; **1701 testes** (+9: `finance.test.ts`,
+  `describe("compareCitiesByProfit")` — casa a cidade dos dois anos e computa deltas de shows/
+  resultado; cidade nova → +tudo; cidade sumida → anexada com delta negativo; preserva a ordem do
+  relatório atual com as sumidas ao final; sem base anterior → cada cidade atual vira +participação;
+  `indexCityProfitChanges` mapeia por chave; `csv.test.ts` — sem comparativo → sem coluna; com
+  comparativo → coluna "vs. {ano-1} (shows)" com +3; cidade sem entrada → em branco); smoke →
+  `/login` 200, `/shows/cidades`, `?ano=2026` e `/shows/cidades/export?ano=2026` 307→/login
+  (auth-gated, sem 500); `npm audit` inalterado (10 advisories; ver D6). Zero migração, zero
+  dependência nova.
+- **Nota de concorrência:** número **D297** escolhido como o próximo livre após o D296 (Sessão 302).
+  Se outra PR reivindicar D297, renumerar para o próximo livre no merge.

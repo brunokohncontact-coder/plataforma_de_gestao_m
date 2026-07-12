@@ -26,6 +26,7 @@ import {
   type ShowLike,
   type ShowProfitRow,
   type VenueProfitRow,
+  type CityProfitChange,
   type ContactProfitRow,
   type RoleProfitRow,
   type PaymentPromiseStatus,
@@ -736,15 +737,28 @@ function csvMedianFee(showCount: number, medianFee: number): string {
  * download. `groupLabel` rotula a primeira coluna ("Local" ou "Cidade"). Mesma
  * convenção pt-BR de `transactionsToCsv`. A ordem das linhas é preservada (a
  * página ordena por resultado decrescente). Pura.
+ *
+ * Quando `changes`/`previousYear` são informados (só a tela de cidades, com um
+ * ano específico e o anterior tendo shows — ver `compareCitiesByProfit`), a
+ * planilha ganha uma última coluna "vs. {ano-1} (shows)" com a variação do nº de
+ * shows por cidade (espelha a coluna da tabela e `feeDistributionToCsv`/D292).
+ * `changes` casa por chave normalizada de cidade (`indexCityProfitChanges`);
+ * linha sem entrada fica em branco. Sem esses parâmetros a saída é idêntica à
+ * anterior — os locais (`/shows/locais`) não passam comparativo.
  */
 export function venueProfitToCsv(
   rows: VenueProfitRow[],
   groupLabel: string,
   delimiter = DEFAULT_DELIMITER,
+  changes?: Map<string, CityProfitChange> | null,
+  previousYear?: number | null,
 ): string {
-  const out: string[][] = [Array.from(venueProfitHeaders(groupLabel))];
+  const withTrend = changes != null && previousYear != null;
+  const header = Array.from(venueProfitHeaders(groupLabel)) as string[];
+  if (withTrend) header.push(`vs. ${previousYear} (shows)`);
+  const out: string[][] = [header];
   for (const row of rows) {
-    out.push([
+    const cols = [
       row.name,
       String(row.showCount),
       centsToCsvAmount(row.totalFee),
@@ -753,7 +767,12 @@ export function venueProfitToCsv(
       centsToCsvAmount(row.totalExpenses),
       centsToCsvAmount(row.totalNet),
       centsToCsvAmount(row.avgNet),
-    ]);
+    ];
+    if (withTrend) {
+      const change = changes!.get(row.key);
+      cols.push(change ? csvSignedCount(change.countDelta) : "");
+    }
+    out.push(cols);
   }
   return toCsv(out, delimiter);
 }

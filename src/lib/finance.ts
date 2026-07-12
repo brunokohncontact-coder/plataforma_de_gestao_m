@@ -310,6 +310,104 @@ export function rankCitiesByProfit(
   );
 }
 
+// ── Comparativo ano a ano por cidade (para onde a agenda migrou) ─────────────
+
+/**
+ * Variação de uma cidade entre dois períodos (tipicamente um ano × o anterior).
+ * Espelha `WeekdayPerformanceDayChange`/`FeeBandShareChange` num eixo de praça:
+ * carrega o nº de shows e o resultado (net) em cada período e os respectivos
+ * deltas (atual − anterior; podem ser negativos). Uma cidade nova só neste ano
+ * tem `previousCount`/`previousNet` = 0 (delta = valor atual); uma que sumiu tem
+ * `currentCount`/`currentNet` = 0 (delta negativo).
+ */
+export interface CityProfitChange {
+  /** Chave normalizada da cidade (sem acento, minúscula); "" = "Sem cidade". */
+  key: string;
+  /** Nome de exibição da cidade (grafia do período que a contém). */
+  name: string;
+  /** Nº de shows na cidade no período atual. */
+  currentCount: number;
+  /** Nº de shows na cidade no período anterior. */
+  previousCount: number;
+  /** Variação do nº de shows (atual − anterior); pode ser negativa. */
+  countDelta: number;
+  /** Resultado (net) da cidade no período atual (centavos). */
+  currentNet: number;
+  /** Resultado (net) da cidade no período anterior (centavos). */
+  previousNet: number;
+  /** Variação do resultado (atual − anterior, centavos); pode ser negativa. */
+  netDelta: number;
+}
+
+/**
+ * Compara a **atuação por cidade** entre dois períodos, casando as praças por
+ * chave normalizada, respondendo "para onde a agenda migrou — em que cidades
+ * passei a tocar mais/menos do que no ano passado?". Espelho de
+ * `compareFeeDistribution().bandChanges` (D292) e dos movers de
+ * `compareWeekdayPerformance` (D46), mas sobre um conjunto **aberto** de cidades
+ * (ao contrário dos 7 dias / 6 faixas fixos): percorre primeiro as cidades do
+ * período atual — preservando a ordem do relatório atual (resultado desc) — e
+ * depois anexa as que existiam no anterior e sumiram (delta negativo). Puro, sem
+ * I/O: recebe dois `rankCitiesByProfit` já computados (cada um sobre os shows do
+ * seu período). O chamador decide quando exibir (tipicamente só com um ano
+ * específico e o ano anterior tendo shows).
+ */
+export function compareCitiesByProfit(
+  current: CitiesProfitability,
+  previous: CitiesProfitability,
+): CityProfitChange[] {
+  const prevByKey = new Map(previous.rows.map((r) => [r.key, r]));
+  const changes: CityProfitChange[] = [];
+  const seen = new Set<string>();
+
+  // Cidades do período atual, na ordem do relatório atual (resultado desc).
+  for (const cur of current.rows) {
+    seen.add(cur.key);
+    const prev = prevByKey.get(cur.key);
+    changes.push({
+      key: cur.key,
+      name: cur.name,
+      currentCount: cur.showCount,
+      previousCount: prev?.showCount ?? 0,
+      countDelta: cur.showCount - (prev?.showCount ?? 0),
+      currentNet: cur.totalNet,
+      previousNet: prev?.totalNet ?? 0,
+      netDelta: cur.totalNet - (prev?.totalNet ?? 0),
+    });
+  }
+
+  // Cidades que existiam no período anterior e sumiram neste (delta negativo).
+  for (const prev of previous.rows) {
+    if (seen.has(prev.key)) continue;
+    changes.push({
+      key: prev.key,
+      name: prev.name,
+      currentCount: 0,
+      previousCount: prev.showCount,
+      countDelta: -prev.showCount,
+      currentNet: 0,
+      previousNet: prev.totalNet,
+      netDelta: -prev.totalNet,
+    });
+  }
+
+  return changes;
+}
+
+/**
+ * Índice O(1) por chave de cidade sobre a saída de `compareCitiesByProfit`, para
+ * casar cada linha da tabela/CSV com sua variação sem varredura. Espelha
+ * `indexFeeBandShareChanges` (D292). Chaves repetidas não ocorrem (uma linha por
+ * cidade em cada período); em caso de duplicata, a última prevalece.
+ */
+export function indexCityProfitChanges(
+  changes: CityProfitChange[],
+): Map<string, CityProfitChange> {
+  const map = new Map<string, CityProfitChange>();
+  for (const c of changes) map.set(c.key, c);
+  return map;
+}
+
 // ── Concentração geográfica (risco de depender de poucas cidades) ────────────
 
 export interface GeoShareSlice {

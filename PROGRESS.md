@@ -9,7 +9,33 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 302 (D296) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 303 (D297) —
+coluna "vs. {ano-1}" por cidade na tabela e no CSV da atuação por cidade:** a tela
+`/shows/cidades` já tinha recorte por ano (`?ano=`) e o card comparativo agregado da concentração
+geográfica (`compareGeoConcentration`/D114), mas a TABELA (uma linha por cidade) não dizia, cidade a
+cidade, para ONDE a agenda migrou de um ano para o outro — ao contrário das telas irmãs de comparativo
+por linha (`compareWeekdayPerformance`/D46, `bandChanges`/D292). Agora, em `src/lib/finance.ts`,
+`compareCitiesByProfit(current, previous)` casa as cidades pela chave normalizada e devolve
+`CityProfitChange[]` — por cidade, o nº de shows e o resultado (net) em cada ano mais os deltas
+(`countDelta`/`netDelta`); percorre primeiro as cidades do ano atual (preservando a ordem do relatório,
+resultado desc) e anexa as que existiam no anterior e sumiram (delta negativo). Sobre um conjunto
+**aberto** de cidades (≠ dos 7 dias / 6 faixas fixos), espelhando `bandChanges`. Mais o lookup O(1)
+`indexCityProfitChanges`. A tabela ganha a coluna "vs. {ano-1}" (só quando o ano anterior teve shows)
+com a variação do nº de shows por cidade, colorida por sinal (verde subiu, vermelho caiu) e com o
+resultado dos dois anos no `title`; `venueProfitToCsv` ganha os parâmetros opcionais `changes`/
+`previousYear` e anexa a coluna "vs. {ano-1} (shows)" ao final (espelho de `feeDistributionToCsv`,
+`csvSignedCount`) — os locais (`/shows/locais`) não passam comparativo, saída inalterada. A rota
+`.../export` recomputa o ranking do ano anterior sobre os MESMOS registros já carregados (recorte UTC
+da D108). Leitura anexa à economia por cidade já na tela; ancora no nº de shows (menos ruidoso que o
+net, cujo agregado já vive no card de concentração). Zero consulta nova, zero regra nova, zero migração,
+zero dependência. **+9 testes** (`finance.test.ts`, `describe("compareCitiesByProfit")`: casa a cidade
+dos dois anos e computa deltas de shows/resultado; cidade nova → +tudo; cidade sumida → anexada com delta
+negativo; preserva a ordem do relatório atual com as sumidas ao final; sem base anterior → cada cidade
+atual vira +participação; `indexCityProfitChanges` mapeia por chave — `csv.test.ts`: sem comparativo →
+sem coluna; com comparativo → coluna "vs. {ano-1} (shows)" com +3; cidade sem entrada → em branco).
+Build/typecheck/lint verdes (**1701 testes**); smoke → `/login` 200, `/shows/cidades`, `?ano=2026` e
+`/export?ano=2026` 307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories). Ver D297.
+Antes disso, **Sessão 302 (D296) —
 seletor de antecedência do lembrete na UI do "Exportar .ics":** a D295 (Sessão 301) tornou o VALARM
 do feed `/shows/agenda.ics` ajustável só pelo parâmetro de URL `?lembrete=` e **adiou explicitamente**
 o controle na tela ("Um seletor pode vir depois"). Os três botões "Exportar .ics" (`/shows`,

@@ -200,6 +200,7 @@ import {
   type TxLike,
   type ShowProfitRow,
   type VenueProfitRow,
+  type CityProfitChange,
   type ContactProfitRow,
   type RoleProfitRow,
   type ReceivableShowLike,
@@ -752,6 +753,40 @@ describe("venueProfitToCsv", () => {
   it("escapa nomes com delimitador", () => {
     const csv = venueProfitToCsv([row({ name: "Bar; Pub" })], "Local");
     expect(csv.split("\r\n")[1]).toContain('"Bar; Pub"');
+  });
+
+  it("sem comparativo → sem a coluna 'vs. {ano-1}' (comportamento dos locais inalterado)", () => {
+    const csv = venueProfitToCsv([row()], "Cidade");
+    expect(csv.split("\r\n")[0].includes("vs.")).toBe(false);
+  });
+
+  it("com comparativo → coluna 'vs. {ano-1} (shows)' com a variação por cidade", () => {
+    const changes = new Map<string, CityProfitChange>([
+      [
+        "bar-x",
+        {
+          key: "bar-x",
+          name: "Bar X",
+          currentCount: 4,
+          previousCount: 1,
+          countDelta: 3,
+          currentNet: 570000,
+          previousNet: 100000,
+          netDelta: 470000,
+        },
+      ],
+    ]);
+    const csv = venueProfitToCsv([row()], "Cidade", undefined, changes, 2025);
+    const lines = csv.split("\r\n");
+    expect(lines[0].endsWith("vs. 2025 (shows)")).toBe(true);
+    // Última coluna da linha da cidade = +3 (ganhou 3 shows vs. o ano anterior).
+    expect(lines[1].split(";").at(-1)).toBe("+3");
+  });
+
+  it("cidade sem entrada no comparativo fica com a coluna em branco", () => {
+    const changes = new Map<string, CityProfitChange>();
+    const csv = venueProfitToCsv([row()], "Cidade", undefined, changes, 2025);
+    expect(csv.split("\r\n")[1].split(";").at(-1)).toBe("");
   });
 });
 
