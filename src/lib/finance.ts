@@ -408,6 +408,66 @@ export function indexCityProfitChanges(
   return map;
 }
 
+/** Os dois maiores movimentos de agenda entre cidades (ganho/perda de shows). */
+export interface CityProfitMovers {
+  /**
+   * Cidade que mais GANHOU shows (maior `countDelta > 0`; empate → maior
+   * `netDelta`, depois a ordem do relatório atual — resultado desc); null se
+   * nenhuma cidade subiu.
+   */
+  biggestGain: CityProfitChange | null;
+  /**
+   * Cidade que mais PERDEU shows (menor `countDelta < 0`; empate → menor
+   * `netDelta`, depois a ordem do relatório atual); null se nenhuma caiu.
+   */
+  biggestDrop: CityProfitChange | null;
+}
+
+/**
+ * Destila de `compareCitiesByProfit` os dois **movers** — a cidade que mais
+ * cresceu e a que mais caiu em nº de shows — respondendo, num relance, "para
+ * onde a agenda migrou de um ano para o outro?". Espelho fiel dos movers de
+ * `compareWeekdayPerformance` (D46), mas sobre o conjunto **aberto** de cidades:
+ * em vez de despejar a tabela inteira, aponta o maior ganho e a maior perda,
+ * mantendo o card enxuto (a tabela detalha o resto). Puro, sem I/O: recebe a
+ * lista já casada por `compareCitiesByProfit`.
+ *
+ * Ancora no **nº de shows** (`countDelta`, o eixo primário da página), com o
+ * `netDelta` como desempate — uma cidade que trocou um show barato por um caro,
+ * mesmo com contagem empatada, vence. A "Sem cidade" (`key === ""`) fica de fora
+ * dos movers: é um balde de shows sem praça informada, não um destino para onde
+ * a agenda "migrou" — poluiria a leitura (segue na tabela e na coluna por linha).
+ * Como a lista já vem na ordem do relatório atual (resultado desc, sumidas ao
+ * final), o desempate estrito faz a primeira da lista vencer empates — mesma
+ * disciplina determinística dos movers irmãos.
+ */
+export function cityProfitMovers(changes: CityProfitChange[]): CityProfitMovers {
+  let biggestGain: CityProfitChange | null = null;
+  let biggestDrop: CityProfitChange | null = null;
+  for (const c of changes) {
+    if (c.key === "") continue; // "Sem cidade" não é destino de migração.
+    if (c.countDelta > 0) {
+      if (
+        biggestGain == null ||
+        c.countDelta > biggestGain.countDelta ||
+        (c.countDelta === biggestGain.countDelta && c.netDelta > biggestGain.netDelta)
+      ) {
+        biggestGain = c;
+      }
+    }
+    if (c.countDelta < 0) {
+      if (
+        biggestDrop == null ||
+        c.countDelta < biggestDrop.countDelta ||
+        (c.countDelta === biggestDrop.countDelta && c.netDelta < biggestDrop.netDelta)
+      ) {
+        biggestDrop = c;
+      }
+    }
+  }
+  return { biggestGain, biggestDrop };
+}
+
 // ── Concentração geográfica (risco de depender de poucas cidades) ────────────
 
 export interface GeoShareSlice {

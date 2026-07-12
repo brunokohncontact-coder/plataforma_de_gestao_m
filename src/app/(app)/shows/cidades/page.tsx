@@ -6,6 +6,7 @@ import {
   geoConcentration,
   compareGeoConcentration,
   compareCitiesByProfit,
+  cityProfitMovers,
   indexCityProfitChanges,
   showProfitYears,
   parseProfitYear,
@@ -16,6 +17,7 @@ import {
   type GeoConcentration,
   type GeoConcentrationComparison,
   type CityProfitChange,
+  type CityProfitMovers,
   type DiversificationLevel,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
@@ -91,13 +93,19 @@ export default async function CityProfitabilityPage({
   // concentração (agregado) — aqui é linha a linha, espelho da coluna
   // "vs. {ano-1}" das faixas de cachê (D292).
   let cityChangeByKey: Map<string, CityProfitChange> | null = null;
+  // Card "Para onde a agenda migrou": os dois movers (maior ganho / maior perda
+  // de shows) destilados da MESMA lista de mudanças, espelho do card de movers
+  // da tela irmã por dia da semana (compareWeekdayPerformance/D46).
+  let cityMovers: CityProfitMovers | null = null;
   let previousYear = 0;
   if (yearFilter !== "all") {
     previousYear = yearFilter - 1;
     const previousReport = rankCitiesByProfit(filterShowsByYear(cityShows, previousYear), txs);
     // A coluna por cidade só exige o ano anterior ter tido shows (para comparar).
     if (previousReport.count > 0) {
-      cityChangeByKey = indexCityProfitChanges(compareCitiesByProfit(report, previousReport));
+      const cityChanges = compareCitiesByProfit(report, previousReport);
+      cityChangeByKey = indexCityProfitChanges(cityChanges);
+      cityMovers = cityProfitMovers(cityChanges);
     }
     const previousConcentration = geoConcentration(previousReport.rows);
     // O card comparativo exige praça identificada nos DOIS períodos (agregado).
@@ -213,6 +221,14 @@ export default async function CityProfitabilityPage({
           {geoComparison && (
             <GeoComparisonCard
               comparison={geoComparison}
+              currentYear={yearFilter as number}
+              previousYear={previousYear}
+            />
+          )}
+
+          {cityMovers && (cityMovers.biggestGain || cityMovers.biggestDrop) && (
+            <CityMoversCard
+              movers={cityMovers}
               currentYear={yearFilter as number}
               previousYear={previousYear}
             />
@@ -492,6 +508,87 @@ function GeoComparisonCard({
         </div>
       </div>
       <p className="mt-3 text-xs opacity-90">{trend.note}</p>
+    </div>
+  );
+}
+
+/**
+ * Card "Para onde a agenda migrou": os dois movers do ano — a cidade que mais
+ * ganhou e a que mais perdeu shows em relação ao ano anterior. Espelha o card de
+ * movers da tela irmã por dia da semana; distinto do card de concentração
+ * (agregado) e da coluna por linha (todas as cidades) — aqui é o destaque das
+ * duas pontas do movimento. Só entra com ao menos um mover (garantido pelo
+ * chamador).
+ */
+function CityMoversCard({
+  movers,
+  currentYear,
+  previousYear,
+}: {
+  movers: CityProfitMovers;
+  currentYear: number;
+  previousYear: number;
+}) {
+  const { biggestGain, biggestDrop } = movers;
+  return (
+    <div className="card">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+          Para onde a agenda migrou · {currentYear} vs. {previousYear}
+        </p>
+      </div>
+      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+        <CityMover label="Mais cresceu" change={biggestGain} tone="emerald" />
+        <CityMover label="Mais caiu" change={biggestDrop} tone="red" />
+      </div>
+      <p className="mt-3 text-xs text-gray-400">
+        Ancora no nº de shows por cidade; quando dois empatam, o resultado do ano desempata.
+        Cidades sem praça informada (“Sem cidade”) ficam de fora.
+      </p>
+    </div>
+  );
+}
+
+/** Uma ponta do card de movers (ganho ou perda), ou "—" quando não houve. */
+function CityMover({
+  label,
+  change,
+  tone,
+}: {
+  label: string;
+  change: CityProfitChange | null;
+  tone: "emerald" | "red";
+}) {
+  const tones: Record<string, string> = {
+    emerald: "text-emerald-600",
+    red: "text-red-600",
+  };
+  if (!change) {
+    return (
+      <div>
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
+        <p className="mt-1 text-xl font-bold text-gray-300">—</p>
+        <p className="text-xs text-gray-400">
+          Nenhuma cidade {tone === "emerald" ? "ganhou" : "perdeu"} shows.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
+      <p className="mt-1 flex items-baseline gap-2">
+        <span className="truncate font-medium text-gray-900">{change.name}</span>
+        <span className={"text-xl font-bold " + tones[tone]}>
+          {signedCount(change.countDelta)}{" "}
+          <span className="text-sm font-normal">
+            {Math.abs(change.countDelta) === 1 ? "show" : "shows"}
+          </span>
+        </span>
+      </p>
+      <p className="text-xs text-gray-500">
+        resultado {formatMoney(change.previousNet)} → {formatMoney(change.currentNet)}
+      </p>
     </div>
   );
 }
