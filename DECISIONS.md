@@ -10579,3 +10579,38 @@ contexto, decisão, justificativa e alternativas consideradas.
   (auth-gated, sem 500); `npm audit` inalterado (10 advisories; ver D6). Zero migração, zero dependência nova.
 - **Nota de concorrência:** número **D300** escolhido como o próximo livre após o D299 (Sessão 305). Se outra
   PR reivindicar D300, renumerar para o próximo livre no merge.
+
+## D301 — Exportação CSV do comparativo ano a ano por local (`/shows/locais/comparativo/export`, reusando `cityProfitComparisonToCsv` + `groupLabel`) (Sessão 307)
+- **Contexto:** a D300 (Sessão 306) trouxe o export dedicado do comparativo por CIDADE — a lista COMPLETA de
+  "para onde a agenda migrou" (incluindo praças abandonadas e a dimensão financeira dos dois anos), que o
+  card e a coluna da tabela só resumem. A D300 explicitamente **adiou** o eixo LOCAL ("locais é uma sessão
+  curta seguinte"), deixando a tela `/shows/locais` assimétrica: ela já tinha a coluna "vs. {ano-1}" no CSV
+  da tabela (D297/D299) e o card de movers (D299), mas — ao contrário de `/shows/cidades` — não dava para
+  baixar a lista COMPLETA de mudanças por casa numa planilha (casas abandonadas + resultado dos dois anos).
+- **Decisão:** espelhar exatamente o export por cidade no eixo-casa, sem motor novo. Como o motor de
+  comparação é genérico sobre qualquer ranking de rentabilidade agregado (`compareVenuesByProfit` É alias de
+  `compareCitiesByProfit`, D299), a única peça não-neutra do serializador `cityProfitComparisonToCsv` era o
+  cabeçalho fixo "Cidade" da 1ª coluna. Adicionado o parâmetro opcional `groupLabel` (default `"Cidade"`) que
+  só troca esse cabeçalho — as demais colunas (Shows / Resultado / Δ / Tendência) já eram neutras. Nova rota
+  `/shows/locais/comparativo/export?ano=YYYY` mirror fiel da rota de cidades (MESMO gate: 404 sem ano
+  específico ou sem shows no ano anterior; recomputa os dois rankings de `rankVenuesByProfit` sobre os MESMOS
+  registros já carregados, recorte UTC da D108, zero I/O extra), chamando
+  `cityProfitComparisonToCsv(changes, undefined, "Local")`; nome `locais-comparativo-{ano}-vs-{ano-1}.csv`.
+  Link "⬇ CSV" no cabeçalho do card `VenueMoversCard` da página (espelho do `CityMoversCard`).
+- **Justificativa:** fecha a paridade cidades↔locais também no CSV do comparativo (a última assimetria entre
+  as duas telas irmãs). Parametrizar só o rótulo da coluna — em vez de duplicar a função — mantém a
+  serialização DRY e corrige um bug latente: reusar `cityProfitComparisonToCsv` cru num export de locais
+  emitiria o cabeçalho "Cidade" para dados de casas. Zero regra de negócio nova, zero consulta nova, zero
+  migração, zero dependência.
+- **Alternativas consideradas:**
+  - *Reusar `cityProfitComparisonToCsv` sem `groupLabel` (cabeçalho "Cidade" no CSV de locais)* — descartado:
+    o cabeçalho mentiria sobre o eixo dos dados; o parâmetro opcional custa uma linha e mantém a compatibilidade.
+  - *Duplicar a função como `venueProfitComparisonToCsv`* — descartado: as colunas são idênticas e neutras;
+    só o rótulo muda, então um parâmetro é mais enxuto que uma cópia a manter em paralelo.
+- **DoD:** build/typecheck/lint verdes; **1719 testes** (+1: `csv.test.ts`,
+  `describe("cityProfitComparisonToCsv")` — `groupLabel` troca só o rótulo da 1ª coluna ("Local"), dados
+  idênticos); smoke → `/login` 200, `/shows/locais?ano=2026` e `/shows/locais/comparativo/export?ano=2026`
+  307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories; ver D6). Zero migração, zero
+  dependência nova.
+- **Nota de concorrência:** número **D301** escolhido como o próximo livre após o D300 (Sessão 306). Se outra
+  PR reivindicar D301, renumerar para o próximo livre no merge.
