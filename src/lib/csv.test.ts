@@ -849,6 +849,17 @@ describe("cityProfitComparisonToCsv", () => {
     // Total: shows anterior 2+0=2, corrente 5+1=6, Δ +4; resultado -> 2000/6500.
     expect(lines[3]).toBe("Total;2;6;+4;2000,00;6500,00;4500,00;");
   });
+
+  it("troca só o rótulo da 1ª coluna via groupLabel (comparativo por local)", () => {
+    const csv = cityProfitComparisonToCsv([change()], undefined, "Local");
+    const lines = csv.split("\r\n");
+    // Só o cabeçalho da 1ª coluna muda; as demais colunas seguem neutras.
+    expect(lines[0]).toBe(
+      "Local;Shows (ano anterior);Shows (ano corrente);Δ shows;Resultado (ano anterior) (R$);Resultado (ano corrente) (R$);Δ resultado (R$);Tendência",
+    );
+    // Os dados saem idênticos ao comparativo por cidade.
+    expect(lines[1]).toBe("São Paulo;2;5;+3;2000,00;6000,00;4000,00;Subiu");
+  });
 });
 
 describe("contactProfitToCsv", () => {

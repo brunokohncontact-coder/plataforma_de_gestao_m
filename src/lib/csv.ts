@@ -818,12 +818,21 @@ const CITY_PROFIT_TREND_LABELS: Record<CityProfitTrend, string> = {
  * nome do arquivo, não nos cabeçalhos (mesma convenção de
  * `gigSeasonalityComparisonToCsv`/D223). Convenção pt-BR (";" e decimal com
  * vírgula). Pura.
+ *
+ * O eixo de agrupamento é aberto (a serialização é genérica sobre qualquer
+ * ranking de rentabilidade agregado): `groupLabel` só troca o cabeçalho da
+ * primeira coluna — "Cidade" por padrão, "Local" quando o comparativo é por casa
+ * (`/shows/locais`, reusando os aliases de eixo-casa da D299). As demais colunas
+ * (Shows / Resultado / Δ / Tendência) já são neutras.
  */
 export function cityProfitComparisonToCsv(
   changes: CityProfitChange[],
   delimiter = DEFAULT_DELIMITER,
+  groupLabel = "Cidade",
 ): string {
-  const out: string[][] = [Array.from(CITY_PROFIT_COMPARISON_CSV_HEADERS)];
+  const headers = Array.from(CITY_PROFIT_COMPARISON_CSV_HEADERS) as string[];
+  headers[0] = groupLabel;
+  const out: string[][] = [headers];
   let totalPrevCount = 0;
   let totalCurCount = 0;
   let totalPrevNet = 0;

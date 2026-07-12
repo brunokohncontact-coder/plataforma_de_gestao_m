@@ -9,7 +9,31 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 306 (D300) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 307 (D301) —
+exportação CSV do comparativo ano a ano por LOCAL (fechando a paridade cidades↔locais no comparativo):**
+a D300 (Sessão 306) trouxe o export dedicado do comparativo por CIDADE (`/shows/cidades/comparativo/export`)
+e **adiou** explicitamente o eixo LOCAL — deixando `/shows/locais` assimétrica: já tinha a coluna "vs. {ano-1}"
+no CSV da tabela (D297/D299) e o card de movers (D299), mas não dava para baixar a lista COMPLETA de mudanças
+por casa numa planilha (casas ABANDONADAS + resultado dos dois anos). Como o motor de comparação é genérico
+sobre qualquer ranking de rentabilidade agregado (`compareVenuesByProfit` É alias de `compareCitiesByProfit`,
+D299), a única peça não-neutra do serializador `cityProfitComparisonToCsv` era o cabeçalho fixo "Cidade" da
+1ª coluna. Em `src/lib/csv.ts` adicionei o parâmetro opcional `groupLabel` (default `"Cidade"`) que só troca
+esse cabeçalho (as demais colunas — Shows / Resultado / Δ / Tendência — já eram neutras). Nova rota
+`/shows/locais/comparativo/export?ano=YYYY`, mirror fiel da rota de cidades (MESMO gate: 404 sem ano específico
+ou sem shows no ano anterior; recomputa os dois rankings de `rankVenuesByProfit` sobre os MESMOS registros já
+carregados — recorte UTC da D108, zero I/O extra; nome `locais-comparativo-{ano}-vs-{ano-1}.csv`) chamando
+`cityProfitComparisonToCsv(changes, undefined, "Local")` + link "⬇ CSV" no cabeçalho do card `VenueMoversCard`
+de `/shows/locais` (espelho do `CityMoversCard`). Corrige de passagem um bug latente: reusar o serializador
+cru num export de locais emitiria o cabeçalho "Cidade" para dados de casas. Zero regra de negócio nova, zero
+consulta nova, zero migração, zero dependência. **+1 teste** (`csv.test.ts`,
+`describe("cityProfitComparisonToCsv")`: `groupLabel` troca só o rótulo da 1ª coluna ("Local"), dados
+idênticos). Build/typecheck/lint verdes (**1719 testes**); smoke → `/login` 200, `/shows/locais?ano=2026` e
+`/shows/locais/comparativo/export?ano=2026` 307→/login (auth-gated, sem 500); `npm audit` inalterado (10
+advisories). **Próximo possível** — as telas de comparativo por eixo (cidade/local/sazonalidade/dia-da-semana)
+já têm export dedicado; um passo natural é unificar a descoberta desses exports no card de movers das telas
+que ainda não têm o link, ou levar a mesma "Tendência (Subiu/Caiu/Estável)" à coluna da tabela on-screen.
+Ver D301.
+Antes disso, **Sessão 306 (D300) —
 exportação CSV do comparativo ano a ano por cidade (a lista completa de "para onde a agenda migrou"):**
 a tela `/shows/cidades` já destilava a migração da agenda em duas peças — o card "Para onde a agenda
 migrou" (só os dois *movers*, D298) e a coluna "vs. {ano-1}" da tabela (só um Δ de shows por cidade
