@@ -5,6 +5,32 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-12 — D304: Seta NEUTRA de direção (↑/↓/→ em cinza) na coluna "vs. {ano-1}" das faixas de cachê (`/shows/faixas-de-cache`)
+- **Contexto:** a coluna "vs. {ano-1}" da tabela de `/shows/faixas-de-cache` (D292) mostrava só o
+  delta cru em p.p. (`pointsDelta(change.countShareDelta)`) em cinza — a única das colunas "vs." das
+  telas de comparativo por linha que ainda não trazia a "seta de direção" da D302/D303. Era o 1º
+  "Próximo possível" da D303, mas com uma ressalva: ali a leitura é intencionalmente **neutra** por
+  faixa (ganhar participação numa faixa barata NÃO é "bom"), então a seta colorida verde/vermelho das
+  telas por cidade/local/dia da semana não caberia — passaria a ideia errada de "melhorou".
+- **Decisão:** adicionar a seta de direção (↑/↓/→) prefixando o delta, porém **neutra** (cinza, sem
+  verde/vermelho) — via um mapa de apresentação local `NEUTRAL_TREND_ARROW` + o helper
+  `bandShareDirection(delta)`. A direção é derivada do MESMO delta arredondado em p.p. que o texto já
+  usa (`Math.round(delta*100)`), para seta e número nunca se contradizerem: um Δ que arredonda a
+  0 p.p. sai como "→ 0 p.p."; a faixa que sumiu/sem dado (`countShareDelta === 0 && currentCount === 0`)
+  segue como "—" limpo. Nota de rodapé reescrita para explicar que a seta só indica o rumo e é neutra
+  de propósito, remetendo ao cartão comparativo acima para o rumo GERAL do cachê.
+- **Justificativa:** fecha a paridade da "seta de direção" na última coluna "vs." que faltava, sem
+  importar a semântica de valor (verde=bom) que não vale por faixa. Derivar a direção do p.p.
+  arredondado (e não do delta cru) mantém tela coerente consigo mesma. Zero regra de negócio nova
+  (nenhum helper de `finance.ts`), zero rota/consulta/migração/dependência; mudança só de apresentação
+  em `faixas-de-cache/page.tsx`.
+- **Alternativas consideradas:** (a) reusar o `CITY_PROFIT_TREND` colorido da D302 — descartado por
+  contradizer a neutralidade por faixa já documentada na D292/nota de rodapé. (b) derivar a direção do
+  delta cru (não arredondado) — descartado porque um Δ minúsculo que exibe "0 p.p." sairia com seta ↑/↓,
+  reintroduzindo o mesmo tipo de contradição seta×texto que a D303 corrigiu. Sem novos testes: nenhuma
+  lógica pura nova (a comparação por faixa já tem cobertura em `finance.test.ts`); build/typecheck/lint/
+  1719 testes verdes, `npm audit` inalterado (10 advisories).
+
 ## 2026-07-12 — D303: Seta de tendência (↑/↓/→) na coluna "Δ shows" do detalhe dos 7 dias em `/shows/dias-semana`
 - **Contexto:** a tabela recolhida "Ver os 7 dias" do comparativo por dia da semana já **colore** as
   células Δ pelo veredito de `classifyWeekdayPerformanceDayChange` (nº de shows com o faturamento como

@@ -9,7 +9,28 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 309 (D303) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 310 (D304) —
+seta NEUTRA de direção (↑/↓/→ em cinza) na coluna "vs. {ano-1}" das faixas de cachê
+(`/shows/faixas-de-cache`), fechando a última coluna "vs." que ainda mostrava só o delta cru:** a coluna
+"vs. {ano-1}" da tabela de faixas de cachê (D292) exibia apenas o delta cru em p.p.
+(`pointsDelta(change.countShareDelta)`) em cinza — era a única das colunas "vs." das telas de comparativo
+por linha sem a "seta de direção" da D302/D303. A ressalva (1º "Próximo possível" da D303): ali a leitura
+é intencionalmente **neutra** por faixa (ganhar participação numa faixa barata não é "bom"), então a seta
+colorida verde/vermelho das telas por cidade/local/dia da semana não caberia. Agora um mapa de apresentação
+local `NEUTRAL_TREND_ARROW` (`up:↑`/`down:↓`/`flat:→`) + o helper `bandShareDirection(delta)` prefixam a
+seta ao Δ em p.p., mas **cinza** (sem verde/vermelho): a direção é derivada do MESMO delta arredondado em
+p.p. que o texto já usa (`Math.round(delta*100)`), para seta e número nunca se contradizerem (Δ que arredonda
+a 0 p.p. → "→ 0 p.p."); faixa sumida/sem dado (`countShareDelta === 0 && currentCount === 0`) segue "—" limpo.
+Nota de rodapé reescrita explicando que a seta só indica o rumo e é neutra de propósito, remetendo ao cartão
+comparativo acima para o rumo GERAL do cachê. Zero regra de negócio nova (nenhum helper de `finance.ts`), zero
+rota/consulta/migração/dependência; mudança só de apresentação em
+`src/app/(app)/shows/faixas-de-cache/page.tsx`. Sem novos testes (nenhuma lógica pura nova). Build/typecheck/lint
+verdes (**1719 testes**); smoke → `/login` 200, `/shows/faixas-de-cache?ano=2026` e
+`/shows/faixas-de-cache/export?ano=2026` 307→/login (auth-gated, sem 500); `npm audit` inalterado
+(10 advisories). **Próximo possível** — unificar a descoberta dos exports de comparativo nos cards de movers
+das telas que ainda não têm o link "⬇ CSV" no cabeçalho do card; ou levar a "Tendência (Subiu/Caiu/Estável)"
+já no CSV também às telas on-screen que ainda mostram só a métrica crua. Ver D304.
+Antes disso, **Sessão 309 (D303) —
 seta de tendência (↑/↓/→) na coluna "Δ shows" do detalhe dos 7 dias em `/shows/dias-semana` (levando a
 mesma "seta de tendência" da D302 a mais uma coluna "vs." que ainda mostrava só o delta cru):** a tabela
 recolhida "Ver os 7 dias" do comparativo por dia da semana já **coloria** as células Δ pelo veredito de
