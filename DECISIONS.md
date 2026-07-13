@@ -5,7 +5,41 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
-## 2026-07-12 — D307: Exportação CSV do comparativo ano a ano das fontes de renda (paridade despesa↔receita)
+## 2026-07-13 — D309: Detalhe on-screen "Ver todas as fontes" + coluna Situação no card comparativo de fontes de renda (paridade despesa↔receita no detalhe)
+- **Contexto:** a tela `/financas/fontes-de-renda` já tinha o card de movers "De onde veio a mudança ·
+  {ano} vs. {ano-1}" (`IncomeMixComparisonCard`) com o link "⬇ CSV" (`incomeMixComparisonToCsv`/D307, que
+  lista TODAS as fontes com a coluna "Situação"), mas na tela só mostrava os dois movers + os nomes das
+  novas/sumidas em texto corrido. A tela irmã de despesa fechou essa mesma assimetria tela↔CSV na D308,
+  adicionando um `<details>` "Ver todas as rubricas" com a tabela completa e a coluna Situação; a receita
+  ficou para trás, quebrando a paridade despesa↔receita no detalhe on-screen (o próprio "Próximo possível"
+  da D308).
+- **Decisão:**
+  - `src/app/(app)/financas/fontes-de-renda/page.tsx`: `<details>` "Ver todas as fontes" dentro do
+    `IncomeMixComparisonCard`, espelho fiel do bloco da D308 — tabela completa na MESMA ordem do CSV
+    (`comparison.changes` maior crescimento → maior queda; depois `newSources`; depois `droppedSources`;
+    `tfoot` com a linha Total), colunas Receita {ano-1} / Receita {ano} / Δ receita / Part. {ano-1} /
+    Part. {ano} / Situação.
+  - Mapa de apresentação local `INCOME_SITUATION` (`up`/`down`/`flat`/`new`/`dropped` → seta + tom + rótulo)
+    + helper `incomeSituation(amountDelta)` + componente `SituationCell`, espelhos de `EXPENSE_SITUATION`/
+    `expenseSituation`/`SituationCell` da D308. A direção é derivada do MESMO sinal de `amountDelta` que o
+    serializador CSV (`incomeChangeSituation`) usa, para tela e planilha nunca se contradizerem.
+  - **Tom invertido frente à despesa:** aqui render mais é bom (verde/emerald: `up` e `new`) e render menos
+    merece atenção (rosa: `down` e `dropped`) — o inverso da despesa (onde gastar mais é rosa). Isso mantém
+    a coerência com o resto do card, cujos `MoverCard` e `totalTone` já usam verde para crescimento e rosa
+    para queda de receita. `flat` = cinza (Estável). Δ zero exibe "—" limpo (mês/fonte sem mudança não ganha
+    ruído); nota de rodapé explica as setas.
+- **Justificativa:** paridade despesa↔receita no detalhe on-screen (as duas telas de mix agora deixam ver
+  linha a linha sem baixar a planilha) reduz surpresa e fecha o "Próximo possível" da D308. Zero regra de
+  negócio nova — a classificação é o mesmo sinal de `amountDelta` já testado no CSV (D307); a sessão só
+  apresenta. Zero rota/consulta/migração/dependência; nenhuma lógica pura nova, logo sem novos testes
+  (mesmo critério da D308).
+- **Alternativas consideradas:** (a) extrair `SituationCell`/mapa de situação para um módulo compartilhado
+  entre as duas telas de mix — descartado porque o tom é invertido entre elas (despesa: gastar mais = rosa;
+  receita: render mais = verde), então um componente único precisaria de um parâmetro de polaridade; dois
+  mapas locais pequenos e explícitos são mais legíveis que uma abstração parametrizada por eixo. Se surgir
+  uma terceira tela com o mesmo padrão, aí sim vale unificar. (b) Repetir a coluna Situação também na tabela
+  principal de composição por fonte (fora do comparativo) — descartado: sem o ano anterior aquela tabela não
+  tem "situação" a mostrar; o detalhe vive no card de comparativo, onde os dois anos existem.
 - **Contexto:** a tela `/financas/fontes-de-renda` já tinha o card de movers "De onde veio a mudança ·
   {ano} vs. {ano-1}" (`compareIncomeMix`/D224), mas — ao contrário da tela irmã `/financas/composicao-despesas`,
   que na própria D224 ganhou o export dedicado do comparativo (`.../comparativo/export` +

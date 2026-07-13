@@ -9,7 +9,32 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 314 (D308) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 315 (D309) —
+detalhe on-screen "Ver todas as fontes" com a coluna Situação (↑ Subiu / ↓ Caiu / → Estável /
+＋ Nova / － Sumiu) no card comparativo de `/financas/fontes-de-renda`, fechando a paridade
+despesa↔receita no detalhe on-screen apontada na D308:** o card "De onde veio a mudança · {ano} vs.
+{ano-1}" (`IncomeMixComparisonCard`) já tinha o link "⬇ CSV" (`incomeMixComparisonToCsv`/D307, que
+lista TODAS as fontes com a coluna "Situação") mas, na tela, só destilava os DOIS movers (maior alta /
+maior queda) + os nomes das novas/sumidas em texto corrido — a assimetria tela↔CSV que a irmã de despesa
+já tinha fechado na D308. Espelho fiel do `<details>` "Ver todas as rubricas" da D308: um `<details>`
+"Ver todas as fontes" com a tabela completa na MESMA ordem do CSV (fontes presentes nos dois anos por maior
+crescimento → maior queda; depois as "Novas"; depois as "Sumiram"; linha Total) — colunas Receita {ano-1} /
+Receita {ano} / Δ receita / Part. {ano-1} / Part. {ano} / Situação. A "Situação" reusa a MESMA derivação por
+sinal de `amountDelta` que o serializador CSV (`incomeChangeSituation`), via um mapa de apresentação local
+`INCOME_SITUATION` (up/down/flat/new/dropped → seta + tom + rótulo) para tela e planilha nunca se
+contradizerem; convenção de tom do card **invertida frente à despesa** (render mais = verde/bom, render
+menos = rosa/atenção) mantida na seta e no Δ, coerente com os `MoverCard` e o `totalTone` já existentes.
+Nota de rodapé explica a leitura das setas. Zero regra de negócio nova (a classificação é o mesmo sinal já
+testado no CSV), zero rota/consulta/migração/dependência; mudança só de apresentação em
+`src/app/(app)/financas/fontes-de-renda/page.tsx`. Sem novos testes (nenhuma lógica pura nova).
+Build/typecheck/lint verdes (**1723 testes**); smoke → `/login` 200,
+`/financas/fontes-de-renda?ano=2026` e `/financas/fontes-de-renda/comparativo/export?ano=2026`
+307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories). **Próximo possível** — com os dois
+cards de mix (despesa e receita) agora com o detalhe "Ver todas as ..." + Situação on-screen, unificar a
+descoberta dos exports de comparativo nos cards de movers das telas de shows que ainda não têm o link "⬇ CSV"
+no cabeçalho do card, ou levar a "Situação/Tendência" já presente no CSV às tabelas on-screen das telas de
+shows (cidade/local/dia/faixa) que ainda mostram só a métrica crua no detalhe. Ver D309.
+Antes disso, **Sessão 314 (D308) —
 detalhe on-screen "Ver todas as rubricas" com a coluna Situação (↑ Subiu / ↓ Caiu / → Estável /
 ＋ Nova / － Sumiu) no card comparativo de `/financas/composicao-despesas`, fechando a assimetria
 tela↔CSV apontada na D307:** o card "Onde o gasto mudou · {ano} vs. {ano-1}" já tinha o link "⬇ CSV"
