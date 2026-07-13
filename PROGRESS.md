@@ -7,9 +7,31 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1750 testes**),
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1754 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 323 (D317) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 324 (D318) —
+VISUALIZAÇÃO AGRUPADA POR DIA no feed de atividade do funil (`/shows/funil/atividade?agrupar=dia`), fechando
+o último "próximo possível" aberto da linha do feed (recorte por ano OU agrupamento por dia — o agrupamento é
+o de maior valor de leitura e não exige consulta nova):** o feed (D315) listava as últimas 100 transições da
+carteira numa lista corrida (filtro por natureza D317, export CSV D316), boa para "o que se moveu por último"
+mas não para "o que aconteceu no dia X". Só peça pura + fiação de apresentação, **zero migração/consulta/
+dependência nova**: novo helper puro `groupFunnelActivityByDay(feed)` em `src/lib/shows.ts` (irmão de
+`filterFunnelActivityByKind`) rebaldeia o feed já ordenado em `FunnelActivityDayGroup[]` (`{day:"YYYY-MM-DD",
+entries}`), com os dias na ordem recente→antigo do feed e as entradas de cada dia preservando a ordem; a chave
+usa `dayKey` (UTC), a mesma convenção do resto do app. A página passou a ler `?agrupar=dia`, exibir um
+alternador "Lista × Por dia" (`role=group`/`aria-current`) que PRESERVA o filtro `natureza` (novo `buildHref`
+compondo `natureza`+`agrupar` via `URLSearchParams`), extrair a linha do feed num `renderEntry(entry,key)`
+reusado nas duas visões (zero duplicação de markup) e, no modo por dia, renderizar um `card` por dia com
+cabeçalho `formatDayHeader` (rótulo pt-BR por extenso **em UTC**, `timeZone:"UTC"`, para bater com a chave sem
+deriva de fuso) + contagem "N transições". Export CSV segue plano. **+4 testes** (`shows.test.ts`,
+`describe("groupFunnelActivityByDay")`: vazio→sem grupos; agrupa por dia preservando ordem recente→antigo de
+dias e entradas; chave em UTC (transição 23h30 não vaza p/ outro dia); soma das entradas dos grupos = total do
+feed). DoD verde: `npm run build` (`/shows/funil/atividade` 320 B → 96,3 kB, sem novo bundle de cliente),
+`npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1754 testes**); smoke → `/login` 200,
+`/shows/funil/atividade`, `?agrupar=dia` e `?agrupar=dia&natureza=advance` 307→/login (auth-gated, sem 500);
+`npm audit` inalterado (10 advisories, zero dependência nova). **Próximo possível** — ~~agrupamento por dia~~
+(entregue), recorte por `?ano=`/`PeriodPicker` (adiado até haver paginação do feed) ou "Hoje/Ontem" relativos
+no cabeçalho do dia. Ver D318. **Antes disso, Sessão 323 (D317) —
 FILTRO POR NATUREZA da transição em `/shows/funil/atividade` (`?natureza=`), fechando um dos "próximos
 possíveis" que a D315 deixou explícito ao entregar o feed (filtro por natureza / recorte por ano / agrupamento
 por dia):** o feed já listava as últimas 100 transições da carteira CLASSIFICADAS por natureza

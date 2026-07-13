@@ -11175,3 +11175,44 @@ contexto, decisão, justificativa e alternativas consideradas.
   `src/components/CalendarGrid.tsx`.
 - **Nota de concorrência:** número **D313** escolhido como o próximo livre acima do maior D referenciado no
   PROGRESS (D312). Se outra PR reivindicar D313, renumerar para o próximo livre no merge.
+
+## D318 — Visualização agrupada por dia no feed de atividade do funil (`/shows/funil/atividade?agrupar=dia`) (Sessão 324)
+
+- **Contexto:** o feed de atividade do funil (`/shows/funil/atividade`, D315) lista as últimas 100 transições
+  de status da carteira inteira em UMA lista corrida, mais recentes primeiro, com filtro por natureza (D317) e
+  export CSV (D316). A lista plana responde bem a "o que se moveu por último", mas não a "o que aconteceu no
+  dia X" — cada linha repete a data por extenso e o olho tem de varrer a coluna de datas para achar as
+  fronteiras de dia. Era o último dos "próximos possíveis" abertos da linha do feed (recorte por `?ano=` OU
+  agrupamento por dia); o agrupamento por dia é o de maior valor de leitura e não exige nova consulta.
+- **Decisão:** um alternador de visualização (`?agrupar=dia`) sobre o MESMO recorte visível, sem tocar na
+  consulta nem no filtro. Duas peças:
+  1. **Helper puro** `groupFunnelActivityByDay(feed)` em `src/lib/shows.ts` (irmão de
+     `filterFunnelActivityByKind`/`countFunnelActivityByKind`): rebaldeia o feed já ordenado em
+     `FunnelActivityDayGroup[] = { day: "YYYY-MM-DD", entries }`, com os dias na ordem em que aparecem no feed
+     (mais recente primeiro, pois `buildFunnelActivityFeed` ordena desc) e as entradas de cada dia preservando
+     a ordem do feed. A chave de dia usa `dayKey` (UTC) — a MESMA convenção do resto do app (calendário,
+     `csvDate`), estável em testes. Não recalcula nada além de agrupar.
+  2. **Fiação de apresentação** em `page.tsx`: parse de `?agrupar=dia` → `groupByDay`; um alternador
+     "Lista × Por dia" (`role=group`, `aria-current`) que preserva o filtro `natureza` (novo `buildHref`
+     que compõe `natureza`+`agrupar` via `URLSearchParams`, substituindo o `chipHref` que só sabia de
+     `natureza`); a linha do feed extraída num `renderEntry(entry, key)` reusado nas duas visões (zero
+     duplicação de markup). No modo "por dia", um `<section className="card">` por dia com cabeçalho
+     `formatDayHeader(day)` (rótulo pt-BR por extenso, **sempre em UTC** via `timeZone: "UTC"` para bater com a
+     chave de dia sem deriva de fuso) + contagem "N transições". O export CSV permanece plano (não recebe
+     `agrupar`).
+- **Justificativa:** o menor caminho para a leitura por dia sem uma consulta nova nem estado no cliente — o
+  agrupamento é derivação pura do feed já carregado, então ambas as visões partem do mesmo recorte
+  (filtro/limite idênticos). Formatar o cabeçalho do dia em UTC, a mesma base de `dayKey`, garante que o rótulo
+  exibido corresponde exatamente ao grupo (uma transição às 23h30 UTC não cai num cabeçalho de outro dia).
+- **Alternativas consideradas:** (a) recorte por `?ano=`/`PeriodPicker` — adiado: o feed é limitado a 100
+  eventos recentes, então um filtro por ano renderia pouco valor até haver paginação; o agrupamento por dia
+  entrega leitura melhor sobre a MESMA janela. (b) agrupar no cliente — rejeitado: derivação pura cabe no
+  Server Component, sem `"use client"`. (c) formatar o cabeçalho com `formatDate` (fuso local) — rejeitado:
+  poderia divergir da chave de dia (UTC) perto da meia-noite.
+- **Verificação:** DoD verde — `npm run build` (`/shows/funil/atividade` 320 B → 96,3 kB, sem novo bundle de
+  cliente), `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1754 testes**, +4); smoke → `/login`
+  200, `/shows/funil/atividade`, `?agrupar=dia` e `?agrupar=dia&natureza=advance` 307→/login (auth-gated, sem
+  500); `npm audit` inalterado (10 advisories, zero dependência nova). Mudança em `src/lib/shows.ts`,
+  `src/app/(app)/shows/funil/atividade/page.tsx` + testes em `src/lib/shows.test.ts`.
+- **Nota de concorrência:** número **D318** escolhido como o próximo livre acima do maior D referenciado no
+  PROGRESS (D317). Se outra PR reivindicar D318, renumerar para o próximo livre no merge.

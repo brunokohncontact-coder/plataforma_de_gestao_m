@@ -41,6 +41,7 @@ import {
   parseFunnelActivityKind,
   filterFunnelActivityByKind,
   countFunnelActivityByKind,
+  groupFunnelActivityByDay,
   FUNNEL_ACTIVITY_KINDS,
   funnelStageDurations,
   stageTimeConcentration,
@@ -1729,6 +1730,44 @@ describe("filterFunnelActivityByKind / countFunnelActivityByKind", () => {
       cancel: 0,
       reopen: 0,
     });
+  });
+});
+
+describe("groupFunnelActivityByDay", () => {
+  it("feed vazio → sem grupos", () => {
+    expect(groupFunnelActivityByDay([])).toEqual([]);
+  });
+
+  it("agrupa por dia (UTC) preservando a ordem recente→antigo dos dias e das entradas", () => {
+    const feed = buildFunnelActivityFeed([
+      { showId: "a", showTitle: "A", showDate: null, fromStatus: null, toStatus: "PROPOSED", at: "2026-03-10T09:00:00.000Z" },
+      { showId: "b", showTitle: "B", showDate: null, fromStatus: "PROPOSED", toStatus: "CONFIRMED", at: "2026-03-10T18:00:00.000Z" },
+      { showId: "c", showTitle: "C", showDate: null, fromStatus: "CONFIRMED", toStatus: "PLAYED", at: "2026-03-09T12:00:00.000Z" },
+    ]);
+    const groups = groupFunnelActivityByDay(feed);
+    expect(groups.map((g) => g.day)).toEqual(["2026-03-10", "2026-03-09"]);
+    // Dia mais recente: as duas entradas de 10/03, mais recente primeiro (18h antes de 9h).
+    expect(groups[0].entries.map((e) => e.showId)).toEqual(["b", "a"]);
+    expect(groups[1].entries.map((e) => e.showId)).toEqual(["c"]);
+  });
+
+  it("usa a chave de dia em UTC (transição perto da meia-noite não vaza para outro dia)", () => {
+    const feed = buildFunnelActivityFeed([
+      { showId: "x", showTitle: "X", showDate: null, fromStatus: null, toStatus: "PROPOSED", at: "2026-03-09T23:30:00.000Z" },
+    ]);
+    const groups = groupFunnelActivityByDay(feed);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].day).toBe("2026-03-09");
+  });
+
+  it("a soma das entradas dos grupos preserva o total do feed", () => {
+    const feed = buildFunnelActivityFeed([
+      { showId: "a", showTitle: "A", showDate: null, fromStatus: null, toStatus: "PROPOSED", at: "2026-03-10T09:00:00.000Z" },
+      { showId: "b", showTitle: "B", showDate: null, fromStatus: "PROPOSED", toStatus: "CONFIRMED", at: "2026-03-08T18:00:00.000Z" },
+      { showId: "c", showTitle: "C", showDate: null, fromStatus: "CONFIRMED", toStatus: "PLAYED", at: "2026-03-08T12:00:00.000Z" },
+    ]);
+    const groups = groupFunnelActivityByDay(feed);
+    expect(groups.reduce((n, g) => n + g.entries.length, 0)).toBe(feed.length);
   });
 });
 
