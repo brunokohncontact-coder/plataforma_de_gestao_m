@@ -5,6 +5,43 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-13 — D311: Exportação CSV do comparativo ano a ano das faixas de cachê (`/shows/faixas-de-cache/comparativo/export`), fechando a última tela de comparativo sem export dedicado
+- **Contexto:** a tela `/shows/faixas-de-cache` já tinha o comparativo ano a ano (card `FeeComparisonCard`
+  "Cachê {ano} vs. {ano-1}" com cachê mediano/médio, migração de participação premium e o veredito de
+  tendência — D187/D293 — e a coluna "vs. {ano-1}" por faixa — D292/D304), mas era a ÚNICA tela de
+  comparativo sem uma rota `comparativo/export`: cidades, locais, sazonalidade, dias-semana e funil/conversão
+  já tinham a sua. O export do ano (`/shows/faixas-de-cache/export`, D292) só serializa a faixa do ano
+  corrente + o Δ de participação em p.p. (`feeDistributionToCsv`) — os valores do ano anterior por faixa e o
+  resumo mediano/médio/tendência do card não estavam em planilha nenhuma. Mesma assimetria tela↔CSV que a
+  D300/D307 (cidades/fontes) fecharam com um export dedicado do comparativo.
+- **Decisão:**
+  - `src/lib/csv.ts`: `feeDistributionComparisonToCsv(comparison)` + `FEE_DISTRIBUTION_COMPARISON_CSV_HEADERS`
+    (Métrica / Ano anterior / Ano corrente / Variação). Como o comparativo é um punhado de métricas escalares
+    + o deslocamento por faixa, a planilha é orientada a MÉTRICA (uma linha por indicador, no molde de
+    `proposalConversionComparisonToCsv`/D251, não uma linha por item como `cityProfitComparisonToCsv`/D300):
+    cachê mediano (R$), cachê médio (R$), total de shows realizados, a participação (nº de shows) de CADA
+    faixa nos dois anos (as 6 de `FEE_BANDS`, inclusive as zeradas, com a premium "Acima de R$ 5.000" como o
+    último degrau) e, ao fim, a Tendência (Cachês em alta / em baixa / Estável) na coluna de variação. Sem
+    linha de premium dedicada (redundaria com o último degrau da lista). Reusa `centsToCsvAmount`/`csvShare`/
+    `csvSignedPoints`/`csvSignedCount` já testados.
+  - Nova rota `/shows/faixas-de-cache/comparativo/export?ano=YYYY` (espelho fiel da rota irmã de cidades):
+    mesmo gate do card (404 sem ano específico ou sem shows realizados com cachê nos DOIS anos), recomputa as
+    duas `feeDistribution` sobre os MESMOS registros já carregados via `filterShowsByYear` (recorte UTC da
+    D108, zero I/O extra); nome `faixas-de-cache-comparativo-{ano}-vs-{ano-1}.csv`; BOM UTF-8.
+  - Link "⬇ CSV" no cabeçalho do card `FeeComparisonCard` (espelho do `CityMoversCard`), propagando o ano.
+  - **+3 testes** (`csv.test.ts`, `describe("feeDistributionComparisonToCsv")`): resumo mediano/médio/shows +
+    faixas com o Δ de participação por degrau; veredito "Cachês em baixa" com Δ negativo assinado; "Estável"
+    com deltas zerados quando os dois anos são iguais.
+- **Justificativa:** era a última tela de comparativo sem export dedicado — paridade de descoberta com as
+  irmãs. Zero regra de negócio nova (`compareFeeDistribution` já era testada da D187), zero consulta nova,
+  zero migração, zero dependência. A camada pura (serializer) é testada; a rota é um mirror da de cidades.
+- **Alternativas consideradas:** (a) uma linha por FAIXA (tabela como `cityProfitComparisonToCsv`) em vez de
+  orientada a métrica — descartada porque o card é escalar (mediano/médio/premium/tendência) e a orientação a
+  métrica acomoda os dois eixos (escalares + deslocamento por faixa) numa única grade coerente, como o
+  `proposalConversionComparisonToCsv` já faz para a conversão. (b) Estender o export do ano com as colunas do
+  ano anterior — descartado por sobrecarregar a planilha de "retrato do ano" com dado de comparativo; a
+  separação export-do-ano × export-do-comparativo é a convenção já estabelecida nas outras telas.
+
 ## 2026-07-13 — D310: Detalhe on-screen "Ver todas as cidades/casas" com a coluna Tendência nos cards de movers de `/shows/cidades` e `/shows/locais` (levando o padrão D308/D309 ao eixo de praça)
 - **Contexto:** os cards "Para onde a agenda migrou" (`CityMoversCard`, `/shows/cidades`) e "Quais casas
   cresceram e caíram" (`VenueMoversCard`, `/shows/locais`) já tinham o link "⬇ CSV" para o export do

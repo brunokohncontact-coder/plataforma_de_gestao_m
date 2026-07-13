@@ -47,6 +47,8 @@ import {
   WEEKDAY_PERFORMANCE_COMPARISON_CSV_HEADERS,
   feeDistributionToCsv,
   FEE_DISTRIBUTION_CSV_HEADERS,
+  feeDistributionComparisonToCsv,
+  FEE_DISTRIBUTION_COMPARISON_CSV_HEADERS,
   incomeMixToCsv,
   INCOME_MIX_CSV_HEADERS,
   incomeMixComparisonToCsv,
@@ -1975,6 +1977,86 @@ describe("feeDistributionToCsv", () => {
     // previousYear ausente (null) ⇒ mesmo com comparativo, sem coluna extra.
     const lines = feeDistributionToCsv(dist, undefined, cmp, null).split("\r\n");
     expect(lines[0].split(";")).toHaveLength(FEE_DISTRIBUTION_CSV_HEADERS.length);
+  });
+});
+
+describe("feeDistributionComparisonToCsv", () => {
+  // `now` fixo no futuro para que todos os shows forjados contem como realizados.
+  const NOW = "2025-01-01T00:00:00.000Z";
+  const gig = (
+    over: Partial<ReceivableShowLike> = {},
+  ): ReceivableShowLike => ({
+    id: "s",
+    fee: 100000,
+    status: "PLAYED",
+    date: "2024-03-10T00:00:00.000Z",
+    ...over,
+  });
+
+  // Atual: 2 shows premium (R$ 6.000) + 2 em "R$ 1.000 – 2.000" (R$ 1.500) → 4 shows,
+  // mediano/médio R$ 3.750. Anterior: 4 shows em "R$ 1.000 – 2.000" → mediano/médio
+  // R$ 1.500. A tabela subiu (a mediana passou de 1.500 para 3.750).
+  const current = () =>
+    feeDistribution(
+      [gig({ fee: 600000 }), gig({ fee: 600000 }), gig({ fee: 150000 }), gig({ fee: 150000 })],
+      { now: new Date(NOW) },
+    );
+  const previous = () =>
+    feeDistribution(
+      [gig({ fee: 150000 }), gig({ fee: 150000 }), gig({ fee: 150000 }), gig({ fee: 150000 })],
+      { now: new Date(NOW) },
+    );
+
+  it("resume o comparativo em linhas de métrica (mediano/médio/shows/faixas) + tendência", () => {
+    const cmp = compareFeeDistribution(current(), previous());
+    const lines = feeDistributionComparisonToCsv(cmp).split("\r\n");
+    // Cabeçalho + mediano + médio + shows + 6 faixas + tendência.
+    expect(lines[0]).toBe(FEE_DISTRIBUTION_COMPARISON_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(11);
+    // Cachê mediano: 1.500 (anterior) → 3.750 (atual), Δ +2.250.
+    expect(lines[1].split(";")).toEqual(["Cachê mediano (R$)", "1500,00", "3750,00", "2250,00"]);
+    // Cachê médio: idêntico neste cenário.
+    expect(lines[2].split(";")).toEqual(["Cachê médio (R$)", "1500,00", "3750,00", "2250,00"]);
+    // Total de shows realizados: 4 → 4, sem variação.
+    expect(lines[3].split(";")).toEqual(["Shows realizados", "4", "4", "0"]);
+    // Faixa "R$ 1.000 – 2.000" (3ª faixa, linha 6): 100% → 50% = −50 p.p.
+    expect(lines[6].split(";")).toEqual([
+      "Participação — R$ 1.000 – 2.000 (%)",
+      "100%",
+      "50%",
+      "-50",
+    ]);
+    // Faixa premium "Acima de R$ 5.000" (6ª faixa, linha 9): 0% → 50% = +50 p.p.
+    expect(lines[9].split(";")).toEqual([
+      "Participação — Acima de R$ 5.000 (%)",
+      "0%",
+      "50%",
+      "+50",
+    ]);
+    // Última linha: veredito de tendência na coluna de variação.
+    expect(lines[10].split(";")).toEqual(["Tendência", "", "", "Cachês em alta"]);
+  });
+
+  it("veredito 'Cachês em baixa' quando a mediana cai além do limiar (Δ negativo assinado)", () => {
+    // Inverte os papéis: o ano atual é o de cachês menores.
+    const cmp = compareFeeDistribution(previous(), current());
+    const lines = feeDistributionComparisonToCsv(cmp).split("\r\n");
+    expect(lines[1].split(";")).toEqual(["Cachê mediano (R$)", "3750,00", "1500,00", "-2250,00"]);
+    expect(lines[10].split(";")).toEqual(["Tendência", "", "", "Cachês em baixa"]);
+  });
+
+  it("veredito 'Estável' e deltas zerados quando os dois anos são iguais", () => {
+    const cmp = compareFeeDistribution(previous(), previous());
+    const lines = feeDistributionComparisonToCsv(cmp).split("\r\n");
+    expect(lines[1].split(";")).toEqual(["Cachê mediano (R$)", "1500,00", "1500,00", "0,00"]);
+    // Faixa "R$ 1.000 – 2.000": 100% nos dois anos, sem deslocamento.
+    expect(lines[6].split(";")).toEqual([
+      "Participação — R$ 1.000 – 2.000 (%)",
+      "100%",
+      "100%",
+      "0",
+    ]);
+    expect(lines[10].split(";")).toEqual(["Tendência", "", "", "Estável"]);
   });
 });
 

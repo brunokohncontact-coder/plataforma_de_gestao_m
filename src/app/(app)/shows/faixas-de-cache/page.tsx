@@ -362,9 +362,18 @@ function FeeComparisonCard({
         <p className="text-xs font-medium uppercase tracking-wide opacity-80">
           Cachê {currentYear} vs. {previousYear}
         </p>
-        <span className="badge bg-white/70 font-semibold">
-          {trend.emoji} {trend.label}
-        </span>
+        <div className="flex items-center gap-2">
+          <a
+            href={`/shows/faixas-de-cache/comparativo/export?ano=${currentYear}`}
+            className="inline-flex items-center gap-1 rounded-md border border-black/10 bg-white/70 px-2 py-1 text-xs font-medium hover:bg-white"
+            download
+          >
+            ⬇ CSV
+          </a>
+          <span className="badge bg-white/70 font-semibold">
+            {trend.emoji} {trend.label}
+          </span>
+        </div>
       </div>
       <div className="mt-3 grid gap-4 sm:grid-cols-2">
         <div>
