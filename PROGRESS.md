@@ -9,7 +9,33 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 320 (D314) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 321 (D315) —
+ATIVIDADE DO FUNIL (`/shows/funil/atividade`): o log reverso-cronológico das últimas mudanças de status na
+carteira inteira, a feature maior "log de transições do funil" antecipada na lista de próximos passos (item
+2d/"eixo de exportação tabular esgotado"):** a linha do tempo de status (`ShowStatusEvent`/D234) já existia
+POR SHOW (a seção "Histórico de status" da página de detalhe, via `buildStatusTimeline`), mas não havia
+uma visão AGREGADA — "o que se moveu no funil ultimamente" num relance, sem abrir show a show. Uma peça de
+lógica pura + uma página, **zero migração/dependência**: novo helper `buildFunnelActivityFeed(items, {limit})`
++ tipos `FunnelActivityInput`/`FunnelActivityEntry`/`FunnelActivityKind` em `src/lib/shows.ts` (irmão de
+`buildStatusTimeline`) — ordena as transições de VÁRIOS shows da mais recente para a mais antiga (desempate
+estável pela ordem de entrada), limita a N e CLASSIFICA cada uma via `classifyFunnelTransition`: `create`
+(sem status anterior), `advance`/`regress` (pela ordem canônica de `SHOW_STATUSES`, índices 0/1/2 de
+PROPOSED/CONFIRMED/PLAYED), `cancel` (→ CANCELLED, tratado à parte por não ser o topo do funil) e `reopen`
+(CANCELLED → ativa). Página `/shows/funil/atividade` consulta `showStatusEvent.findMany` direto (índice
+`[userId]`, `orderBy createdAt desc`, `take 100`, join enxuto de `show.title`/`show.date`), monta o feed e
+renderiza uma lista com ponto colorido por natureza, badges `de → para` (ou "Cadastrado como {status}"), link
+ao detalhe do show, `formatDateTime` do evento + `formatDate` do show, estado vazio e rodapé "Mostrando as 100
+mais recentes" quando satura. Link "🕒 Atividade" no cabeçalho de `/shows/funil` + registro em `REPORT_GROUPS`
+(subtopic "Agenda & pipeline") para aparecer no hub/busca/índice. **+6 testes** (`shows.test.ts`,
+`describe("buildFunnelActivityFeed")`: vazio; ordena recente→antigo; respeita o limite mantendo as N mais
+recentes; classifica as 5 naturezas; desempata timestamps iguais preservando a entrada; propaga `showDate`
+nulo e resolve datas em `Date`). DoD verde: `npm run build` (rota `/shows/funil/atividade` 318 B → 96,3 kB),
+`npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1741 testes**); smoke → `/login` 200,
+`/shows/funil/atividade` 307→/login (auth-gated) e, com sessão de dev, 200 (estado vazio; e, com eventos de
+status semeados, as linhas `Cadastrado como Proposto` / `Proposto → Confirmado` / `Confirmado → Cancelado`
+com data do show); `npm audit` inalterado (10 advisories, zero dependência nova). **Próximo possível** —
+export CSV do feed (mirror das outras telas do funil), recorte por `?ano=`/`PeriodPicker`, filtro por
+natureza de transição, ou agrupamento por dia. Ver D315. **Antes disso, Sessão 320 (D314) —
 arrastar-e-soltar na AGENDA SEMANAL (`/shows/semana`) para remarcar um show, levando o gesto da D313 à
 segunda visão da agenda:** a D313 (Sessão 319) entregou o drag-and-drop na grade MENSAL; a visão semanal
 seguia 100% server-rendered (lista vertical de 7 dias, chips como `<Link>`), sem remarcar por gesto — a
@@ -5447,8 +5473,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    (biggest improvement/worsening + novos/sumidos), ancorado na média por conta da amostra pequena por pagador, ver D195 — fecha o
    "passo maior" adiado na D194(item 5). Próximo possível para esta feature: (a) coluna "vs. {ano-1}" por linha na tabela (adiado,
    ruído para amostras pequenas); (b) export CSV do comparativo (adiado, o card de extremos entrega o sinal acionável).
-   Fora dela, o eixo de exportação tabular segue **esgotado** e próximas sessões podem evoluir feature maior (calendário drag&drop,
-   log de transições do funil, ~~recuperação de senha~~).
+   Fora dela, o eixo de exportação tabular segue **esgotado** e próximas sessões podem evoluir feature maior (~~calendário drag&drop~~,
+   ~~log de transições do funil~~, ~~recuperação de senha~~). **Log de transições do funil entregue na Sessão 321 (D315)** —
+   `buildFunnelActivityFeed` em `src/lib/shows.ts` + página `/shows/funil/atividade`: feed reverso-cronológico das últimas 100
+   mudanças de status na carteira inteira (cadastro/avanço/recuo/cancelamento/reabertura), agregando os `ShowStatusEvent` (D234)
+   que a página de detalhe só mostrava por show; próximo possível — export CSV do feed, recorte por `?ano=`, filtro por natureza.
    **Recuperação de senha** entregue na Sessão 264 — fluxo deslogado "esqueci a senha" → link de redefinição (token de uso único,
    hash SHA-256 no banco, validade de 60 min) → nova senha, em `src/lib/passwordReset.ts` + `(auth)/actions.ts`
    (`requestPasswordResetAction`/`resetPasswordAction`) + rotas `/esqueci-senha` e `/redefinir-senha` + link/banner no login, ver D259.

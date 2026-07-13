@@ -5,6 +5,38 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-13 — D315: Atividade do funil (`/shows/funil/atividade`) — feed agregado de transições de status
+- **Contexto:** cada mudança de status de um show grava um `ShowStatusEvent` (D234), e a página de detalhe
+  do show já monta a linha do tempo POR SHOW (`buildStatusTimeline`, seção "Histórico de status"). Mas não
+  havia nenhuma visão AGREGADA — para saber "o que se moveu no funil ultimamente" era preciso abrir show a
+  show. A própria lista de próximos passos do PROGRESS antecipava "log de transições do funil" como uma das
+  poucas features maiores ainda em aberto (junto de recuperação de senha e do drag&drop do calendário, ambas
+  já entregues). O eixo de exportação tabular estava marcado como "esgotado", então a evolução natural era
+  uma superfície de leitura nova, não mais um CSV.
+- **Decisão:**
+  - Novo helper puro `buildFunnelActivityFeed(items, { limit })` + tipos `FunnelActivityInput` /
+    `FunnelActivityEntry` / `FunnelActivityKind` em `src/lib/shows.ts` (irmão de `buildStatusTimeline`).
+    Ordena as transições de vários shows da mais recente para a mais antiga (desempate estável pela ordem de
+    entrada), limita a `limit` e classifica cada uma via `classifyFunnelTransition`: `create` (sem status
+    anterior), `advance` / `regress` (pela ordem canônica de `SHOW_STATUSES` — índices 0/1/2 de PROPOSED/
+    CONFIRMED/PLAYED), `cancel` (qualquer etapa → CANCELLED) e `reopen` (CANCELLED → etapa ativa).
+  - Página `/shows/funil/atividade`: consulta `showStatusEvent.findMany` diretamente (índice `[userId]` do
+    modelo, `orderBy createdAt desc`, `take 100`, join enxuto de `show.title`/`show.date`), passa ao helper e
+    renderiza uma lista — ponto colorido por natureza, badges `de → para` (ou "Cadastrado como {status}"),
+    link ao detalhe do show, `formatDateTime` do evento + `formatDate` do show, estado vazio e rodapé de
+    saturação. Link "🕒 Atividade" no cabeçalho de `/shows/funil` e registro em `REPORT_GROUPS`.
+- **Justificativa:** a lógica de ordenação/classificação é pura e testável isoladamente (+6 testes), mantendo
+  a página fina — o mesmo padrão helper-puro + page-server de todo o resto do app. Consultar `ShowStatusEvent`
+  direto (em vez de carregar shows com `statusEvents` aninhados e achatar) usa o índice `[userId]` e o
+  `take 100` do banco, sem varrer a carteira inteira. CANCELLED, embora seja o último elemento de
+  `SHOW_STATUSES`, é detectado ANTES da comparação de índices porque é uma saída lateral, não o topo do funil
+  — assim um cancelamento nunca é lido como "avanço".
+- **Alternativas consideradas:** (a) agrupar por dia — adiado; o feed plano com data+hora por linha já
+  responde a pergunta e evita a decisão de fuso do agrupamento (os `createdAt` são instantes reais, não datas
+  de calendário). (b) export CSV do feed — adiado; o valor aqui é a leitura em tela, e o eixo tabular está
+  esgotado; fica como próximo possível se houver demanda. (c) recorte por `?ano=`/filtro por natureza —
+  adiado por YAGNI; o `take 100` recente cobre o caso de uso "o que mudou ultimamente".
+
 ## 2026-07-13 — D314: Arrastar-e-soltar na agenda semanal para remarcar um show (`/shows/semana`), reusando `rescheduleShowAction`/`rescheduleToDay` da D313
 - **Contexto:** a D313 (Sessão 319) entregou o arrastar-e-soltar para remarcar na grade MENSAL
   (`/shows/calendario`) via o Client Component `CalendarGrid`, o helper puro `rescheduleToDay` e a server
