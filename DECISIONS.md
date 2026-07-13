@@ -5,6 +5,41 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-13 — D317: Filtro por natureza da transição no feed de atividade do funil (`?natureza=`)
+- **Contexto:** a D315 entregou `/shows/funil/atividade` (feed reverso-cronológico das últimas 100 transições
+  de status da carteira, já CLASSIFICADAS por natureza — cadastro/avanço/recuo/cancelamento/reabertura, com
+  ponto colorido) e a D316 fechou o export CSV do feed. A própria D315 deixou três "próximos possíveis"
+  explícitos: filtro por natureza, recorte por ano/PeriodPicker e agrupamento por dia. Isolar UMA natureza
+  ("só os cancelamentos", "só os cadastros") exigia varrer a lista a olho — o filtro por natureza é o menor e
+  mais imediato dos três, e o que mais aproveita a classificação já existente.
+- **Decisão:**
+  - Quatro helpers puros em `src/lib/shows.ts`, irmãos de `buildFunnelActivityFeed`:
+    `FUNNEL_ACTIVITY_KINDS` (as cinco naturezas na ordem canônica do funil — create/advance/regress/cancel/
+    reopen — fonte ÚNICA para iterar chips, validar o parâmetro e montar o mapa de contagens);
+    `parseFunnelActivityKind(value)` (valida o cru de `?natureza=`, aceita `string`/`string[]` — usa o primeiro
+    valor — e devolve a natureza reconhecida ou `null`=todas); `filterFunnelActivityByKind(feed, kind)` (recorta
+    o feed JÁ montado; `null` devolve o feed inteiro com a mesma identidade, sem recalcular);
+    `countFunnelActivityByKind(feed)` (contagem por natureza SEMPRE com as cinco chaves, zeradas quando
+    ausentes).
+  - `/shows/funil/atividade/page.tsx` lê `searchParams.natureza`, renderiza uma barra de chips ("Todas (N)" +
+    as cinco com ponto/rótulo/contagem, o ativo destacado com `aria-current="page"`), exibe o recorte filtrado
+    (`visible = filter(feed, activeKind)`) e um estado vazio próprio ("Nenhuma transição do tipo … entre as N
+    mais recentes" + "Ver todas") quando a natureza não aparece na janela. O rodapé de saturação passa a
+    "Filtrando entre as 100 mais recentes" sob filtro.
+  - `/shows/funil/atividade/export/route.ts` lê o MESMO `?natureza=`, aplica `filterFunnelActivityByKind` sobre
+    a mesma janela e nomeia o arquivo `atividade-funil-{natureza}.csv`. O link "⬇ CSV" da página propaga o
+    filtro ativo. Assim tela e planilha nunca divergem.
+- **Justificativa:** filtrar o feed JÁ carregado (janela de 100 eventos, uma consulta só) em memória é o
+  caminho mais barato e mantém contagens/recortes/CSV derivando exatamente da mesma fonte — nenhuma consulta,
+  migração ou dependência nova. Manter a classificação onde já vive (`classifyFunnelTransition`) e só recortar
+  por cima evita duplicar regra de negócio; toda a lógica nova é pura e testada (+6 testes).
+- **Alternativas consideradas:** (a) filtrar no banco por `fromStatus`/`toStatus` — inviável limpo para
+  advance/regress (derivam de comparar índices, não de colunas) e traria a assimetria de "últimas 100 de cada
+  tipo" vs. "as 100 mais recentes"; a janela única mantém contagens coerentes entre os chips. (b) recorte por
+  ano ou agrupamento por dia primeiro — deixados para uma próxima sessão; o filtro por natureza aproveita
+  diretamente a classificação existente e é o de menor superfície. (c) multi-seleção de naturezas — o padrão
+  de chip único (como as demais telas de recorte) é mais simples e cobre o caso de uso principal.
+
 ## 2026-07-13 — D316: Exportação CSV do feed de atividade do funil (`/shows/funil/atividade/export`)
 - **Contexto:** a D315 entregou a página `/shows/funil/atividade` (feed reverso-cronológico das últimas
   transições de status da carteira, classificadas por natureza) e deixou explícito, como primeiro "próximo

@@ -7,9 +7,36 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1750 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 322 (D316) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 323 (D317) —
+FILTRO POR NATUREZA da transição em `/shows/funil/atividade` (`?natureza=`), fechando um dos "próximos
+possíveis" que a D315 deixou explícito ao entregar o feed (filtro por natureza / recorte por ano / agrupamento
+por dia):** o feed já listava as últimas 100 transições da carteira CLASSIFICADAS por natureza
+(cadastro/avanço/recuo/cancelamento/reabertura, com ponto colorido), mas não dava para isolar UMA natureza —
+"só os cancelamentos", "só os cadastros novos" — sem varrer a lista inteira a olho. Só peças puras + fiação de
+apresentação, **zero migração/consulta/dependência nova**: quatro helpers puros em `src/lib/shows.ts` —
+`FUNNEL_ACTIVITY_KINDS` (as cinco naturezas na ordem canônica do funil, fonte única para iterar chips/validar
+o parâmetro/montar o mapa de contagens), `parseFunnelActivityKind(value)` (valida o cru de `?natureza=`,
+aceita `string`/`string[]`, devolve a natureza ou `null`=todas), `filterFunnelActivityByKind(feed, kind)`
+(recorta o feed já montado por natureza; `null` devolve o feed inteiro com a MESMA identidade, sem recalcular)
+e `countFunnelActivityByKind(feed)` (contagem por natureza SEMPRE com as cinco chaves, zeradas quando
+ausentes, para os chips). A página `/shows/funil/atividade` passou a ler `searchParams.natureza`, renderizar
+uma barra de chips ("Todas (N)" + as cinco com ponto + rótulo + contagem, o ativo destacado com `aria-current`),
+exibir o recorte filtrado (`visible`) e um estado vazio próprio ("Nenhuma transição do tipo … entre as N mais
+recentes" + "Ver todas") quando a natureza escolhida não aparece na janela; rodapé de saturação vira
+"Filtrando entre as 100 mais recentes" sob filtro. O link "⬇ CSV" (e a rota `/shows/funil/atividade/export`)
+espelham o filtro: a rota lê o mesmo `?natureza=`, aplica `filterFunnelActivityByKind` sobre a mesma janela e
+nomeia o arquivo `atividade-funil-{natureza}.csv` — tela e planilha nunca divergem. Todas as contagens/recortes
+derivam da MESMA janela de 100 eventos já carregada (nenhuma consulta extra). **+6 testes** (`shows.test.ts`:
+`parseFunnelActivityKind` aceita cada natureza / null para ausente-vazio-desconhecido / primeiro valor do
+array; `filterFunnelActivityByKind` null=identidade, filtra preservando ordem, natureza ausente→vazio;
+`countFunnelActivityByKind` cinco chaves com zeradas). DoD verde: `npm run build` (`/shows/funil/atividade`
+320 B → 96,3 kB), `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1750 testes**); smoke →
+`/login` 200, `/shows/funil/atividade`, `?natureza=advance` e `/export?natureza=cancel` 307→/login
+(auth-gated, sem 500); `npm audit` inalterado (10 advisories, zero dependência nova). **Próximo possível** —
+~~filtro por natureza~~ (entregue), recorte por `?ano=`/`PeriodPicker` ou agrupamento por dia no feed. Ver D317.
+**Antes disso, Sessão 322 (D316) —
 EXPORTAÇÃO CSV do feed de ATIVIDADE DO FUNIL (`/shows/funil/atividade/export`), fechando o "próximo
 possível" que a D315 deixou explícito ao entregar a página do feed:** a tela `/shows/funil/atividade`
 (D315) já lista as últimas transições de status da carteira inteira — mais recentes primeiro, classificadas
