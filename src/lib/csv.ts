@@ -1748,6 +1748,83 @@ export function feeDistributionToCsv(
   return toCsv(out, delimiter);
 }
 
+export const FEE_DISTRIBUTION_COMPARISON_CSV_HEADERS = [
+  "Métrica",
+  "Ano anterior",
+  "Ano corrente",
+  "Variação",
+] as const;
+
+/** Rótulo pt-BR do veredito de tendência do cachê, espelhando o card da tela. */
+const FEE_DISTRIBUTION_TREND_LABELS: Record<
+  FeeDistributionComparison["trend"],
+  string
+> = {
+  up: "Cachês em alta",
+  down: "Cachês em baixa",
+  stable: "Estável",
+};
+
+/**
+ * Serializa o comparativo ano a ano da distribuição de cachês
+ * (`compareFeeDistribution`) em CSV, pronto para download — espelha o card
+ * "Cachê {ano} vs. {ano-1}" (`FeeComparisonCard`) de `/shows/faixas-de-cache`,
+ * cujos números (cachê mediano/médio, migração de participação faixa a faixa e o
+ * veredito de tendência) só viviam na tela: o export do ano
+ * (`feeDistributionToCsv`/D292) traz só a faixa do ano corrente + o Δ de
+ * participação em p.p., sem os valores do ano anterior nem o resumo mediano/médio.
+ *
+ * Como o comparativo é um punhado de métricas escalares + o deslocamento por
+ * faixa, a planilha é orientada a MÉTRICA (uma linha por indicador, no molde de
+ * `proposalConversionComparisonToCsv`/D251, não uma linha por item como
+ * `cityProfitComparisonToCsv`): o cachê mediano e o médio (com a variação em R$),
+ * o total de shows realizados, a participação (nº de shows) de CADA faixa nos dois
+ * anos (as 6 de `FEE_BANDS`, da mais barata à mais cara, inclusive as zeradas —
+ * "para ONDE seus cachês migraram", com a premium "Acima de R$ 5.000" como o último
+ * degrau) e, ao fim, o veredito de tendência (Cachês em alta / em baixa / Estável)
+ * na coluna de variação. As participações saem como % (`csvShare`), com a variação
+ * em pontos percentuais assinados (`csvSignedPoints`); os valores em R$ via
+ * `centsToCsvAmount` (que já emite o "-" nos negativos). Os anos concretos vão no
+ * nome do arquivo, não nos cabeçalhos (mesma convenção de
+ * `gigSeasonalityComparisonToCsv`/`proposalConversionComparisonToCsv`). Mesma
+ * convenção pt-BR dos irmãos (";" e decimal com vírgula). Pura.
+ */
+export function feeDistributionComparisonToCsv(
+  comparison: FeeDistributionComparison,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const { current, previous } = comparison;
+  const out: string[][] = [
+    Array.from(FEE_DISTRIBUTION_COMPARISON_CSV_HEADERS),
+    [
+      "Cachê mediano (R$)",
+      centsToCsvAmount(previous.medianFee),
+      centsToCsvAmount(current.medianFee),
+      centsToCsvAmount(comparison.medianFeeDelta),
+    ],
+    [
+      "Cachê médio (R$)",
+      centsToCsvAmount(previous.avgFee),
+      centsToCsvAmount(current.avgFee),
+      centsToCsvAmount(comparison.avgFeeDelta),
+    ],
+    [
+      "Shows realizados",
+      String(previous.totalShows),
+      String(current.totalShows),
+      csvSignedCount(current.totalShows - previous.totalShows),
+    ],
+    ...comparison.bandChanges.map((b) => [
+      `Participação — ${b.label} (%)`,
+      csvShare(b.previousCountShare),
+      csvShare(b.currentCountShare),
+      csvSignedPoints(b.countShareDelta),
+    ]),
+    ["Tendência", "", "", FEE_DISTRIBUTION_TREND_LABELS[comparison.trend]],
+  ];
+  return toCsv(out, delimiter);
+}
+
 // ── Fontes de renda / mix de receitas (de onde vem o dinheiro?) ──────────────
 
 export const INCOME_MIX_CSV_HEADERS = [

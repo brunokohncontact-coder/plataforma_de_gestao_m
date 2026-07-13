@@ -9,7 +9,38 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 316 (D310) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 317 (D311) —
+exportação CSV do comparativo ano a ano das FAIXAS DE CACHÊ
+(`/shows/faixas-de-cache/comparativo/export`), fechando a última tela de comparativo sem export dedicado:**
+a tela `/shows/faixas-de-cache` já tinha o comparativo ano a ano (card `FeeComparisonCard` "Cachê {ano} vs.
+{ano-1}" com cachê mediano/médio, migração premium e veredito de tendência — D187/D293 — e a coluna
+"vs. {ano-1}" por faixa — D292/D304), mas era a ÚNICA tela de comparativo sem uma rota `comparativo/export`
+(cidades, locais, sazonalidade, dias-semana e funil/conversão já tinham a sua). O export do ano
+(`/shows/faixas-de-cache/export`/D292) só serializa a faixa do ano corrente + o Δ de participação em p.p.
+(`feeDistributionToCsv`) — os valores do ano anterior por faixa e o resumo mediano/médio/tendência do card
+não estavam em planilha nenhuma. Novo serializador `feeDistributionComparisonToCsv(comparison)` +
+`FEE_DISTRIBUTION_COMPARISON_CSV_HEADERS` em `src/lib/csv.ts`, orientado a MÉTRICA (uma linha por indicador,
+molde de `proposalConversionComparisonToCsv`/D251: Métrica / Ano anterior / Ano corrente / Variação) —
+cachê mediano (R$), cachê médio (R$), total de shows realizados, a participação (nº de shows) de CADA faixa
+nos dois anos (as 6 de `FEE_BANDS`, inclusive as zeradas, premium "Acima de R$ 5.000" como último degrau) e a
+Tendência (Cachês em alta / em baixa / Estável) na coluna de variação. Nova rota
+`/shows/faixas-de-cache/comparativo/export?ano=YYYY` (espelho da rota irmã de cidades: mesmo gate do card —
+404 sem ano específico ou sem shows realizados com cachê nos DOIS anos; recomputa as duas `feeDistribution`
+sobre os MESMOS registros via `filterShowsByYear`, recorte UTC da D108, zero I/O extra; nome
+`faixas-de-cache-comparativo-{ano}-vs-{ano-1}.csv`) + link "⬇ CSV" no cabeçalho do card `FeeComparisonCard`
+(espelho do `CityMoversCard`). Zero regra de negócio nova (`compareFeeDistribution` já testada da D187), zero
+consulta nova, zero migração, zero dependência. **+3 testes** (`csv.test.ts`,
+`describe("feeDistributionComparisonToCsv")`: resumo mediano/médio/shows + faixas com o Δ por degrau;
+"Cachês em baixa" com Δ negativo assinado; "Estável" com deltas zerados). Build/typecheck/lint verdes
+(**1726 testes**); smoke → `/login` 200, `/shows/faixas-de-cache?ano=2026` e
+`/shows/faixas-de-cache/comparativo/export?ano=2026` 307→/login (auth-gated, sem 500); `npm audit` inalterado
+(10 advisories). **Nota de ambiente:** o `.env` local desta sessão estava obsoleto (SQLite, sem `DIRECT_URL`)
+e o guard `[ ! -f .env ]` do `scripts/session-setup.sh` não o atualizou — o build exige
+`DATABASE_URL`/`DIRECT_URL` de Postgres (D306); rodado com as URLs do `palco_dev` já provisionado. **Próximo
+possível** — com todas as telas de comparativo agora com export dedicado, unificar os quatro/cinco componentes
+de detalhe on-screen paralelos (despesa/receita/cidade/local) num helper parametrizado se surgir uma sexta
+cópia, ou levar a "Situação/Tendência" já no CSV às tabelas on-screen que ainda mostram só a métrica crua no
+detalhe. Ver D311. Antes disso, **Sessão 316 (D310) —
 detalhe on-screen "Ver todas as cidades"/"Ver todas as casas" com a coluna Tendência (↑ Subiu / ↓ Caiu /
 → Estável) nos cards de movers de `/shows/cidades` e `/shows/locais`, levando o padrão dos detalhes
 D308/D309 (mix de despesa/receita) ao eixo de praça:** os cards "Para onde a agenda migrou"
