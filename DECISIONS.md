@@ -10953,3 +10953,43 @@ contexto, decisão, justificativa e alternativas consideradas.
   `npm audit` inalterado (10 advisories; ver D6). Zero migração, zero dependência nova.
 - **Nota de concorrência:** número **D308** escolhido como o próximo livre após o D307 (Sessão 313). Se
   outra PR reivindicar D308, renumerar para o próximo livre no merge.
+
+## D312 — Reparo idempotente do `.env` de dev + provisionamento por `migrate deploy` no `session-setup.sh` (Sessão 318)
+- **Contexto:** o container remoto é efêmero, mas o `.env` (gitignored) sobrevive entre imagens/sessões.
+  Um `.env` OBSOLETO herdado de antes da migração para Postgres (D306) — `DATABASE_URL="file:./dev.db"`,
+  sem `DIRECT_URL` — passava pelo antigo guard `[ ! -f .env ]` do `scripts/session-setup.sh` intacto (o guard
+  só cria o arquivo quando AUSENTE, nunca o corrige) e quebrava todo `prisma`/build da sessão com
+  `P1012: Environment variable not found: DIRECT_URL`. A "Nota de ambiente" de D306/D311 já registrava o
+  papercut recorrente ("rodado com as URLs do `palco_dev` manualmente"), sem fechá-lo na raiz.
+- **Segundo problema (exposto pelo reparo):** o `session-setup.sh` provisionava o schema com `prisma db push`,
+  enquanto `npm run build` roda `prisma migrate deploy`. Com o `.env` corrigido, o `db push` passou a popular o
+  banco de dev COM SUCESSO — e aí o `migrate deploy` do build abortava com `P3005` ("database schema is not
+  empty") num banco não baselineado. Em sessões anteriores o `db push` falhava em silêncio (env de SQLite
+  quebrado), deixando o banco vazio, e por isso o `migrate deploy` do build ainda funcionava — mascarando o
+  conflito.
+- **Decisão:** (1) o `session-setup.sh` agora REPARA as chaves obrigatórias do `.env` mesmo quando o arquivo
+  existe, de forma idempotente: helper `upsert_env` (adiciona/reescreve uma chave preservando as demais);
+  `DATABASE_URL` só é (re)escrito quando falta ou aponta para SQLite (`file:`) — um Postgres já customizado
+  (outra porta/host/credencial) é PRESERVADO via `case postgres*|postgresql*`; `DIRECT_URL` é adicionado se
+  faltar (espelhando `DATABASE_URL`); `AUTH_SECRET` é adicionado se faltar. (2) o provisionamento do schema
+  passou de `prisma db push` para `prisma migrate deploy` (mesmo caminho do build/produção), gravando o
+  histórico em `_prisma_migrations` para o `migrate deploy` subsequente do build virar no-op; `db push`
+  permanece só como fallback quando não há migrations versionadas.
+- **Justificativa:** fecha um bloqueio de infra que reaparecia a cada sessão e exigia intervenção manual,
+  deixando a `main` buildável de forma reprodutível a partir do hook de setup — sem tocar em nenhuma regra de
+  negócio, rota, consulta, migração ou dependência. O reparo é conservador (não pisa num Postgres válido) e
+  idempotente (reexecutar não muda nada), verificado com um `.env` de SQLite obsoleto → corrigido, um `.env`
+  de Postgres customizado → preservado, e segunda execução → sem diff.
+- **Alternativas consideradas:** (a) commitar um `.env.dev` versionado e copiá-lo — rejeitado: `.env` é
+  deliberadamente gitignored (segredos), e um `.env` real do container ainda venceria a cópia; corrigir
+  in-place é mais robusto. (b) manter `db push` e adicionar `--accept-data-loss`/baseline no build — rejeitado:
+  divergiria dev de produção (que usa migrations) e mascararia o histórico; alinhar dev ao caminho de produção
+  é a correção certa. (c) deixar como está e continuar setando o env à mão toda sessão — rejeitado: é o
+  papercut que esta decisão fecha.
+- **Verificação:** DoD verde — `npm run build` (Postgres `palco_dev` provisionado por `migrate deploy`, build
+  Next completo), `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1726 testes**); smoke →
+  `/login` 200 e `/shows/funil/tempo-em-etapa/por-contratante?ano=2026` 307→/login (auth-gated, sem 500);
+  `npm audit` inalterado (10 advisories; ver D6). Zero migração, zero dependência nova; mudança só em
+  `scripts/session-setup.sh`.
+- **Nota de concorrência:** número **D312** escolhido como o próximo livre acima do maior D referenciado no
+  PROGRESS (D311). Se outra PR reivindicar D312, renumerar para o próximo livre no merge.

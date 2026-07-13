@@ -9,7 +9,29 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 317 (D311) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 318 (D312) —
+correção de INFRA que desbloqueia o build reprodutível a cada sessão: o `scripts/session-setup.sh`
+agora REPARA o `.env` de dev e provisiona o schema pelo mesmo caminho do build.** O `.env` (gitignored)
+sobrevive entre imagens efêmeras e vinha OBSOLETO — SQLite (`DATABASE_URL="file:./dev.db"`, sem
+`DIRECT_URL`) herdado de antes da migração para Postgres (D306) —, mas o antigo guard `[ ! -f .env ]` só
+criava o arquivo quando AUSENTE e nunca corrigia o presente, quebrando todo `prisma`/build da sessão com
+`P1012: Environment variable not found: DIRECT_URL` (o papercut que a "Nota de ambiente" de D311 vinha
+contornando à mão toda sessão). Agora o setup faz um reparo IDEMPOTENTE: helper `upsert_env` (adiciona/reescreve
+uma chave preservando as demais); `DATABASE_URL` só é (re)escrito quando falta ou é SQLite (`file:`) — um
+Postgres já customizado é PRESERVADO (`case postgres*|postgresql*`); `DIRECT_URL` é adicionado se faltar;
+`AUTH_SECRET` idem. Corrigir o `.env` expôs um segundo conflito latente: o setup provisionava com `prisma db
+push`, mas `npm run build` roda `prisma migrate deploy` — com o banco já populado pelo `db push`, o `migrate
+deploy` abortava com `P3005` ("database schema is not empty"). Em sessões anteriores o `db push` falhava em
+silêncio (env quebrado), deixando o banco vazio e mascarando o conflito. O setup passou a usar `prisma migrate
+deploy` (grava `_prisma_migrations`, o `migrate deploy` do build vira no-op), com `db push` só como fallback
+sem migrations versionadas. Zero regra de negócio, rota, consulta, migração ou dependência nova; mudança só em
+`scripts/session-setup.sh`. Sem novos testes (é script de shell, não lógica pura). DoD verde após o reparo:
+`npm run build` (Next completo, `palco_dev` provisionado por `migrate deploy`), `npx tsc --noEmit`, `npm run
+lint` (0 warnings), `npm test` (**1726 testes**); smoke → `/login` 200 e
+`/shows/funil/tempo-em-etapa/por-contratante?ano=2026` 307→/login (auth-gated, sem 500); `npm audit`
+inalterado (10 advisories). Verificado: `.env` de SQLite obsoleto → corrigido; `.env` de Postgres customizado
+→ preservado; segunda execução do setup → sem diff. Ver D312. **Nota:** a "Nota de ambiente" de D306/D311
+está fechada — o env não precisa mais ser setado à mão. **Antes disso, Sessão 317 (D311) —
 exportação CSV do comparativo ano a ano das FAIXAS DE CACHÊ
 (`/shows/faixas-de-cache/comparativo/export`), fechando a última tela de comparativo sem export dedicado:**
 a tela `/shows/faixas-de-cache` já tinha o comparativo ano a ano (card `FeeComparisonCard` "Cachê {ano} vs.
