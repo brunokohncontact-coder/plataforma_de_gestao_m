@@ -22,12 +22,49 @@ fi
 
 DEV_DB_URL="postgresql://postgres:postgres@localhost:5432/palco_dev"
 
-if [ ! -f .env ]; then
-  echo "DATABASE_URL=\"${DEV_DB_URL}\"" > .env
-  echo "DIRECT_URL=\"${DEV_DB_URL}\"" >> .env
-  echo 'AUTH_SECRET="dev-secret-only-change-in-production-aaaaaaaaaaaaaaaaaaaa"' >> .env
-  echo "session-setup: .env de desenvolvimento criado."
+# Garante o .env de dev — mas NÃO só quando ausente. Um `.env` gitignored sobrevive
+# entre imagens/sessões e pode ficar OBSOLETO frente ao schema atual: o caso real é o
+# `.env` de SQLite (`DATABASE_URL="file:./dev.db"`, sem `DIRECT_URL`) herdado de antes
+# da migração para Postgres (D306), que passa pelo antigo guard `[ ! -f .env ]` intacto
+# e quebra todo `prisma`/build da sessão com "Environment variable not found: DIRECT_URL"
+# (ou provider divergente). Por isso agora REPARAMOS as chaves obrigatórias mesmo com o
+# arquivo presente — de forma idempotente e sem pisar num Postgres já customizado.
+touch .env
+
+# upsert_env CHAVE VALOR: garante `CHAVE="VALOR"` no .env (adiciona se faltar,
+# reescreve se já existir), preservando as demais linhas.
+upsert_env() {
+  local key="$1" value="$2"
+  if grep -q "^${key}=" .env; then
+    # Substitui a linha inteira; o valor é dev-only e não tem `#` nem `|`.
+    sed -i "s|^${key}=.*|${key}=\"${value}\"|" .env
+  else
+    echo "${key}=\"${value}\"" >> .env
+  fi
+}
+
+# DATABASE_URL: só (re)escreve quando falta ou aponta para SQLite (`file:`) — um
+# Postgres válido já customizado (ex.: outra porta/host) é preservado.
+current_db_url="$(sed -n 's/^DATABASE_URL="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' .env | head -n1)"
+case "$current_db_url" in
+  postgres*|postgresql*) : ;; # já é Postgres — não mexe
+  *)
+    upsert_env DATABASE_URL "$DEV_DB_URL"
+    echo "session-setup: DATABASE_URL ausente/obsoleto (SQLite) — apontado para o Postgres de dev."
+    ;;
+esac
+
+# DIRECT_URL: exigido pelo schema (usado pelas migrations). Em dev, espelha
+# DATABASE_URL; adiciona se faltar (o caso do .env de SQLite legado).
+if ! grep -q "^DIRECT_URL=" .env; then
+  db_for_direct="$(sed -n 's/^DATABASE_URL="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' .env | head -n1)"
+  upsert_env DIRECT_URL "${db_for_direct:-$DEV_DB_URL}"
+  echo "session-setup: DIRECT_URL ausente — adicionado (exigido por prisma/schema.prisma)."
 fi
+
+# AUTH_SECRET: qualquer segredo de dev serve; adiciona se faltar.
+grep -q "^AUTH_SECRET=" .env \
+  || echo 'AUTH_SECRET="dev-secret-only-change-in-production-aaaaaaaaaaaaaaaaaaaa"' >> .env
 
 # Sobe o Postgres local (pacote `postgresql` já instalado na imagem) e garante
 # os bancos de dev/teste. Idempotente: `service start` e `CREATE DATABASE ...
@@ -91,6 +128,18 @@ if ! npx prisma generate >/dev/null 2>&1; then
   npx prisma generate >/dev/null 2>&1 || true
 fi
 
-npx prisma db push --skip-generate >/dev/null 2>&1 || true
+# Provisiona o schema do banco de dev pelo MESMO caminho que o build/produção
+# (`npm run build` roda `prisma migrate deploy`), não por `db push`: aplicar as
+# migrations grava o histórico em `_prisma_migrations`, então o `migrate deploy`
+# subsequente do build vira no-op ("already applied"). Usar `db push` aqui criava
+# um schema SEM histórico e fazia o `migrate deploy` do build abortar com P3005
+# ("database schema is not empty") num banco já populado. Idempotente: reaplicar
+# migrations já aplicadas não faz nada. `db push` fica como fallback só se não
+# houver migrations versionadas.
+if [ -d prisma/migrations ] && ls prisma/migrations/*/migration.sql >/dev/null 2>&1; then
+  npx prisma migrate deploy >/dev/null 2>&1 || true
+else
+  npx prisma db push --skip-generate >/dev/null 2>&1 || true
+fi
 
 echo "session-setup: ambiente pronto."
