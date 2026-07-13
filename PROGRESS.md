@@ -9,7 +9,22 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 318 (D312) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 319 (D313) —
+arrastar-e-soltar no calendário para remarcar um show:** o calendário mensal (`/shows/calendario`) deixou de
+ser um retrato estático — arrastar um chip de show para outro dia o remarca (preservando o horário) via
+`rescheduleShowAction`, fechando o item mais antigo em aberto dos próximos passos ("arrastar/soltar para
+remarcar", item 2). Três peças: helper puro `rescheduleToDay(current, "YYYY-MM-DD")` em `src/lib/calendar.ts`
+(nova data no dia-alvo mantendo o horário local, `null` p/ dia inválido — reusa o guarda de transbordo de
+`parseDayParam`); server action `rescheduleShowAction` em `src/app/(app)/shows/actions.ts` (confere posse,
+no-op silencioso p/ show alheio / dia inválido / mesma data, sem `ShowStatusEvent` porque data ≠ status);
+Client Component `src/components/CalendarGrid.tsx` (chips `draggable` que continuam links ao detalhe, células
+como zonas de drop com realce; a página achata a grade — montada/testada por `buildMonthGrid` — em dados
+serializáveis, sem `Date` no cliente). **+9 testes** (5 de `rescheduleToDay` + 4 de integração da action).
+DoD verde: `npm run build` (rota `/shows/calendario` 318 B → 2,87 kB, confirmando o bundle do client grid),
+`npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1735 testes**); smoke → `/login` 200,
+`/shows/calendario` 307→/login (auth-gated) e, com sessão de dev, `/shows/calendario?mes=2026-07` 200 com o
+show `draggable="true"`/`cursor-grab`; `npm audit` inalterado (10 advisories, zero dependência nova). Ver D313.
+**Antes disso, Sessão 318 (D312) —
 correção de INFRA que desbloqueia o build reprodutível a cada sessão: o `scripts/session-setup.sh`
 agora REPARA o `.env` de dev e provisiona o schema pelo mesmo caminho do build.** O `.env` (gitignored)
 sobrevive entre imagens efêmeras e vinha OBSOLETO — SQLite (`DATABASE_URL="file:./dev.db"`, sem
@@ -4675,11 +4690,13 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
 - **Tempo de decisão por contratante — evoluções** (entregue na Sessão 280, D275 —
   `proposalDeliberationByContact` em `src/lib/shows.ts` + `/shows/funil/tempo-em-etapa/por-contratante`
   + CSV `proposalDeliberationByContactToCsv`): a deliberação da etapa PROPOSED quebrada por contratante,
-  ordenada menor→maior mediana, com card do mais lento. Próximo possível — (a) recorte por `?ano=`/
-  `PeriodPicker` + comparativo YoY por contratante (espelho de D269/D270 na antecedência: "quem passou
-  a decidir mais rápido/devagar"); (b) nudge no Painel quando um contratante recorrente passa a demorar
-  muito além do seu hábito para decidir (espelho de `contactBookingLeadTimeDropHeadline`/D272), adiado
-  por o Painel já estar denso.
+  ordenada menor→maior mediana, com card do mais lento. **CORREÇÃO (Sessão 319): ambos os "próximos
+  possíveis" abaixo já foram entregues — este item está fechado.** (a) recorte por `?ano=`/`PeriodPicker` +
+  comparativo YoY por contratante entregue em D276/D278 (a página `/shows/funil/tempo-em-etapa/por-contratante`
+  já tem `PeriodPicker`, o card `DeliberationMoversCard` "Quem mudou o ritmo de decisão" e a coluna
+  "vs. {ano-1}" na tabela e no CSV via `compareProposalDeliberationByContact`/`indexContactProposalDeliberationChanges`);
+  (b) o nudge no Painel foi entregue como `contactDeliberationRiseHeadline` (D278, ligado em
+  `dashboard/page.tsx`, cede a vez ao nudge absoluto `slowDeliberatorHeadline`/D277). Nada a fazer aqui.
 0. **Hub de Relatórios — evoluções** (entregue na Sessão 62, `/relatorios` + `src/lib/reports.ts`,
    ver D54; **barras podadas** na Sessão 63 — `/shows`, `/financas` e `/contatos` agora levam um único
    link "Relatórios" ancorado na seção da área, ver D55; **busca textual no hub** entregue na
@@ -4701,7 +4718,15 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    "recém-adicionado" não ter lastro no dado (exigiria metadado por entrada + um limiar arbitrário de recência).
 1. **Polimento UX**: estados de loading/erro inline (mensagens de falha do server action),
    mensagens vazias, acessibilidade. (máscara de input monetário entregue na Sessão 11.)
-2. **Calendário / agenda — evoluções**: arrastar/soltar para remarcar; mini-calendário de salto rápido.
+2. **Calendário / agenda — evoluções**: ~~arrastar/soltar para remarcar~~ (entregue na Sessão 319, D313 —
+   `rescheduleToDay` em `src/lib/calendar.ts` + `rescheduleShowAction` em `src/app/(app)/shows/actions.ts` +
+   Client Component `src/components/CalendarGrid.tsx`: arrastar um chip de show para outro dia do calendário o
+   remarca preservando o horário, com no-op seguro p/ posse/dia inválido/mesma data e sem evento de status);
+   mini-calendário de salto rápido.
+   Próximo possível para esta feature — (a) levar o mesmo drag-and-drop à visão semanal (`/shows/semana`),
+   reusando `rescheduleToDay`/`rescheduleShowAction` (a action já revalida `/shows/semana`); (b) confirmar a
+   remarcação com um toast/undo se o gesto acidental preocupar; (c) tornar o arraste acessível por teclado
+   (hoje é ponteiro-only; o formulário do show é o caminho acessível à data).
    (visão semanal entregue na Sessão 19 — `/shows/semana`; link do dashboard para a agenda na
    Sessão 19; clicar num dia para criar show com a data na Sessão 13; exportação iCalendar
    `.ics` na Sessão 15 — base em `src/lib/calendar.ts` e `src/lib/ics.ts`;

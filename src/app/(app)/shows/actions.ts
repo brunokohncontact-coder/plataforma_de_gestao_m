@@ -15,6 +15,7 @@ import {
   parseDuplicateInterval,
   parseDuplicateCount,
 } from "@/lib/shows";
+import { rescheduleToDay } from "@/lib/calendar";
 
 export interface FormState {
   error?: string;
@@ -331,6 +332,40 @@ export async function duplicateShowAction(formData: FormData): Promise<void> {
     redirect(`/shows/${created[0].id}/editar`);
   }
   redirect("/shows");
+}
+
+/**
+ * Remarca um show para um novo dia sem abrir o formulário — o alvo do
+ * arrastar-e-soltar no calendário (`CalendarGrid`). Lê `id` e `dia`
+ * ("YYYY-MM-DD", a célula-alvo) do `FormData`; preserva o horário local do gig
+ * (só o dia muda, via `rescheduleToDay`). No-op silencioso quando o show não é do
+ * usuário, o dia é inválido ou a data não muda de fato — arrastar de volta para a
+ * mesma célula não deve gerar escrita. Não redireciona (a UI só se atualiza no
+ * lugar); remarcar é mudança de DATA, não de status, então não gera
+ * `ShowStatusEvent` (espelha `updateShowAction`, que só registra evento na
+ * transição de status).
+ */
+export async function rescheduleShowAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const id = String(formData.get("id"));
+  const day = String(formData.get("dia"));
+
+  const show = await prisma.show.findFirst({
+    where: { id, userId: user.id },
+    select: { id: true, date: true },
+  });
+  if (!show) return;
+
+  const next = rescheduleToDay(show.date, day);
+  if (!next || next.getTime() === show.date.getTime()) return;
+
+  await prisma.show.update({ where: { id }, data: { date: next } });
+
+  revalidatePath("/shows");
+  revalidatePath("/shows/calendario");
+  revalidatePath("/shows/semana");
+  revalidatePath(`/shows/${id}`);
+  revalidatePath("/dashboard");
 }
 
 export async function deleteShowAction(formData: FormData): Promise<void> {

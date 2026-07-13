@@ -16,6 +16,7 @@ import {
 import { SHOW_STATUS_DOT, SHOW_STATUS_LABELS, type ShowStatus } from "@/lib/domain";
 import { summarizeMonthShows } from "@/lib/shows";
 import { formatMoney } from "@/lib/money";
+import { CalendarGrid, type CalendarCellView } from "@/components/CalendarGrid";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,30 @@ export default async function ShowsCalendarPage({
   });
 
   const grid = buildMonthGrid(year, month, shows);
+
+  // Achata a grade (montada/testada por `buildMonthGrid`) em dados serializáveis
+  // para o cliente: sem `Date`, então o horário exibido não depende do fuso do
+  // navegador. O drag-and-drop de remarcação vive no `CalendarGrid` (cliente).
+  const cells: CalendarCellView[] = grid.flat().map((cell) => ({
+    key: cell.date.toISOString(),
+    dayParam: toDayParam(cell.date),
+    dayNumber: cell.date.getDate(),
+    isToday: cell.isToday,
+    inMonth: cell.inMonth,
+    dayLabel: cell.date.toLocaleDateString("pt-BR"),
+    items: cell.items.map((s) => {
+      const status = s.status as ShowStatus;
+      const time = s.date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+      return {
+        id: s.id,
+        title: s.title,
+        status: s.status,
+        timeLabel: time,
+        tooltip: `${time} · ${s.title}${s.venue ? " · " + s.venue : ""} · ${SHOW_STATUS_LABELS[status]}`,
+      };
+    }),
+  }));
+
   const summary = summarizeMonthShows(shows, year, month);
   const prev = shiftMonth(year, month, -1);
   const next = shiftMonth(year, month, 1);
@@ -149,71 +174,13 @@ export default async function ShowsCalendarPage({
           ))}
         </div>
 
-        {/* Grade */}
-        <div className="grid grid-cols-7">
-          {grid.flat().map((cell) => {
-            const key = cell.date.toISOString();
-            const dayParam = toDayParam(cell.date);
-            return (
-              <div
-                key={key}
-                className={
-                  "group min-h-[6rem] border-b border-r border-gray-100 p-1.5 align-top " +
-                  (cell.inMonth ? "bg-white" : "bg-gray-50/60")
-                }
-              >
-                <div className="mb-1 flex items-center justify-between">
-                  <span
-                    className={
-                      "inline-flex h-6 w-6 items-center justify-center rounded-full text-xs " +
-                      (cell.isToday
-                        ? "bg-brand-700 font-semibold text-white"
-                        : cell.inMonth
-                          ? "text-gray-700"
-                          : "text-gray-400")
-                    }
-                  >
-                    {cell.date.getDate()}
-                  </span>
-                  <Link
-                    href={`/shows/novo?data=${dayParam}`}
-                    title="Novo show neste dia"
-                    aria-label={`Novo show em ${cell.date.toLocaleDateString("pt-BR")}`}
-                    className="inline-flex h-5 w-5 items-center justify-center rounded text-sm leading-none text-gray-400 opacity-0 transition hover:bg-brand-50 hover:text-brand-700 focus:opacity-100 focus-visible:opacity-100 group-hover:opacity-100"
-                  >
-                    +
-                  </Link>
-                </div>
-                <div className="space-y-1">
-                  {cell.items.map((s) => {
-                    const status = s.status as ShowStatus;
-                    const time = s.date.toLocaleTimeString("pt-BR", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    });
-                    return (
-                      <Link
-                        key={s.id}
-                        href={`/shows/${s.id}`}
-                        title={`${time} · ${s.title}${s.venue ? " · " + s.venue : ""} · ${SHOW_STATUS_LABELS[status]}`}
-                        className="flex items-center gap-1 rounded-md bg-gray-50 px-1.5 py-1 text-xs hover:bg-gray-100"
-                      >
-                        <span
-                          className={
-                            "h-2 w-2 shrink-0 rounded-full " + SHOW_STATUS_DOT[status]
-                          }
-                          aria-hidden
-                        />
-                        <span className="truncate">{s.title}</span>
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        {/* Grade com arrastar-e-soltar para remarcar (cliente) */}
+        <CalendarGrid cells={cells} />
       </div>
+
+      <p className="text-xs text-gray-400">
+        Dica: arraste um show para outro dia para remarcá-lo (o horário é preservado).
+      </p>
 
       {/* Legenda de status */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
