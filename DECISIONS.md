@@ -10806,3 +10806,37 @@ contexto, decisão, justificativa e alternativas consideradas.
   dependência nova.
 - **Nota de concorrência:** número **D301** escolhido como o próximo livre após o D300 (Sessão 306). Se outra
   PR reivindicar D301, renumerar para o próximo livre no merge.
+
+## D308 — Detalhe on-screen "Ver todas as rubricas" com a coluna Situação no card comparativo de `/financas/composicao-despesas` (Sessão 314)
+- **Contexto:** o card "Onde o gasto mudou · {ano} vs. {ano-1}" já oferecia o link "⬇ CSV"
+  (`expenseMixComparisonToCsv`/D224), cuja planilha lista TODAS as rubricas com a coluna "Situação"
+  (Subiu/Caiu/Estável/Nova/Sumiu). Na tela, porém, o card só destilava os DOIS movers (maior alta e
+  maior queda) e os nomes das novas/sumidas em texto corrido — a D307 apontou explicitamente essa
+  assimetria tela↔CSV como o próximo passo ("levar a mesma seta/tendência às tabelas de
+  fontes/composição on-screen").
+- **Decisão:** adicionar um bloco recolhível `<details>` "Ver todas as rubricas" sob o card, espelhando
+  o padrão já consolidado do detalhe "Ver os 12 meses" da sazonalidade (D217/D305). A tabela reproduz a
+  ordem exata do CSV (rubricas nos dois anos por maior aumento → maior queda; depois "Novas"; depois
+  "Sumiram"; linha Total) e as mesmas colunas (Gasto {ano-1} / Gasto {ano} / Δ gasto / Part. {ano-1} /
+  Part. {ano} / Situação). A coluna "Situação" é derivada do MESMO sinal de `amountDelta` que o
+  serializador CSV usa (`expenseChangeSituation`), via um mapa de apresentação local `EXPENSE_SITUATION`
+  (up/down/flat/new/dropped → seta + tom + rótulo), garantindo que tela e planilha nunca se contradigam.
+  Mantida a convenção de tom do card: gastar mais = rosa (atenção), gastar menos = verde (economia).
+- **Justificativa:** o card destila só os extremos, mas o usuário que quer auditar o orçamento rubrica a
+  rubrica era forçado a baixar o CSV — a informação completa já estava computada em `comparison`, só não
+  era exibida. Reusar a derivação por sinal (em vez de um novo classificador) evita divergência tela↔CSV
+  e não adiciona lógica de negócio nem testes. Mudança puramente de apresentação, contida em uma página.
+- **Alternativas consideradas:**
+  - *Exportar `expenseChangeSituation` de `csv.ts` e importá-lo na página* — descartado: a página precisa
+    de seta + tom + rótulo (apresentação), não do rótulo pt-BR cru do CSV; a direção vem de um `Math.sign`
+    trivial sobre `amountDelta`, então um mapa de apresentação local é mais direto que acoplar a página ao
+    serializador. Ambos derivam do mesmo sinal, então não há risco de divergência.
+  - *Mostrar a tabela sempre aberta em vez de `<details>`* — descartado: quebraria a intenção enxuta do
+    card (só os movers em destaque); o detalhe recolhível é o padrão já usado nas telas irmãs.
+  - *Deixar como está (só CSV)* — descartado: a D307 marcou a assimetria como dívida a fechar.
+- **DoD:** build/typecheck/lint verdes; **1723 testes** (sem novos: nenhuma lógica pura nova); smoke →
+  `/login` 200, `/financas/composicao-despesas?ano=2026` e
+  `/financas/composicao-despesas/comparativo/export?ano=2026` 307→/login (auth-gated, sem 500);
+  `npm audit` inalterado (10 advisories; ver D6). Zero migração, zero dependência nova.
+- **Nota de concorrência:** número **D308** escolhido como o próximo livre após o D307 (Sessão 313). Se
+  outra PR reivindicar D308, renumerar para o próximo livre no merge.
