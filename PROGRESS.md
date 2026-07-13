@@ -9,7 +9,34 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 315 (D309) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 316 (D310) —
+detalhe on-screen "Ver todas as cidades"/"Ver todas as casas" com a coluna Tendência (↑ Subiu / ↓ Caiu /
+→ Estável) nos cards de movers de `/shows/cidades` e `/shows/locais`, levando o padrão dos detalhes
+D308/D309 (mix de despesa/receita) ao eixo de praça:** os cards "Para onde a agenda migrou"
+(`CityMoversCard`) e "Quais casas cresceram e caíram" (`VenueMoversCard`) já tinham o link "⬇ CSV" para o
+export do comparativo (`cityProfitComparisonToCsv`/D300/D301, que lista TODAS as praças — inclusive as que
+sumiram — com o resultado dos dois anos + Tendência), mas na tela só destilavam os DOIS movers (maior ganho /
+maior perda) — não dava para ver praça a praça sem baixar a planilha, a MESMA assimetria tela↔CSV fechada nas
+telas de mix. Espelho fiel do `<details>` "Ver todas as ..." da D308/D309: novos componentes
+`CityChangesDetails`/`VenueChangesDetails` com a tabela completa na MESMA ordem do CSV
+(`compareCitiesByProfit`: praças na ordem do relatório atual, resultado desc, com as sumidas anexadas ao
+final com `currentCount === 0`; linha Total) — colunas Shows {ano-1} / Shows {ano} / Δ shows /
+Resultado {ano-1} / Resultado {ano} / Δ resultado / Tendência. A lista completa `CityProfitChange[]`/
+`VenueProfitChange[]` (antes só dentro do `if`) foi hoisteada e passada ao card via nova prop `changes`, sem
+consulta/recorte novo. A "Tendência" reusa o mapa `CITY_PROFIT_TREND`/`VENUE_PROFIT_TREND` (D302) +
+`classifyCityProfitChange`/`classifyVenueProfitChange` — a MESMA derivação (nº de shows com o resultado de
+desempate) do CSV e da coluna "vs. {ano-1}"; Δ shows e Tendência coloridos pela tendência; helper local
+`signedMoney` para o Δ de resultado; nota de rodapé explica as setas. Cidades e locais na MESMA sessão por
+serem mirrors exatos (o motor é alias). Zero regra de negócio nova, zero rota/consulta/migração/dependência;
+mudança só de apresentação em `src/app/(app)/shows/cidades/page.tsx` e `.../locais/page.tsx`. Sem novos
+testes (nenhuma lógica pura nova). Build/typecheck/lint verdes (**1723 testes**); smoke → `/login` 200,
+`/shows/cidades?ano=2026`, `/shows/locais?ano=2026`, `/shows/cidades/comparativo/export?ano=2026` e
+`/shows/locais/comparativo/export?ano=2026` 307→/login (auth-gated, sem 500); `npm audit` inalterado
+(10 advisories). **Próximo possível** — levar o mesmo detalhe on-screen "Ver todas as ..." aos cards de
+movers que ainda destilam só as duas pontas na tela (dia da semana/D46, sazonalidade/D217, faixas de
+cachê/D292 — quando têm card de movers), ou o inverso: unificar os componentes de detalhe agora que existem
+quatro cópias paralelas (despesa/receita/cidade/local) num helper parametrizado por rótulo/polaridade, se
+surgir a quinta. Ver D310. Antes disso, **Sessão 315 (D309) —
 detalhe on-screen "Ver todas as fontes" com a coluna Situação (↑ Subiu / ↓ Caiu / → Estável /
 ＋ Nova / － Sumiu) no card comparativo de `/financas/fontes-de-renda`, fechando a paridade
 despesa↔receita no detalhe on-screen apontada na D308:** o card "De onde veio a mudança · {ano} vs.
