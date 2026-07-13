@@ -2019,6 +2019,38 @@ export function countFunnelActivityByKind(
   return counts;
 }
 
+/** Um dia do feed de atividade e as transições que caíram nele. */
+export interface FunnelActivityDayGroup {
+  /** Chave do dia "YYYY-MM-DD" (UTC, mesma convenção de `dayKey`/CSV). */
+  day: string;
+  entries: FunnelActivityEntry[];
+}
+
+/**
+ * Agrupa o feed por dia da transição (`entry.at`), preservando a ordem
+ * recente→antigo: os dias saem na ordem em que aparecem no feed (o mais recente
+ * primeiro, já que `buildFunnelActivityFeed` ordena desc) e as entradas dentro
+ * de cada dia mantêm a ordem do feed. Usa `dayKey` (UTC) — a mesma chave de dia
+ * do restante do app, estável em testes. Não recalcula nada além de rebaldear.
+ */
+export function groupFunnelActivityByDay(
+  feed: FunnelActivityEntry[],
+): FunnelActivityDayGroup[] {
+  const groups: FunnelActivityDayGroup[] = [];
+  const byDay = new Map<string, FunnelActivityDayGroup>();
+  for (const entry of feed) {
+    const day = dayKey(entry.at);
+    let group = byDay.get(day);
+    if (group === undefined) {
+      group = { day, entries: [] };
+      byDay.set(day, group);
+      groups.push(group);
+    }
+    group.entries.push(entry);
+  }
+  return groups;
+}
+
 // ── Tempo médio em cada etapa do funil (residence time) ───────────────────────
 // Agregado sobre o histórico de status (`ShowStatusEvent`) de VÁRIOS shows: para
 // cada etapa (PROPOSED, CONFIRMED, …) quanto tempo, tipicamente, um show fica

@@ -5,8 +5,10 @@ import {
   buildFunnelActivityFeed,
   countFunnelActivityByKind,
   filterFunnelActivityByKind,
+  groupFunnelActivityByDay,
   parseFunnelActivityKind,
   FUNNEL_ACTIVITY_KINDS,
+  type FunnelActivityEntry,
   type FunnelActivityKind,
 } from "@/lib/shows";
 import { formatDateTime, formatDate } from "@/lib/format";
@@ -25,6 +27,22 @@ const ACTIVITY_LIMIT = 100;
 
 const statusLabel = (s: string): string =>
   SHOW_STATUS_LABELS[s as ShowStatus] ?? s;
+
+/**
+ * Rótulo pt-BR de uma chave de dia "YYYY-MM-DD" — sempre em UTC (a mesma
+ * convenção de `groupFunnelActivityByDay`/`dayKey`), para o cabeçalho do dia
+ * bater exatamente com a chave que agrupou as entradas, sem deriva de fuso.
+ */
+const formatDayHeader = (day: string): string => {
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("pt-BR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+};
 
 /** Aparência de cada natureza de transição — seta, tom e rótulo curto. */
 const KIND_META: Record<
@@ -47,6 +65,12 @@ export default async function FunnelActivityPage({
 
   // Filtro por natureza da transição (`?natureza=`); `null` = todas.
   const activeKind = parseFunnelActivityKind(searchParams?.natureza);
+
+  // Modo de visualização: lista plana (padrão) ou agrupado por dia (`?agrupar=dia`).
+  const rawAgrupar = Array.isArray(searchParams?.agrupar)
+    ? searchParams?.agrupar[0]
+    : searchParams?.agrupar;
+  const groupByDay = rawAgrupar === "dia";
 
   // O feed vem direto dos eventos de status (índice `[userId]` em
   // `ShowStatusEvent`), já ordenados e limitados no banco; juntamos só o título e
@@ -80,13 +104,26 @@ export default async function FunnelActivityPage({
   // recorte exibido conforme o filtro ativo.
   const counts = countFunnelActivityByKind(feed);
   const visible = filterFunnelActivityByKind(feed, activeKind);
+  // No modo "por dia", rebaldeamos o recorte visível em dias (recente→antigo).
+  const dayGroups = groupByDay ? groupFunnelActivityByDay(visible) : [];
 
-  // Constrói o href de um chip preservando as demais query strings não seria
-  // necessário (a página só tem `natureza`), então basta o próprio parâmetro.
+  // Monta uma query string preservando `natureza` e `agrupar` com sobrescritas.
+  const buildHref = (over: {
+    natureza?: FunnelActivityKind | null;
+    agrupar?: boolean;
+  }): string => {
+    const kind = over.natureza !== undefined ? over.natureza : activeKind;
+    const grouped = over.agrupar !== undefined ? over.agrupar : groupByDay;
+    const params = new URLSearchParams();
+    if (kind !== null) params.set("natureza", kind);
+    if (grouped) params.set("agrupar", "dia");
+    const qs = params.toString();
+    return qs ? `/shows/funil/atividade?${qs}` : "/shows/funil/atividade";
+  };
+
+  // Chip de natureza: troca o filtro, mantém o modo de visualização atual.
   const chipHref = (kind: FunnelActivityKind | null): string =>
-    kind === null
-      ? "/shows/funil/atividade"
-      : `/shows/funil/atividade?natureza=${kind}`;
+    buildHref({ natureza: kind });
 
   // O link de export espelha o filtro ativo para baixar exatamente o recorte
   // visível.
@@ -94,6 +131,62 @@ export default async function FunnelActivityPage({
     activeKind === null
       ? "/shows/funil/atividade/export"
       : `/shows/funil/atividade/export?natureza=${activeKind}`;
+
+  // Uma linha do feed — reusada na lista plana e dentro de cada dia agrupado.
+  const renderEntry = (entry: FunnelActivityEntry, key: string | number) => {
+    const meta = KIND_META[entry.kind];
+    return (
+      <li key={key} className="flex items-start gap-3">
+        <span
+          className={
+            "mt-1 inline-block h-2.5 w-2.5 shrink-0 rounded-full " + meta.dot
+          }
+          aria-hidden="true"
+        />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm">
+            <Link
+              href={`/shows/${entry.showId}`}
+              className="font-medium text-gray-900 hover:underline"
+            >
+              {entry.showTitle}
+            </Link>
+          </p>
+          <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-sm text-gray-700">
+            {entry.fromStatus === null ? (
+              <>
+                <span aria-hidden="true">{meta.arrow}</span>
+                Cadastrado como
+                <span
+                  className={"badge " + SHOW_STATUS_COLORS[entry.toStatus as ShowStatus]}
+                >
+                  {statusLabel(entry.toStatus)}
+                </span>
+              </>
+            ) : (
+              <>
+                <span
+                  className={"badge " + SHOW_STATUS_COLORS[entry.fromStatus as ShowStatus]}
+                >
+                  {statusLabel(entry.fromStatus)}
+                </span>
+                <span aria-hidden="true">{meta.arrow}</span>
+                <span
+                  className={"badge " + SHOW_STATUS_COLORS[entry.toStatus as ShowStatus]}
+                >
+                  {statusLabel(entry.toStatus)}
+                </span>
+              </>
+            )}
+          </p>
+          <p className="mt-0.5 text-xs text-gray-500">
+            {formatDateTime(entry.at)}
+            {entry.showDate && <> · show em {formatDate(entry.showDate)}</>}
+          </p>
+        </div>
+      </li>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -170,6 +263,38 @@ export default async function FunnelActivityPage({
             })}
           </nav>
 
+          {/* Alternador de visualização: lista plana × agrupado por dia. */}
+          <div
+            className="inline-flex overflow-hidden rounded-lg border border-gray-200 text-sm"
+            role="group"
+            aria-label="Modo de visualização"
+          >
+            <Link
+              href={buildHref({ agrupar: false })}
+              aria-current={!groupByDay ? "true" : undefined}
+              className={
+                "px-3 py-1 transition-colors " +
+                (!groupByDay
+                  ? "bg-brand-50 font-medium text-brand-700"
+                  : "text-gray-600 hover:bg-gray-50")
+              }
+            >
+              Lista
+            </Link>
+            <Link
+              href={buildHref({ agrupar: true })}
+              aria-current={groupByDay ? "true" : undefined}
+              className={
+                "border-l border-gray-200 px-3 py-1 transition-colors " +
+                (groupByDay
+                  ? "bg-brand-50 font-medium text-brand-700"
+                  : "text-gray-600 hover:bg-gray-50")
+              }
+            >
+              Por dia
+            </Link>
+          </div>
+
           {visible.length === 0 ? (
             <div className="card text-sm text-gray-500">
               Nenhuma transição do tipo “{KIND_META[activeKind!].label}” entre as{" "}
@@ -180,71 +305,48 @@ export default async function FunnelActivityPage({
               .
             </div>
           ) : (
-        <section className="card">
-          <ol className="space-y-4">
-            {visible.map((entry, i) => {
-              const meta = KIND_META[entry.kind];
-              return (
-                <li key={i} className="flex items-start gap-3">
-                  <span
-                    className={
-                      "mt-1 inline-block h-2.5 w-2.5 shrink-0 rounded-full " + meta.dot
-                    }
-                    aria-hidden="true"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm">
-                      <Link
-                        href={`/shows/${entry.showId}`}
-                        className="font-medium text-gray-900 hover:underline"
-                      >
-                        {entry.showTitle}
-                      </Link>
-                    </p>
-                    <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-sm text-gray-700">
-                      {entry.fromStatus === null ? (
-                        <>
-                          <span aria-hidden="true">{meta.arrow}</span>
-                          Cadastrado como
-                          <span
-                            className={"badge " + SHOW_STATUS_COLORS[entry.toStatus as ShowStatus]}
-                          >
-                            {statusLabel(entry.toStatus)}
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <span
-                            className={"badge " + SHOW_STATUS_COLORS[entry.fromStatus as ShowStatus]}
-                          >
-                            {statusLabel(entry.fromStatus)}
-                          </span>
-                          <span aria-hidden="true">{meta.arrow}</span>
-                          <span
-                            className={"badge " + SHOW_STATUS_COLORS[entry.toStatus as ShowStatus]}
-                          >
-                            {statusLabel(entry.toStatus)}
-                          </span>
-                        </>
-                      )}
-                    </p>
-                    <p className="mt-0.5 text-xs text-gray-500">
-                      {formatDateTime(entry.at)}
-                      {entry.showDate && <> · show em {formatDate(entry.showDate)}</>}
-                    </p>
-                  </div>
-                </li>
-              );
-            })}
-          </ol>
-          {feed.length >= ACTIVITY_LIMIT && (
-            <p className="mt-4 border-t pt-3 text-xs text-gray-400">
-              {activeKind === null
-                ? `Mostrando as ${ACTIVITY_LIMIT} mudanças mais recentes.`
-                : `Filtrando entre as ${ACTIVITY_LIMIT} mudanças mais recentes.`}
-            </p>
+        <>
+          {groupByDay ? (
+            <div className="space-y-4">
+              {dayGroups.map((group) => (
+                <section key={group.day} className="card">
+                  <h2 className="mb-3 flex items-baseline justify-between gap-2 border-b pb-2 text-sm font-semibold capitalize text-gray-900">
+                    <span>{formatDayHeader(group.day)}</span>
+                    <span className="text-xs font-normal text-gray-400">
+                      {group.entries.length}{" "}
+                      {group.entries.length === 1 ? "transição" : "transições"}
+                    </span>
+                  </h2>
+                  <ol className="space-y-4">
+                    {group.entries.map((entry, i) =>
+                      renderEntry(entry, `${group.day}-${i}`),
+                    )}
+                  </ol>
+                </section>
+              ))}
+              {feed.length >= ACTIVITY_LIMIT && (
+                <p className="px-1 text-xs text-gray-400">
+                  {activeKind === null
+                    ? `Mostrando as ${ACTIVITY_LIMIT} mudanças mais recentes.`
+                    : `Filtrando entre as ${ACTIVITY_LIMIT} mudanças mais recentes.`}
+                </p>
+              )}
+            </div>
+          ) : (
+            <section className="card">
+              <ol className="space-y-4">
+                {visible.map((entry, i) => renderEntry(entry, i))}
+              </ol>
+              {feed.length >= ACTIVITY_LIMIT && (
+                <p className="mt-4 border-t pt-3 text-xs text-gray-400">
+                  {activeKind === null
+                    ? `Mostrando as ${ACTIVITY_LIMIT} mudanças mais recentes.`
+                    : `Filtrando entre as ${ACTIVITY_LIMIT} mudanças mais recentes.`}
+                </p>
+              )}
+            </section>
           )}
-        </section>
+        </>
           )}
         </>
       )}
