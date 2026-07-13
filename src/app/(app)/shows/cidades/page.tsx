@@ -99,13 +99,19 @@ export default async function CityProfitabilityPage({
   // de shows) destilados da MESMA lista de mudanças, espelho do card de movers
   // da tela irmã por dia da semana (compareWeekdayPerformance/D46).
   let cityMovers: CityProfitMovers | null = null;
+  // Lista COMPLETA de mudanças por cidade (na ordem do relatório atual, com as
+  // cidades sumidas anexadas ao final) para o detalhe on-screen "Ver todas as
+  // cidades" do card de movers — o mesmo dado que o CSV do comparativo já
+  // serializa, agora visível sem baixar a planilha (espelho de D308/D309 no eixo
+  // de praça).
+  let cityChanges: CityProfitChange[] | null = null;
   let previousYear = 0;
   if (yearFilter !== "all") {
     previousYear = yearFilter - 1;
     const previousReport = rankCitiesByProfit(filterShowsByYear(cityShows, previousYear), txs);
     // A coluna por cidade só exige o ano anterior ter tido shows (para comparar).
     if (previousReport.count > 0) {
-      const cityChanges = compareCitiesByProfit(report, previousReport);
+      cityChanges = compareCitiesByProfit(report, previousReport);
       cityChangeByKey = indexCityProfitChanges(cityChanges);
       cityMovers = cityProfitMovers(cityChanges);
     }
@@ -231,6 +237,7 @@ export default async function CityProfitabilityPage({
           {cityMovers && (cityMovers.biggestGain || cityMovers.biggestDrop) && (
             <CityMoversCard
               movers={cityMovers}
+              changes={cityChanges ?? []}
               currentYear={yearFilter as number}
               previousYear={previousYear}
             />
@@ -526,10 +533,12 @@ function GeoComparisonCard({
  */
 function CityMoversCard({
   movers,
+  changes,
   currentYear,
   previousYear,
 }: {
   movers: CityProfitMovers;
+  changes: CityProfitChange[];
   currentYear: number;
   previousYear: number;
 }) {
@@ -555,8 +564,121 @@ function CityMoversCard({
         Ancora no nº de shows por cidade; quando dois empatam, o resultado do ano desempata.
         Cidades sem praça informada (“Sem cidade”) ficam de fora.
       </p>
+      <CityChangesDetails
+        changes={changes}
+        currentYear={currentYear}
+        previousYear={previousYear}
+      />
     </div>
   );
+}
+
+/**
+ * Detalhe recolhível "Ver todas as cidades" do card de movers: a lista COMPLETA
+ * de mudanças por praça — o mesmo dado que o card só destila em dois movers e que
+ * o CSV do comparativo já serializa — agora visível na tela sem baixar a planilha.
+ * Espelho fiel do detalhe "Ver todas as rubricas/fontes" das telas de composição
+ * de despesas/fontes de renda (D308/D309), no eixo de praça. Mesma ORDEM do CSV
+ * (`cityProfitComparisonToCsv`): as cidades na ordem do relatório atual (resultado
+ * desc), com as que sumiram anexadas ao final (`currentCount === 0`); linha Total
+ * ao fim. A coluna "Tendência" reusa a MESMA derivação por `classifyCityProfitChange`
+ * do CSV e da coluna "vs. {ano-1}" da tabela (via `CITY_PROFIT_TREND`), para tela e
+ * planilha nunca se contradizerem. Não renderiza nada quando não há mudanças.
+ */
+function CityChangesDetails({
+  changes,
+  currentYear,
+  previousYear,
+}: {
+  changes: CityProfitChange[];
+  currentYear: number;
+  previousYear: number;
+}) {
+  if (changes.length === 0) return null;
+  const totalPrevCount = changes.reduce((s, c) => s + c.previousCount, 0);
+  const totalCurCount = changes.reduce((s, c) => s + c.currentCount, 0);
+  const totalPrevNet = changes.reduce((s, c) => s + c.previousNet, 0);
+  const totalCurNet = changes.reduce((s, c) => s + c.currentNet, 0);
+  return (
+    <details className="mt-4 border-t pt-3">
+      <summary className="cursor-pointer text-sm font-medium text-gray-600 hover:text-gray-900">
+        Ver todas as cidades
+      </summary>
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b text-left text-xs uppercase tracking-wide text-gray-500">
+              <th className="pb-2 pr-3 font-medium">Cidade</th>
+              <th className="pb-2 px-3 text-right font-medium">Shows {previousYear}</th>
+              <th className="pb-2 px-3 text-right font-medium">Shows {currentYear}</th>
+              <th className="pb-2 px-3 text-right font-medium">Δ shows</th>
+              <th className="pb-2 px-3 text-right font-medium">Resultado {previousYear}</th>
+              <th className="pb-2 px-3 text-right font-medium">Resultado {currentYear}</th>
+              <th className="pb-2 px-3 text-right font-medium">Δ resultado</th>
+              <th className="pb-2 pl-3 text-right font-medium">Tendência</th>
+            </tr>
+          </thead>
+          <tbody>
+            {changes.map((c) => {
+              const trend = CITY_PROFIT_TREND[classifyCityProfitChange(c)];
+              return (
+                <tr key={"chg-" + (c.key || "__none__")} className="border-b last:border-0">
+                  <td className="py-2 pr-3 font-medium">{c.name}</td>
+                  <td className="py-2 px-3 text-right text-gray-500">{c.previousCount}</td>
+                  <td className="py-2 px-3 text-right text-gray-500">{c.currentCount}</td>
+                  <td className={"py-2 px-3 text-right font-medium " + trend.tone}>
+                    {c.countDelta === 0 ? "—" : signedCount(c.countDelta)}
+                  </td>
+                  <td className="py-2 px-3 text-right text-gray-500">
+                    {formatMoney(c.previousNet)}
+                  </td>
+                  <td className="py-2 px-3 text-right text-gray-500">
+                    {formatMoney(c.currentNet)}
+                  </td>
+                  <td className="py-2 px-3 text-right text-gray-500">
+                    {c.netDelta === 0 ? "—" : signedMoney(c.netDelta)}
+                  </td>
+                  <td className={"py-2 pl-3 text-right font-medium " + trend.tone}>
+                    <span aria-hidden="true">{trend.arrow}</span> {trend.label}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="border-t font-medium">
+              <td className="pt-2 pr-3">Total</td>
+              <td className="pt-2 px-3 text-right text-gray-600">{totalPrevCount}</td>
+              <td className="pt-2 px-3 text-right text-gray-600">{totalCurCount}</td>
+              <td className="pt-2 px-3 text-right text-gray-600">
+                {totalCurCount - totalPrevCount === 0
+                  ? "—"
+                  : signedCount(totalCurCount - totalPrevCount)}
+              </td>
+              <td className="pt-2 px-3 text-right text-gray-600">{formatMoney(totalPrevNet)}</td>
+              <td className="pt-2 px-3 text-right text-gray-600">{formatMoney(totalCurNet)}</td>
+              <td className="pt-2 px-3 text-right text-gray-600">
+                {totalCurNet - totalPrevNet === 0 ? "—" : signedMoney(totalCurNet - totalPrevNet)}
+              </td>
+              <td className="pt-2 pl-3" />
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <p className="mt-3 text-xs text-gray-500">
+        Mesma leitura do CSV: <span className="text-emerald-600">↑ Subiu</span> (mais shows, ou
+        resultado melhor no empate), <span className="text-red-600">↓ Caiu</span> e → Estável. As
+        cidades que sumiram desde {previousYear} aparecem com 0 shows em {currentYear}; inclui a
+        “Sem cidade”.
+      </p>
+    </details>
+  );
+}
+
+/** Valor monetário com sinal para exibição: +R$ 10,00 / −R$ 10,00 / R$ 0,00. */
+function signedMoney(delta: number): string {
+  const sign = delta > 0 ? "+" : delta < 0 ? "−" : "";
+  return `${sign}${formatMoney(Math.abs(delta))}`;
 }
 
 /** Uma ponta do card de movers (ganho ou perda), ou "—" quando não houve. */

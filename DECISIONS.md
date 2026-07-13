@@ -5,6 +5,48 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-13 — D310: Detalhe on-screen "Ver todas as cidades/casas" com a coluna Tendência nos cards de movers de `/shows/cidades` e `/shows/locais` (levando o padrão D308/D309 ao eixo de praça)
+- **Contexto:** os cards "Para onde a agenda migrou" (`CityMoversCard`, `/shows/cidades`) e "Quais casas
+  cresceram e caíram" (`VenueMoversCard`, `/shows/locais`) já tinham o link "⬇ CSV" para o export do
+  comparativo (`cityProfitComparisonToCsv`/D300/D301, que lista TODAS as praças — inclusive as que sumiram,
+  com resultado dos dois anos + Tendência), mas na tela só destilavam os DOIS movers (maior ganho / maior
+  perda). Não dava para ver praça a praça sem baixar a planilha — a MESMA assimetria tela↔CSV que as telas
+  de mix de despesa/receita fecharam na D308/D309 com um `<details>` "Ver todas as ...". O próprio "Próximo
+  possível" da D309 apontava levar esse detalhe on-screen às telas de shows que ainda mostravam só a métrica
+  crua no card.
+- **Decisão:**
+  - `src/app/(app)/shows/cidades/page.tsx` e `.../locais/page.tsx`: `<details>` "Ver todas as cidades"/"Ver
+    todas as casas" dentro do card de movers (novos componentes `CityChangesDetails`/`VenueChangesDetails`),
+    espelho fiel do bloco D308/D309 — tabela completa na MESMA ORDEM do CSV (`compareCitiesByProfit`: praças
+    na ordem do relatório atual, resultado desc, com as sumidas anexadas ao final com `currentCount === 0`;
+    `tfoot` com a linha Total), colunas Shows {ano-1} / Shows {ano} / Δ shows / Resultado {ano-1} /
+    Resultado {ano} / Δ resultado / Tendência.
+  - A lista completa `CityProfitChange[]`/`VenueProfitChange[]` (antes computada só dentro do `if` para
+    `indexCityProfitChanges`/`cityProfitMovers`) foi hoisteada para uma variável de página (`cityChanges`/
+    `venueChanges`) e passada ao card via nova prop `changes`, sem nenhuma consulta/recorte novo — reusa a
+    MESMA lista já casada.
+  - A coluna "Tendência" reusa o mapa de apresentação já existente `CITY_PROFIT_TREND`/`VENUE_PROFIT_TREND`
+    (D302) + `classifyCityProfitChange`/`classifyVenueProfitChange` — a MESMA derivação (nº de shows com o
+    resultado de desempate) do CSV e da coluna "vs. {ano-1}" da tabela, para tela e planilha nunca se
+    contradizerem. Δ zero exibe "—" limpo; Δ shows e a Tendência são coloridos pela tendência (verde subiu,
+    vermelho caiu, cinza estável); nota de rodapé explica a leitura. Helper local `signedMoney` para o Δ de
+    resultado com sinal na tela. A "Sem cidade"/"Sem local" e as praças sumidas entram na tabela como no CSV.
+- **Justificativa:** paridade tela↔CSV também no eixo de praça (as duas telas de rentabilidade por
+  agrupamento agora deixam ver linha a linha sem baixar a planilha), fechando o "Próximo possível" da D309.
+  Zero regra de negócio nova — a ordenação e a classificação são as funções puras já testadas (D300/D302); a
+  sessão só apresenta. Zero rota/consulta/migração/dependência; nenhuma lógica pura nova, logo sem novos
+  testes (mesmo critério da D308/D309). Cidades e locais tratados na MESMA sessão por serem mirrors exatos
+  (o motor `compareVenuesByProfit` É alias de `compareCitiesByProfit`), como a D302 já fez com a coluna "vs.".
+- **Alternativas consideradas:** (a) extrair `CityChangesDetails`/`VenueChangesDetails` para um componente
+  compartilhado entre as duas telas — descartado pela mesma razão dos mapas de tendência da D302: os textos
+  de rodapé e rótulos de coluna ("cidades"/"casas", "Cidade"/"Local") diferem, e as duas páginas já mantêm
+  cópias locais paralelas dos helpers de eixo-praça (padrão do repo); um componente único precisaria de
+  parâmetros de rótulo que não valem a indireção. (b) Incluir também as colunas de participação (p.p.) como
+  nas telas de mix — descartado: aqui o eixo primário é nº de shows + resultado (dinheiro), não participação;
+  a concentração já tem seu próprio card. (c) Fazer só cidades nesta sessão e locais na próxima (como D308→D309
+  separou despesa/receita) — descartado porque cidades/locais são mirrors idênticos e pequenos, e separá-los
+  deixaria a base momentaneamente assimétrica sem ganho.
+
 ## 2026-07-13 — D309: Detalhe on-screen "Ver todas as fontes" + coluna Situação no card comparativo de fontes de renda (paridade despesa↔receita no detalhe)
 - **Contexto:** a tela `/financas/fontes-de-renda` já tinha o card de movers "De onde veio a mudança ·
   {ano} vs. {ano-1}" (`IncomeMixComparisonCard`) com o link "⬇ CSV" (`incomeMixComparisonToCsv`/D307, que
