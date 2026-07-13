@@ -35,6 +35,34 @@ function pct(share: number): string {
   return `${Math.round(share * 100)}%`;
 }
 
+// Situação de cada fonte no detalhe "Ver todas as fontes", espelhando a coluna
+// "Situação" do CSV (incomeMixComparisonToCsv). Convenção de tom do card (espelho
+// invertido da despesa): render mais = verde (bom), render menos = rosa (atenção),
+// sem mudança = cinza. Só apresentação — a direção é derivada do MESMO sinal de
+// `amountDelta` que o CSV usa, para tela e planilha nunca se contradizerem.
+type IncomeSituation = "up" | "down" | "flat" | "new" | "dropped";
+const INCOME_SITUATION: Record<
+  IncomeSituation,
+  { arrow: string; tone: string; label: string }
+> = {
+  up: { arrow: "↑", tone: "text-emerald-600", label: "Subiu" },
+  down: { arrow: "↓", tone: "text-rose-600", label: "Caiu" },
+  flat: { arrow: "→", tone: "text-gray-500", label: "Estável" },
+  new: { arrow: "＋", tone: "text-emerald-600", label: "Nova" },
+  dropped: { arrow: "－", tone: "text-rose-600", label: "Sumiu" },
+};
+function incomeSituation(amountDelta: number): IncomeSituation {
+  return amountDelta > 0 ? "up" : amountDelta < 0 ? "down" : "flat";
+}
+function SituationCell({ situation }: { situation: IncomeSituation }) {
+  const { arrow, tone, label } = INCOME_SITUATION[situation];
+  return (
+    <span className={"font-medium " + tone}>
+      <span aria-hidden="true">{arrow}</span> {label}
+    </span>
+  );
+}
+
 export default async function FinanceIncomeSourcesPage({
   searchParams,
 }: {
@@ -367,6 +395,150 @@ function IncomeMixComparisonCard({
             </p>
           )}
         </div>
+      )}
+
+      {(comparison.changes.length > 0 ||
+        comparison.newSources.length > 0 ||
+        comparison.droppedSources.length > 0) && (
+        <details className="mt-4 border-t pt-3">
+          <summary className="cursor-pointer text-sm font-medium text-gray-600 hover:text-gray-900">
+            Ver todas as fontes
+          </summary>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs uppercase tracking-wide text-gray-500">
+                  <th className="pb-2 pr-3 font-medium">Fonte</th>
+                  <th className="pb-2 px-3 text-right font-medium">
+                    Receita {previousYear}
+                  </th>
+                  <th className="pb-2 px-3 text-right font-medium">
+                    Receita {year}
+                  </th>
+                  <th className="pb-2 px-3 text-right font-medium">Δ receita</th>
+                  <th className="pb-2 px-3 text-right font-medium">
+                    Part. {previousYear}
+                  </th>
+                  <th className="pb-2 px-3 text-right font-medium">
+                    Part. {year}
+                  </th>
+                  <th className="pb-2 pl-3 text-right font-medium">Situação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {comparison.changes.map((s) => {
+                  const situation = incomeSituation(s.amountDelta);
+                  return (
+                    <tr key={"chg-" + s.category} className="border-b last:border-0">
+                      <td className="py-2 pr-3 font-medium">{s.category}</td>
+                      <td className="py-2 px-3 text-right text-gray-500">
+                        {formatMoney(s.previousAmount)}
+                      </td>
+                      <td className="py-2 px-3 text-right text-gray-500">
+                        {formatMoney(s.currentAmount)}
+                      </td>
+                      <td
+                        className={
+                          "py-2 px-3 text-right font-medium " +
+                          INCOME_SITUATION[situation].tone
+                        }
+                      >
+                        {s.amountDelta === 0 ? "—" : signedMoney(s.amountDelta)}
+                      </td>
+                      <td className="py-2 px-3 text-right text-gray-500">
+                        {pct(s.previousShare)}
+                      </td>
+                      <td className="py-2 px-3 text-right text-gray-500">
+                        {pct(s.currentShare)}
+                      </td>
+                      <td className="py-2 pl-3 text-right">
+                        <SituationCell situation={situation} />
+                      </td>
+                    </tr>
+                  );
+                })}
+                {comparison.newSources.map((s) => (
+                  <tr key={"new-" + s.category} className="border-b last:border-0">
+                    <td className="py-2 pr-3 font-medium">{s.category}</td>
+                    <td className="py-2 px-3 text-right text-gray-400">—</td>
+                    <td className="py-2 px-3 text-right text-gray-500">
+                      {formatMoney(s.amount)}
+                    </td>
+                    <td
+                      className={
+                        "py-2 px-3 text-right font-medium " +
+                        INCOME_SITUATION.new.tone
+                      }
+                    >
+                      {signedMoney(s.amount)}
+                    </td>
+                    <td className="py-2 px-3 text-right text-gray-400">—</td>
+                    <td className="py-2 px-3 text-right text-gray-500">
+                      {pct(s.share)}
+                    </td>
+                    <td className="py-2 pl-3 text-right">
+                      <SituationCell situation="new" />
+                    </td>
+                  </tr>
+                ))}
+                {comparison.droppedSources.map((s) => (
+                  <tr
+                    key={"drop-" + s.category}
+                    className="border-b last:border-0"
+                  >
+                    <td className="py-2 pr-3 font-medium">{s.category}</td>
+                    <td className="py-2 px-3 text-right text-gray-500">
+                      {formatMoney(s.amount)}
+                    </td>
+                    <td className="py-2 px-3 text-right text-gray-400">—</td>
+                    <td
+                      className={
+                        "py-2 px-3 text-right font-medium " +
+                        INCOME_SITUATION.dropped.tone
+                      }
+                    >
+                      {signedMoney(-s.amount)}
+                    </td>
+                    <td className="py-2 px-3 text-right text-gray-500">
+                      {pct(s.share)}
+                    </td>
+                    <td className="py-2 px-3 text-right text-gray-400">—</td>
+                    <td className="py-2 pl-3 text-right">
+                      <SituationCell situation="dropped" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t font-medium">
+                  <td className="pt-2 pr-3">Total</td>
+                  <td className="pt-2 px-3 text-right text-gray-600">
+                    {formatMoney(comparison.previousTotal)}
+                  </td>
+                  <td className="pt-2 px-3 text-right text-gray-600">
+                    {formatMoney(comparison.currentTotal)}
+                  </td>
+                  <td className={"pt-2 px-3 text-right " + totalTone}>
+                    {comparison.totalDelta === 0
+                      ? "—"
+                      : signedMoney(comparison.totalDelta)}
+                  </td>
+                  <td className="pt-2 px-3" />
+                  <td className="pt-2 px-3" />
+                  <td className="pt-2 pl-3" />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <p className="mt-3 text-xs text-gray-500">
+            A coluna <span className="font-medium">Situação</span> segue a mesma
+            leitura do CSV: <span className="text-emerald-600">↑ Subiu</span>{" "}
+            (rendeu mais), <span className="text-rose-600">↓ Caiu</span>{" "}
+            (rendeu menos — atenção), → Estável,{" "}
+            <span className="text-emerald-600">＋ Nova</span> (só em {year}) e{" "}
+            <span className="text-rose-600">－ Sumiu</span> (só em {previousYear}).
+          </p>
+        </details>
       )}
     </section>
   );
