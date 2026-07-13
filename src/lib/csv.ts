@@ -105,6 +105,8 @@ import type {
   StaleProposalUrgency,
   ShowGapsReport,
   GapDistribution,
+  FunnelActivityEntry,
+  FunnelActivityKind,
 } from "./shows";
 import {
   summarizeMonthShows,
@@ -3924,6 +3926,55 @@ export function scheduleConflictsToCsv(
     "",
     centsToCsvAmount(totalFee),
   ]);
+  return toCsv(out, delimiter);
+}
+
+export const FUNNEL_ACTIVITY_CSV_HEADERS = [
+  "Data",
+  "Hora",
+  "Show",
+  "Natureza",
+  "De",
+  "Para",
+  "Data do show",
+] as const;
+
+/** Rótulo pt-BR de cada natureza de transição — espelha o `KIND_META` da tela. */
+const FUNNEL_ACTIVITY_KIND_LABELS: Record<FunnelActivityKind, string> = {
+  create: "Cadastro",
+  advance: "Avançou",
+  regress: "Recuou",
+  cancel: "Cancelou",
+  reopen: "Reabriu",
+};
+
+/**
+ * Serializa o feed de atividade do funil (`buildFunnelActivityFeed`) em CSV,
+ * pronto para download — espelha a página `/shows/funil/atividade`. Uma linha por
+ * transição, na MESMA ordem já resolvida pelo helper (mais recente → mais antiga);
+ * a route decide o limite. Data/hora do evento em UTC (`csvDate`/`csvTime`, mesma
+ * convenção estável em teste dos irmãos); "Natureza" traduz o `kind` para pt-BR;
+ * "De" fica vazio no cadastro (sem status anterior) e os status usam os rótulos
+ * da tela (`SHOW_STATUS_LABELS`, defensivo para status desconhecido); "Data do
+ * show" sai vazia quando indisponível. Mesma convenção pt-BR dos irmãos
+ * (delimitador ";"). Pura.
+ */
+export function funnelActivityFeedToCsv(
+  feed: FunnelActivityEntry[],
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(FUNNEL_ACTIVITY_CSV_HEADERS)];
+  for (const entry of feed) {
+    out.push([
+      csvDate(entry.at),
+      csvTime(entry.at),
+      entry.showTitle,
+      FUNNEL_ACTIVITY_KIND_LABELS[entry.kind],
+      entry.fromStatus == null ? "" : showStatusLabel(entry.fromStatus),
+      showStatusLabel(entry.toStatus),
+      entry.showDate == null ? "" : csvDate(entry.showDate),
+    ]);
+  }
   return toCsv(out, delimiter);
 }
 

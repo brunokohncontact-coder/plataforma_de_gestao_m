@@ -5,6 +5,37 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-13 — D316: Exportação CSV do feed de atividade do funil (`/shows/funil/atividade/export`)
+- **Contexto:** a D315 entregou a página `/shows/funil/atividade` (feed reverso-cronológico das últimas
+  transições de status da carteira, classificadas por natureza) e deixou explícito, como primeiro "próximo
+  possível", o export CSV do feed "em espelho às outras telas do funil". De fato, era a única superfície do
+  funil sem uma rota `export` dedicada — conversão, tempo-em-etapa, paradas e o funil-mãe já tinham a sua.
+- **Decisão:**
+  - Novo serializador puro `funnelActivityFeedToCsv(feed)` + `FUNNEL_ACTIVITY_CSV_HEADERS` em `src/lib/csv.ts`,
+    consumindo o `FunnelActivityEntry[]` que `buildFunnelActivityFeed` (D315) já entrega — uma linha por
+    transição na MESMA ordem (mais recente → mais antiga; o limite fica com a route). Colunas: Data / Hora /
+    Show / Natureza / De / Para / Data do show.
+  - `Data`/`Hora` do EVENTO (`entry.at`) em UTC via `csvDate`/`csvTime` (mesma convenção estável em teste dos
+    serializadores irmãos). `Natureza` traduz o `kind` para pt-BR num mapa local `FUNNEL_ACTIVITY_KIND_LABELS`
+    (Cadastro/Avançou/Recuou/Cancelou/Reabriu — espelho do `KIND_META` da tela). `De` fica vazio no cadastro
+    (`fromStatus === null`); ambos os status usam `SHOW_STATUS_LABELS` via o `showStatusLabel` já existente
+    (defensivo p/ status desconhecido). `Data do show` vazia quando `showDate == null`.
+  - Nova rota `/shows/funil/atividade/export` que espelha EXATAMENTE a consulta da página (`showStatusEvent
+    .findMany` pelo índice `[userId]`, `orderBy createdAt desc`, `take 100`, join enxuto de `show.title`/
+    `show.date`), reconstrói o feed com o mesmo `ACTIVITY_LIMIT = 100`, serializa, prefixa BOM UTF-8; nome
+    `atividade-funil.csv`. Link "⬇ CSV" no cabeçalho da página, visível só com feed não vazio.
+- **Justificativa:** a planilha permite ordenar/filtrar o log de movimentações (por natureza, por show, por
+  data) fora da tela e arquivá-lo, o mesmo valor que justificou os CSV das telas irmãs do funil. Reusar a
+  MESMA lógica pura e a MESMA consulta mantém a paridade tela↔planilha por construção (sem I/O, regra ou
+  dependência nova) — o padrão consolidado em dezenas de rotas `export` do projeto.
+- **Alternativas consideradas:** (a) sem BOM — rejeitada, quebra acentuação no Excel (convenção do projeto);
+  (b) data/hora em horário LOCAL (como o CSV do calendário) — rejeitada: o `at` é um timestamp de evento
+  (`createdAt`), não uma data de agenda, e o UTC casa com o que os serializadores de eventos irmãos já fazem e
+  é estável em teste; (c) parametrizar `?ano=`/`PeriodPicker` já neste export — adiado: a própria página ainda
+  não tem recorte por período (o feed é "as 100 mais recentes"), então o export segue fiel à página; quando/se
+  a página ganhar `?ano=`/filtro por natureza, o export os herda. (d) uma coluna única "Data/hora" — rejeitada
+  em favor de colunas Data e Hora separadas, mais ordenáveis, como os CSV de agenda.
+
 ## 2026-07-13 — D315: Atividade do funil (`/shows/funil/atividade`) — feed agregado de transições de status
 - **Contexto:** cada mudança de status de um show grava um `ShowStatusEvent` (D234), e a página de detalhe
   do show já monta a linha do tempo POR SHOW (`buildStatusTimeline`, seção "Histórico de status"). Mas não
