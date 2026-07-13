@@ -5,6 +5,45 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-13 — D314: Arrastar-e-soltar na agenda semanal para remarcar um show (`/shows/semana`), reusando `rescheduleShowAction`/`rescheduleToDay` da D313
+- **Contexto:** a D313 (Sessão 319) entregou o arrastar-e-soltar para remarcar na grade MENSAL
+  (`/shows/calendario`) via o Client Component `CalendarGrid`, o helper puro `rescheduleToDay` e a server
+  action `rescheduleShowAction` — que, já àquela altura, revalidava também `/shows/semana`. O item 2 dos
+  próximos passos apontava explicitamente como próximo possível "(a) levar o mesmo drag-and-drop à visão
+  semanal (`/shows/semana`), reusando `rescheduleToDay`/`rescheduleShowAction`". A agenda semanal era uma
+  lista vertical de 7 dias 100% server-rendered (chips de show como `<Link>`), sem qualquer forma de
+  remarcar sem abrir o formulário do show — a MESMA fricção que o calendário mensal já resolvia por gesto.
+- **Decisão:**
+  - Novo Client Component `src/components/WeekGrid.tsx` (irmão de `CalendarGrid`): renderiza a `<ul>` de 7
+    dias já achatados em dados serializáveis (`WeekDayView`/`WeekShowView`). Cada linha-dia é uma zona de
+    drop (realce `bg-brand-50 ring-brand-300` no alvo sob o cursor) e cada chip de show é `draggable`; ao
+    soltar, monta o mesmo `FormData` (`id` + `dia`) e chama `rescheduleShowAction`, depois `router.refresh()`.
+    Mesma mecânica de estado do `CalendarGrid` (`dragOverKey`/`draggingId`, `onDragOver`/`onDragLeave` que só
+    limpa quando o cursor sai de fato da linha, `opacity-60` durante o `useTransition`). Os chips continuam
+    `<Link>` para o detalhe do show — arrastar é um acréscimo, o clique/teclado seguem levando ao show.
+  - `src/app/(app)/shows/semana/page.tsx` passou a achatar os `cells` de `buildWeekGrid` em `WeekDayView[]`
+    no SERVIDOR (horário/`place`/tooltip pré-formatados com `toLocaleTimeString`/`toLocaleDateString`) e a
+    renderizar `<WeekGrid days={days} />` no lugar do `<ul>` inline — sem `Date` no cliente, então o horário
+    exibido não depende do fuso do navegador (mesma disciplina do mês, D313). O rótulo "Casa · Cidade", a
+    coluna de horário, o selo de status, o "+" de novo show e o estado vazio "—" por dia foram preservados
+    fielmente. Faixa "Dica: arraste um show para outro dia…" abaixo do card (só com shows na semana), espelho
+    da dica do mês.
+- **Justificativa:** paridade de interação entre as duas visões da agenda (mês e semana) com custo mínimo —
+  zero regra de negócio nova (o guard de posse/dia inválido/mesma data e o recorte de horário vivem em
+  `rescheduleShowAction`/`rescheduleToDay`, ambos já testados na D313), zero rota/consulta/migração/dependência.
+  A action já revalidava `/shows/semana`, então a semana re-renderiza correta após o drop sem tocar no backend.
+- **Alternativas consideradas:** (1) generalizar `CalendarGrid` para servir mês e semana com um layout
+  parametrizado — descartado: os dois têm markup e responsividade bem distintos (grade 7-colunas vs. lista
+  vertical com coluna de dia `sm:w-28`), um componente único ficaria cheio de ramos condicionais; dois
+  componentes irmãos pequenos são mais legíveis. (2) tornar o arraste acessível por teclado nesta sessão —
+  adiado (item 2(c)): o formulário do show segue sendo o caminho acessível à data, como no mês. (3) toast/undo
+  do gesto (item 2(b)) — adiado, mantém o escopo fechado.
+- **Próximo possível:** confirmar a remarcação com toast/undo (item 2(b)); tornar o arraste acessível por
+  teclado nas duas visões (item 2(c)); ou, se surgir uma terceira superfície de arraste, extrair a mecânica
+  de drag/drop compartilhada (estado + handlers + chamada da action) num hook `useRescheduleDrag`.
+
+---
+
 ## 2026-07-13 — D311: Exportação CSV do comparativo ano a ano das faixas de cachê (`/shows/faixas-de-cache/comparativo/export`), fechando a última tela de comparativo sem export dedicado
 - **Contexto:** a tela `/shows/faixas-de-cache` já tinha o comparativo ano a ano (card `FeeComparisonCard`
   "Cachê {ano} vs. {ano-1}" com cachê mediano/médio, migração de participação premium e o veredito de

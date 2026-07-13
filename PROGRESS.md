@@ -9,7 +9,27 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 319 (D313) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 320 (D314) —
+arrastar-e-soltar na AGENDA SEMANAL (`/shows/semana`) para remarcar um show, levando o gesto da D313 à
+segunda visão da agenda:** a D313 (Sessão 319) entregou o drag-and-drop na grade MENSAL; a visão semanal
+seguia 100% server-rendered (lista vertical de 7 dias, chips como `<Link>`), sem remarcar por gesto — a
+mesma fricção que o mês já resolvia. Fecha o item 2(a) dos próximos passos ("levar o mesmo drag-and-drop à
+visão semanal, reusando `rescheduleToDay`/`rescheduleShowAction`"). Duas peças, **zero regra de negócio
+nova**: novo Client Component `src/components/WeekGrid.tsx` (irmão de `CalendarGrid` — cada linha-dia é zona
+de drop com realce `bg-brand-50 ring-brand-300`, cada chip é `draggable`; ao soltar monta o `FormData`
+`id`+`dia` e chama a MESMA `rescheduleShowAction`, depois `router.refresh()`; `useTransition` com
+`opacity-60`; chips seguem links ao detalhe); `src/app/(app)/shows/semana/page.tsx` passou a achatar os
+`cells` de `buildWeekGrid` em `WeekDayView[]` no SERVIDOR (horário/`place`/tooltip pré-formatados — sem
+`Date` no cliente, o horário não depende do fuso do navegador, disciplina do mês) e a renderizar
+`<WeekGrid days={days} />` no lugar do `<ul>` inline, preservando fielmente a coluna de dia, o "+", o selo de
+status, o rótulo "Casa · Cidade" e o estado vazio "—"; faixa "Dica: arraste…" abaixo do card (só com shows).
+`rescheduleShowAction` já revalidava `/shows/semana`, então a semana re-renderiza correta após o drop sem
+tocar no backend. Zero rota/consulta/migração/dependência. Sem novos testes (nenhuma lógica pura nova —
+`rescheduleToDay` e a integração de `rescheduleShowAction` já têm cobertura da D313). DoD verde: `npm run
+build` (rota `/shows/semana` 318 B → **3,09 kB**, confirmando o bundle do client grid), `npx tsc --noEmit`,
+`npm run lint` (0 warnings), `npm test` (**1735 testes**); smoke → `/login` 200, `/shows/semana` 307→/login
+(auth-gated) e, com sessão de dev, `/shows/semana?semana=2026-07-03` 200 com o chip `draggable="true"` e a
+dica presente; `npm audit` inalterado (10 advisories, zero dependência nova). Ver D314. **Antes disso, Sessão 319 (D313) —
 arrastar-e-soltar no calendário para remarcar um show:** o calendário mensal (`/shows/calendario`) deixou de
 ser um retrato estático — arrastar um chip de show para outro dia o remarca (preservando o horário) via
 `rescheduleShowAction`, fechando o item mais antigo em aberto dos próximos passos ("arrastar/soltar para
@@ -4722,11 +4742,14 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
    `rescheduleToDay` em `src/lib/calendar.ts` + `rescheduleShowAction` em `src/app/(app)/shows/actions.ts` +
    Client Component `src/components/CalendarGrid.tsx`: arrastar um chip de show para outro dia do calendário o
    remarca preservando o horário, com no-op seguro p/ posse/dia inválido/mesma data e sem evento de status);
-   mini-calendário de salto rápido.
-   Próximo possível para esta feature — (a) levar o mesmo drag-and-drop à visão semanal (`/shows/semana`),
-   reusando `rescheduleToDay`/`rescheduleShowAction` (a action já revalida `/shows/semana`); (b) confirmar a
-   remarcação com um toast/undo se o gesto acidental preocupar; (c) tornar o arraste acessível por teclado
-   (hoje é ponteiro-only; o formulário do show é o caminho acessível à data).
+   **~~drag-and-drop também na visão semanal~~ (entregue na Sessão 320, D314 —
+   Client Component `src/components/WeekGrid.tsx`, irmão de `CalendarGrid`, reusando a MESMA
+   `rescheduleShowAction`/`rescheduleToDay`; a página `/shows/semana` achata `buildWeekGrid` em
+   `WeekDayView[]` no servidor)**; mini-calendário de salto rápido.
+   Próximo possível para esta feature — (b) confirmar a remarcação com um toast/undo se o gesto acidental
+   preocupar; (c) tornar o arraste acessível por teclado nas duas visões (hoje é ponteiro-only; o formulário
+   do show é o caminho acessível à data); ou, se surgir uma terceira superfície de arraste, extrair a
+   mecânica de drag/drop compartilhada (estado + handlers + chamada da action) num hook `useRescheduleDrag`.
    (visão semanal entregue na Sessão 19 — `/shows/semana`; link do dashboard para a agenda na
    Sessão 19; clicar num dia para criar show com a data na Sessão 13; exportação iCalendar
    `.ics` na Sessão 15 — base em `src/lib/calendar.ts` e `src/lib/ics.ts`;
