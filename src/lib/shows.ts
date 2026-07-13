@@ -1963,6 +1963,62 @@ export function buildFunnelActivityFeed(
   }));
 }
 
+/**
+ * As cinco naturezas de transição, na ordem canônica do funil (cadastro →
+ * avanço → recuo → cancelamento → reabertura). Fonte única para iterar chips de
+ * filtro, validar o parâmetro `?natureza=` e montar o mapa de contagens.
+ */
+export const FUNNEL_ACTIVITY_KINDS: readonly FunnelActivityKind[] = [
+  "create",
+  "advance",
+  "regress",
+  "cancel",
+  "reopen",
+];
+
+/**
+ * Valida um valor cru (query string `?natureza=`) contra as naturezas
+ * conhecidas. Retorna a natureza quando reconhecida, ou `null` (sem filtro) para
+ * ausente/vazia/desconhecida — o chamador trata `null` como "todas".
+ */
+export function parseFunnelActivityKind(
+  value: string | string[] | null | undefined,
+): FunnelActivityKind | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return FUNNEL_ACTIVITY_KINDS.includes(raw as FunnelActivityKind)
+    ? (raw as FunnelActivityKind)
+    : null;
+}
+
+/**
+ * Restringe o feed a uma natureza. `null` devolve o feed inteiro (sem filtro),
+ * preservando ordem e identidade — não recalcula nada, só filtra.
+ */
+export function filterFunnelActivityByKind(
+  feed: FunnelActivityEntry[],
+  kind: FunnelActivityKind | null,
+): FunnelActivityEntry[] {
+  return kind === null ? feed : feed.filter((entry) => entry.kind === kind);
+}
+
+/**
+ * Conta quantas entradas o feed tem de cada natureza. Sempre inclui as cinco
+ * chaves (zeradas quando ausentes) para os chips de filtro exibirem o total.
+ */
+export function countFunnelActivityByKind(
+  feed: FunnelActivityEntry[],
+): Record<FunnelActivityKind, number> {
+  const counts: Record<FunnelActivityKind, number> = {
+    create: 0,
+    advance: 0,
+    regress: 0,
+    cancel: 0,
+    reopen: 0,
+  };
+  for (const entry of feed) counts[entry.kind] += 1;
+  return counts;
+}
+
 // ── Tempo médio em cada etapa do funil (residence time) ───────────────────────
 // Agregado sobre o histórico de status (`ShowStatusEvent`) de VÁRIOS shows: para
 // cada etapa (PROPOSED, CONFIRMED, …) quanto tempo, tipicamente, um show fica

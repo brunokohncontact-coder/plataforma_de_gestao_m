@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { buildFunnelActivityFeed } from "@/lib/shows";
+import {
+  buildFunnelActivityFeed,
+  filterFunnelActivityByKind,
+  parseFunnelActivityKind,
+} from "@/lib/shows";
 import { funnelActivityFeedToCsv } from "@/lib/csv";
 
 export const dynamic = "force-dynamic";
@@ -14,8 +18,14 @@ const ACTIVITY_LIMIT = 100;
 // página `/shows/funil/atividade`. Mesma consulta (eventos de status pelo índice
 // `[userId]`, ordenados/limitados no banco), mesmo limite e a mesma agregação
 // pura; a serialização fica em `@/lib/csv` (`funnelActivityFeedToCsv`), testada.
-export async function GET() {
+// Respeita o filtro `?natureza=` da página (recorte por natureza da transição),
+// aplicado sobre a MESMA janela de eventos — o download espelha o que a tela mostra.
+export async function GET(request: Request) {
   const user = await requireUser();
+
+  const activeKind = parseFunnelActivityKind(
+    new URL(request.url).searchParams.get("natureza"),
+  );
 
   const events = await prisma.showStatusEvent.findMany({
     where: { userId: user.id },
@@ -42,15 +52,22 @@ export async function GET() {
     { limit: ACTIVITY_LIMIT },
   );
 
-  const csv = funnelActivityFeedToCsv(feed);
+  const visible = filterFunnelActivityByKind(feed, activeKind);
+  const csv = funnelActivityFeedToCsv(visible);
   // BOM UTF-8 para preservar acentuação ao abrir no Excel.
   const body = "﻿" + csv;
+
+  // Nome do arquivo carrega a natureza filtrada, quando houver.
+  const filename =
+    activeKind === null
+      ? "atividade-funil.csv"
+      : `atividade-funil-${activeKind}.csv`;
 
   return new NextResponse(body, {
     status: 200,
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="atividade-funil.csv"`,
+      "Content-Disposition": `attachment; filename="${filename}"`,
       "Cache-Control": "no-store",
     },
   });

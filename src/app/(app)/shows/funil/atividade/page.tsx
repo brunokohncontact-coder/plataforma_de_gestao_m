@@ -1,7 +1,14 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { buildFunnelActivityFeed, type FunnelActivityKind } from "@/lib/shows";
+import {
+  buildFunnelActivityFeed,
+  countFunnelActivityByKind,
+  filterFunnelActivityByKind,
+  parseFunnelActivityKind,
+  FUNNEL_ACTIVITY_KINDS,
+  type FunnelActivityKind,
+} from "@/lib/shows";
 import { formatDateTime, formatDate } from "@/lib/format";
 import {
   SHOW_STATUS_LABELS,
@@ -10,6 +17,8 @@ import {
 } from "@/lib/domain";
 
 export const dynamic = "force-dynamic";
+
+type SearchParams = { [key: string]: string | string[] | undefined };
 
 /** Quantas transições recentes o feed carrega/exibe. */
 const ACTIVITY_LIMIT = 100;
@@ -29,8 +38,15 @@ const KIND_META: Record<
   reopen: { arrow: "↺", dot: "bg-blue-500", label: "Reabriu" },
 };
 
-export default async function FunnelActivityPage() {
+export default async function FunnelActivityPage({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
   const user = await requireUser();
+
+  // Filtro por natureza da transição (`?natureza=`); `null` = todas.
+  const activeKind = parseFunnelActivityKind(searchParams?.natureza);
 
   // O feed vem direto dos eventos de status (índice `[userId]` em
   // `ShowStatusEvent`), já ordenados e limitados no banco; juntamos só o título e
@@ -60,6 +76,25 @@ export default async function FunnelActivityPage() {
     { limit: ACTIVITY_LIMIT },
   );
 
+  // Contagens por natureza (dentro da janela carregada) para os chips, e o
+  // recorte exibido conforme o filtro ativo.
+  const counts = countFunnelActivityByKind(feed);
+  const visible = filterFunnelActivityByKind(feed, activeKind);
+
+  // Constrói o href de um chip preservando as demais query strings não seria
+  // necessário (a página só tem `natureza`), então basta o próprio parâmetro.
+  const chipHref = (kind: FunnelActivityKind | null): string =>
+    kind === null
+      ? "/shows/funil/atividade"
+      : `/shows/funil/atividade?natureza=${kind}`;
+
+  // O link de export espelha o filtro ativo para baixar exatamente o recorte
+  // visível.
+  const exportHref =
+    activeKind === null
+      ? "/shows/funil/atividade/export"
+      : `/shows/funil/atividade/export?natureza=${activeKind}`;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -73,8 +108,8 @@ export default async function FunnelActivityPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {feed.length > 0 && (
-            <a href="/shows/funil/atividade/export" className="btn-secondary">
+          {visible.length > 0 && (
+            <a href={exportHref} className="btn-secondary">
               ⬇ CSV
             </a>
           )}
@@ -90,9 +125,64 @@ export default async function FunnelActivityPage() {
           funil (proposto → confirmado → realizado) para ver a atividade aqui.
         </div>
       ) : (
+        <>
+          {/* Chips de filtro por natureza — "Todas" + as cinco naturezas, com
+              a contagem dentro da janela carregada; o ativo fica destacado. */}
+          <nav
+            className="flex flex-wrap gap-2"
+            aria-label="Filtrar por natureza da transição"
+          >
+            <Link
+              href={chipHref(null)}
+              aria-current={activeKind === null ? "page" : undefined}
+              className={
+                "rounded-full border px-3 py-1 text-sm transition-colors " +
+                (activeKind === null
+                  ? "border-brand-500 bg-brand-50 font-medium text-brand-700"
+                  : "border-gray-200 text-gray-600 hover:bg-gray-50")
+              }
+            >
+              Todas ({feed.length})
+            </Link>
+            {FUNNEL_ACTIVITY_KINDS.map((kind) => {
+              const active = activeKind === kind;
+              return (
+                <Link
+                  key={kind}
+                  href={chipHref(kind)}
+                  aria-current={active ? "page" : undefined}
+                  className={
+                    "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition-colors " +
+                    (active
+                      ? "border-brand-500 bg-brand-50 font-medium text-brand-700"
+                      : "border-gray-200 text-gray-600 hover:bg-gray-50")
+                  }
+                >
+                  <span
+                    className={
+                      "inline-block h-2 w-2 rounded-full " + KIND_META[kind].dot
+                    }
+                    aria-hidden="true"
+                  />
+                  {KIND_META[kind].label} ({counts[kind]})
+                </Link>
+              );
+            })}
+          </nav>
+
+          {visible.length === 0 ? (
+            <div className="card text-sm text-gray-500">
+              Nenhuma transição do tipo “{KIND_META[activeKind!].label}” entre as{" "}
+              {feed.length} mais recentes.{" "}
+              <Link href={chipHref(null)} className="text-brand-600 hover:underline">
+                Ver todas
+              </Link>
+              .
+            </div>
+          ) : (
         <section className="card">
           <ol className="space-y-4">
-            {feed.map((entry, i) => {
+            {visible.map((entry, i) => {
               const meta = KIND_META[entry.kind];
               return (
                 <li key={i} className="flex items-start gap-3">
@@ -149,10 +239,14 @@ export default async function FunnelActivityPage() {
           </ol>
           {feed.length >= ACTIVITY_LIMIT && (
             <p className="mt-4 border-t pt-3 text-xs text-gray-400">
-              Mostrando as {ACTIVITY_LIMIT} mudanças mais recentes.
+              {activeKind === null
+                ? `Mostrando as ${ACTIVITY_LIMIT} mudanças mais recentes.`
+                : `Filtrando entre as ${ACTIVITY_LIMIT} mudanças mais recentes.`}
             </p>
           )}
         </section>
+          )}
+        </>
       )}
     </div>
   );

@@ -38,6 +38,10 @@ import {
   MIN_LEAD_TIME_SAMPLE,
   buildStatusTimeline,
   buildFunnelActivityFeed,
+  parseFunnelActivityKind,
+  filterFunnelActivityByKind,
+  countFunnelActivityByKind,
+  FUNNEL_ACTIVITY_KINDS,
   funnelStageDurations,
   stageTimeConcentration,
   stageTimeConcentrationSegments,
@@ -1668,6 +1672,63 @@ describe("buildFunnelActivityFeed", () => {
     expect(a.showDate).toBeNull();
     expect(b.showDate).toBeInstanceOf(Date);
     expect(b.showDate!.toISOString()).toBe("2026-07-20T00:00:00.000Z");
+  });
+});
+
+describe("parseFunnelActivityKind", () => {
+  it("aceita cada natureza conhecida", () => {
+    for (const kind of FUNNEL_ACTIVITY_KINDS) {
+      expect(parseFunnelActivityKind(kind)).toBe(kind);
+    }
+  });
+
+  it("devolve null para ausente, vazio ou desconhecido", () => {
+    expect(parseFunnelActivityKind(undefined)).toBeNull();
+    expect(parseFunnelActivityKind(null)).toBeNull();
+    expect(parseFunnelActivityKind("")).toBeNull();
+    expect(parseFunnelActivityKind("outra")).toBeNull();
+  });
+
+  it("usa o primeiro valor quando o parâmetro vem repetido (array)", () => {
+    expect(parseFunnelActivityKind(["advance", "cancel"])).toBe("advance");
+    expect(parseFunnelActivityKind(["nope"])).toBeNull();
+  });
+});
+
+describe("filterFunnelActivityByKind / countFunnelActivityByKind", () => {
+  const feed = buildFunnelActivityFeed([
+    { showId: "c1", showTitle: "S1", showDate: null, fromStatus: null, toStatus: "PROPOSED", at: "2026-01-01T00:00:00.000Z" },
+    { showId: "a1", showTitle: "S2", showDate: null, fromStatus: "PROPOSED", toStatus: "CONFIRMED", at: "2026-01-02T00:00:00.000Z" },
+    { showId: "a2", showTitle: "S3", showDate: null, fromStatus: "CONFIRMED", toStatus: "PLAYED", at: "2026-01-03T00:00:00.000Z" },
+    { showId: "x1", showTitle: "S4", showDate: null, fromStatus: "CONFIRMED", toStatus: "CANCELLED", at: "2026-01-04T00:00:00.000Z" },
+  ]);
+
+  it("filtro null devolve o feed inteiro (mesma identidade)", () => {
+    expect(filterFunnelActivityByKind(feed, null)).toBe(feed);
+  });
+
+  it("filtra por natureza preservando a ordem", () => {
+    const advances = filterFunnelActivityByKind(feed, "advance");
+    expect(advances.map((e) => e.showId)).toEqual(["a2", "a1"]);
+    expect(filterFunnelActivityByKind(feed, "cancel").map((e) => e.showId)).toEqual(["x1"]);
+    expect(filterFunnelActivityByKind(feed, "reopen")).toEqual([]);
+  });
+
+  it("conta cada natureza, sempre com as cinco chaves (zeradas quando ausentes)", () => {
+    expect(countFunnelActivityByKind(feed)).toEqual({
+      create: 1,
+      advance: 2,
+      regress: 0,
+      cancel: 1,
+      reopen: 0,
+    });
+    expect(countFunnelActivityByKind([])).toEqual({
+      create: 0,
+      advance: 0,
+      regress: 0,
+      cancel: 0,
+      reopen: 0,
+    });
   });
 });
 
