@@ -39,6 +39,7 @@ import {
   unlinkContactFromShowAction,
   updateShowAction,
   duplicateShowAction,
+  rescheduleShowAction,
 } from "./actions";
 
 /** Captura o redirect lançado por uma action de sucesso. Retorna a URL ou null. */
@@ -149,6 +150,69 @@ describe("deleteShowAction — posse", () => {
     await catchRedirect(deleteShowAction(fd));
 
     expect(await prisma.show.findUnique({ where: { id: show.id } })).toBeNull();
+  });
+});
+
+describe("rescheduleShowAction — arrastar-e-soltar no calendário", () => {
+  function rescheduleForm(id: string, dia: string): FormData {
+    const fd = new FormData();
+    fd.set("id", id);
+    fd.set("dia", dia);
+    return fd;
+  }
+
+  it("remarca o próprio show para o novo dia preservando o horário", async () => {
+    const owner = await createUser("owner@example.com");
+    // 01/07/2026 20:00 local → arrastado para 15/07/2026.
+    const show = await createShow(owner.id, { date: new Date(2026, 6, 1, 20, 0) });
+
+    h.currentUser = owner;
+    await rescheduleShowAction(rescheduleForm(show.id, "2026-07-15"));
+
+    const fresh = await prisma.show.findUnique({ where: { id: show.id } });
+    expect(fresh!.date.getFullYear()).toBe(2026);
+    expect(fresh!.date.getMonth()).toBe(6); // julho
+    expect(fresh!.date.getDate()).toBe(15);
+    expect(fresh!.date.getHours()).toBe(20); // horário preservado
+    expect(fresh!.date.getMinutes()).toBe(0);
+  });
+
+  it("NÃO remarca o show de outro usuário", async () => {
+    const owner = await createUser("owner@example.com");
+    const attacker = await createUser("attacker@example.com");
+    const original = new Date(2026, 6, 1, 20, 0);
+    const show = await createShow(owner.id, { date: original });
+
+    h.currentUser = attacker;
+    await rescheduleShowAction(rescheduleForm(show.id, "2026-07-15"));
+
+    const fresh = await prisma.show.findUnique({ where: { id: show.id } });
+    expect(fresh!.date.getTime()).toBe(original.getTime()); // inalterado
+  });
+
+  it("é no-op silencioso quando o dia-alvo é inválido", async () => {
+    const owner = await createUser("owner@example.com");
+    const original = new Date(2026, 6, 1, 20, 0);
+    const show = await createShow(owner.id, { date: original });
+
+    h.currentUser = owner;
+    await rescheduleShowAction(rescheduleForm(show.id, "2026-02-31")); // data inexistente
+    await rescheduleShowAction(rescheduleForm(show.id, "lixo"));
+
+    const fresh = await prisma.show.findUnique({ where: { id: show.id } });
+    expect(fresh!.date.getTime()).toBe(original.getTime()); // inalterado
+  });
+
+  it("é no-op ao remarcar para o próprio dia (sem escrita)", async () => {
+    const owner = await createUser("owner@example.com");
+    const original = new Date(2026, 6, 1, 20, 0);
+    const show = await createShow(owner.id, { date: original });
+
+    h.currentUser = owner;
+    await rescheduleShowAction(rescheduleForm(show.id, "2026-07-01"));
+
+    const fresh = await prisma.show.findUnique({ where: { id: show.id } });
+    expect(fresh!.date.getTime()).toBe(original.getTime());
   });
 });
 

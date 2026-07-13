@@ -16,6 +16,7 @@ import {
   buildWeekGrid,
   buildMiniMonth,
   findAdjacentShowDate,
+  rescheduleToDay,
 } from "./calendar";
 
 describe("monthKey / parseMonthKey", () => {
@@ -395,5 +396,54 @@ describe("findAdjacentShowDate", () => {
     expect(findAdjacentShowDate(dates, ref, "prev")!.getTime()).toBe(
       new Date(2026, 5, 5, 19).getTime(),
     );
+  });
+});
+
+describe("rescheduleToDay", () => {
+  it("move o show para o novo dia preservando o horário local", () => {
+    const current = new Date(2026, 5, 9, 20, 30, 15, 500); // 09/06/2026 20:30:15.500
+    const next = rescheduleToDay(current, "2026-06-20");
+    expect(next).not.toBeNull();
+    expect(next!.getFullYear()).toBe(2026);
+    expect(next!.getMonth()).toBe(5); // junho
+    expect(next!.getDate()).toBe(20);
+    expect(next!.getHours()).toBe(20);
+    expect(next!.getMinutes()).toBe(30);
+    expect(next!.getSeconds()).toBe(15);
+    expect(next!.getMilliseconds()).toBe(500);
+  });
+
+  it("atravessa a virada de mês e de ano mantendo o horário", () => {
+    const current = new Date(2026, 11, 31, 23, 0); // 31/12/2026 23:00
+    const next = rescheduleToDay(current, "2027-01-01");
+    expect(next!.getFullYear()).toBe(2027);
+    expect(next!.getMonth()).toBe(0);
+    expect(next!.getDate()).toBe(1);
+    expect(next!.getHours()).toBe(23);
+    expect(next!.getMinutes()).toBe(0);
+  });
+
+  it("devolve o mesmo instante ao remarcar para o próprio dia", () => {
+    const current = new Date(2026, 2, 14, 21, 15);
+    const next = rescheduleToDay(current, "2026-03-14");
+    expect(next!.getTime()).toBe(current.getTime());
+  });
+
+  it("rejeita formato inválido, faixa inválida e data inexistente", () => {
+    const current = new Date(2026, 5, 9, 20);
+    expect(rescheduleToDay(current, "")).toBeNull();
+    expect(rescheduleToDay(current, "2026-6-9")).toBeNull(); // sem zero-pad
+    expect(rescheduleToDay(current, "09/06/2026")).toBeNull();
+    expect(rescheduleToDay(current, "2026-13-01")).toBeNull(); // mês fora de faixa
+    expect(rescheduleToDay(current, "2026-00-10")).toBeNull();
+    expect(rescheduleToDay(current, "2026-02-31")).toBeNull(); // 31/02 transborda
+    expect(rescheduleToDay(current, "2026-04-31")).toBeNull(); // abril não tem 31
+  });
+
+  it("tolera espaços em volta do parâmetro", () => {
+    const current = new Date(2026, 5, 9, 20);
+    const next = rescheduleToDay(current, "  2026-07-04 ");
+    expect(next!.getMonth()).toBe(6);
+    expect(next!.getDate()).toBe(4);
   });
 });

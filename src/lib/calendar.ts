@@ -129,6 +129,38 @@ export function parseDayParam(
   return d;
 }
 
+/**
+ * Recalcula a data de um show para um novo dia (ex.: arrastar-e-soltar o show de
+ * uma célula do calendário para outra), PRESERVANDO o horário local original — só
+ * o dia muda, o horário do gig fica igual. `targetDayParam` é "YYYY-MM-DD" (a chave
+ * de dia da célula-alvo, mesma convenção de `toDayParam`).
+ *
+ * Retorna `null` para entradas inválidas (formato errado, mês/dia fora de faixa ou
+ * data inexistente como 31/02 — o mesmo guarda de "transbordo" de `parseDayParam`),
+ * deixando o chamador (a server action) tratar como no-op seguro em vez de gravar
+ * uma data corrompida. Puro e determinístico.
+ */
+export function rescheduleToDay(current: Date, targetDayParam: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(targetDayParam.trim());
+  if (!m) return null;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const next = new Date(
+    year,
+    month - 1,
+    day,
+    current.getHours(),
+    current.getMinutes(),
+    current.getSeconds(),
+    current.getMilliseconds(),
+  );
+  // rejeita datas que "transbordam" (ex.: 2026-02-31 vira 03/03)
+  if (next.getMonth() !== month - 1 || next.getDate() !== day) return null;
+  return next;
+}
+
 /** Domingo (meia-noite local) da semana que contém `date`. */
 export function startOfWeek(date: Date): Date {
   const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());

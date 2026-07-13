@@ -10993,3 +10993,48 @@ contexto, decisão, justificativa e alternativas consideradas.
   `scripts/session-setup.sh`.
 - **Nota de concorrência:** número **D312** escolhido como o próximo livre acima do maior D referenciado no
   PROGRESS (D311). Se outra PR reivindicar D312, renumerar para o próximo livre no merge.
+
+## D313 — Arrastar-e-soltar no calendário para remarcar um show (`/shows/calendario`) (Sessão 319)
+
+- **Contexto:** o calendário mensal (`/shows/calendario`) era um Server Component 100% estático — cada show
+  um `<Link>` para o detalhe, sem interação. Remarcar um gig exigia abrir o show → editar → salvar. O item
+  "arrastar/soltar para remarcar" era o passo mais antigo em aberto dos "próximos passos" (item 2 do PROGRESS,
+  a única "feature maior" do calendário nunca entregue), enquanto quase todo o resto da plataforma já estava
+  polido (analytics com `?ano=`/YoY/CSV/nudge em todos os eixos). Um atalho operacional de um gesto — como
+  "Duplicar" (D218) — de alto valor para quem reorganiza a agenda.
+- **Decisão:** drag-and-drop nativo (HTML5) para remarcar. Três peças:
+  1. **Helper puro** `rescheduleToDay(current, "YYYY-MM-DD")` em `src/lib/calendar.ts`: recebe a data atual do
+     show e o dia-alvo da célula, devolve uma nova `Date` no dia-alvo **preservando o horário local** (só o dia
+     muda). Reusa o guarda de "transbordo" de `parseDayParam` (rejeita `2026-02-31`, mês/dia fora de faixa,
+     formato inválido → `null`). Testado (5 casos).
+  2. **Server action** `rescheduleShowAction(formData)` em `src/app/(app)/shows/actions.ts`: lê `id`+`dia`,
+     confere posse (`findFirst { userId }`), aplica `rescheduleToDay` e faz `update`. **No-op silencioso** quando
+     o show não é do usuário, o dia é inválido ou a data não muda (arrastar de volta à mesma célula). Remarcar é
+     mudança de DATA, não de status → **não** grava `ShowStatusEvent` (espelha `updateShowAction`, que só
+     registra evento na transição de status). Não redireciona (a UI atualiza no lugar). Testado (4 casos de
+     integração: dono remarca, atacante bloqueado, dia inválido → no-op, mesmo dia → no-op).
+  3. **Client Component** `src/components/CalendarGrid.tsx` (`"use client"`): a grade recebe as células já
+     **achatadas em dados serializáveis** pela página (sem `Date` no cliente, então o horário exibido não
+     depende do fuso do navegador). Cada chip é `draggable` e continua sendo `<Link>` para o detalhe; cada
+     célula-dia é zona de drop que chama a action via `useTransition` + `router.refresh()`, com realce do alvo
+     durante o arraste. A grade em si segue montada/testada por `buildMonthGrid` no servidor.
+- **Justificativa:** o menor caminho para o gesto sem reescrever a grade nem trazer uma lib de DnD. A lógica de
+  data (a parte que corrompe se errar) fica pura e testada; a action carrega a posse/no-op; o cliente só o
+  handler de navegador. Preservar o horário e não gerar evento de status mantêm a semântica correta (remarcar ≠
+  reagendar o funil).
+- **Acessibilidade:** o arraste é ponteiro/mouse-only; os chips permanecem links navegáveis por teclado/clique,
+  e a data também é editável pelo formulário do show (o caminho acessível). Uma dica textual ("arraste um show
+  para outro dia para remarcá-lo") sinaliza o gesto.
+- **Alternativas consideradas:** (a) lib de DnD (dnd-kit/react-dnd) — rejeitado: peso e dependência nova para um
+  gesto simples que o HTML5 nativo cobre. (b) manter Server Component e usar um `<form>` por célula — rejeitado:
+  drop precisa de handler de navegador de qualquer forma. (c) gravar um `ShowStatusEvent` na remarcação —
+  rejeitado: data não é status; poluiria a linha do tempo do funil (D234).
+- **Verificação:** DoD verde — `npm run build` (Next completo; a rota `/shows/calendario` passou de 318 B a
+  2,87 kB de JS, confirmando o bundle do client grid), `npx tsc --noEmit`, `npm run lint` (0 warnings),
+  `npm test` (**1735 testes**, +9); smoke → `/login` 200, `/shows/calendario` 307→/login (auth-gated) e, com
+  sessão de dev, `/shows/calendario?mes=2026-07` 200 renderizando o show com `draggable="true"`, `cursor-grab`
+  e a dica de arraste; `npm audit` inalterado (10 advisories, zero dependência nova). Mudança em
+  `src/lib/calendar.ts`, `src/app/(app)/shows/actions.ts`, `src/app/(app)/shows/calendario/page.tsx` + novo
+  `src/components/CalendarGrid.tsx`.
+- **Nota de concorrência:** número **D313** escolhido como o próximo livre acima do maior D referenciado no
+  PROGRESS (D312). Se outra PR reivindicar D313, renumerar para o próximo livre no merge.
