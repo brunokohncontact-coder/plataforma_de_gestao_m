@@ -7,9 +7,29 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1754 testes**),
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1758 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 324 (D318) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 325 (D319) —
+RÓTULOS RELATIVOS "Hoje"/"Ontem" nos cabeçalhos de dia do feed agrupado (`/shows/funil/atividade?agrupar=dia`),
+fechando um dos "próximos possíveis" que a D318 deixou explícito (rótulos relativos no cabeçalho do dia; o
+outro, recorte por `?ano=`, segue adiado até haver paginação do feed):** a visão "Por dia" (D318) já quebra o
+feed em cards por dia com cabeçalho pt-BR por extenso (`formatDayHeader`, UTC), mas o mais comum ao abrir o
+feed é procurar "o que se moveu hoje / ontem" — e o rótulo por extenso exige leitura para situar o dia no
+presente. Só peça pura + fiação de apresentação, **zero migração/consulta/dependência/estado novo**: novo
+helper puro `relativeDayLabel(day, today)` em `src/lib/shows.ts` (junto de `groupFunnelActivityByDay`) — ambos
+chaves "YYYY-MM-DD" em UTC, devolve `"Hoje"` para o próprio dia, `"Ontem"` para o dia imediatamente anterior
+(diferença de exatamente 1 dia entre as meias-noites UTC, reusando `dayKeyToUtcMs`) e `null` para qualquer
+outro; o relógio não entra no helper, só na chave `today` injetada pelo chamador. A página computa
+`todayKey = dayKey(new Date())` uma vez e, no modo por dia, prefixa cada cabeçalho com um selo
+`bg-brand-50`/`text-brand-700` (`normal-case`) quando `relativeDayLabel` não é nulo — mantendo o rótulo por
+extenso ao lado (data exata preservada; dias sem selo ficam idênticos à D318). **+4 testes** (`shows.test.ts`,
+`describe("relativeDayLabel")`: hoje→"Hoje"; dia anterior→"Ontem"; virada de mês (1º↔último dia)→"Ontem";
+anteontem/amanhã/distante→null). DoD verde: `npm run build` (`/shows/funil/atividade` 320 B → 96,3 kB, sem novo
+bundle de cliente), `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1758 testes**); smoke →
+`/login` 200, `?agrupar=dia` e `?agrupar=dia&natureza=advance` 307→/login (auth-gated, sem 500); `npm audit`
+inalterado (10 advisories, zero dependência nova). **Próximo possível** — ~~rótulos relativos no cabeçalho~~
+(entregue), recorte por `?ano=`/`PeriodPicker` (adiado até haver paginação do feed) ou estender a
+"Anteontem"/"N dias atrás" (adiado: ganho marginal decrescente). Ver D319. **Antes disso, Sessão 324 (D318) —
 VISUALIZAÇÃO AGRUPADA POR DIA no feed de atividade do funil (`/shows/funil/atividade?agrupar=dia`), fechando
 o último "próximo possível" aberto da linha do feed (recorte por ano OU agrupamento por dia — o agrupamento é
 o de maior valor de leitura e não exige consulta nova):** o feed (D315) listava as últimas 100 transições da

@@ -7,10 +7,12 @@ import {
   filterFunnelActivityByKind,
   groupFunnelActivityByDay,
   parseFunnelActivityKind,
+  relativeDayLabel,
   FUNNEL_ACTIVITY_KINDS,
   type FunnelActivityEntry,
   type FunnelActivityKind,
 } from "@/lib/shows";
+import { dayKey } from "@/lib/finance";
 import { formatDateTime, formatDate } from "@/lib/format";
 import {
   SHOW_STATUS_LABELS,
@@ -106,6 +108,9 @@ export default async function FunnelActivityPage({
   const visible = filterFunnelActivityByKind(feed, activeKind);
   // No modo "por dia", rebaldeamos o recorte visível em dias (recente→antigo).
   const dayGroups = groupByDay ? groupFunnelActivityByDay(visible) : [];
+  // Chave do dia de hoje (UTC, mesma convenção de `dayKey`) para rotular os
+  // cabeçalhos como "Hoje"/"Ontem" sem varrer o relógio dentro do helper puro.
+  const todayKey = dayKey(new Date());
 
   // Monta uma query string preservando `natureza` e `agrupar` com sobrescritas.
   const buildHref = (over: {
@@ -308,10 +313,19 @@ export default async function FunnelActivityPage({
         <>
           {groupByDay ? (
             <div className="space-y-4">
-              {dayGroups.map((group) => (
+              {dayGroups.map((group) => {
+                const relLabel = relativeDayLabel(group.day, todayKey);
+                return (
                 <section key={group.day} className="card">
                   <h2 className="mb-3 flex items-baseline justify-between gap-2 border-b pb-2 text-sm font-semibold capitalize text-gray-900">
-                    <span>{formatDayHeader(group.day)}</span>
+                    <span>
+                      {relLabel && (
+                        <span className="mr-1.5 rounded bg-brand-50 px-1.5 py-0.5 text-xs font-medium normal-case text-brand-700">
+                          {relLabel}
+                        </span>
+                      )}
+                      {formatDayHeader(group.day)}
+                    </span>
                     <span className="text-xs font-normal text-gray-400">
                       {group.entries.length}{" "}
                       {group.entries.length === 1 ? "transição" : "transições"}
@@ -323,7 +337,8 @@ export default async function FunnelActivityPage({
                     )}
                   </ol>
                 </section>
-              ))}
+                );
+              })}
               {feed.length >= ACTIVITY_LIMIT && (
                 <p className="px-1 text-xs text-gray-400">
                   {activeKind === null
