@@ -95,6 +95,14 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "⏳",
       },
       {
+        title: "Atividade do funil",
+        href: "/shows/funil/atividade",
+        description:
+          "As últimas mudanças de status na carteira inteira — cadastros, avanços, recuos e cancelamentos, mais recentes primeiro.",
+        subtopic: "Agenda & pipeline",
+        icon: "🕒",
+      },
+      {
         title: "Por dia da semana",
         href: "/shows/dias-semana",
         description: "Quais dias da semana rendem mais shows e mais dinheiro.",

@@ -37,6 +37,7 @@ import {
   LEAD_TIME_CRITICAL_DAYS,
   MIN_LEAD_TIME_SAMPLE,
   buildStatusTimeline,
+  buildFunnelActivityFeed,
   funnelStageDurations,
   stageTimeConcentration,
   stageTimeConcentrationSegments,
@@ -1591,6 +1592,82 @@ describe("buildStatusTimeline", () => {
       { fromStatus: "PROPOSED", toStatus: "CANCELLED", createdAt: new Date("2026-03-01T00:00:00.000Z") },
     ]);
     expect(t[1].daysInPrevious).toBe(0);
+  });
+});
+
+describe("buildFunnelActivityFeed", () => {
+  const item = (
+    showId: string,
+    fromStatus: string | null,
+    toStatus: string,
+    at: string,
+    showDate: string | null = "2026-06-01T00:00:00.000Z",
+  ) => ({ showId, showTitle: `Show ${showId}`, showDate, fromStatus, toStatus, at });
+
+  it("devolve lista vazia sem itens", () => {
+    expect(buildFunnelActivityFeed([])).toEqual([]);
+  });
+
+  it("ordena da transição mais recente para a mais antiga", () => {
+    const feed = buildFunnelActivityFeed([
+      item("a", null, "PROPOSED", "2026-01-01T09:00:00.000Z"),
+      item("b", "PROPOSED", "CONFIRMED", "2026-03-10T09:00:00.000Z"),
+      item("c", "CONFIRMED", "PLAYED", "2026-02-05T09:00:00.000Z"),
+    ]);
+    expect(feed.map((e) => e.showId)).toEqual(["b", "c", "a"]);
+    expect(feed[0].at.toISOString()).toBe("2026-03-10T09:00:00.000Z");
+  });
+
+  it("respeita o limite mantendo as N mais recentes", () => {
+    const feed = buildFunnelActivityFeed(
+      [
+        item("a", null, "PROPOSED", "2026-01-01T00:00:00.000Z"),
+        item("b", null, "PROPOSED", "2026-02-01T00:00:00.000Z"),
+        item("c", null, "PROPOSED", "2026-03-01T00:00:00.000Z"),
+      ],
+      { limit: 2 },
+    );
+    expect(feed.map((e) => e.showId)).toEqual(["c", "b"]);
+  });
+
+  it("classifica cada natureza de transição", () => {
+    const feed = buildFunnelActivityFeed([
+      item("create", null, "PROPOSED", "2026-01-01T00:00:00.000Z"),
+      item("advance", "PROPOSED", "CONFIRMED", "2026-01-02T00:00:00.000Z"),
+      item("advance2", "CONFIRMED", "PLAYED", "2026-01-03T00:00:00.000Z"),
+      item("regress", "CONFIRMED", "PROPOSED", "2026-01-04T00:00:00.000Z"),
+      item("cancel", "CONFIRMED", "CANCELLED", "2026-01-05T00:00:00.000Z"),
+      item("reopen", "CANCELLED", "CONFIRMED", "2026-01-06T00:00:00.000Z"),
+    ]);
+    const byId = Object.fromEntries(feed.map((e) => [e.showId, e.kind]));
+    expect(byId).toEqual({
+      create: "create",
+      advance: "advance",
+      advance2: "advance",
+      regress: "regress",
+      cancel: "cancel",
+      reopen: "reopen",
+    });
+  });
+
+  it("desempata timestamps iguais preservando a ordem de entrada", () => {
+    const feed = buildFunnelActivityFeed([
+      item("primeiro", null, "PROPOSED", "2026-04-01T12:00:00.000Z"),
+      item("segundo", "PROPOSED", "CONFIRMED", "2026-04-01T12:00:00.000Z"),
+    ]);
+    expect(feed.map((e) => e.showId)).toEqual(["primeiro", "segundo"]);
+  });
+
+  it("propaga showDate nulo e resolve datas em Date", () => {
+    const feed = buildFunnelActivityFeed([
+      item("a", null, "PROPOSED", "2026-05-01T00:00:00.000Z", null),
+      item("b", null, "PROPOSED", "2026-05-02T00:00:00.000Z", "2026-07-20T00:00:00.000Z"),
+    ]);
+    const a = feed.find((e) => e.showId === "a")!;
+    const b = feed.find((e) => e.showId === "b")!;
+    expect(a.showDate).toBeNull();
+    expect(b.showDate).toBeInstanceOf(Date);
+    expect(b.showDate!.toISOString()).toBe("2026-07-20T00:00:00.000Z");
   });
 });
 

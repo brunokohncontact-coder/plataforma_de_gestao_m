@@ -1871,6 +1871,98 @@ export function buildStatusTimeline(events: StatusEventLike[]): StatusTimelineEn
   return out;
 }
 
+// ── Atividade do funil (feed de transições de status) ─────────────────────────
+// Enquanto `buildStatusTimeline` (D234) monta a linha do tempo de UM show, este
+// helper agrega os eventos de VÁRIOS shows num feed reverso-cronológico: as
+// últimas mudanças de status na carteira inteira (criações, avanços, recuos,
+// cancelamentos e reaberturas). Responde, num relance, "o que se moveu no funil
+// ultimamente" — o log de transições que a página de detalhe só mostra por show.
+// Pura e determinística; a classificação (`kind`) segue a ordem canônica de
+// `SHOW_STATUSES`, com CANCELLED tratado à parte (não é o "fim" do funil, é uma
+// saída lateral).
+
+/** Uma transição de status como o feed precisa vê-la (evento + o show a que pertence). */
+export interface FunnelActivityInput {
+  showId: string;
+  showTitle: string;
+  /** Data do show (não do evento); `null` se indisponível. */
+  showDate: Date | string | null;
+  /** Status anterior; `null` no evento de criação do show. */
+  fromStatus: string | null;
+  toStatus: string;
+  /** Momento da mudança de status. */
+  at: Date | string;
+}
+
+/**
+ * Natureza de uma transição, para leitura/cor no feed:
+ * - `create`  — cadastro do show (sem status anterior).
+ * - `advance` — avançou no funil (ex.: PROPOSED → CONFIRMED → PLAYED).
+ * - `regress` — recuou no funil (ex.: CONFIRMED → PROPOSED).
+ * - `cancel`  — foi cancelado (qualquer etapa → CANCELLED).
+ * - `reopen`  — voltou a ativa depois de cancelado (CANCELLED → qualquer etapa).
+ */
+export type FunnelActivityKind = "create" | "advance" | "regress" | "cancel" | "reopen";
+
+/** Uma entrada do feed, classificada e com o momento já resolvido em `Date`. */
+export interface FunnelActivityEntry {
+  showId: string;
+  showTitle: string;
+  showDate: Date | null;
+  fromStatus: string | null;
+  toStatus: string;
+  at: Date;
+  kind: FunnelActivityKind;
+}
+
+/**
+ * Classifica uma transição pela ordem canônica de `SHOW_STATUSES`. CANCELLED,
+ * embora seja o último elemento do array, NÃO é o topo do funil — é uma saída
+ * lateral, então cancelamento e reabertura são detectados antes de comparar
+ * posições (as demais transições ficam entre PROPOSED/CONFIRMED/PLAYED, cujos
+ * índices 0/1/2 já ordenam avanço × recuo). Status desconhecido cai em `advance`.
+ */
+function classifyFunnelTransition(
+  fromStatus: string | null,
+  toStatus: string,
+): FunnelActivityKind {
+  if (fromStatus === null) return "create";
+  if (toStatus === "CANCELLED") return "cancel";
+  if (fromStatus === "CANCELLED") return "reopen";
+  const fromIdx = SHOW_STATUSES.indexOf(fromStatus as ShowStatus);
+  const toIdx = SHOW_STATUSES.indexOf(toStatus as ShowStatus);
+  if (fromIdx < 0 || toIdx < 0) return "advance";
+  return toIdx < fromIdx ? "regress" : "advance";
+}
+
+/**
+ * Monta o feed de atividade do funil a partir das transições de vários shows.
+ * Ordena da mais recente para a mais antiga (desempate estável preservando a
+ * ordem de entrada), opcionalmente limita a `opts.limit` entradas e classifica
+ * cada transição. Não depende de "agora".
+ */
+export function buildFunnelActivityFeed(
+  items: FunnelActivityInput[],
+  opts: { limit?: number } = {},
+): FunnelActivityEntry[] {
+  const sorted = items
+    .map((item, i) => ({ item, i, ms: new Date(item.at).getTime() }))
+    .sort((a, b) => b.ms - a.ms || a.i - b.i);
+
+  const limited =
+    opts.limit != null && opts.limit >= 0 ? sorted.slice(0, opts.limit) : sorted;
+
+  return limited.map(({ item, ms }) => ({
+    showId: item.showId,
+    showTitle: item.showTitle,
+    showDate: item.showDate == null ? null : new Date(item.showDate),
+    fromStatus: item.fromStatus,
+    toStatus: item.toStatus,
+    at: new Date(ms),
+    kind: classifyFunnelTransition(item.fromStatus, item.toStatus),
+  }));
+}
+
 // ── Tempo médio em cada etapa do funil (residence time) ───────────────────────
 // Agregado sobre o histórico de status (`ShowStatusEvent`) de VÁRIOS shows: para
 // cada etapa (PROPOSED, CONFIRMED, …) quanto tempo, tipicamente, um show fica
