@@ -42,6 +42,7 @@ import {
   filterFunnelActivityByKind,
   countFunnelActivityByKind,
   groupFunnelActivityByDay,
+  relativeDayLabel,
   FUNNEL_ACTIVITY_KINDS,
   funnelStageDurations,
   stageTimeConcentration,
@@ -1768,6 +1769,26 @@ describe("groupFunnelActivityByDay", () => {
     ]);
     const groups = groupFunnelActivityByDay(feed);
     expect(groups.reduce((n, g) => n + g.entries.length, 0)).toBe(feed.length);
+  });
+});
+
+describe("relativeDayLabel", () => {
+  it("o próprio dia de hoje → \"Hoje\"", () => {
+    expect(relativeDayLabel("2026-07-13", "2026-07-13")).toBe("Hoje");
+  });
+
+  it("o dia imediatamente anterior → \"Ontem\"", () => {
+    expect(relativeDayLabel("2026-07-12", "2026-07-13")).toBe("Ontem");
+  });
+
+  it("atravessa a virada do mês (1º → último dia do mês anterior)", () => {
+    expect(relativeDayLabel("2026-02-28", "2026-03-01")).toBe("Ontem");
+  });
+
+  it("qualquer outro dia (dois dias atrás, futuro ou distante) → null", () => {
+    expect(relativeDayLabel("2026-07-11", "2026-07-13")).toBeNull(); // anteontem
+    expect(relativeDayLabel("2026-07-14", "2026-07-13")).toBeNull(); // amanhã
+    expect(relativeDayLabel("2026-01-01", "2026-07-13")).toBeNull(); // distante
   });
 });
 

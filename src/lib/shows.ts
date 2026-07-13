@@ -2051,6 +2051,21 @@ export function groupFunnelActivityByDay(
   return groups;
 }
 
+/**
+ * Rótulo relativo de um dia do feed em relação a "hoje": "Hoje" para o próprio
+ * dia, "Ontem" para o dia imediatamente anterior, `null` para qualquer outro (o
+ * chamador cai no rótulo por extenso). Ambos os argumentos são chaves
+ * "YYYY-MM-DD" em UTC (a mesma convenção de `dayKey`/`groupFunnelActivityByDay`);
+ * a distância é medida entre as meias-noites UTC, então não há deriva de fuso e o
+ * helper é puro (o relógio entra só na chave `today` que o chamador injeta).
+ */
+export function relativeDayLabel(day: string, today: string): string | null {
+  if (day === today) return "Hoje";
+  const MS_PER_DAY = 86_400_000;
+  const diffDays = (dayKeyToUtcMs(today) - dayKeyToUtcMs(day)) / MS_PER_DAY;
+  return diffDays === 1 ? "Ontem" : null;
+}
+
 // ── Tempo médio em cada etapa do funil (residence time) ───────────────────────
 // Agregado sobre o histórico de status (`ShowStatusEvent`) de VÁRIOS shows: para
 // cada etapa (PROPOSED, CONFIRMED, …) quanto tempo, tipicamente, um show fica

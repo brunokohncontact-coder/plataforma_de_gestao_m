@@ -11216,3 +11216,39 @@ contexto, decisão, justificativa e alternativas consideradas.
   `src/app/(app)/shows/funil/atividade/page.tsx` + testes em `src/lib/shows.test.ts`.
 - **Nota de concorrência:** número **D318** escolhido como o próximo livre acima do maior D referenciado no
   PROGRESS (D317). Se outra PR reivindicar D318, renumerar para o próximo livre no merge.
+
+## D319 — Rótulos relativos "Hoje"/"Ontem" nos cabeçalhos de dia do feed agrupado (`/shows/funil/atividade?agrupar=dia`) (Sessão 325)
+
+- **Contexto:** a visão "Por dia" do feed de atividade (D318) já quebra o feed em `<section>`s por dia com
+  cabeçalho pt-BR por extenso (`formatDayHeader`, UTC). O rótulo por extenso ("segunda-feira, 13 de julho de
+  2026") é preciso, mas exige leitura para situar o dia no presente — o mais comum ao abrir o feed é procurar
+  "o que se moveu hoje" e "o que se moveu ontem". Era um dos "próximos possíveis" que a D318 deixou explícito
+  (o outro, recorte por `?ano=`, segue adiado até haver paginação do feed).
+- **Decisão:** um selo relativo curto ("Hoje"/"Ontem") ANTES do rótulo por extenso, quando aplicável. Duas
+  peças, zero consulta/dependência/estado nova:
+  1. **Helper puro** `relativeDayLabel(day, today)` em `src/lib/shows.ts` (junto de `groupFunnelActivityByDay`):
+     ambos os argumentos são chaves "YYYY-MM-DD" em UTC; devolve `"Hoje"` para `day === today`, `"Ontem"` para o
+     dia imediatamente anterior (diferença de exatamente 1 dia entre as meias-noites UTC, reusando
+     `dayKeyToUtcMs`) e `null` para qualquer outro. O relógio NÃO entra no helper — só na chave `today` que o
+     chamador injeta —, mantendo-o puro e testável.
+  2. **Fiação de apresentação** em `page.tsx`: `todayKey = dayKey(new Date())` (mesma convenção UTC do
+     agrupamento) computado uma vez; para cada grupo, `relativeDayLabel(group.day, todayKey)` prefixa o cabeçalho
+     com um selo `bg-brand-50`/`text-brand-700` (`normal-case`, já que o `<h2>` é `capitalize`) quando não-nulo.
+     Sem selo, o cabeçalho fica idêntico ao da D318.
+- **Justificativa:** o menor caminho para "situar o dia no presente" sem consulta nem estado no cliente — é
+  derivação pura da chave de dia que já agrupa as entradas, então o selo nunca diverge do grupo. Comparar
+  meias-noites UTC (a base de `dayKey`) evita que "Hoje"/"Ontem" escorreguem perto da virada do dia por fuso.
+  Manter o rótulo por extenso ao lado do selo preserva a data completa para dias sem selo e para leitura sem
+  ambiguidade.
+- **Alternativas consideradas:** (a) substituir o rótulo por extenso por "Hoje"/"Ontem" — rejeitado: perderia a
+  data exata; o selo + extenso mantém ambos. (b) computar `relativeDayLabel` no cliente com o relógio do
+  navegador — rejeitado: derivação pura cabe no Server Component (a página é `force-dynamic`, renderiza a cada
+  request, então o "hoje" do servidor é fresco). (c) estender a "Anteontem"/"N dias atrás" — adiado: ganho
+  marginal decrescente e o rótulo por extenso já cobre o resto.
+- **Verificação:** DoD verde — `npm run build` (`/shows/funil/atividade` 320 B → 96,3 kB, sem novo bundle de
+  cliente), `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1758 testes**, +4); smoke → `/login`
+  200, `?agrupar=dia` e `?agrupar=dia&natureza=advance` 307→/login (auth-gated, sem 500); `npm audit` inalterado
+  (10 advisories, zero dependência nova). Mudança em `src/lib/shows.ts`,
+  `src/app/(app)/shows/funil/atividade/page.tsx` + testes em `src/lib/shows.test.ts`.
+- **Nota de concorrência:** número **D319** escolhido como o próximo livre acima do maior D referenciado no
+  PROGRESS (D318). Se outra PR reivindicar D319, renumerar para o próximo livre no merge.
