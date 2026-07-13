@@ -9,7 +9,29 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **83 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 321 (D315) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 322 (D316) —
+EXPORTAÇÃO CSV do feed de ATIVIDADE DO FUNIL (`/shows/funil/atividade/export`), fechando o "próximo
+possível" que a D315 deixou explícito ao entregar a página do feed:** a tela `/shows/funil/atividade`
+(D315) já lista as últimas transições de status da carteira inteira — mais recentes primeiro, classificadas
+por natureza (cadastro/avanço/recuo/cancelamento/reabertura) — mas era a única superfície do funil sem uma
+rota `export` dedicada (conversão, tempo-em-etapa, paradas e o próprio funil já tinham a sua). Uma peça de
+lógica pura + uma rota + um link, **zero migração/consulta/dependência nova**: novo serializador
+`funnelActivityFeedToCsv(feed)` + `FUNNEL_ACTIVITY_CSV_HEADERS` em `src/lib/csv.ts` (Data / Hora / Show /
+Natureza / De / Para / Data do show — uma linha por transição na MESMA ordem já resolvida por
+`buildFunnelActivityFeed`; data/hora do evento em UTC via `csvDate`/`csvTime`; "Natureza" traduz o `kind`
+para pt-BR via `FUNNEL_ACTIVITY_KIND_LABELS`; "De" vazio no cadastro; status pelos rótulos da tela
+`SHOW_STATUS_LABELS`; "Data do show" vazia quando ausente). Nova rota `/shows/funil/atividade/export`
+(espelha EXATAMENTE a consulta da página — `showStatusEvent.findMany` pelo índice `[userId]`,
+`orderBy createdAt desc`, `take 100`, join enxuto de `show.title`/`show.date` — monta o mesmo feed com o mesmo
+`ACTIVITY_LIMIT=100`, serializa, prefixa BOM UTF-8; nome `atividade-funil.csv`) + link "⬇ CSV" no cabeçalho de
+`/shows/funil/atividade`, visível só com feed não vazio (espelho das telas irmãs). Zero regra de negócio nova
+(`buildFunnelActivityFeed` já testada da D315). **+3 testes** (`csv.test.ts`,
+`describe("funnelActivityFeedToCsv")`: feed vazio → só cabeçalho; ordem recente→antigo com natureza/status
+pt-BR e cadastro com "De" vazio; cancelar/reabrir + data do show ausente). DoD verde: `npm run build` (rota
+`/shows/funil/atividade/export` presente; `/shows/funil/atividade` 321 B → 96,3 kB), `npx tsc --noEmit`,
+`npm run lint` (0 warnings), `npm test` (**1744 testes**); smoke → `/login` 200,
+`/shows/funil/atividade/export` 307→/login (auth-gated); `npm audit` inalterado (10 advisories, zero
+dependência nova). Ver D316. **Antes disso, Sessão 321 (D315) —
 ATIVIDADE DO FUNIL (`/shows/funil/atividade`): o log reverso-cronológico das últimas mudanças de status na
 carteira inteira, a feature maior "log de transições do funil" antecipada na lista de próximos passos (item
 2d/"eixo de exportação tabular esgotado"):** a linha do tempo de status (`ShowStatusEvent`/D234) já existia
@@ -34,8 +56,9 @@ nulo e resolve datas em `Date`). DoD verde: `npm run build` (rota `/shows/funil/
 `/shows/funil/atividade` 307→/login (auth-gated) e, com sessão de dev, 200 (estado vazio; e, com eventos de
 status semeados, as linhas `Cadastrado como Proposto` / `Proposto → Confirmado` / `Confirmado → Cancelado`
 com data do show); `npm audit` inalterado (10 advisories, zero dependência nova). **Próximo possível** —
-export CSV do feed (mirror das outras telas do funil), recorte por `?ano=`/`PeriodPicker`, filtro por
-natureza de transição, ou agrupamento por dia. Ver D315. **Antes disso, Sessão 320 (D314) —
+~~export CSV do feed~~ (entregue na Sessão 322, D316 — `funnelActivityFeedToCsv` +
+`/shows/funil/atividade/export`), recorte por `?ano=`/`PeriodPicker`, filtro por
+natureza de transição, ou agrupamento por dia. Ver D315/D316. **Antes disso, Sessão 320 (D314) —
 arrastar-e-soltar na AGENDA SEMANAL (`/shows/semana`) para remarcar um show, levando o gesto da D313 à
 segunda visão da agenda:** a D313 (Sessão 319) entregou o drag-and-drop na grade MENSAL; a visão semanal
 seguia 100% server-rendered (lista vertical de 7 dias, chips como `<Link>`), sem remarcar por gesto — a

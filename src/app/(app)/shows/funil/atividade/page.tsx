@@ -72,9 +72,16 @@ export default async function FunnelActivityPage() {
             por show.
           </p>
         </div>
-        <Link href="/shows/funil" className="btn-secondary">
-          ← Funil
-        </Link>
+        <div className="flex items-center gap-2">
+          {feed.length > 0 && (
+            <a href="/shows/funil/atividade/export" className="btn-secondary">
+              ⬇ CSV
+            </a>
+          )}
+          <Link href="/shows/funil" className="btn-secondary">
+            ← Funil
+          </Link>
+        </div>
       </div>
 
       {feed.length === 0 ? (

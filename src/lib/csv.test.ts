@@ -146,6 +146,8 @@ import {
   type BookingLeadTimeByContactCsvRow,
   staleProposalsToCsv,
   STALE_PROPOSALS_CSV_HEADERS,
+  funnelActivityFeedToCsv,
+  FUNNEL_ACTIVITY_CSV_HEADERS,
 } from "./csv";
 import {
   findOpenWeekends,
@@ -161,6 +163,7 @@ import {
   findStaleProposals,
   showGaps,
   gapDistribution,
+  buildFunnelActivityFeed,
   type ConflictShowLike,
   type LeadTimeShowLike,
   type StaleProposalShowLike,
@@ -4600,6 +4603,76 @@ describe("scheduleConflictsToCsv", () => {
     // O dia tem só 1 show não cancelado → não é conflito; só cabeçalho + Total.
     expect(lines).toHaveLength(2);
     expect(lines[1]).toBe("Total;0/0 a resolver;;;;;;0,00");
+  });
+});
+
+describe("funnelActivityFeedToCsv", () => {
+  it("feed vazio: só o cabeçalho", () => {
+    const lines = funnelActivityFeedToCsv(buildFunnelActivityFeed([])).split(
+      "\r\n",
+    );
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toBe(FUNNEL_ACTIVITY_CSV_HEADERS.join(";"));
+  });
+
+  it("uma linha por transição, mais recente primeiro, com natureza e status pt-BR", () => {
+    const feed = buildFunnelActivityFeed([
+      {
+        showId: "s1",
+        showTitle: "Show no Bar",
+        showDate: "2026-04-10T20:00:00Z",
+        fromStatus: null,
+        toStatus: "PROPOSED",
+        at: "2026-03-01T09:00:00Z",
+      },
+      {
+        showId: "s1",
+        showTitle: "Show no Bar",
+        showDate: "2026-04-10T20:00:00Z",
+        fromStatus: "PROPOSED",
+        toStatus: "CONFIRMED",
+        at: "2026-03-05T14:30:00Z",
+      },
+    ]);
+    const lines = funnelActivityFeedToCsv(feed).split("\r\n");
+    expect(lines[0]).toBe(FUNNEL_ACTIVITY_CSV_HEADERS.join(";"));
+    // 2 transições, mais recente (05/03) antes da mais antiga (01/03).
+    expect(lines).toHaveLength(3);
+    expect(lines[1]).toBe(
+      "05/03/2026;14:30;Show no Bar;Avançou;Proposto;Confirmado;10/04/2026",
+    );
+    // Cadastro: "De" vazio (sem status anterior), natureza "Cadastro".
+    expect(lines[2]).toBe(
+      "01/03/2026;09:00;Show no Bar;Cadastro;;Proposto;10/04/2026",
+    );
+  });
+
+  it("cancelar/reabrir e data do show ausente saem corretos", () => {
+    const feed = buildFunnelActivityFeed([
+      {
+        showId: "s2",
+        showTitle: "Gig sem data",
+        showDate: null,
+        fromStatus: "CONFIRMED",
+        toStatus: "CANCELLED",
+        at: "2026-02-01T10:00:00Z",
+      },
+      {
+        showId: "s2",
+        showTitle: "Gig sem data",
+        showDate: null,
+        fromStatus: "CANCELLED",
+        toStatus: "PROPOSED",
+        at: "2026-02-02T10:00:00Z",
+      },
+    ]);
+    const lines = funnelActivityFeedToCsv(feed).split("\r\n");
+    expect(lines[1]).toBe(
+      "02/02/2026;10:00;Gig sem data;Reabriu;Cancelado;Proposto;",
+    );
+    expect(lines[2]).toBe(
+      "01/02/2026;10:00;Gig sem data;Cancelou;Confirmado;Cancelado;",
+    );
   });
 });
 
