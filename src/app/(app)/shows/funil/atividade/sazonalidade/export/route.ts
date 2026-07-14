@@ -1,0 +1,49 @@
+import { NextResponse } from "next/server";
+import { requireUser } from "@/lib/session";
+import { prisma } from "@/lib/prisma";
+import { buildFunnelActivityFeed, funnelActivitySeasonality } from "@/lib/shows";
+import { funnelActivitySeasonalityToCsv } from "@/lib/csv";
+
+export const dynamic = "force-dynamic";
+
+// Exporta a sazonalidade da atividade do funil por mês do ano (jan→dez, somando
+// todos os anos) em CSV — espelha a página `/shows/funil/atividade/sazonalidade`.
+// Mesma consulta (eventos de status pelo índice `[userId]`) e a mesma agregação
+// pura; a serialização fica em `@/lib/csv` (`funnelActivitySeasonalityToCsv`),
+// testada. Sem recorte por ano — a sazonalidade colapsa todas as temporadas por
+// definição, então o download traz o histórico inteiro, como a tela.
+export async function GET() {
+  const user = await requireUser();
+
+  const events = await prisma.showStatusEvent.findMany({
+    where: { userId: user.id },
+    orderBy: { createdAt: "desc" },
+    select: { showId: true, fromStatus: true, toStatus: true, createdAt: true },
+  });
+
+  const feed = buildFunnelActivityFeed(
+    events.map((e) => ({
+      showId: e.showId,
+      showTitle: "",
+      showDate: null,
+      fromStatus: e.fromStatus,
+      toStatus: e.toStatus,
+      at: e.createdAt,
+    })),
+  );
+
+  const season = funnelActivitySeasonality(feed);
+  const csv = funnelActivitySeasonalityToCsv(season);
+  // BOM UTF-8 para preservar acentuação ao abrir no Excel.
+  const body = "﻿" + csv;
+
+  return new NextResponse(body, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition":
+        'attachment; filename="sazonalidade-atividade-funil.csv"',
+      "Cache-Control": "no-store",
+    },
+  });
+}

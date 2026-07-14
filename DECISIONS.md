@@ -11493,3 +11493,57 @@ contexto, decisão, justificativa e alternativas consideradas.
   `src/app/(app)/shows/funil/atividade/ritmo/page.tsx` + testes em `src/lib/csv.test.ts`.
 - **Nota de concorrência:** número **D325** escolhido como o próximo livre acima do maior D referenciado no
   PROGRESS/DECISIONS (D324). Se outra PR reivindicar D325, renumerar para o próximo livre no merge.
+
+## D326 — Sazonalidade da atividade do funil (`/shows/funil/atividade/sazonalidade`) (Sessão 333)
+
+- **Contexto:** o app acumulou várias camadas sobre a atividade do funil (feed/D316, ritmo mensal/D322–D323,
+  recorte por ano/D330, comparativo ano a ano/D324–D325), mas todas no eixo do TEMPO ABSOLUTO — a série "YYYY-MM"
+  do mais recente ao mais antigo. Faltava o eixo SAZONAL: "em que meses do ANO eu costumo fazer o trabalho de
+  agendamento?". Numa carteira longeva, o ritmo mostra que março/2025 foi cheio, mas não que MARÇO (todos os anos)
+  é a sua alta temporada de prospecção — a leitura que ajuda a antecipar quando o telefone toca e quando é hora de
+  correr atrás. As Finanças (`monthlySeasonality`/D35) e os shows (`gigSeasonality`/D133) já têm sua sazonalidade
+  por mês do calendário; a atividade do funil não tinha. Também é a primeira feature em várias sessões que abre um
+  eixo analítico NOVO, não um CSV/comparativo de algo existente.
+- **Decisão:** uma peça pura + página + export, zero migração/dependência:
+  1. **Helper puro** `funnelActivitySeasonality(feed)` em `src/lib/shows.ts` (+ tipos `FunnelActivitySeasonMonth`/
+     `FunnelActivitySeasonality`): agrega o feed por `entry.at.getUTCMonth()` somando todos os anos. Devolve
+     SEMPRE os 12 meses (mesmo zerados, para expor os vales da temporada), cada um com `total`, `byKind` (as cinco),
+     `years` (anos distintos com movimento naquele mês), `avgPerYear` (`total ÷ years`, ratio cru — "um fevereiro
+     típico"), `share` (`total ÷ totalTransitions`) e `dominantKind` (empate → ordem canônica de
+     `FUNNEL_ACTIVITY_KINDS`). No agregado: `busiest`/`quietest` (por `total`, entre os meses COM transições,
+     empate → mês mais cedo via iteração jan→dez com `>`/`<` estritos), `yearsObserved`, `byKind` e `dominantKind`
+     globais. Extraí um helper interno `dominantFunnelActivityKind` reusado pelo mês e pelo agregado. Pura, não
+     depende de "agora" (o feed já traz `at` resolvido).
+  2. **Página** `/shows/funil/atividade/sazonalidade` (`force-dynamic`): carrega os eventos de status da carteira
+     inteira (índice `[userId]`), monta o feed e renderiza legenda + três destaques (mais movimentado / mais calmo /
+     natureza predominante) + barras empilhadas por natureza jan→dez, espelhando o layout do ritmo. Links mútuos
+     `🗓 Sazonalidade` no feed e no ritmo (cluster, como o ritmo↔feed já faziam).
+  3. **CSV** `funnelActivitySeasonalityToCsv` + `FUNNEL_ACTIVITY_SEASONALITY_CSV_HEADERS` em `src/lib/csv.ts`
+     (Mês/Total/Anos ativos/Média-ano/% do total/as cinco naturezas/Destaque + linha Total; reusa `csvRate` para o
+     decimal pt-BR e `csvShare` para a participação; espelha `gigSeasonalityToCsv` com a coluna Destaque), na rota
+     `/shows/funil/atividade/sazonalidade/export`.
+- **Justificativa:** o `avgPerYear` usa como denominador os anos COM movimento naquele mês (não a amplitude total
+  do histórico), medindo "um fevereiro típico em que houve trabalho" e não diluído por fevereiros vazios de um
+  histórico curto — a mesma disciplina de `monthlySeasonality` (D35). `busiest`/`quietest` saem por `total` (não
+  por `avgPerYear`), igual a `gigSeasonality`/D133: o headline sazonal é "onde a temporada acumula mais atividade",
+  e os empates caem no mês mais cedo (determinístico, sem depender de "agora"). SEM recorte por ano (`?ano=`): a
+  sazonalidade só ganha sentido somando as temporadas — um único ano já é a série do ritmo. NÃO catalogada em
+  `/relatorios`: segue o precedente do ritmo (a outra drill-down da atividade, também fora do catálogo), reachable
+  pelo cluster de botões da `/shows/funil/atividade`.
+- **Alternativas consideradas:** (a) rankear `busiest` por `avgPerYear` em vez de `total` — rejeitado: destoaria de
+  `gigSeasonality` (o irmão mais próximo, mesmo eixo shows) e o total é a leitura de barra intuitiva; o `avgPerYear`
+  fica exposto na tabela/CSV para quem quiser a leitura normalizada. (b) reusar `gigSeasonality` com um adaptador —
+  rejeitado: aquele opera sobre shows com cachê (`isHappenedGig`/`fee > 0`), este sobre transições de status; naturezas
+  ≠ cachês. (c) já entregar o comparativo ano a ano — adiado: o eixo sazonal base é o valor desta sessão; o comparativo
+  (irmão de `compareGigSeasonality`) é o próximo passo natural quando houver demanda e histórico longo. (d) catalogar
+  em `/relatorios` — rejeitado por consistência com o ritmo (renumeraria `reportCount()` de forma assimétrica entre as
+  duas drill-downs irmãs).
+- **Verificação:** DoD verde — `npm run build` (nova rota `/shows/funil/atividade/sazonalidade` 324 B → 96,3 kB +
+  a rota de export, sem novo bundle de cliente), `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test`
+  (**1802 testes**, +8: 6 em `shows.test.ts`, 2 em `csv.test.ts`); smoke → `/login` 200, a página e o export
+  307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories, zero dependência nova). Mudança em
+  `src/lib/shows.ts`, `src/lib/csv.ts`, `src/app/(app)/shows/funil/atividade/sazonalidade/page.tsx` (nova),
+  `src/app/(app)/shows/funil/atividade/sazonalidade/export/route.ts` (nova),
+  `src/app/(app)/shows/funil/atividade/{page,ritmo/page}.tsx` (links) + testes em `shows.test.ts`/`csv.test.ts`.
+- **Nota de concorrência:** número **D326** escolhido como o próximo livre acima do maior D referenciado no
+  PROGRESS/DECISIONS (D325). Se outra PR reivindicar D326, renumerar para o próximo livre no merge.

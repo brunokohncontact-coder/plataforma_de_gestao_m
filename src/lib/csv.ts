@@ -109,6 +109,7 @@ import type {
   FunnelActivityKind,
   FunnelActivityMonthGroup,
   FunnelActivityYearComparison,
+  FunnelActivitySeasonality,
 } from "./shows";
 import {
   summarizeMonthShows,
@@ -4023,6 +4024,88 @@ export function funnelActivityMonthlyToCsv(
       String(m.byKind.reopen),
     ]);
   }
+  return toCsv(out, delimiter);
+}
+
+export const FUNNEL_ACTIVITY_SEASONALITY_CSV_HEADERS = [
+  "Mês",
+  "Total",
+  "Anos ativos",
+  "Média/ano",
+  "% do total",
+  "Cadastros",
+  "Avanços",
+  "Recuos",
+  "Cancelamentos",
+  "Reaberturas",
+  "Destaque",
+] as const;
+
+/**
+ * Rótulo de destaque de um mês na sazonalidade da atividade do funil, espelhando
+ * os selos de `/shows/funil/atividade/sazonalidade` (mais movimentado / mais
+ * calmo). O "mais calmo" é suprimido quando o mês é também o mais movimentado (só
+ * há um mês ativo), como na UI. Meses sem transições nunca são destaque. Pura.
+ */
+function funnelActivitySeasonHighlight(
+  season: FunnelActivitySeasonality,
+  m: FunnelActivitySeasonality["months"][number],
+): string {
+  if (m.total === 0) return "";
+  const roles: string[] = [];
+  const isBusiest = season.busiest?.month === m.month;
+  if (isBusiest) roles.push("Mês mais movimentado");
+  if (season.quietest?.month === m.month && !isBusiest) roles.push("Mês mais calmo");
+  return roles.join(" / ");
+}
+
+/**
+ * Serializa a sazonalidade da atividade do funil por mês do ano
+ * (`funnelActivitySeasonality`) em CSV — espelha a página
+ * `/shows/funil/atividade/sazonalidade`. Uma linha por mês (sempre as 12, de
+ * janeiro a dezembro, inclusive meses zerados, para revelar os vales da
+ * temporada) com total, anos ativos, média por ano-ativo (uma casa decimal, ver
+ * `csvRate`), participação no total e a quebra pelas cinco naturezas, seguida de
+ * uma linha "Total". A coluna "Destaque" replica os selos da tela (mais
+ * movimentado / mais calmo), para a planilha ficar auto-explicativa. Mesma
+ * convenção pt-BR dos irmãos (delimitador ";", decimal com vírgula). A
+ * participação e o destaque do Total ficam em branco (a participação é sempre
+ * 100% por construção); a "Média/ano" do Total fica em branco por não ter um
+ * denominador de anos único. Pura.
+ */
+export function funnelActivitySeasonalityToCsv(
+  season: FunnelActivitySeasonality,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(FUNNEL_ACTIVITY_SEASONALITY_CSV_HEADERS)];
+  for (const m of season.months) {
+    out.push([
+      m.label,
+      String(m.total),
+      String(m.years),
+      csvRate(m.avgPerYear),
+      csvShare(m.share),
+      String(m.byKind.create),
+      String(m.byKind.advance),
+      String(m.byKind.regress),
+      String(m.byKind.cancel),
+      String(m.byKind.reopen),
+      funnelActivitySeasonHighlight(season, m),
+    ]);
+  }
+  out.push([
+    "Total",
+    String(season.totalTransitions),
+    String(season.yearsObserved),
+    "",
+    "",
+    String(season.byKind.create),
+    String(season.byKind.advance),
+    String(season.byKind.regress),
+    String(season.byKind.cancel),
+    String(season.byKind.reopen),
+    "",
+  ]);
   return toCsv(out, delimiter);
 }
 

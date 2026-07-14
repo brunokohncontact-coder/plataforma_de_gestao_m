@@ -152,6 +152,8 @@ import {
   FUNNEL_ACTIVITY_MONTHLY_CSV_HEADERS,
   funnelActivityComparisonToCsv,
   FUNNEL_ACTIVITY_COMPARISON_CSV_HEADERS,
+  funnelActivitySeasonalityToCsv,
+  FUNNEL_ACTIVITY_SEASONALITY_CSV_HEADERS,
 } from "./csv";
 import {
   findOpenWeekends,
@@ -170,6 +172,7 @@ import {
   buildFunnelActivityFeed,
   groupFunnelActivityByMonth,
   compareFunnelActivityMonths,
+  funnelActivitySeasonality,
   type ConflictShowLike,
   type LeadTimeShowLike,
   type StaleProposalShowLike,
@@ -4742,6 +4745,55 @@ describe("funnelActivityComparisonToCsv", () => {
     expect(lines[4]).toBe("Cancelamentos;1;0;-1");
     expect(lines[5]).toBe("Reaberturas;0;0;0");
     expect(lines[6]).toBe("Total;2;3;+1");
+  });
+});
+
+describe("funnelActivitySeasonalityToCsv", () => {
+  const feedOf = (
+    events: { showId: string; fromStatus: string | null; toStatus: string; at: string }[],
+  ) =>
+    buildFunnelActivityFeed(
+      events.map((e) => ({
+        showId: e.showId,
+        showTitle: "",
+        showDate: null,
+        fromStatus: e.fromStatus,
+        toStatus: e.toStatus,
+        at: e.at,
+      })),
+    );
+
+  it("feed vazio: cabeçalho + 12 meses zerados + Total", () => {
+    const lines = funnelActivitySeasonalityToCsv(
+      funnelActivitySeasonality([]),
+    ).split("\r\n");
+    expect(lines[0]).toBe(FUNNEL_ACTIVITY_SEASONALITY_CSV_HEADERS.join(";"));
+    // cabeçalho + 12 meses + Total.
+    expect(lines).toHaveLength(14);
+    // Janeiro zerado: sem anos, média/ano "0,0", 0% e sem destaque (última coluna vazia).
+    expect(lines[1]).toBe("Janeiro;0;0;0,0;0%;0;0;0;0;0;");
+    expect(lines[13]).toBe("Total;0;0;;;0;0;0;0;0;");
+  });
+
+  it("uma linha por mês (jan→dez) com total, média/ano, participação, naturezas e destaque", () => {
+    const season = funnelActivitySeasonality(
+      feedOf([
+        // Fevereiro em dois anos: 2 cadastros + 1 avanço = 3 transições, 2 anos ativos.
+        { showId: "a", fromStatus: null, toStatus: "PROPOSED", at: "2024-02-10T09:00:00Z" },
+        { showId: "b", fromStatus: null, toStatus: "PROPOSED", at: "2025-02-20T09:00:00Z" },
+        { showId: "c", fromStatus: "PROPOSED", toStatus: "CONFIRMED", at: "2025-02-25T09:00:00Z" },
+        // Agosto: 1 cancelamento, 1 ano ativo.
+        { showId: "d", fromStatus: "CONFIRMED", toStatus: "CANCELLED", at: "2025-08-11T12:00:00Z" },
+      ]),
+    );
+    const lines = funnelActivitySeasonalityToCsv(season).split("\r\n");
+    expect(lines[0]).toBe(FUNNEL_ACTIVITY_SEASONALITY_CSV_HEADERS.join(";"));
+    // Fevereiro (índice 2 nas linhas: cabeçalho + Janeiro): total 3, 2 anos, 1,5/ano, 75%.
+    expect(lines[2]).toBe("Fevereiro;3;2;1,5;75%;2;1;0;0;0;Mês mais movimentado");
+    // Agosto (8º mês): total 1, 1 ano, 1,0/ano, 25%, cancelamento, mais calmo.
+    expect(lines[8]).toBe("Agosto;1;1;1,0;25%;0;0;0;1;0;Mês mais calmo");
+    // Total: 4 transições, 2 anos observados, participação/média/destaque em branco.
+    expect(lines[13]).toBe("Total;4;2;;;2;1;0;1;0;");
   });
 });
 
