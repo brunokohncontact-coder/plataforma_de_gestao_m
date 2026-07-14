@@ -45,6 +45,9 @@ import {
   relativeDayLabel,
   parseFeedPage,
   sliceFeedPage,
+  parseFeedYear,
+  feedYearRangeUtc,
+  feedActivityYears,
   FUNNEL_ACTIVITY_KINDS,
   funnelStageDurations,
   stageTimeConcentration,
@@ -1843,6 +1846,74 @@ describe("sliceFeedPage", () => {
     const r = sliceFeedPage([], 3);
     expect(r.items).toEqual([]);
     expect(r.hasNext).toBe(false);
+  });
+});
+
+describe("parseFeedYear", () => {
+  it("ausente/vazio/nulo → null (todos os anos)", () => {
+    expect(parseFeedYear(undefined)).toBeNull();
+    expect(parseFeedYear(null)).toBeNull();
+    expect(parseFeedYear("")).toBeNull();
+  });
+
+  it("ano válido de 4 dígitos → o inteiro", () => {
+    expect(parseFeedYear("2026")).toBe(2026);
+    expect(parseFeedYear("2000")).toBe(2000);
+    expect(parseFeedYear("2100")).toBe(2100);
+  });
+
+  it("fora da faixa / fracionário / texto → null", () => {
+    expect(parseFeedYear("1999")).toBeNull();
+    expect(parseFeedYear("2101")).toBeNull();
+    expect(parseFeedYear("2026.5")).toBeNull();
+    expect(parseFeedYear("-2026")).toBeNull();
+    expect(parseFeedYear("abc")).toBeNull();
+  });
+
+  it("array usa o primeiro valor", () => {
+    expect(parseFeedYear(["2025", "2024"])).toBe(2025);
+    expect(parseFeedYear(["lixo"])).toBeNull();
+  });
+});
+
+describe("feedYearRangeUtc", () => {
+  it("limites UTC meia-abertos [1º jan, 1º jan do ano seguinte)", () => {
+    const r = feedYearRangeUtc(2026);
+    expect(r.gte.toISOString()).toBe("2026-01-01T00:00:00.000Z");
+    expect(r.lt.toISOString()).toBe("2027-01-01T00:00:00.000Z");
+  });
+
+  it("evento em 31/12 23:30 UTC cai dentro do ano; 1º/01 do ano seguinte fica fora", () => {
+    const r = feedYearRangeUtc(2025);
+    const lastMoment = new Date(Date.UTC(2025, 11, 31, 23, 30));
+    const nextYear = new Date(Date.UTC(2026, 0, 1, 0, 0));
+    expect(lastMoment >= r.gte && lastMoment < r.lt).toBe(true);
+    expect(nextYear >= r.gte && nextYear < r.lt).toBe(false);
+  });
+});
+
+describe("feedActivityYears", () => {
+  it("sem eventos (qualquer ponta nula) → []", () => {
+    expect(feedActivityYears(null, null)).toEqual([]);
+    expect(feedActivityYears(new Date(Date.UTC(2026, 0, 1)), null)).toEqual([]);
+    expect(feedActivityYears(null, new Date(Date.UTC(2026, 0, 1)))).toEqual([]);
+  });
+
+  it("mesmo ano nas duas pontas → um único ano", () => {
+    const d = new Date(Date.UTC(2026, 5, 10));
+    expect(feedActivityYears(d, d)).toEqual([2026]);
+  });
+
+  it("intervalo contínuo decrescente, incluindo anos sem atividade no meio", () => {
+    const oldest = new Date(Date.UTC(2023, 2, 1));
+    const newest = new Date(Date.UTC(2026, 8, 1));
+    expect(feedActivityYears(oldest, newest)).toEqual([2026, 2025, 2024, 2023]);
+  });
+
+  it("usa o ano UTC (evento em 31/12 23h UTC conta no seu ano UTC)", () => {
+    const oldest = new Date(Date.UTC(2025, 11, 31, 23, 0));
+    const newest = new Date(Date.UTC(2026, 0, 1, 1, 0));
+    expect(feedActivityYears(oldest, newest)).toEqual([2026, 2025]);
   });
 });
 

@@ -5,6 +5,56 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-14 — D321: Recorte por ano (`?ano=`) no feed de atividade do funil, reusando o `PeriodPicker`
+- **Contexto:** a D315 entregou `/shows/funil/atividade` (feed reverso-cronológico das transições de status da
+  carteira), seguida de export CSV (D316), filtro por natureza (D317), agrupamento por dia (D318), rótulos
+  "Hoje"/"Ontem" (D319) e **paginação** (D320). O recorte por ano/`PeriodPicker` foi o "próximo possível" que
+  ficou explicitamente adiado "até haver paginação do feed" — e a D320 o DESTRAVOU. É a peça autocontida
+  restante da linha do feed; conta a história "o que se moveu no funil em 2025 vs 2026" numa carteira longeva.
+- **Decisão:**
+  - Três helpers puros novos em `src/lib/shows.ts`, irmãos dos parsers/recortes do feed:
+    `parseFeedYear(value)` (converte o cru de `?ano=` num ano inteiro de 4 dígitos no intervalo `[2000, 2100]`
+    ou `null` = todos; ausente/vazio/fora-da-faixa/fracionário/texto caem em `null`; aceita `string`/`string[]`),
+    `feedYearRangeUtc(year)` (limites UTC meia-abertos `[gte, lt)` de um ano civil, para recortar `createdAt`
+    no banco — mesmo `Date.UTC` de `dayKey`/`groupFunnelActivityByDay`, sem deriva de fuso) e
+    `feedActivityYears(oldest, newest)` (lista decrescente de anos a oferecer no seletor, cobrindo TODO o
+    intervalo contínuo entre o evento mais antigo e o mais novo — inclusive anos sem atividade — para o seletor
+    não ter buracos; `[]` se qualquer ponta for nula).
+  - A página passou a ler `?ano=` e, quando há recorte, adiciona `createdAt: { gte, lt }` à `where` da consulta
+    do stream (o mesmo índice `[userId]`), então a paginação (D320) passa a correr DENTRO do ano. Os anos do
+    seletor vêm de DOIS pontos indexados (evento mais antigo/mais novo via `findFirst`, em `Promise.all`),
+    **independentes do recorte atual**, para o seletor ficar estável mesmo dentro de um ano vazio.
+  - **Reuso** do `PeriodPicker` compartilhado (o mesmo de `/shows/locais`, `/shows/cidades`, etc.): pílula
+    "Todos" + uma por ano, `active={activeYear ?? "all"}`, `basePath="/shows/funil/atividade"`, `params` a
+    preservar `natureza` + `agrupar`. `buildHref`/`exportHref` passaram a preservar `ano`; o export nomeia o
+    arquivo com o ano (`atividade-funil-{ano}.csv`).
+  - **Escolhas de coerência:** (a) trocar de ano VOLTA à 1ª página (o `PeriodPicker` não carrega `pagina`) —
+    as contagens/páginas valem para o recorte, então recomeçar do topo evita leitura enganosa; (b) o seletor
+    de período fica visível sempre que a carteira tem QUALQUER evento (fora do `feed.length === 0`), inclusive
+    dentro de um ano vazio, para o usuário poder trocar de ano ou voltar a "Todos" sem ficar preso; (c) novo
+    estado vazio próprio para ano sem atividade ("Nenhuma atividade registrada em {ano}", com "Ver todos os
+    anos"), distinto do "nenhuma movimentação registrada ainda" da carteira sem histórico.
+- **Justificativa:** recortar por `createdAt` (o instante do EVENTO), e não pela data do show, é o eixo certo
+  para "atividade do funil no ano X". Filtrar no banco (não em memória) mantém a paginação por `skip`/`take`
+  correta dentro do recorte e o export um espelho exato da tela. Derivar os anos de dois pontos indexados
+  (min/max) evita varrer o stream e mantém o seletor estável e barato. Reusar o `PeriodPicker` mantém a UX de
+  período idêntica ao resto do app (D119) sem duplicar markup.
+- **Alternativas consideradas:** (1) derivar os anos com `DISTINCT` do ano de `createdAt` — exigiria SQL cru
+  (Prisma não agrupa por parte de data trivialmente); o intervalo contínuo min→max cobre o caso de um log
+  pessoal e é mais simples/barato. (2) Recortar pela data do SHOW em vez do evento — rejeitado: a página é o
+  log do funil, então o eixo natural é quando a transição aconteceu. (3) Combinar ano + mês (`PeriodPicker`
+  com mês) — adiado: ganho marginal para um log; o ano já dá o recorte grosso mais útil.
+- **Verificação:** DoD verde — `npm run build` (`/shows/funil/atividade` 317 B → 96,3 kB, sem novo bundle de
+  cliente), `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1776 testes**, +10); smoke
+  autenticado (sessão de dev semeada com eventos em 2025 e 2026) → seletor lista "Todos/2026/2025";
+  `?ano=2025` mostra só o evento de 2025; `?ano=2024` (ano vazio) mostra "Nenhuma atividade registrada em
+  2024" + "Ver todos os anos" com o seletor ainda visível; `/export?ano=2026` baixa `atividade-funil-2026.csv`
+  só com a linha de 2026; rotas auth-gated 307→/login sem 500. `npm audit` inalterado (10 advisories, zero
+  dependência nova). Mudança em `src/lib/shows.ts`, `src/app/(app)/shows/funil/atividade/page.tsx`,
+  `src/app/(app)/shows/funil/atividade/export/route.ts` + testes em `src/lib/shows.test.ts`.
+- **Nota de concorrência:** número **D321** escolhido como o próximo livre acima do maior D referenciado no
+  PROGRESS (D320). Se outra PR reivindicar D321, renumerar para o próximo livre no merge.
+
 ## 2026-07-14 — D320: Paginação do feed de atividade do funil (`?pagina=`, "mais recentes"/"mais antigas")
 - **Contexto:** a D315 entregou `/shows/funil/atividade` (feed reverso-cronológico das transições de status da
   carteira), seguida de export CSV (D316), filtro por natureza (D317), agrupamento por dia (D318) e rótulos

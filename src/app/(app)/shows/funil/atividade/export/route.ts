@@ -6,6 +6,8 @@ import {
   filterFunnelActivityByKind,
   parseFunnelActivityKind,
   parseFeedPage,
+  parseFeedYear,
+  feedYearRangeUtc,
   sliceFeedPage,
 } from "@/lib/shows";
 import { funnelActivityFeedToCsv } from "@/lib/csv";
@@ -27,11 +29,17 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const user = await requireUser();
 
+  const activeYear = parseFeedYear(url.searchParams.get("ano"));
   const activeKind = parseFunnelActivityKind(url.searchParams.get("natureza"));
   const page = parseFeedPage(url.searchParams.get("pagina"));
 
+  const yearRange = activeYear !== null ? feedYearRangeUtc(activeYear) : null;
+
   const fetched = await prisma.showStatusEvent.findMany({
-    where: { userId: user.id },
+    where: {
+      userId: user.id,
+      ...(yearRange ? { createdAt: { gte: yearRange.gte, lt: yearRange.lt } } : {}),
+    },
     orderBy: { createdAt: "desc" },
     skip: (page - 1) * PAGE_SIZE,
     take: PAGE_SIZE + 1,
@@ -63,8 +71,10 @@ export async function GET(request: Request) {
   // BOM UTF-8 para preservar acentuação ao abrir no Excel.
   const body = "﻿" + csv;
 
-  // Nome do arquivo carrega a natureza filtrada e a página, quando houver.
+  // Nome do arquivo carrega o ano recortado, a natureza filtrada e a página,
+  // quando houver.
   const parts = ["atividade-funil"];
+  if (activeYear !== null) parts.push(String(activeYear));
   if (activeKind !== null) parts.push(activeKind);
   if (page > 1) parts.push(`p${page}`);
   const filename = `${parts.join("-")}.csv`;

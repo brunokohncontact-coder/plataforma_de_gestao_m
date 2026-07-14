@@ -2096,6 +2096,54 @@ export function sliceFeedPage<T>(
   return { items: hasNext ? fetched.slice(0, pageSize) : fetched, hasNext };
 }
 
+/**
+ * Converte o parâmetro cru `?ano=` num ano inteiro de 4 dígitos (recorte por
+ * ano do feed de atividade) ou `null` (= todos os anos). Só aceita inteiros no
+ * intervalo `[2000, 2100]` — ausente, vazio, negativo, fracionário, fora da
+ * faixa ou texto caem em `null`. Aceita `string` ou `string[]` (usa o
+ * primeiro), a mesma convenção dos parsers irmãos (`parseFeedPage`).
+ */
+export function parseFeedYear(
+  value: string | string[] | null | undefined,
+): number | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 2000 && n <= 2100 ? n : null;
+}
+
+/**
+ * Limites UTC `[gte, lt)` de um ano civil, para recortar o stream de eventos por
+ * `createdAt` no banco. Usa o ano **UTC** (`Date.UTC`), a mesma convenção de
+ * `dayKey`/`groupFunnelActivityByDay`, para o recorte casar exatamente com os
+ * cabeçalhos por dia do feed sem deriva de fuso. Meia-aberto à direita: o 1º
+ * instante do ano seguinte não entra.
+ */
+export function feedYearRangeUtc(year: number): { gte: Date; lt: Date } {
+  return {
+    gte: new Date(Date.UTC(year, 0, 1)),
+    lt: new Date(Date.UTC(year + 1, 0, 1)),
+  };
+}
+
+/**
+ * Anos (decrescente) a oferecer no seletor de período do feed, derivados só do
+ * evento mais antigo e do mais novo da carteira (dois pontos indexados, sem
+ * varrer o stream) — cobre todo o intervalo contínuo entre eles, mesmo anos sem
+ * atividade, para o seletor não ter buracos. Ano **UTC** (bate com
+ * `feedYearRangeUtc`). Devolve `[]` se não houver eventos (qualquer ponta nula).
+ */
+export function feedActivityYears(
+  oldest: Date | null,
+  newest: Date | null,
+): number[] {
+  if (!oldest || !newest) return [];
+  const from = oldest.getUTCFullYear();
+  const to = newest.getUTCFullYear();
+  const years: number[] = [];
+  for (let y = to; y >= from; y--) years.push(y);
+  return years;
+}
+
 // ── Tempo médio em cada etapa do funil (residence time) ───────────────────────
 // Agregado sobre o histórico de status (`ShowStatusEvent`) de VÁRIOS shows: para
 // cada etapa (PROPOSED, CONFIRMED, …) quanto tempo, tipicamente, um show fica

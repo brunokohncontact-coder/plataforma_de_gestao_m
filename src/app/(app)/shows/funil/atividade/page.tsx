@@ -9,12 +9,16 @@ import {
   parseFunnelActivityKind,
   parseFeedPage,
   sliceFeedPage,
+  parseFeedYear,
+  feedYearRangeUtc,
+  feedActivityYears,
   relativeDayLabel,
   FUNNEL_ACTIVITY_KINDS,
   type FunnelActivityEntry,
   type FunnelActivityKind,
 } from "@/lib/shows";
 import { dayKey } from "@/lib/finance";
+import { PeriodPicker } from "@/components/PeriodPicker";
 import { formatDateTime, formatDate } from "@/lib/format";
 import {
   SHOW_STATUS_LABELS,
@@ -76,16 +80,50 @@ export default async function FunnelActivityPage({
     : searchParams?.agrupar;
   const groupByDay = rawAgrupar === "dia";
 
+  // Recorte por ano da atividade (`?ano=`, pelo `createdAt` do evento em UTC);
+  // `null` = todos os anos. Filtra no banco, então a paginação passa a correr
+  // dentro do ano escolhido.
+  const activeYear = parseFeedYear(searchParams?.ano);
+
   // Página do feed (`?pagina=`, 1 = a mais recente). Paginamos o stream cru de
   // eventos: cada página é uma janela de `PAGE_SIZE` transições.
   const page = parseFeedPage(searchParams?.pagina);
+
+  // Cláusula de recorte reusada pela consulta da página; o ano vira uma faixa
+  // meia-aberta `[gte, lt)` sobre `createdAt` (UTC), consistente com a chave de
+  // dia do feed.
+  const yearRange = activeYear !== null ? feedYearRangeUtc(activeYear) : null;
+  const where = {
+    userId: user.id,
+    ...(yearRange ? { createdAt: { gte: yearRange.gte, lt: yearRange.lt } } : {}),
+  };
+
+  // Anos oferecidos no seletor de período — derivados do evento mais antigo e do
+  // mais novo da carteira (dois pontos indexados, INDEPENDENTES do recorte atual,
+  // para o seletor ficar estável mesmo dentro de um ano vazio).
+  const [oldestEvent, newestEvent] = await Promise.all([
+    prisma.showStatusEvent.findFirst({
+      where: { userId: user.id },
+      orderBy: { createdAt: "asc" },
+      select: { createdAt: true },
+    }),
+    prisma.showStatusEvent.findFirst({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    }),
+  ]);
+  const years = feedActivityYears(
+    oldestEvent?.createdAt ?? null,
+    newestEvent?.createdAt ?? null,
+  );
 
   // O feed vem direto dos eventos de status (índice `[userId]` em
   // `ShowStatusEvent`), já ordenados no banco; juntamos só o título e a data do
   // show para cada linha. Buscamos UM item além da página (`PAGE_SIZE + 1`) para
   // saber, sem uma contagem extra, se há uma página mais antiga adiante.
   const fetched = await prisma.showStatusEvent.findMany({
-    where: { userId: user.id },
+    where,
     orderBy: { createdAt: "desc" },
     skip: (page - 1) * PAGE_SIZE,
     take: PAGE_SIZE + 1,
@@ -123,17 +161,21 @@ export default async function FunnelActivityPage({
   // cabeçalhos como "Hoje"/"Ontem" sem varrer o relógio dentro do helper puro.
   const todayKey = dayKey(new Date());
 
-  // Monta uma query string preservando `natureza`, `agrupar` e `pagina` com
-  // sobrescritas. `pagina` só entra na URL a partir da 2ª página (1 é o padrão).
+  // Monta uma query string preservando `ano`, `natureza`, `agrupar` e `pagina`
+  // com sobrescritas. `pagina` só entra na URL a partir da 2ª página (1 é o
+  // padrão); `ano` só quando há recorte.
   const buildHref = (over: {
+    ano?: number | null;
     natureza?: FunnelActivityKind | null;
     agrupar?: boolean;
     pagina?: number;
   }): string => {
+    const year = over.ano !== undefined ? over.ano : activeYear;
     const kind = over.natureza !== undefined ? over.natureza : activeKind;
     const grouped = over.agrupar !== undefined ? over.agrupar : groupByDay;
     const pg = over.pagina !== undefined ? over.pagina : page;
     const params = new URLSearchParams();
+    if (year !== null) params.set("ano", String(year));
     if (kind !== null) params.set("natureza", kind);
     if (grouped) params.set("agrupar", "dia");
     if (pg > 1) params.set("pagina", String(pg));
@@ -146,10 +188,11 @@ export default async function FunnelActivityPage({
   const chipHref = (kind: FunnelActivityKind | null): string =>
     buildHref({ natureza: kind, pagina: 1 });
 
-  // O link de export espelha o filtro ativo E a página atual para baixar
-  // exatamente o recorte visível.
+  // O link de export espelha o recorte por ano, o filtro ativo E a página atual
+  // para baixar exatamente o recorte visível.
   const exportHref = (() => {
     const params = new URLSearchParams();
+    if (activeYear !== null) params.set("ano", String(activeYear));
     if (activeKind !== null) params.set("natureza", activeKind);
     if (page > 1) params.set("pagina", String(page));
     const qs = params.toString();
@@ -238,6 +281,24 @@ export default async function FunnelActivityPage({
         </div>
       </div>
 
+      {/* Seletor de período (ano da atividade, pelo `createdAt` do evento).
+          Fica visível sempre que a carteira tem algum evento — inclusive dentro
+          de um ano vazio — para o usuário poder trocar de ano ou voltar a
+          "Todos". Trocar de ano/período volta à 1ª página e preserva
+          natureza + modo de visualização (`params`). */}
+      {years.length > 0 && (
+        <PeriodPicker
+          years={years}
+          active={activeYear ?? "all"}
+          basePath="/shows/funil/atividade"
+          ariaLabel="Período da atividade"
+          params={{
+            ...(activeKind !== null ? { natureza: activeKind } : {}),
+            ...(groupByDay ? { agrupar: "dia" } : {}),
+          }}
+        />
+      )}
+
       {feed.length === 0 ? (
         hasPrev ? (
           <div className="card text-sm text-gray-500">
@@ -247,6 +308,17 @@ export default async function FunnelActivityPage({
               className="text-brand-600 hover:underline"
             >
               Voltar ao início
+            </Link>
+            .
+          </div>
+        ) : activeYear !== null ? (
+          <div className="card text-sm text-gray-500">
+            Nenhuma atividade registrada em {activeYear}.{" "}
+            <Link
+              href={buildHref({ ano: null, pagina: 1 })}
+              className="text-brand-600 hover:underline"
+            >
+              Ver todos os anos
             </Link>
             .
           </div>
