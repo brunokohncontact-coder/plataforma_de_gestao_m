@@ -7,9 +7,35 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1807 testes**),
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1809 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 334 —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 335 —
+EXPORTAÇÃO CSV do COMPARATIVO ANO A ANO da SAZONALIDADE da atividade do funil
+(`/shows/funil/atividade/sazonalidade/comparativo/export?ano=`), fechando o "próximo possível" que a D327
+deixou explícito (adiado pelo precedente D324→D325 do ritmo, card primeiro, CSV depois) e alinhando o eixo:
+era o único comparativo por calendário do funil/shows sem `⬇ CSV` (ritmo já exporta o seu/D325, sazonalidade
+de shows a dela/`gigSeasonalityComparisonToCsv`/D223).** Nova peça pura
+`funnelActivitySeasonalityComparisonToCsv(comparison)` + headers `FUNNEL_ACTIVITY_SEASONALITY_COMPARISON_CSV_HEADERS`
+(Mês / Transições (ano anterior) / (ano corrente) / Δ / Tendência) em `src/lib/csv.ts` — espelho fiel de
+`gigSeasonalityComparisonToCsv` no eixo da atividade: uma linha por mês do calendário (sempre as 12, jan→dez,
+inclusive meses sem transições nos dois anos, para revelar onde a forma da temporada mudou), Δ assinado ASCII
+(`csvSignedCount`) e a coluna Tendência reusando `classifyFunnelActivitySeasonMonthChange` (o mesmo classificador
+que colore a tabela on-screen), fechando numa linha Total (contagens em branco, só o Δ — o comparativo só carrega
+`totalDelta`, como o irmão de shows). SEM eixo de faturamento (a atividade só tem contagem, ao contrário da
+sazonalidade de shows). Nova rota `GET /shows/funil/atividade/sazonalidade/comparativo/export`: MESMO gate do card
+na página (exige `?ano=` e transições nos DOIS anos, senão 404), carrega os eventos dos dois anos (índice
+`[userId]`, recorte `createdAt` UTC, `Promise.all`), colapsa cada um em `funnelActivitySeasonality`, computa
+`compareFunnelActivitySeasonality` e serializa com BOM UTF-8; arquivo
+`sazonalidade-atividade-funil-comparativo-{ano}-vs-{ano-1}.csv`. Link `⬇ CSV` no cabeçalho do `SeasonalityComparison`
+junto ao delta total (idêntico ao `RhythmComparison`/D325). **+2 testes** (`csv.test.ts`: dois períodos vazios → 12
+meses zerados (Estável) + Total; uma linha por mês com transições dos dois anos, Δ assinado e tendência
+Subiu/Caiu). Zero migração/dependência. DoD verde: `npm run build` (nova rota
+`/shows/funil/atividade/sazonalidade/comparativo/export`, sem novo bundle de cliente), `npx tsc --noEmit`,
+`npm run lint` (0 warnings), `npm test` (**1809 testes**); smoke → `/login` 200, a página, `?ano=2026`, o export
+(com e sem `?ano=`) 307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories, zero dependência
+nova), ver D328. **Próximo possível** — uma manchete no Painel ("você costuma prospectar em fev–mar; estamos em
+janeiro e o funil está parado"), que exigiria injetar "agora"; ou consolidar os três CSV de comparativo por
+calendário num único helper genérico se surgir um quarto eixo. **Antes disso, Sessão 334 —
 COMPARATIVO ANO A ANO da SAZONALIDADE da atividade do funil (`/shows/funil/atividade/sazonalidade?ano=`),
 fechando o "próximo possível" que a D326 deixou explícito e o último eixo do funil sem comparativo
 (ritmo já tinha, D331):** a sazonalidade (D326) sempre somou TODAS as temporadas — ótimo para o padrão
