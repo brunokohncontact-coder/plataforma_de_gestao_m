@@ -4,11 +4,20 @@ import { prisma } from "@/lib/prisma";
 import {
   buildFunnelActivityFeed,
   funnelActivitySeasonality,
+  compareFunnelActivitySeasonality,
+  classifyFunnelActivitySeasonMonthChange,
+  parseFeedYear,
+  feedYearRangeUtc,
+  feedActivityYears,
   FUNNEL_ACTIVITY_KINDS,
   type FunnelActivityKind,
+  type FunnelActivitySeasonalityComparison,
 } from "@/lib/shows";
+import { PeriodPicker } from "@/components/PeriodPicker";
 
 export const dynamic = "force-dynamic";
+
+type SearchParams = { [key: string]: string | string[] | undefined };
 
 /** Aparência de cada natureza — tom e rótulo curto (espelha o ritmo e o feed). */
 const KIND_META: Record<FunnelActivityKind, { dot: string; label: string }> = {
@@ -23,19 +32,27 @@ const KIND_META: Record<FunnelActivityKind, { dot: string; label: string }> = {
 const formatAverage = (n: number): string =>
   n.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 1 });
 
-export default async function FunnelActivitySeasonalityPage() {
-  const user = await requireUser();
+/** Inteiro assinado pt-BR: "+3" / "−2" / "0" (sinal de menos tipográfico). */
+const signedInt = (n: number): string =>
+  n > 0 ? `+${n}` : n < 0 ? `−${Math.abs(n)}` : "0";
 
-  // A sazonalidade colapsa TODOS os anos num único calendário de 12 meses — não há
-  // recorte por ano (diferente do ritmo): o padrão só emerge somando as temporadas.
-  // Buscamos os eventos de status da carteira inteira (índice `[userId]`) e só o
-  // essencial de cada um (é uma contagem por mês do calendário, sem o show).
+/** Tom pelo sinal do delta: verde sobe, vermelho cai, cinza estável. */
+const deltaTone = (delta: number): string =>
+  delta > 0 ? "text-emerald-600" : delta < 0 ? "text-red-600" : "text-gray-400";
+
+/** Eventos de status da carteira (índice `[userId]`), opcionalmente recortados por ano. */
+async function loadSeason(
+  userId: string,
+  range: { gte: Date; lt: Date } | null,
+) {
   const events = await prisma.showStatusEvent.findMany({
-    where: { userId: user.id },
+    where: {
+      userId,
+      ...(range ? { createdAt: { gte: range.gte, lt: range.lt } } : {}),
+    },
     orderBy: { createdAt: "desc" },
     select: { showId: true, fromStatus: true, toStatus: true, createdAt: true },
   });
-
   const feed = buildFunnelActivityFeed(
     events.map((e) => ({
       showId: e.showId,
@@ -46,10 +63,66 @@ export default async function FunnelActivitySeasonalityPage() {
       at: e.createdAt,
     })),
   );
+  return funnelActivitySeasonality(feed);
+}
 
-  const season = funnelActivitySeasonality(feed);
+export default async function FunnelActivitySeasonalityPage({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
+  const user = await requireUser();
+
+  // A sazonalidade colapsa os anos num único calendário de 12 meses. O padrão de
+  // fundo emerge somando TODAS as temporadas (o default), mas um recorte por ano
+  // (`?ano=`, pelo `createdAt` do evento em UTC) revela a forma de um ano isolado
+  // — o que habilita o comparativo ano a ano (D327). Segue o precedente da
+  // sazonalidade de shows (`/shows/sazonalidade`), que também tem seletor.
+  const activeYear = parseFeedYear(searchParams?.ano);
+  const yearRange = activeYear !== null ? feedYearRangeUtc(activeYear) : null;
+
+  // Anos oferecidos no seletor — do evento mais antigo e do mais novo da carteira
+  // (dois pontos indexados, INDEPENDENTES do recorte atual, para o seletor ficar
+  // estável mesmo dentro de um ano vazio).
+  const [oldestEvent, newestEvent] = await Promise.all([
+    prisma.showStatusEvent.findFirst({
+      where: { userId: user.id },
+      orderBy: { createdAt: "asc" },
+      select: { createdAt: true },
+    }),
+    prisma.showStatusEvent.findFirst({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    }),
+  ]);
+  const years = feedActivityYears(
+    oldestEvent?.createdAt ?? null,
+    newestEvent?.createdAt ?? null,
+  );
+
+  const season = await loadSeason(user.id, yearRange);
   // Escala das barras: maior total entre os meses (mínimo 1 para não dividir por 0).
   const peak = Math.max(1, ...season.months.map((m) => m.total));
+
+  // Comparativo ano a ano: só com um ano específico selecionado e ambos os
+  // períodos com transições. O ano anterior sai de uma consulta indexada
+  // `[userId]` recortada por `createdAt` (mesmo padrão do ritmo, D331).
+  let comparison: FunnelActivitySeasonalityComparison | null = null;
+  if (activeYear !== null && season.totalTransitions > 0) {
+    const prevSeason = await loadSeason(
+      user.id,
+      feedYearRangeUtc(activeYear - 1),
+    );
+    if (prevSeason.totalTransitions > 0) {
+      comparison = compareFunnelActivitySeasonality(season, prevSeason);
+    }
+  }
+
+  const exportHref =
+    activeYear !== null
+      ? `/shows/funil/atividade/sazonalidade/export?ano=${activeYear}`
+      : "/shows/funil/atividade/sazonalidade/export";
 
   return (
     <div className="space-y-6">
@@ -66,11 +139,7 @@ export default async function FunnelActivitySeasonalityPage() {
         </div>
         <div className="flex items-center gap-2">
           {season.totalTransitions > 0 && (
-            <a
-              href="/shows/funil/atividade/sazonalidade/export"
-              className="btn-secondary"
-              download
-            >
+            <a href={exportHref} className="btn-secondary" download>
               ⬇ CSV
             </a>
           )}
@@ -86,11 +155,36 @@ export default async function FunnelActivitySeasonalityPage() {
         </div>
       </div>
 
+      {/* Seletor de período (ano da atividade, pelo `createdAt` do evento). Fica
+          visível sempre que a carteira tem algum evento — inclusive dentro de um
+          ano vazio — para o usuário trocar de ano ou voltar a "Todos". */}
+      {years.length > 0 && (
+        <PeriodPicker
+          years={years}
+          active={activeYear ?? "all"}
+          basePath="/shows/funil/atividade/sazonalidade"
+          ariaLabel="Período da sazonalidade"
+        />
+      )}
+
       {season.totalTransitions === 0 ? (
-        <div className="card text-sm text-gray-500">
-          Nenhuma movimentação registrada ainda. Cadastre um show e mova-o pelo
-          funil (proposto → confirmado → realizado) para ver a sazonalidade aqui.
-        </div>
+        activeYear !== null ? (
+          <div className="card text-sm text-gray-500">
+            Nenhuma movimentação registrada em {activeYear}.{" "}
+            <Link
+              href="/shows/funil/atividade/sazonalidade"
+              className="text-brand-600 hover:underline"
+            >
+              Ver todos os anos
+            </Link>
+            .
+          </div>
+        ) : (
+          <div className="card text-sm text-gray-500">
+            Nenhuma movimentação registrada ainda. Cadastre um show e mova-o pelo
+            funil (proposto → confirmado → realizado) para ver a sazonalidade aqui.
+          </div>
+        )
       ) : (
         <>
           {/* Legenda das naturezas — a mesma paleta das barras. */}
@@ -165,6 +259,16 @@ export default async function FunnelActivitySeasonalityPage() {
               )}
             </div>
           </div>
+
+          {/* Comparativo ano a ano — só com um ano selecionado e ambos os períodos
+              com transições (o helper decide o resto). */}
+          {comparison && activeYear !== null && (
+            <SeasonalityComparison
+              comparison={comparison}
+              year={activeYear}
+              previousYear={activeYear - 1}
+            />
+          )}
 
           {/* Transições por mês do ano (jan→dez), barra empilhada por natureza. */}
           <section className="card">
@@ -271,6 +375,130 @@ export default async function FunnelActivitySeasonalityPage() {
             naquele mês, não diluída por anos vazios de um histórico curto.
           </p>
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Comparativo ano a ano da sazonalidade (`compareFunnelActivitySeasonality`): em
+ * que meses do calendário o trabalho de agendamento esquentou ou esfriou em
+ * relação ao ano anterior. Espelha o comparativo da sazonalidade de shows (D215) e
+ * do ritmo (D331) — delta total no cabeçalho, os dois movers (mês que mais
+ * subiu/caiu) em destaque e a tabela dos 12 meses para conferência.
+ */
+function SeasonalityComparison({
+  comparison,
+  year,
+  previousYear,
+}: {
+  comparison: FunnelActivitySeasonalityComparison;
+  year: number;
+  previousYear: number;
+}) {
+  const { totalDelta, biggestGain, biggestDrop, months } = comparison;
+
+  return (
+    <section className="card">
+      <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="font-semibold">
+          Temporada {year} vs. {previousYear}
+        </h2>
+        <span className={"text-sm font-semibold " + deltaTone(totalDelta)}>
+          {signedInt(totalDelta)}{" "}
+          {Math.abs(totalDelta) === 1 ? "transição" : "transições"}
+        </span>
+      </div>
+      <p className="mb-4 text-xs text-gray-500">
+        Em que meses do ano seu trabalho de agendamento esquentou ou esfriou em
+        relação ao ano anterior — a forma da temporada mudou?
+      </p>
+
+      {/* Movers por mês do calendário. */}
+      <div className="mb-4 grid gap-4 sm:grid-cols-2">
+        <MonthMoverCard label="Mês que mais esquentou" change={biggestGain} tone="emerald" />
+        <MonthMoverCard label="Mês que mais esfriou" change={biggestDrop} tone="red" />
+      </div>
+
+      {/* Detalhe dos meses — só os com movimento em algum dos dois anos. */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b text-left text-xs text-gray-500">
+              <th className="pb-2 font-medium">Mês</th>
+              <th className="pb-2 px-3 text-right font-medium">{previousYear}</th>
+              <th className="pb-2 px-3 text-right font-medium">{year}</th>
+              <th className="pb-2 text-right font-medium">Δ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {months
+              .filter((m) => m.currentTotal > 0 || m.previousTotal > 0)
+              .map((m) => {
+                const trend = classifyFunnelActivitySeasonMonthChange(m);
+                return (
+                  <tr key={m.month} className="border-b border-gray-100 last:border-0">
+                    <td className="py-1.5 capitalize">{m.label}</td>
+                    <td className="py-1.5 px-3 text-right tabular-nums text-gray-500">
+                      {m.previousTotal}
+                    </td>
+                    <td className="py-1.5 px-3 text-right tabular-nums text-gray-900">
+                      {m.currentTotal}
+                    </td>
+                    <td
+                      className={
+                        "py-1.5 text-right tabular-nums font-medium " +
+                        (trend === "up"
+                          ? "text-emerald-600"
+                          : trend === "down"
+                            ? "text-red-600"
+                            : "text-gray-400")
+                      }
+                    >
+                      {signedInt(m.totalDelta)}
+                    </td>
+                  </tr>
+                );
+              })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Cartão do mover — o mês do calendário que mais esquentou ou esfriou de um ano
+ * para o outro. `null` (nenhum subiu/caiu) cai num placeholder neutro.
+ */
+function MonthMoverCard({
+  label,
+  change,
+  tone,
+}: {
+  label: string;
+  change: FunnelActivitySeasonalityComparison["biggestGain"];
+  tone: "emerald" | "red";
+}) {
+  const ring = tone === "emerald" ? "border-emerald-200" : "border-red-200";
+  const text = tone === "emerald" ? "text-emerald-600" : "text-red-600";
+  return (
+    <div className={"rounded-lg border p-3 " + ring}>
+      <div className="text-xs text-gray-500">{label}</div>
+      {change ? (
+        <>
+          <div className="mt-1 text-lg font-semibold capitalize text-gray-900">
+            {change.label}
+          </div>
+          <div className={"text-sm font-semibold " + text}>
+            {signedInt(change.totalDelta)}{" "}
+            <span className="font-normal text-gray-400">
+              ({change.previousTotal} → {change.currentTotal})
+            </span>
+          </div>
+        </>
+      ) : (
+        <div className="mt-1 text-lg font-semibold text-gray-400">—</div>
       )}
     </div>
   );

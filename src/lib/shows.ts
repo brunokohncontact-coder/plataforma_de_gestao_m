@@ -2318,6 +2318,117 @@ export function funnelActivitySeasonality(
   };
 }
 
+/** Variação de um mês do calendário na sazonalidade da atividade, entre dois períodos. */
+export interface FunnelActivitySeasonMonthChange {
+  /** Mês do ano: 0 = janeiro .. 11 = dezembro (UTC). */
+  month: number;
+  /** Rótulo longo ("Janeiro", "Fevereiro"…). */
+  label: string;
+  /** Transições deste mês do calendário no período atual. */
+  currentTotal: number;
+  /** Transições deste mês do calendário no período anterior. */
+  previousTotal: number;
+  /** Variação (`current − previous`); pode ser negativa. */
+  totalDelta: number;
+}
+
+/**
+ * Comparativo da **sazonalidade da atividade do funil** entre dois períodos
+ * (tipicamente um ano × o ano anterior), mês a mês do calendário — respondendo
+ * "em que meses do ano meu trabalho de agendamento esquentou ou esfriou em
+ * relação ao ano passado?". Irmão de `compareGigSeasonality` no eixo da atividade
+ * do funil.
+ */
+export interface FunnelActivitySeasonalityComparison {
+  /** Sempre 12 meses (janeiro→dezembro), inclusive os sem mudança. */
+  months: FunnelActivitySeasonMonthChange[];
+  /** Variação do total de transições (atual − anterior). */
+  totalDelta: number;
+  /**
+   * Mês que mais GANHOU transições (maior `totalDelta > 0`; empate → mês mais
+   * cedo); `null` se nenhum mês subiu.
+   */
+  biggestGain: FunnelActivitySeasonMonthChange | null;
+  /**
+   * Mês que mais PERDEU transições (menor `totalDelta < 0`; empate → mês mais
+   * cedo); `null` se nenhum mês caiu.
+   */
+  biggestDrop: FunnelActivitySeasonMonthChange | null;
+}
+
+/**
+ * Compara a **sazonalidade da atividade do funil** entre dois períodos, mês a mês
+ * do calendário. Irmão de `compareGigSeasonality` (D215) no eixo da atividade do
+ * funil: onde aquele casa a forma mensal dos SHOWS, este casa a forma mensal do
+ * TRABALHO de agendamento (cadastros, avanços, negociação). Como a sazonalidade já
+ * colapsa os anos num calendário de 12 meses em ordem (jan→dez), o índice `i` casa
+ * o mesmo mês nos dois períodos sem lookup.
+ *
+ * Ancora no **total de transições** do mês (o eixo primário da tela — o `busiest`),
+ * destilando os dois **movers**: o mês que mais cresceu e o que mais caiu, mantendo
+ * a tela enxuta (os 12 `months` ficam disponíveis para detalhar). Distinto do
+ * comparativo do RITMO (`compareFunnelActivityMonths`), que destila agregados do
+ * período por natureza porque o ritmo não tem calendário comum entre anos; aqui há
+ * calendário comum, então casamos mês a mês.
+ *
+ * Puro, sem I/O: recebe duas `funnelActivitySeasonality` já computadas (cada uma
+ * sobre o feed do seu período). Iteramos jan→dez com `>`/`<` estrito no desempate,
+ * então o mês mais cedo vence empates — mesma disciplina determinística de
+ * `funnelActivitySeasonality`. O chamador decide quando exibir (tipicamente só com
+ * um ano específico e ambos os períodos com transições).
+ */
+export function compareFunnelActivitySeasonality(
+  current: FunnelActivitySeasonality,
+  previous: FunnelActivitySeasonality,
+): FunnelActivitySeasonalityComparison {
+  const months: FunnelActivitySeasonMonthChange[] = current.months.map((cur, i) => {
+    const prev = previous.months[i];
+    return {
+      month: cur.month,
+      label: cur.label,
+      currentTotal: cur.total,
+      previousTotal: prev.total,
+      totalDelta: cur.total - prev.total,
+    };
+  });
+
+  let biggestGain: FunnelActivitySeasonMonthChange | null = null;
+  let biggestDrop: FunnelActivitySeasonMonthChange | null = null;
+  for (const m of months) {
+    if (m.totalDelta > 0 && (biggestGain === null || m.totalDelta > biggestGain.totalDelta)) {
+      biggestGain = m;
+    }
+    if (m.totalDelta < 0 && (biggestDrop === null || m.totalDelta < biggestDrop.totalDelta)) {
+      biggestDrop = m;
+    }
+  }
+
+  return {
+    months,
+    totalDelta: current.totalTransitions - previous.totalTransitions,
+    biggestGain,
+    biggestDrop,
+  };
+}
+
+/** Tendência de um mês no comparativo de sazonalidade da atividade: subiu, caiu ou estável. */
+export type FunnelActivitySeasonMonthTrend = "up" | "down" | "flat";
+
+/**
+ * Classifica um mês do comparativo (`FunnelActivitySeasonMonthChange`) em
+ * `up`/`down`/`flat` pelo `totalDelta`, para colorir a tabela de detalhe dos 12
+ * meses de forma consistente com os movers. Espelha
+ * `classifyGigSeasonalityMonthChange`, sem o eixo de faturamento (a atividade só
+ * tem contagem). Puro, sem I/O.
+ */
+export function classifyFunnelActivitySeasonMonthChange(
+  change: FunnelActivitySeasonMonthChange,
+): FunnelActivitySeasonMonthTrend {
+  if (change.totalDelta > 0) return "up";
+  if (change.totalDelta < 0) return "down";
+  return "flat";
+}
+
 /** Variação de uma natureza entre dois períodos do ritmo (atual − anterior). */
 export interface FunnelActivityKindChange {
   kind: FunnelActivityKind;
