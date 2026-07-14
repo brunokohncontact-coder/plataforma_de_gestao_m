@@ -9,7 +9,31 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1787 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 329 (D323) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 330 —
+RECORTE POR ANO (`?ano=`) no RITMO MENSAL da atividade do funil (`/shows/funil/atividade/ritmo`), fechando o
+"próximo possível" que a D323 deixou explícito e alinhando o ritmo ao feed (que já tinha `?ano=` desde D321):**
+o ritmo (D322/D323) sempre contou a carteira INTEIRA — ótimo para o pulso histórico, mas sem isolar "quão ativo
+esteve o funil em 2025 vs 2026" numa carteira longeva. Zero lógica pura nova, zero migração/dependência: só
+FIAÇÃO reusando os mesmos helpers já testados do feed (`parseFeedYear`/`feedYearRangeUtc`/`feedActivityYears` em
+`src/lib/shows.ts`, cobertos pelos 10 testes da D321) e o `PeriodPicker` compartilhado. A página lê `?ano=` e,
+quando há recorte, adiciona `createdAt: { gte, lt }` (faixa UTC meia-aberta) à `where` da consulta de eventos, de
+modo que a agregação por mês (`groupFunnelActivityByMonth` + `summarizeFunnelActivityMonths`) passa a contar só o
+ano escolhido; os anos do seletor vêm de dois pontos indexados (`findFirst` mais antigo/mais novo em
+`Promise.all`), INDEPENDENTES do recorte atual, para o seletor ficar estável mesmo num ano vazio. `PeriodPicker`
+com `basePath="/shows/funil/atividade/ritmo"` e `ariaLabel="Período do ritmo"`, visível sempre que a carteira tem
+algum evento; novo estado vazio "Nenhuma movimentação registrada em {ano}" (com "Ver todos os anos") distinto do
+da carteira sem histórico. O link "⬇ CSV" e a rota de export (`/ritmo/export`) passaram a espelhar `?ano=`
+(mesma `where`, arquivo nomeado `ritmo-atividade-funil-{ano}.csv`). **Sem novos testes** — nenhuma peça pura nova:
+a mudança é wiring idêntico ao já provado no feed (D321), sobre helpers já cobertos. DoD verde: `npm run build`
+(`/shows/funil/atividade/ritmo` 321 B → 323 B, sem novo bundle de cliente), `npx tsc --noEmit`, `npm run lint`
+(0 warnings), `npm test` (**1787 testes**); smoke → `/login` 200, `/shows/funil/atividade/ritmo`, `?ano=2026` e
+`/ritmo/export?ano=2026` 307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories, zero
+dependência nova). **Infra de sessão:** o `.env` de dev do container clonado veio obsoleto (`file:./dev.db`) e o
+Postgres estava parado — reprovisionados a partir do `.env.example` (`palco_dev`) + `pg_ctlcluster start` +
+`prisma generate`/`migrate deploy` para destravar build/testes; nada disso é versionado (`.env` é gitignored).
+**Próximo possível** — combinar ano+mês num único seletor, ou uma linha de "média/mês do ano" no resumo do ritmo
+quando há recorte (adiado: ganho marginal); ou, se surgir uma 4ª superfície com `?ano=`, extrair o par
+"anos do seletor + faixa UTC" num helper de consulta. **Antes disso, Sessão 329 (D323) —
 RESUMO DO RITMO MENSAL da atividade do funil (`/shows/funil/atividade/ritmo`): quatro leituras acionáveis num
 card no topo das barras — Média por mês (com "N em M meses"), Mês mais movimentado, Mês mais calmo e Natureza
 predominante:** a D322 entregou as barras empilhadas por mês (o pulso do funil de cabo a rabo), mas o músico
