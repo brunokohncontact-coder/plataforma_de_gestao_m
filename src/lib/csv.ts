@@ -110,6 +110,8 @@ import type {
   FunnelActivityMonthGroup,
   FunnelActivityYearComparison,
   FunnelActivitySeasonality,
+  FunnelActivitySeasonalityComparison,
+  FunnelActivitySeasonMonthTrend,
 } from "./shows";
 import {
   summarizeMonthShows,
@@ -117,6 +119,7 @@ import {
   compareContactProposalOutcomes,
   indexContactProposalConversionChanges,
   stageTimeConcentration,
+  classifyFunnelActivitySeasonMonthChange,
 } from "./shows";
 
 const DEFAULT_DELIMITER = ";";
@@ -4163,6 +4166,68 @@ export function funnelActivityComparisonToCsv(
     String(comparison.totalCurrent),
     csvSignedCount(comparison.totalDelta),
   ]);
+  return toCsv(out, delimiter);
+}
+
+export const FUNNEL_ACTIVITY_SEASONALITY_COMPARISON_CSV_HEADERS = [
+  "Mês",
+  "Transições (ano anterior)",
+  "Transições (ano corrente)",
+  "Δ",
+  "Tendência",
+] as const;
+
+/** Rótulo pt-BR da tendência de um mês no comparativo, espelhando a cor da UI. */
+const FUNNEL_ACTIVITY_SEASON_TREND_LABELS: Record<
+  FunnelActivitySeasonMonthTrend,
+  string
+> = {
+  up: "Subiu",
+  down: "Caiu",
+  flat: "Estável",
+};
+
+/**
+ * Serializa o comparativo ano a ano da **sazonalidade da atividade do funil**
+ * (`compareFunnelActivitySeasonality`) em CSV — espelha a tabela do card
+ * "Temporada {ano} vs. {ano-1}" de `/shows/funil/atividade/sazonalidade`. Espelho
+ * fiel de `gigSeasonalityComparisonToCsv` (D223) no eixo da atividade: uma linha
+ * por mês do calendário (sempre as 12, jan→dez, inclusive meses sem transições nos
+ * dois anos, para revelar onde a forma da temporada de agendamento mudou) com o nº
+ * de transições de cada ano, a variação assinada e a tendência (Subiu / Caiu /
+ * Estável), seguida de uma linha "Total".
+ *
+ * Diferente da UI (que só lista os meses com movimento em algum dos dois anos e usa
+ * o "−" tipográfico), o CSV registra as 12 linhas e deltas assinados em ASCII
+ * (`csvSignedCount`: "+3"/"-2"/"0") para ficar legível por máquina e filtrável. A
+ * coluna "Tendência" reusa `classifyFunnelActivitySeasonMonthChange` (o mesmo
+ * classificador que colore a tabela on-screen), tornando a planilha
+ * auto-explicativa. Sem eixo de faturamento (a atividade só tem contagem, ao
+ * contrário da sazonalidade de shows). As colunas de transições do Total ficam em
+ * branco (o valor é a variação, como na UI e no irmão de shows); a tendência do
+ * Total também. Os anos concretos vão no nome do arquivo, não nos cabeçalhos (mesma
+ * convenção de `gigSeasonalityComparisonToCsv`/`funnelActivityComparisonToCsv`).
+ * Mesma convenção pt-BR dos irmãos (delimitador ";"). Pura.
+ */
+export function funnelActivitySeasonalityComparisonToCsv(
+  comparison: FunnelActivitySeasonalityComparison,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [
+    Array.from(FUNNEL_ACTIVITY_SEASONALITY_COMPARISON_CSV_HEADERS),
+  ];
+  for (const m of comparison.months) {
+    out.push([
+      m.label,
+      String(m.previousTotal),
+      String(m.currentTotal),
+      csvSignedCount(m.totalDelta),
+      FUNNEL_ACTIVITY_SEASON_TREND_LABELS[
+        classifyFunnelActivitySeasonMonthChange(m)
+      ],
+    ]);
+  }
+  out.push(["Total", "", "", csvSignedCount(comparison.totalDelta), ""]);
   return toCsv(out, delimiter);
 }
 

@@ -267,6 +267,7 @@ export default async function FunnelActivitySeasonalityPage({
               comparison={comparison}
               year={activeYear}
               previousYear={activeYear - 1}
+              exportHref={`/shows/funil/atividade/sazonalidade/comparativo/export?ano=${activeYear}`}
             />
           )}
 
@@ -391,10 +392,12 @@ function SeasonalityComparison({
   comparison,
   year,
   previousYear,
+  exportHref,
 }: {
   comparison: FunnelActivitySeasonalityComparison;
   year: number;
   previousYear: number;
+  exportHref: string;
 }) {
   const { totalDelta, biggestGain, biggestDrop, months } = comparison;
 
@@ -404,10 +407,15 @@ function SeasonalityComparison({
         <h2 className="font-semibold">
           Temporada {year} vs. {previousYear}
         </h2>
-        <span className={"text-sm font-semibold " + deltaTone(totalDelta)}>
-          {signedInt(totalDelta)}{" "}
-          {Math.abs(totalDelta) === 1 ? "transição" : "transições"}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className={"text-sm font-semibold " + deltaTone(totalDelta)}>
+            {signedInt(totalDelta)}{" "}
+            {Math.abs(totalDelta) === 1 ? "transição" : "transições"}
+          </span>
+          <a href={exportHref} className="text-xs text-brand-600 hover:underline">
+            ⬇ CSV
+          </a>
+        </div>
       </div>
       <p className="mb-4 text-xs text-gray-500">
         Em que meses do ano seu trabalho de agendamento esquentou ou esfriou em

@@ -5,6 +5,44 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-14 — D328: Exportação CSV do comparativo ano a ano da sazonalidade da atividade do funil
+- **Contexto:** a D327 (Sessão 334) entregou o comparativo ano a ano da sazonalidade da atividade
+  (`/shows/funil/atividade/sazonalidade?ano=`) — card "Temporada {ano} vs. {ano-1}" com delta total, dois movers e
+  a tabela dos meses — mas ADIOU o `⬇ CSV`, registrando-o como "próximo possível" e citando o precedente D324→D325
+  do ritmo (card primeiro, CSV na sessão seguinte). Era o único comparativo do eixo da sazonalidade sem download,
+  enquanto o ritmo já exporta o seu (D325) e a sazonalidade de shows exporta a dela
+  (`gigSeasonalityComparisonToCsv`/D223).
+- **Decisão:**
+  - Nova peça pura `funnelActivitySeasonalityComparisonToCsv(comparison)` + headers
+    `FUNNEL_ACTIVITY_SEASONALITY_COMPARISON_CSV_HEADERS` (Mês / Transições (ano anterior) / (ano corrente) / Δ /
+    Tendência) em `src/lib/csv.ts` — espelho fiel de `gigSeasonalityComparisonToCsv` no eixo da atividade: uma
+    linha por mês do calendário (sempre as 12, jan→dez, inclusive meses sem transições nos dois anos), Δ assinado
+    ASCII (`csvSignedCount`) e a coluna Tendência reusando `classifyFunnelActivitySeasonMonthChange` (o mesmo
+    classificador que colore a tabela on-screen), fechando numa linha Total.
+  - Nova rota `GET /shows/funil/atividade/sazonalidade/comparativo/export?ano=` — MESMO gate do card na página
+    (exige `?ano=` e transições nos DOIS anos, senão 404), carrega os eventos dos dois anos (índice `[userId]`,
+    recorte `createdAt` UTC, `Promise.all`), colapsa cada um em `funnelActivitySeasonality`, computa
+    `compareFunnelActivitySeasonality` e serializa com BOM UTF-8; arquivo
+    `sazonalidade-atividade-funil-comparativo-{ano}-vs-{ano-1}.csv`. Link `⬇ CSV` no cabeçalho do
+    `SeasonalityComparison`, junto ao delta total (idêntico ao `RhythmComparison`/D325).
+- **Justificativa:**
+  - **Fecha a última inconsistência do eixo:** com esta sessão, os três comparativos ano a ano do funil/shows por
+    calendário (sazonalidade de shows/D223, ritmo/D325, sazonalidade da atividade/agora) têm CSV, com o mesmo grão
+    (linha por mês + Total) e a mesma convenção de nome de arquivo (`-comparativo-{ano}-vs-{ano-1}.csv`).
+  - **Sem faturamento:** ao contrário de `gigSeasonalityComparisonToCsv` (que tem a coluna Δ faturamento), a
+    atividade só tem contagem — o CSV tem uma coluna a menos, mantendo Tendência (Subiu/Caiu/Estável) como no
+    irmão de shows.
+  - **Zero peça pura nova de agregação, zero dependência, zero migração:** o CSV reusa a comparação já testada
+    (D327) e a rota reusa `funnelActivitySeasonality`/`feedYearRangeUtc` já provados.
+- **Alternativas consideradas:**
+  - *Incluir os totais dos dois anos na linha Total (como `funnelActivityComparisonToCsv`/D325 faz)*: descartado —
+    `FunnelActivitySeasonalityComparison` só carrega `totalDelta` (não os totais brutos), então a linha Total
+    espelha `gigSeasonalityComparisonToCsv` (contagens em branco, só o Δ). Coerente com o irmão de shows do mesmo
+    grão (mês).
+  - *Emitir só os meses com movimento (como a tabela on-screen)*: descartado — o CSV registra as 12 linhas (mesma
+    escolha de `gigSeasonalityComparisonToCsv`/`funnelActivitySeasonalityToCsv`), para ficar filtrável por máquina
+    e revelar os vales; a supressão de "—" é uma economia de tela, não de dado.
+
 ## 2026-07-14 — D327: Comparativo ano a ano da sazonalidade da atividade do funil (+ `?ano=` na tela)
 - **Contexto:** a D326 (Sessão 333) entregou `/shows/funil/atividade/sazonalidade` — a forma da temporada de
   agendamento somando TODAS as edições anuais, SEM recorte por ano ("a sazonalidade só faz sentido somando as

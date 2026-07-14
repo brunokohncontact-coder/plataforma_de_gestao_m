@@ -154,6 +154,8 @@ import {
   FUNNEL_ACTIVITY_COMPARISON_CSV_HEADERS,
   funnelActivitySeasonalityToCsv,
   FUNNEL_ACTIVITY_SEASONALITY_CSV_HEADERS,
+  funnelActivitySeasonalityComparisonToCsv,
+  FUNNEL_ACTIVITY_SEASONALITY_COMPARISON_CSV_HEADERS,
 } from "./csv";
 import {
   findOpenWeekends,
@@ -173,6 +175,7 @@ import {
   groupFunnelActivityByMonth,
   compareFunnelActivityMonths,
   funnelActivitySeasonality,
+  compareFunnelActivitySeasonality,
   type ConflictShowLike,
   type LeadTimeShowLike,
   type StaleProposalShowLike,
@@ -4794,6 +4797,68 @@ describe("funnelActivitySeasonalityToCsv", () => {
     expect(lines[8]).toBe("Agosto;1;1;1,0;25%;0;0;0;1;0;Mês mais calmo");
     // Total: 4 transições, 2 anos observados, participação/média/destaque em branco.
     expect(lines[13]).toBe("Total;4;2;;;2;1;0;1;0;");
+  });
+});
+
+describe("funnelActivitySeasonalityComparisonToCsv", () => {
+  const feedOf = (
+    events: { showId: string; fromStatus: string | null; toStatus: string; at: string }[],
+  ) =>
+    buildFunnelActivityFeed(
+      events.map((e) => ({
+        showId: e.showId,
+        showTitle: "",
+        showDate: null,
+        fromStatus: e.fromStatus,
+        toStatus: e.toStatus,
+        at: e.at,
+      })),
+    );
+  // Comparativo entre um "ano corrente" e um "ano anterior" a partir de duas listas
+  // de eventos já separadas por período.
+  const compare = (
+    current: { showId: string; fromStatus: string | null; toStatus: string; at: string }[],
+    previous: { showId: string; fromStatus: string | null; toStatus: string; at: string }[],
+  ) =>
+    compareFunnelActivitySeasonality(
+      funnelActivitySeasonality(feedOf(current)),
+      funnelActivitySeasonality(feedOf(previous)),
+    );
+
+  it("dois períodos vazios: cabeçalho + 12 meses zerados (Estável) + Total", () => {
+    const lines = funnelActivitySeasonalityComparisonToCsv(compare([], [])).split("\r\n");
+    expect(lines[0]).toBe(FUNNEL_ACTIVITY_SEASONALITY_COMPARISON_CSV_HEADERS.join(";"));
+    // cabeçalho + 12 meses + Total.
+    expect(lines).toHaveLength(14);
+    // Meses sem transições nos dois anos: 0/0, Δ "0", tendência "Estável".
+    expect(lines[1]).toBe("Janeiro;0;0;0;Estável");
+    expect(lines[12]).toBe("Dezembro;0;0;0;Estável");
+    // Total: colunas de contagem em branco, Δ zerado, sem tendência.
+    expect(lines[13]).toBe("Total;;;0;");
+  });
+
+  it("uma linha por mês (jan→dez) com transições dos dois anos, Δ assinado e tendência", () => {
+    // Março: 2 transições em 2026 (corrente) vs. 1 em 2025 (anterior) → subiu.
+    // Julho: 1 em 2026 vs. 2 em 2025 → caiu.
+    const comparison = compare(
+      [
+        { showId: "a", fromStatus: null, toStatus: "PROPOSED", at: "2026-03-01T09:00:00Z" },
+        { showId: "b", fromStatus: "PROPOSED", toStatus: "CONFIRMED", at: "2026-03-20T09:00:00Z" },
+        { showId: "c", fromStatus: null, toStatus: "PROPOSED", at: "2026-07-04T09:00:00Z" },
+      ],
+      [
+        { showId: "d", fromStatus: null, toStatus: "PROPOSED", at: "2025-03-15T09:00:00Z" },
+        { showId: "e", fromStatus: null, toStatus: "PROPOSED", at: "2025-07-04T09:00:00Z" },
+        { showId: "f", fromStatus: "CONFIRMED", toStatus: "CANCELLED", at: "2025-07-20T12:00:00Z" },
+      ],
+    );
+    const lines = funnelActivitySeasonalityComparisonToCsv(comparison).split("\r\n");
+    // Março (índice 3: cabeçalho + Jan + Fev + Mar): anterior 1, corrente 2, Δ +1, Subiu.
+    expect(lines[3]).toBe("Março;1;2;+1;Subiu");
+    // Julho (índice 7): anterior 2, corrente 1, Δ -1, Caiu.
+    expect(lines[7]).toBe("Julho;2;1;-1;Caiu");
+    // Total: 3 transições nos dois anos → Δ 0, contagens/tendência em branco.
+    expect(lines[13]).toBe("Total;;;0;");
   });
 });
 
