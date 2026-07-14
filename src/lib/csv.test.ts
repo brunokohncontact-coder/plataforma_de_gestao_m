@@ -150,6 +150,8 @@ import {
   FUNNEL_ACTIVITY_CSV_HEADERS,
   funnelActivityMonthlyToCsv,
   FUNNEL_ACTIVITY_MONTHLY_CSV_HEADERS,
+  funnelActivityComparisonToCsv,
+  FUNNEL_ACTIVITY_COMPARISON_CSV_HEADERS,
 } from "./csv";
 import {
   findOpenWeekends,
@@ -167,6 +169,7 @@ import {
   gapDistribution,
   buildFunnelActivityFeed,
   groupFunnelActivityByMonth,
+  compareFunnelActivityMonths,
   type ConflictShowLike,
   type LeadTimeShowLike,
   type StaleProposalShowLike,
@@ -4699,6 +4702,46 @@ describe("funnelActivityMonthlyToCsv", () => {
     // março: 2 transições (1 cadastro + 1 avanço); depois fevereiro: 1 cancelamento.
     expect(lines[1]).toBe("Março de 2026;2;1;1;0;0;0");
     expect(lines[2]).toBe("Fevereiro de 2026;1;0;0;0;1;0");
+  });
+});
+
+describe("funnelActivityComparisonToCsv", () => {
+  it("dois períodos vazios: as cinco naturezas zeradas + Total (só o cabeçalho tem sentido de dados)", () => {
+    const cmp = compareFunnelActivityMonths([], []);
+    const lines = funnelActivityComparisonToCsv(cmp).split("\r\n");
+    expect(lines[0]).toBe(FUNNEL_ACTIVITY_COMPARISON_CSV_HEADERS.join(";"));
+    // cabeçalho + 5 naturezas + Total.
+    expect(lines).toHaveLength(7);
+    expect(lines[1]).toBe("Cadastros;0;0;0");
+    expect(lines[6]).toBe("Total;0;0;0");
+  });
+
+  it("uma linha por natureza (ordem canônica) com contagens dos dois anos e Δ assinado + Total", () => {
+    // 2026 (atual): 2 cadastros + 1 avanço = 3 transições.
+    const current = groupFunnelActivityByMonth(
+      buildFunnelActivityFeed([
+        { showId: "a", showTitle: "", showDate: null, fromStatus: null, toStatus: "PROPOSED", at: "2026-03-02T09:00:00Z" },
+        { showId: "b", showTitle: "", showDate: null, fromStatus: null, toStatus: "PROPOSED", at: "2026-04-05T09:00:00Z" },
+        { showId: "c", showTitle: "", showDate: null, fromStatus: "PROPOSED", toStatus: "CONFIRMED", at: "2026-04-20T18:00:00Z" },
+      ]),
+    );
+    // 2025 (anterior): 1 cadastro + 1 cancelamento = 2 transições.
+    const previous = groupFunnelActivityByMonth(
+      buildFunnelActivityFeed([
+        { showId: "d", showTitle: "", showDate: null, fromStatus: null, toStatus: "PROPOSED", at: "2025-05-02T09:00:00Z" },
+        { showId: "e", showTitle: "", showDate: null, fromStatus: "CONFIRMED", toStatus: "CANCELLED", at: "2025-06-11T12:00:00Z" },
+      ]),
+    );
+    const cmp = compareFunnelActivityMonths(current, previous);
+    const lines = funnelActivityComparisonToCsv(cmp).split("\r\n");
+    expect(lines[0]).toBe(FUNNEL_ACTIVITY_COMPARISON_CSV_HEADERS.join(";"));
+    // Natureza;anterior;corrente;Δ — ordem canônica create/advance/regress/cancel/reopen.
+    expect(lines[1]).toBe("Cadastros;1;2;+1");
+    expect(lines[2]).toBe("Avanços;0;1;+1");
+    expect(lines[3]).toBe("Recuos;0;0;0");
+    expect(lines[4]).toBe("Cancelamentos;1;0;-1");
+    expect(lines[5]).toBe("Reaberturas;0;0;0");
+    expect(lines[6]).toBe("Total;2;3;+1");
   });
 });
 

@@ -7,9 +7,29 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1792 testes**),
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1794 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 331 —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 332 —
+EXPORTAÇÃO CSV do COMPARATIVO ANO A ANO do RITMO do funil (`/shows/funil/atividade/ritmo/comparativo/export?ano=`),
+fechando a última inconsistência da linha do ritmo — era o único comparativo do app sem `⬇ CSV` (a D324(b) o
+adiara por serem "só cinco linhas"), enquanto sazonalidade/dias-semana/cidades/locais todos exportam:** nova peça
+pura `funnelActivityComparisonToCsv(comparison)` + headers `FUNNEL_ACTIVITY_COMPARISON_CSV_HEADERS` em
+`src/lib/csv.ts` — uma linha por natureza (as cinco na ordem canônica que `compareFunnelActivityMonths` já garante)
+com Transições (ano anterior)/(ano corrente) e Δ assinado (`csvSignedCount`, ASCII legível por máquina), fechando
+numa linha Total; rótulos plurais (`FUNNEL_ACTIVITY_KIND_PLURAL_LABELS`: Cadastros/Avanços/…) espelhando o card e o
+ritmo mensal, não os rótulos-verbo do feed. Média/movers ficam de fora — leituras destiladas do card, não a grão
+tabular; o CSV é a tabela por natureza + Total, espelho fiel de `gigSeasonalityComparisonToCsv`. Nova rota
+`GET /shows/funil/atividade/ritmo/comparativo/export`: MESMO gate do card na página (exige `?ano=` e atividade nos
+DOIS anos, senão 404), carrega os eventos dos dois anos (índice `[userId]`, recorte `createdAt` UTC, `Promise.all`),
+agrupa por mês, computa `compareFunnelActivityMonths` e serializa com BOM UTF-8; arquivo
+`ritmo-atividade-funil-comparativo-{ano}-vs-{ano-1}.csv`. Link `⬇ CSV` no cabeçalho do `RhythmComparison` junto ao
+delta total. **+2 testes** (`csv.test.ts`: dois períodos vazios → as cinco zeradas + Total; uma linha por natureza
+em ordem canônica com contagens dos dois anos, Δ assinado e Total). Zero migração/dependência. DoD verde:
+`npm run build` (nova rota, sem novo bundle de cliente), `npx tsc --noEmit`, `npm run lint` (0 warnings),
+`npm test` (**1794 testes**); smoke → `?ano=2026`, sem ano e a página 307→/login (auth-gated, sem 500);
+`npm audit` inalterado (10 advisories, zero dependência nova), ver D325. **Próximo possível** — levar o mesmo card
++ CSV do ritmo ao feed por mês se ficar denso; ou combinar ano+mês num único seletor no ritmo. **Antes disso,
+Sessão 331 —
 COMPARATIVO ANO A ANO do RITMO de atividade do funil (`/shows/funil/atividade/ritmo?ano=`), alinhando o ritmo às
 demais séries temporais do app (sazonalidade/D215, faixas de cachê, cidades/locais, fontes de renda), cada uma
 com o seu card "vs. {ano-1}":** o ritmo (D316/D320–D323) tinha recorte por ano, resumo e CSV, mas nenhum

@@ -294,6 +294,7 @@ export default async function FunnelActivityRhythmPage({
               comparison={comparison}
               year={activeYear}
               previousYear={activeYear - 1}
+              exportHref={`/shows/funil/atividade/ritmo/comparativo/export?ano=${activeYear}`}
             />
           )}
 
@@ -429,10 +430,12 @@ function RhythmComparison({
   comparison,
   year,
   previousYear,
+  exportHref,
 }: {
   comparison: FunnelActivityYearComparison;
   year: number;
   previousYear: number;
+  exportHref: string;
 }) {
   const { totalDelta, biggestGain, biggestDrop, byKind } = comparison;
 
@@ -442,10 +445,15 @@ function RhythmComparison({
         <h2 className="font-semibold">
           Ritmo {year} vs. {previousYear}
         </h2>
-        <span className={"text-sm font-semibold " + deltaTone(totalDelta)}>
-          {signedInt(totalDelta)}{" "}
-          {Math.abs(totalDelta) === 1 ? "transição" : "transições"}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className={"text-sm font-semibold " + deltaTone(totalDelta)}>
+            {signedInt(totalDelta)}{" "}
+            {Math.abs(totalDelta) === 1 ? "transição" : "transições"}
+          </span>
+          <a href={exportHref} className="text-xs text-brand-600 hover:underline">
+            ⬇ CSV
+          </a>
+        </div>
       </div>
       <p className="mb-4 text-xs text-gray-500">
         Seu funil se movimentou mais ou menos do que no ano anterior, e qual
