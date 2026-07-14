@@ -5,6 +5,44 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-14 — D320: Paginação do feed de atividade do funil (`?pagina=`, "mais recentes"/"mais antigas")
+- **Contexto:** a D315 entregou `/shows/funil/atividade` (feed reverso-cronológico das transições de status da
+  carteira), seguida de export CSV (D316), filtro por natureza (D317), agrupamento por dia (D318) e rótulos
+  relativos "Hoje"/"Ontem" (D319). A tela sempre carregou uma janela FIXA das 100 transições mais recentes,
+  sem meio de alcançar as anteriores — e o recorte por ano/`PeriodPicker`, o "próximo possível" restante da
+  linha, ficou explicitamente adiado "até haver paginação do feed". Paginar é o passo que fecha essa linha e
+  destrava o recorte por ano; é a peça mais valiosa e autocontida que restava aqui.
+- **Decisão:**
+  - Dois helpers puros novos em `src/lib/shows.ts`, irmãos dos outros parsers/recortes do feed:
+    `parseFeedPage(value)` (converte o cru de `?pagina=` num inteiro de página `>= 1`; ausente/vazio/"0"/
+    negativo/fracionário/texto caem em 1; aceita `string`/`string[]` — usa o primeiro — como os outros parsers)
+    e `sliceFeedPage(fetched, pageSize)` genérico (recebe um lote buscado com UM item extra — `pageSize + 1` —
+    e devolve `{ items, hasNext }`: a mera presença do item-sentinela indica que há uma página mais antiga
+    adiante, sem uma contagem/consulta extra).
+  - A página e a rota de export passaram a paginar o STREAM CRU de eventos via `skip: (page-1)*PAGE_SIZE,
+    take: PAGE_SIZE+1` (mesmo índice `[userId]`, mesma ordenação `createdAt desc`), descartar o sentinela com
+    `sliceFeedPage` e montar o feed sobre a fatia (`buildFunnelActivityFeed` sem `limit` — a janela já vem
+    recortada pelo banco). Navegação prev/next ("← Mais recentes" / "Mais antigas →") com `rel=prev`/`rel=next`
+    e selo "Página N", visível só quando há `hasPrev`/`hasNext`. `buildHref` passou a preservar `pagina` (só
+    entra na URL a partir da 2ª página) além de `natureza`/`agrupar`; o export espelha `?pagina=` e nomeia o
+    arquivo com sufixo `-p{N}` nas páginas > 1.
+  - **Escolhas de coerência:** (a) trocar de natureza (chips) VOLTA à 1ª página — as contagens dos chips valem
+    para a página exibida, então recomeçar do topo evita leitura enganosa; alternar Lista×Por dia PRESERVA a
+    página. (b) Filtro por natureza segue aplicado DENTRO da página (janela do stream cru), então a navegação
+    prev/next usa `hasNext` do lote cru (independe do filtro) — dá para paginar mesmo quando a página filtrada
+    fica vazia. (c) Novo estado vazio para página além do fim ("Nada nesta página — você passou do fim do
+    histórico", com link "Voltar ao início"), distinto do "nenhuma movimentação registrada ainda" da 1ª página.
+- **Justificativa:** paginação por `skip`/`take` (offset) é a mais simples e legível para um log pessoal de
+  centenas de eventos; o "buscar `pageSize+1`" detecta a próxima página sem um `count()` adicional. Manter a
+  paginação sobre o stream cru (não sobre o recorte filtrado) preserva a semântica já documentada de "contagens
+  dentro da janela exibida" e mantém a rota de export um espelho exato da tela.
+- **Alternativas consideradas:** (1) paginação por cursor (`createdAt` do último item) — mais robusta a
+  inserções concorrentes, mas exige codificar/decodificar o cursor e um desempate estável; a deriva do offset é
+  irrelevante para um log pessoal, então ficou o offset. (2) Recorte por ano/`PeriodPicker` direto — é o passo
+  seguinte que ESTA paginação destrava, mas depende de decidir a interação ano×página; adiado para uma sessão
+  própria. (3) Rolagem infinita no cliente — traria estado/JS ao que hoje é uma página de servidor pura; os
+  links prev/next mantêm tudo navegável sem bundle novo.
+
 ## 2026-07-13 — D317: Filtro por natureza da transição no feed de atividade do funil (`?natureza=`)
 - **Contexto:** a D315 entregou `/shows/funil/atividade` (feed reverso-cronológico das últimas 100 transições
   de status da carteira, já CLASSIFICADAS por natureza — cadastro/avanço/recuo/cancelamento/reabertura, com

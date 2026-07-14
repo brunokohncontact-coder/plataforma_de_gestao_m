@@ -7,6 +7,8 @@ import {
   filterFunnelActivityByKind,
   groupFunnelActivityByDay,
   parseFunnelActivityKind,
+  parseFeedPage,
+  sliceFeedPage,
   relativeDayLabel,
   FUNNEL_ACTIVITY_KINDS,
   type FunnelActivityEntry,
@@ -24,8 +26,8 @@ export const dynamic = "force-dynamic";
 
 type SearchParams = { [key: string]: string | string[] | undefined };
 
-/** Quantas transições recentes o feed carrega/exibe. */
-const ACTIVITY_LIMIT = 100;
+/** Quantas transições cada página do feed carrega/exibe. */
+const PAGE_SIZE = 100;
 
 const statusLabel = (s: string): string =>
   SHOW_STATUS_LABELS[s as ShowStatus] ?? s;
@@ -74,13 +76,19 @@ export default async function FunnelActivityPage({
     : searchParams?.agrupar;
   const groupByDay = rawAgrupar === "dia";
 
+  // Página do feed (`?pagina=`, 1 = a mais recente). Paginamos o stream cru de
+  // eventos: cada página é uma janela de `PAGE_SIZE` transições.
+  const page = parseFeedPage(searchParams?.pagina);
+
   // O feed vem direto dos eventos de status (índice `[userId]` em
-  // `ShowStatusEvent`), já ordenados e limitados no banco; juntamos só o título e
-  // a data do show para cada linha. O helper puro reordena/classifica.
-  const events = await prisma.showStatusEvent.findMany({
+  // `ShowStatusEvent`), já ordenados no banco; juntamos só o título e a data do
+  // show para cada linha. Buscamos UM item além da página (`PAGE_SIZE + 1`) para
+  // saber, sem uma contagem extra, se há uma página mais antiga adiante.
+  const fetched = await prisma.showStatusEvent.findMany({
     where: { userId: user.id },
     orderBy: { createdAt: "desc" },
-    take: ACTIVITY_LIMIT,
+    skip: (page - 1) * PAGE_SIZE,
+    take: PAGE_SIZE + 1,
     select: {
       showId: true,
       fromStatus: true,
@@ -90,8 +98,12 @@ export default async function FunnelActivityPage({
     },
   });
 
+  // Recorta o sentinela extra: `hasNext` indica se há transições mais antigas.
+  const { items: pageEvents, hasNext } = sliceFeedPage(fetched, PAGE_SIZE);
+  const hasPrev = page > 1;
+
   const feed = buildFunnelActivityFeed(
-    events.map((e) => ({
+    pageEvents.map((e) => ({
       showId: e.showId,
       showTitle: e.show?.title ?? "Show removido",
       showDate: e.show?.date ?? null,
@@ -99,7 +111,6 @@ export default async function FunnelActivityPage({
       toStatus: e.toStatus,
       at: e.createdAt,
     })),
-    { limit: ACTIVITY_LIMIT },
   );
 
   // Contagens por natureza (dentro da janela carregada) para os chips, e o
@@ -112,30 +123,40 @@ export default async function FunnelActivityPage({
   // cabeçalhos como "Hoje"/"Ontem" sem varrer o relógio dentro do helper puro.
   const todayKey = dayKey(new Date());
 
-  // Monta uma query string preservando `natureza` e `agrupar` com sobrescritas.
+  // Monta uma query string preservando `natureza`, `agrupar` e `pagina` com
+  // sobrescritas. `pagina` só entra na URL a partir da 2ª página (1 é o padrão).
   const buildHref = (over: {
     natureza?: FunnelActivityKind | null;
     agrupar?: boolean;
+    pagina?: number;
   }): string => {
     const kind = over.natureza !== undefined ? over.natureza : activeKind;
     const grouped = over.agrupar !== undefined ? over.agrupar : groupByDay;
+    const pg = over.pagina !== undefined ? over.pagina : page;
     const params = new URLSearchParams();
     if (kind !== null) params.set("natureza", kind);
     if (grouped) params.set("agrupar", "dia");
+    if (pg > 1) params.set("pagina", String(pg));
     const qs = params.toString();
     return qs ? `/shows/funil/atividade?${qs}` : "/shows/funil/atividade";
   };
 
-  // Chip de natureza: troca o filtro, mantém o modo de visualização atual.
+  // Chip de natureza: troca o filtro, volta à 1ª página (as contagens dos chips
+  // valem para a página exibida, então recomeçar do topo evita leitura enganosa).
   const chipHref = (kind: FunnelActivityKind | null): string =>
-    buildHref({ natureza: kind });
+    buildHref({ natureza: kind, pagina: 1 });
 
-  // O link de export espelha o filtro ativo para baixar exatamente o recorte
-  // visível.
-  const exportHref =
-    activeKind === null
-      ? "/shows/funil/atividade/export"
-      : `/shows/funil/atividade/export?natureza=${activeKind}`;
+  // O link de export espelha o filtro ativo E a página atual para baixar
+  // exatamente o recorte visível.
+  const exportHref = (() => {
+    const params = new URLSearchParams();
+    if (activeKind !== null) params.set("natureza", activeKind);
+    if (page > 1) params.set("pagina", String(page));
+    const qs = params.toString();
+    return qs
+      ? `/shows/funil/atividade/export?${qs}`
+      : "/shows/funil/atividade/export";
+  })();
 
   // Uma linha do feed — reusada na lista plana e dentro de cada dia agrupado.
   const renderEntry = (entry: FunnelActivityEntry, key: string | number) => {
@@ -218,14 +239,27 @@ export default async function FunnelActivityPage({
       </div>
 
       {feed.length === 0 ? (
-        <div className="card text-sm text-gray-500">
-          Nenhuma movimentação registrada ainda. Cadastre um show e mova-o pelo
-          funil (proposto → confirmado → realizado) para ver a atividade aqui.
-        </div>
+        hasPrev ? (
+          <div className="card text-sm text-gray-500">
+            Nada nesta página — você passou do fim do histórico.{" "}
+            <Link
+              href={buildHref({ pagina: 1 })}
+              className="text-brand-600 hover:underline"
+            >
+              Voltar ao início
+            </Link>
+            .
+          </div>
+        ) : (
+          <div className="card text-sm text-gray-500">
+            Nenhuma movimentação registrada ainda. Cadastre um show e mova-o pelo
+            funil (proposto → confirmado → realizado) para ver a atividade aqui.
+          </div>
+        )
       ) : (
         <>
           {/* Chips de filtro por natureza — "Todas" + as cinco naturezas, com
-              a contagem dentro da janela carregada; o ativo fica destacado. */}
+              a contagem dentro da página exibida; o ativo fica destacado. */}
           <nav
             className="flex flex-wrap gap-2"
             aria-label="Filtrar por natureza da transição"
@@ -339,29 +373,48 @@ export default async function FunnelActivityPage({
                 </section>
                 );
               })}
-              {feed.length >= ACTIVITY_LIMIT && (
-                <p className="px-1 text-xs text-gray-400">
-                  {activeKind === null
-                    ? `Mostrando as ${ACTIVITY_LIMIT} mudanças mais recentes.`
-                    : `Filtrando entre as ${ACTIVITY_LIMIT} mudanças mais recentes.`}
-                </p>
-              )}
             </div>
           ) : (
             <section className="card">
               <ol className="space-y-4">
                 {visible.map((entry, i) => renderEntry(entry, i))}
               </ol>
-              {feed.length >= ACTIVITY_LIMIT && (
-                <p className="mt-4 border-t pt-3 text-xs text-gray-400">
-                  {activeKind === null
-                    ? `Mostrando as ${ACTIVITY_LIMIT} mudanças mais recentes.`
-                    : `Filtrando entre as ${ACTIVITY_LIMIT} mudanças mais recentes.`}
-                </p>
-              )}
             </section>
           )}
         </>
+          )}
+
+          {/* Paginação do stream cru: "mais recentes" (página anterior) e "mais
+              antigas" (próxima). Preservam natureza e modo de visualização. */}
+          {(hasPrev || hasNext) && (
+            <nav
+              className="flex items-center justify-between gap-3 pt-1 text-sm"
+              aria-label="Paginação da atividade"
+            >
+              {hasPrev ? (
+                <Link
+                  href={buildHref({ pagina: page - 1 })}
+                  className="btn-secondary"
+                  rel="prev"
+                >
+                  ← Mais recentes
+                </Link>
+              ) : (
+                <span />
+              )}
+              <span className="text-xs text-gray-400">Página {page}</span>
+              {hasNext ? (
+                <Link
+                  href={buildHref({ pagina: page + 1 })}
+                  className="btn-secondary"
+                  rel="next"
+                >
+                  Mais antigas →
+                </Link>
+              ) : (
+                <span />
+              )}
+            </nav>
           )}
         </>
       )}

@@ -7,9 +7,33 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1758 testes**),
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1766 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 325 (D319) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 326 (D320) —
+PAGINAÇÃO do feed de atividade do funil (`/shows/funil/atividade?pagina=`), fechando a linha do feed e
+destravando o recorte por ano que ficava adiado "até haver paginação":** a tela (D315–D319) sempre carregou uma
+janela FIXA das 100 transições mais recentes, sem alcançar as anteriores. Duas peças puras + fiação de consulta,
+**zero migração/dependência nova**: `parseFeedPage(value)` (converte o cru de `?pagina=` num inteiro de página
+`>= 1`; ausente/vazio/"0"/negativo/fracionário/texto → 1; aceita `string`/`string[]`) e `sliceFeedPage(fetched,
+pageSize)` genérico (recebe um lote de `pageSize+1` e devolve `{items, hasNext}` — o item-sentinela extra sinaliza
+que há página mais antiga adiante, sem `count()` extra), ambos em `src/lib/shows.ts` junto de `relativeDayLabel`.
+A página e a rota de export passaram a paginar o STREAM CRU via `skip:(page-1)*PAGE_SIZE, take:PAGE_SIZE+1` (mesmo
+índice `[userId]`, mesma ordenação `createdAt desc`), descartar o sentinela com `sliceFeedPage` e montar o feed
+sobre a fatia (`buildFunnelActivityFeed` sem `limit`). Navegação prev/next "← Mais recentes"/"Mais antigas →"
+(`rel=prev`/`rel=next`) + selo "Página N", visível só quando há `hasPrev`/`hasNext`; `buildHref` preserva `pagina`
+(entra na URL só a partir da 2ª página) além de `natureza`/`agrupar`; export espelha `?pagina=` e sufixa o arquivo
+com `-p{N}` nas páginas > 1. Coerência: trocar de natureza (chips) VOLTA à 1ª página (as contagens valem para a
+página exibida); alternar Lista×Por dia PRESERVA a página; a navegação usa `hasNext` do lote cru (independe do
+filtro, dá pra paginar mesmo com página filtrada vazia); novo estado vazio "Nada nesta página — você passou do fim
+do histórico" (com "Voltar ao início") distinto do da 1ª página. **+8 testes** (`shows.test.ts`: `parseFeedPage`
+ausente-vazio→1 / inteiro válido / zero-negativo-fracionário-texto→1 / array usa o 1º; `sliceFeedPage` lote menor→
+sem próxima / exato→sem próxima / com sentinela→descarta e marca próxima / vazio→vazio sem próxima). DoD verde:
+`npm run build` (`/shows/funil/atividade` 318 B → 96,3 kB, sem novo bundle de cliente), `npx tsc --noEmit`,
+`npm run lint` (0 warnings), `npm test` (**1766 testes**); smoke → `/login` 200, `/shows/funil/atividade`,
+`?pagina=2`, `?agrupar=dia&natureza=cancel&pagina=3` e `/export?natureza=advance&pagina=2` 307→/login (auth-gated,
+sem 500); `npm audit` inalterado (10 advisories, zero dependência nova). **Próximo possível** — ~~paginação~~
+(entregue), recorte por `?ano=`/`PeriodPicker` (agora DESTRAVADO: decidir a interação ano×página) ou paginação por
+cursor se a deriva de offset incomodar. Ver D320. **Antes disso, Sessão 325 (D319) —
 RÓTULOS RELATIVOS "Hoje"/"Ontem" nos cabeçalhos de dia do feed agrupado (`/shows/funil/atividade?agrupar=dia`),
 fechando um dos "próximos possíveis" que a D318 deixou explícito (rótulos relativos no cabeçalho do dia; o
 outro, recorte por `?ano=`, segue adiado até haver paginação do feed):** a visão "Por dia" (D318) já quebra o
