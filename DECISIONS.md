@@ -11416,3 +11416,43 @@ contexto, decisão, justificativa e alternativas consideradas.
   `src/app/(app)/shows/funil/atividade/page.tsx` + testes em `src/lib/shows.test.ts`.
 - **Nota de concorrência:** número **D319** escolhido como o próximo livre acima do maior D referenciado no
   PROGRESS (D318). Se outra PR reivindicar D319, renumerar para o próximo livre no merge.
+
+## D324 — Comparativo ano a ano do ritmo de atividade do funil (`/shows/funil/atividade/ritmo?ano=`) (Sessão 326)
+
+- **Contexto:** o **ritmo de atividade do funil** (D316/D320–D323) já tem recorte por ano (`?ano=`), resumo
+  (mês mais/menos movimentado, média por mês, natureza predominante) e export CSV — mas nenhum comparativo
+  ano a ano, ao contrário de quase toda série temporal do app (sazonalidade de shows/D215, faixas de cachê,
+  atuação por cidade/local, fontes de renda), cada uma com o seu card "vs. {ano-1}". Ao selecionar um ano no
+  ritmo, faltava a leitura "meu funil se moveu mais ou menos do que no ano passado, e o que puxou a mudança?".
+- **Decisão:** um comparativo ano a ano no eixo do ritmo, exibido só com um ano específico selecionado e ambos
+  os períodos com atividade. Duas peças:
+  1. **Helper puro** `compareFunnelActivityMonths(current, previous)` em `src/lib/shows.ts` (+ tipos
+     `FunnelActivityYearComparison`/`FunnelActivityKindChange`): recebe duas linhas do tempo já agrupadas por
+     `groupFunnelActivityByMonth` e as resume via `summarizeFunnelActivityMonths` (reuso, sem recontar).
+     Devolve os agregados dos dois períodos — total, meses ativos, média por mês ativo — e a quebra por
+     natureza (`byKind`, sempre as cinco em ordem canônica, com `delta = atual − anterior`), destilando os dois
+     **movers**: a natureza que mais cresceu e a que mais caiu. Empate de mover quebra na ordem canônica de
+     `FUNNEL_ACTIVITY_KINDS` (o `>`/`<` estrito preserva a vista primeiro), a mesma disciplina do `dominantKind`.
+  2. **Fiação de apresentação** na `ritmo/page.tsx`: quando há `?ano=` e o ano atual tem atividade, busca os
+     eventos do ano anterior (`feedYearRangeUtc(activeYear - 1)`, índice `[userId]`, recorte por `createdAt`
+     UTC), agrupa por mês e, se o ano anterior também teve atividade, computa o comparativo. Card
+     `RhythmComparison` "Ritmo {ano} vs. {ano-1}": delta total no cabeçalho, totais/média/meses ativos lado a
+     lado, os dois movers em destaque e uma tabela por natureza (as cinco, com Δ colorido).
+- **Justificativa:** distinto do comparativo de **sazonalidade** (`compareGigSeasonality`), cujo valor é a forma
+  mensal jan→dez de um calendário comum; o ritmo é keyed por mês absoluto "YYYY-MM" e não há calendário comum
+  entre anos, então o comparativo destila os agregados do período (não casa mês a mês). Ancorar a leitura na
+  **natureza** que mudou (não num único número) responde à pergunta acionável do ritmo — mais negociação? mais
+  cancelamentos? — no espírito dos movers da sazonalidade. Reusar `summarizeFunnelActivityMonths` mantém a
+  contagem numa fonte só. A guarda "um ano específico + amostra nos dois lados" segue o precedente da D215.
+- **Alternativas consideradas:** (a) casar mês a mês como a sazonalidade — rejeitado: sem calendário comum entre
+  anos, os "12 baldes" não se alinham; o agregado + movers por natureza é a leitura certa para este eixo. (b)
+  export CSV do comparativo — **adiado**: o card de extremos + tabela por natureza já entrega o sinal na tela e
+  são só cinco linhas; sem atrito de planilha a fechar (reavaliar se surgir demanda). (c) mover para o cliente —
+  rejeitado: derivação pura cabe no Server Component (`force-dynamic`), o "ano anterior" é uma consulta indexada.
+- **Verificação:** DoD verde — `npm run build` (`/shows/funil/atividade/ritmo` 322 B → 96,3 kB, sem novo bundle
+  de cliente), `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1792 testes**, +5); smoke →
+  `?ano=2026` 307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories, zero dependência nova).
+  Mudança em `src/lib/shows.ts`, `src/app/(app)/shows/funil/atividade/ritmo/page.tsx` + testes em
+  `src/lib/shows.test.ts`.
+- **Nota de concorrência:** número **D324** escolhido como o próximo livre acima do maior D referenciado no
+  PROGRESS/DECISIONS (D323). Se outra PR reivindicar D324, renumerar para o próximo livre no merge.

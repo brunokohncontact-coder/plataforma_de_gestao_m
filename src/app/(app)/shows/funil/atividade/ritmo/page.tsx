@@ -5,11 +5,14 @@ import {
   buildFunnelActivityFeed,
   groupFunnelActivityByMonth,
   summarizeFunnelActivityMonths,
+  compareFunnelActivityMonths,
   parseFeedYear,
   feedYearRangeUtc,
   feedActivityYears,
   FUNNEL_ACTIVITY_KINDS,
   type FunnelActivityKind,
+  type FunnelActivityYearComparison,
+  type FunnelActivityKindChange,
 } from "@/lib/shows";
 import { PeriodPicker } from "@/components/PeriodPicker";
 
@@ -101,6 +104,39 @@ export default async function FunnelActivityRhythmPage({
   const maxTotal = Math.max(1, ...months.map((m) => m.total));
   const totalTransitions = feed.length;
   const summary = summarizeFunnelActivityMonths(months);
+
+  // Comparativo ano a ano do ritmo: só com um ano específico selecionado e ambos
+  // os anos com atividade. Busca os eventos do ano anterior (índice `[userId]`,
+  // recorte por `createdAt` em UTC), agrupa por mês e destila os movers por
+  // natureza. Segue "esperar por um ano específico + amostra nos dois lados",
+  // como o comparativo de sazonalidade (D215).
+  let comparison: FunnelActivityYearComparison | null = null;
+  if (activeYear !== null) {
+    const prevRange = feedYearRangeUtc(activeYear - 1);
+    const prevEvents = await prisma.showStatusEvent.findMany({
+      where: {
+        userId: user.id,
+        createdAt: { gte: prevRange.gte, lt: prevRange.lt },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { showId: true, fromStatus: true, toStatus: true, createdAt: true },
+    });
+    if (prevEvents.length > 0 && totalTransitions > 0) {
+      const prevMonths = groupFunnelActivityByMonth(
+        buildFunnelActivityFeed(
+          prevEvents.map((e) => ({
+            showId: e.showId,
+            showTitle: "",
+            showDate: null,
+            fromStatus: e.fromStatus,
+            toStatus: e.toStatus,
+            at: e.createdAt,
+          })),
+        ),
+      );
+      comparison = compareFunnelActivityMonths(months, prevMonths);
+    }
+  }
   const monthlyAverage = summary.averagePerMonth.toLocaleString("pt-BR", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 1,
@@ -251,6 +287,16 @@ export default async function FunnelActivityRhythmPage({
             </dl>
           </section>
 
+          {/* Comparativo ano a ano — só quando há um ano selecionado e ambos os
+              períodos têm atividade (o helper decide o resto). */}
+          {comparison && activeYear !== null && (
+            <RhythmComparison
+              comparison={comparison}
+              year={activeYear}
+              previousYear={activeYear - 1}
+            />
+          )}
+
           <section className="card">
             <h2 className="mb-1 font-semibold">Transições por mês</h2>
             <p className="mb-4 text-xs text-gray-500">
@@ -315,5 +361,172 @@ export default async function FunnelActivityRhythmPage({
         </>
       )}
     </div>
+  );
+}
+
+/** Inteiro assinado pt-BR: "+3" / "−2" / "0" (sinal de menos tipográfico). */
+const signedInt = (n: number): string =>
+  n > 0 ? `+${n}` : n < 0 ? `−${Math.abs(n)}` : "0";
+
+/** Média com no máximo uma casa decimal, em pt-BR. */
+const formatAverage = (n: number): string =>
+  n.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 1 });
+
+/** Tom pelo sinal do delta: verde sobe, vermelho cai, cinza estável. */
+const deltaTone = (delta: number): string =>
+  delta > 0 ? "text-emerald-600" : delta < 0 ? "text-red-600" : "text-gray-400";
+
+/**
+ * Cartão do mover — a natureza que mais cresceu ou mais caiu de um ano para o
+ * outro. `null` (nenhuma subiu/caiu) cai num placeholder neutro, como os movers
+ * da sazonalidade.
+ */
+function MoverCard({
+  label,
+  change,
+  tone,
+}: {
+  label: string;
+  change: FunnelActivityKindChange | null;
+  tone: "emerald" | "red";
+}) {
+  const ring = tone === "emerald" ? "border-emerald-200" : "border-red-200";
+  const text = tone === "emerald" ? "text-emerald-600" : "text-red-600";
+  return (
+    <div className={"rounded-lg border p-3 " + ring}>
+      <div className="text-xs text-gray-500">{label}</div>
+      {change ? (
+        <>
+          <div className="mt-1 flex items-center gap-1.5 text-lg font-semibold text-gray-900">
+            <span
+              className={"inline-block h-2.5 w-2.5 rounded-full " + KIND_META[change.kind].dot}
+              aria-hidden="true"
+            />
+            {KIND_META[change.kind].label}
+          </div>
+          <div className={"text-sm font-semibold " + text}>
+            {signedInt(change.delta)}{" "}
+            <span className="font-normal text-gray-400">
+              ({change.previous} → {change.current})
+            </span>
+          </div>
+        </>
+      ) : (
+        <div className="mt-1 text-lg font-semibold text-gray-400">—</div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Comparativo ano a ano do ritmo (`compareFunnelActivityMonths`): quanto o funil
+ * se movimentou mais/menos e qual natureza puxou a mudança. Espelha o card
+ * "Temporada {ano} vs. {ano-1}" da sazonalidade (D215) no eixo do ritmo — total e
+ * média no cabeçalho, os dois movers em destaque e a quebra por natureza numa
+ * tabela para conferência.
+ */
+function RhythmComparison({
+  comparison,
+  year,
+  previousYear,
+}: {
+  comparison: FunnelActivityYearComparison;
+  year: number;
+  previousYear: number;
+}) {
+  const { totalDelta, biggestGain, biggestDrop, byKind } = comparison;
+
+  return (
+    <section className="card">
+      <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="font-semibold">
+          Ritmo {year} vs. {previousYear}
+        </h2>
+        <span className={"text-sm font-semibold " + deltaTone(totalDelta)}>
+          {signedInt(totalDelta)}{" "}
+          {Math.abs(totalDelta) === 1 ? "transição" : "transições"}
+        </span>
+      </div>
+      <p className="mb-4 text-xs text-gray-500">
+        Seu funil se movimentou mais ou menos do que no ano anterior, e qual
+        natureza (cadastros, avanços, recuos, cancelamentos, reaberturas) explica a
+        diferença.
+      </p>
+
+      {/* Totais e médias lado a lado. */}
+      <dl className="mb-4 grid grid-cols-3 gap-4 text-sm">
+        <div>
+          <dt className="text-xs text-gray-500">Transições {year}</dt>
+          <dd className="text-lg font-semibold text-gray-900">
+            {comparison.totalCurrent}
+          </dd>
+          <dd className="text-xs text-gray-400">
+            {previousYear}: {comparison.totalPrevious}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-gray-500">Média por mês</dt>
+          <dd className="text-lg font-semibold text-gray-900">
+            {formatAverage(comparison.averageCurrent)}
+          </dd>
+          <dd className="text-xs text-gray-400">
+            {previousYear}: {formatAverage(comparison.averagePrevious)}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-gray-500">Meses ativos</dt>
+          <dd className="text-lg font-semibold text-gray-900">
+            {comparison.monthCountCurrent}
+          </dd>
+          <dd className="text-xs text-gray-400">
+            {previousYear}: {comparison.monthCountPrevious}
+          </dd>
+        </div>
+      </dl>
+
+      {/* Movers por natureza. */}
+      <div className="mb-4 grid gap-4 sm:grid-cols-2">
+        <MoverCard label="Natureza que mais cresceu" change={biggestGain} tone="emerald" />
+        <MoverCard label="Natureza que mais caiu" change={biggestDrop} tone="red" />
+      </div>
+
+      {/* Quebra por natureza — as cinco, mesmo as sem variação. */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b text-left text-xs text-gray-500">
+              <th className="pb-2 font-medium">Natureza</th>
+              <th className="pb-2 px-3 text-right font-medium">{previousYear}</th>
+              <th className="pb-2 px-3 text-right font-medium">{year}</th>
+              <th className="pb-2 text-right font-medium">Δ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {byKind.map((change) => (
+              <tr key={change.kind} className="border-b border-gray-100 last:border-0">
+                <td className="py-1.5">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span
+                      className={"inline-block h-2 w-2 rounded-full " + KIND_META[change.kind].dot}
+                      aria-hidden="true"
+                    />
+                    {KIND_META[change.kind].label}
+                  </span>
+                </td>
+                <td className="py-1.5 px-3 text-right tabular-nums text-gray-500">
+                  {change.previous}
+                </td>
+                <td className="py-1.5 px-3 text-right tabular-nums text-gray-900">
+                  {change.current}
+                </td>
+                <td className={"py-1.5 text-right tabular-nums font-medium " + deltaTone(change.delta)}>
+                  {signedInt(change.delta)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }

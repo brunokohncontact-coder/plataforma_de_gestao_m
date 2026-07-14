@@ -7,9 +7,32 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1787 testes**),
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1792 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 330 —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 331 —
+COMPARATIVO ANO A ANO do RITMO de atividade do funil (`/shows/funil/atividade/ritmo?ano=`), alinhando o ritmo às
+demais séries temporais do app (sazonalidade/D215, faixas de cachê, cidades/locais, fontes de renda), cada uma
+com o seu card "vs. {ano-1}":** o ritmo (D316/D320–D323) tinha recorte por ano, resumo e CSV, mas nenhum
+comparativo — ao selecionar um ano faltava "meu funil se moveu mais/menos do que no ano passado, e o que puxou?".
+Novo helper puro `compareFunnelActivityMonths(current, previous)` + tipos `FunnelActivityYearComparison`/
+`FunnelActivityKindChange` em `src/lib/shows.ts`: recebe duas linhas do tempo já agrupadas
+(`groupFunnelActivityByMonth`) e as resume via `summarizeFunnelActivityMonths` (reuso, sem recontar); devolve
+total/meses ativos/média por mês dos dois períodos + a quebra por natureza (`byKind`, sempre as cinco em ordem
+canônica, `delta = atual − anterior`) e destila os dois **movers** — a natureza que mais cresceu e a que mais
+caiu (empate na ordem canônica de `FUNNEL_ACTIVITY_KINDS`, disciplina do `dominantKind`). Distinto do comparativo
+de sazonalidade (`compareGigSeasonality`, forma mensal jan→dez de calendário comum): o ritmo é keyed por mês
+absoluto "YYYY-MM", sem calendário comum entre anos, então destila os agregados do período em vez de casar mês a
+mês. Card `RhythmComparison` "Ritmo {ano} vs. {ano-1}" em `ritmo/page.tsx` (delta total no cabeçalho, totais/média/
+meses ativos lado a lado, dois movers em destaque e tabela por natureza com Δ colorido), exibido só com `?ano=` e
+ambos os anos com atividade — o ano anterior vem de uma consulta indexada `[userId]` recortada por `createdAt`
+(`feedYearRangeUtc(activeYear - 1)`). **+5 testes** (`compareFunnelActivityMonths`: dois vazios; agregados+movers;
+sem subida/queda → movers nulos; empate na ordem canônica; `byKind` sempre as cinco). Zero migração/dependência.
+Export CSV do comparativo **adiado** (D324(b): o card + tabela por natureza já entregam o sinal, só cinco linhas).
+DoD verde: `npm run build` (`/shows/funil/atividade/ritmo` 322 B → 96,3 kB, sem novo bundle de cliente),
+`npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1792 testes**); smoke → `?ano=2026` 307→/login
+(auth-gated, sem 500); `npm audit` inalterado (10 advisories, zero dependência nova), ver D324.
+**Próximo possível** — export CSV do comparativo se surgir demanda de planilha; ou levar o mesmo card ao feed por
+mês se ficar denso. **Antes disso, Sessão 330 —
 RECORTE POR ANO (`?ano=`) no RITMO MENSAL da atividade do funil (`/shows/funil/atividade/ritmo`), fechando o
 "próximo possível" que a D323 deixou explícito e alinhando o ritmo ao feed (que já tinha `?ano=` desde D321):**
 o ritmo (D322/D323) sempre contou a carteira INTEIRA — ótimo para o pulso histórico, mas sem isolar "quão ativo

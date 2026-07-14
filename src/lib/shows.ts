@@ -2165,6 +2165,110 @@ export function summarizeFunnelActivityMonths(
   };
 }
 
+/** Variação de uma natureza entre dois períodos do ritmo (atual − anterior). */
+export interface FunnelActivityKindChange {
+  kind: FunnelActivityKind;
+  /** Transições desta natureza no período atual. */
+  current: number;
+  /** Transições desta natureza no período anterior. */
+  previous: number;
+  /** `current − previous`: positivo cresceu, negativo caiu. */
+  delta: number;
+}
+
+/**
+ * Comparativo do ritmo de atividade do funil entre dois períodos (tipicamente um
+ * ano × o ano anterior): quanto o funil se moveu mais/menos e QUAL natureza puxou
+ * a mudança.
+ */
+export interface FunnelActivityYearComparison {
+  /** Total de transições no período atual. */
+  totalCurrent: number;
+  /** Total de transições no período anterior. */
+  totalPrevious: number;
+  /** Variação do total (atual − anterior). */
+  totalDelta: number;
+  /** Meses ativos (com ao menos uma transição) no período atual. */
+  monthCountCurrent: number;
+  /** Meses ativos no período anterior. */
+  monthCountPrevious: number;
+  /** Média por mês ativo — atual (ratio cru; o chamador arredonda). */
+  averageCurrent: number;
+  /** Média por mês ativo — anterior. */
+  averagePrevious: number;
+  /** Variação por natureza — sempre as cinco, na ordem canônica. */
+  byKind: FunnelActivityKindChange[];
+  /** Natureza que mais CRESCEU (maior `delta > 0`; empate → ordem canônica); `null` se nenhuma subiu. */
+  biggestGain: FunnelActivityKindChange | null;
+  /** Natureza que mais CAIU (menor `delta < 0`; empate → ordem canônica); `null` se nenhuma caiu. */
+  biggestDrop: FunnelActivityKindChange | null;
+}
+
+/**
+ * Compara o **ritmo de atividade do funil** entre dois períodos, respondendo "meu
+ * funil se movimentou mais ou menos do que no ano passado, e qual natureza
+ * (cadastros/avanços/recuos/cancelamentos/reaberturas) explica a mudança?".
+ *
+ * Distinto do comparativo de sazonalidade (`compareGigSeasonality`), cujo valor é
+ * a **forma mensal** (jan→dez); aqui o ritmo é keyed por mês absoluto "YYYY-MM" e
+ * não há um calendário comum entre os anos, então o comparativo destila os
+ * agregados do período — total, média por mês ativo e a quebra por natureza — em
+ * vez de casar mês a mês. Os dois **movers** são a natureza que mais cresceu e a
+ * que mais caiu, no espírito dos movers de `compareGigSeasonality`.
+ *
+ * Puro, sem I/O: recebe duas linhas do tempo já agrupadas por
+ * `groupFunnelActivityByMonth` (cada uma sobre os eventos do seu período) e as
+ * resume via `summarizeFunnelActivityMonths` — reuso, sem recontar. Os empates de
+ * mover quebram na ordem canônica de `FUNNEL_ACTIVITY_KINDS` (o `>`/`<` estrito
+ * preserva a natureza vista primeiro), a mesma disciplina determinística do
+ * `dominantKind`. O chamador decide quando exibir (tipicamente só com um ano
+ * específico e ambos os períodos com transições).
+ */
+export function compareFunnelActivityMonths(
+  current: FunnelActivityMonthGroup[],
+  previous: FunnelActivityMonthGroup[],
+): FunnelActivityYearComparison {
+  const cur = summarizeFunnelActivityMonths(current);
+  const prev = summarizeFunnelActivityMonths(previous);
+
+  const byKind: FunnelActivityKindChange[] = FUNNEL_ACTIVITY_KINDS.map((kind) => ({
+    kind,
+    current: cur.byKind[kind],
+    previous: prev.byKind[kind],
+    delta: cur.byKind[kind] - prev.byKind[kind],
+  }));
+
+  let biggestGain: FunnelActivityKindChange | null = null;
+  let biggestDrop: FunnelActivityKindChange | null = null;
+  for (const change of byKind) {
+    if (
+      change.delta > 0 &&
+      (biggestGain === null || change.delta > biggestGain.delta)
+    ) {
+      biggestGain = change;
+    }
+    if (
+      change.delta < 0 &&
+      (biggestDrop === null || change.delta < biggestDrop.delta)
+    ) {
+      biggestDrop = change;
+    }
+  }
+
+  return {
+    totalCurrent: cur.totalTransitions,
+    totalPrevious: prev.totalTransitions,
+    totalDelta: cur.totalTransitions - prev.totalTransitions,
+    monthCountCurrent: cur.monthCount,
+    monthCountPrevious: prev.monthCount,
+    averageCurrent: cur.averagePerMonth,
+    averagePrevious: prev.averagePerMonth,
+    byKind,
+    biggestGain,
+    biggestDrop,
+  };
+}
+
 /**
  * Rótulo relativo de um dia do feed em relação a "hoje": "Hoje" para o próprio
  * dia, "Ontem" para o dia imediatamente anterior, `null` para qualquer outro (o
