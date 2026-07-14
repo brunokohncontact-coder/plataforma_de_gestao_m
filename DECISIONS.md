@@ -5,6 +5,43 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-14 — D323: Resumo do ritmo mensal da atividade do funil — leituras acionáveis sobre as barras
+- **Contexto:** a D322 entregou `/shows/funil/atividade/ritmo` (barras empilhadas por mês, o pulso do funil de
+  cabo a rabo). A tela mostra a cadência mês a mês, mas o músico tem de ler barra por barra para responder as
+  perguntas de um relance: qual foi o mês mais movimentado? e o mais calmo? quantas transições por mês, em
+  média? que natureza domina a carteira inteira? São leituras agregadas que saem dos MESMOS meses já contados,
+  sem consulta nova nem varredura extra — coerente com o padrão de "headline/resumo" das outras telas.
+- **Decisão:**
+  - Novo helper puro `summarizeFunnelActivityMonths(months)` em `src/lib/shows.ts` (consome o
+    `FunnelActivityMonthGroup[]` de `groupFunnelActivityByMonth`, não o feed cru): devolve
+    `FunnelActivityMonthsSummary` = `{monthCount, totalTransitions, averagePerMonth, busiest, quietest, byKind,
+    dominantKind}`. `averagePerMonth` é o ratio cru total÷meses-ativos (o chamador arredonda); `busiest`/
+    `quietest` são os grupos de maior/menor `total`; `byKind` é o total geral por natureza; `dominantKind` é a
+    natureza mais frequente no período inteiro. Pura e determinística — **não depende de "agora"**.
+  - Card "Resumo do ritmo" no topo de `/shows/funil/atividade/ritmo` (acima das barras): quatro leituras —
+    Média por mês (com "N em M meses"), Mês mais movimentado, Mês mais calmo e Natureza predominante (com o
+    ponto colorido do `KIND_META`). Média formatada em pt-BR com até 1 casa; meses por extenso reusando o
+    `formatMonthHeader` da página.
+- **Justificativa:**
+  - **Empates decididos pela ordem que o feed já garante** (recente→antigo): como `groupFunnelActivityByMonth`
+    entrega os meses do mais recente ao mais antigo e o resumo varre com `>`/`<` estritos, o mês mais/menos
+    movimentado num empate cai sempre no MAIS RECENTE — a leitura mais útil ("foi agora"), sem precisar de
+    relógio nem de critério de desempate arbitrário.
+  - **`dominantKind` na ordem canônica de `FUNNEL_ACTIVITY_KINDS`** no empate: o mesmo critério estável que o
+    resto da linha do feed já usa para listar naturezas, então cadastro vem antes de avanço, etc. — determinístico
+    e sem surpresa.
+  - **Zero I/O e zero dependência nova:** agrega só sobre os meses já contados pela peça anterior; a página não
+    faz consulta extra. O card usa `dl`/`dt`/`dd` (semântico) e a mesma paleta do feed.
+- **Alternativas consideradas:**
+  - *Comparar mês corrente vs. anterior (tendência)*: exigiria injetar "agora" e definir "mês corrente" — quebra
+    a pureza sem clock e mistura a leitura histórica com a do momento. Adiado; o resumo histórico é o passo
+    natural primeiro.
+  - *Média sobre TODOS os meses do intervalo (incluindo os vazios)*: descartado — o ritmo já só lista meses com
+    atividade, e "média por mês ATIVO" é a leitura honesta da cadência de negociação; incluir meses zerados
+    diluiria o número sem lastro no dado exibido.
+  - *Piso/nudge no Painel se a cadência despencar*: fora de escopo aqui — o resumo é descritivo; um alarme
+    exigiria limiar (hipótese a validar) e injeção de "agora". Fica como próximo possível.
+
 ## 2026-07-14 — D322: Ritmo mensal da atividade do funil (`/shows/funil/atividade/ritmo`) — uma leitura de cadência, não de log
 - **Contexto:** a linha do feed (`/shows/funil/atividade`, D315–D321) entrega o LOG cru das transições de
   status da carteira — paginado, filtrável por natureza, agrupável por dia, recortável por ano. Isso responde

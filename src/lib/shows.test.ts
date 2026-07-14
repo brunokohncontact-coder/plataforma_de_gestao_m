@@ -43,6 +43,7 @@ import {
   countFunnelActivityByKind,
   groupFunnelActivityByDay,
   groupFunnelActivityByMonth,
+  summarizeFunnelActivityMonths,
   relativeDayLabel,
   parseFeedPage,
   sliceFeedPage,
@@ -1824,6 +1825,72 @@ describe("groupFunnelActivityByMonth", () => {
       (n, g) => n + Object.values(g.byKind).reduce((s, v) => s + v, 0),
       0,
     );
+    expect(byKindSum).toBe(feed.length);
+  });
+});
+
+describe("summarizeFunnelActivityMonths", () => {
+  it("sem meses → tudo zerado, extremos e natureza predominante nulos", () => {
+    expect(summarizeFunnelActivityMonths([])).toEqual({
+      monthCount: 0,
+      totalTransitions: 0,
+      averagePerMonth: 0,
+      busiest: null,
+      quietest: null,
+      byKind: { create: 0, advance: 0, regress: 0, cancel: 0, reopen: 0 },
+      dominantKind: null,
+    });
+  });
+
+  it("agrega total, média, extremos, natureza predominante e total por natureza", () => {
+    const feed = buildFunnelActivityFeed([
+      // 2026-03: 3 transições (2 cadastros + 1 avanço)
+      { showId: "a", showTitle: "A", showDate: null, fromStatus: null, toStatus: "PROPOSED", at: "2026-03-02T09:00:00.000Z" },
+      { showId: "b", showTitle: "B", showDate: null, fromStatus: null, toStatus: "PROPOSED", at: "2026-03-05T09:00:00.000Z" },
+      { showId: "c", showTitle: "C", showDate: null, fromStatus: "PROPOSED", toStatus: "CONFIRMED", at: "2026-03-20T18:00:00.000Z" },
+      // 2026-02: 1 transição (cancelamento)
+      { showId: "d", showTitle: "D", showDate: null, fromStatus: "CONFIRMED", toStatus: "CANCELLED", at: "2026-02-11T12:00:00.000Z" },
+    ]);
+    const summary = summarizeFunnelActivityMonths(groupFunnelActivityByMonth(feed));
+    expect(summary.monthCount).toBe(2);
+    expect(summary.totalTransitions).toBe(4);
+    expect(summary.averagePerMonth).toBe(2);
+    expect(summary.busiest?.month).toBe("2026-03");
+    expect(summary.quietest?.month).toBe("2026-02");
+    expect(summary.byKind).toEqual({ create: 2, advance: 1, regress: 0, cancel: 1, reopen: 0 });
+    expect(summary.dominantKind).toBe("create");
+  });
+
+  it("empate de movimento → escolhe o mês mais recente (a ordem recente→antigo do feed)", () => {
+    const feed = buildFunnelActivityFeed([
+      { showId: "a", showTitle: "A", showDate: null, fromStatus: null, toStatus: "PROPOSED", at: "2026-05-10T09:00:00.000Z" },
+      { showId: "b", showTitle: "B", showDate: null, fromStatus: null, toStatus: "PROPOSED", at: "2026-04-10T09:00:00.000Z" },
+    ]);
+    const summary = summarizeFunnelActivityMonths(groupFunnelActivityByMonth(feed));
+    // Um mês cada → empate em busiest e quietest; ambos caem no mais recente.
+    expect(summary.busiest?.month).toBe("2026-05");
+    expect(summary.quietest?.month).toBe("2026-05");
+  });
+
+  it("empate de natureza predominante → segue a ordem canônica de FUNNEL_ACTIVITY_KINDS", () => {
+    const feed = buildFunnelActivityFeed([
+      // 1 cadastro e 1 avanço no total → empate; canônica coloca 'create' antes.
+      { showId: "a", showTitle: "A", showDate: null, fromStatus: null, toStatus: "PROPOSED", at: "2026-03-02T09:00:00.000Z" },
+      { showId: "b", showTitle: "B", showDate: null, fromStatus: "PROPOSED", toStatus: "CONFIRMED", at: "2026-03-20T18:00:00.000Z" },
+    ]);
+    const summary = summarizeFunnelActivityMonths(groupFunnelActivityByMonth(feed));
+    expect(summary.dominantKind).toBe("create");
+  });
+
+  it("a soma de byKind e o total batem com o feed original", () => {
+    const feed = buildFunnelActivityFeed([
+      { showId: "a", showTitle: "A", showDate: null, fromStatus: null, toStatus: "PROPOSED", at: "2026-03-10T09:00:00.000Z" },
+      { showId: "b", showTitle: "B", showDate: null, fromStatus: "PROPOSED", toStatus: "CONFIRMED", at: "2025-12-08T18:00:00.000Z" },
+      { showId: "c", showTitle: "C", showDate: null, fromStatus: "CONFIRMED", toStatus: "PROPOSED", at: "2025-12-05T12:00:00.000Z" },
+    ]);
+    const summary = summarizeFunnelActivityMonths(groupFunnelActivityByMonth(feed));
+    expect(summary.totalTransitions).toBe(feed.length);
+    const byKindSum = Object.values(summary.byKind).reduce((s, v) => s + v, 0);
     expect(byKindSum).toBe(feed.length);
   });
 });

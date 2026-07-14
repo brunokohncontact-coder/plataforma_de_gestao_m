@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import {
   buildFunnelActivityFeed,
   groupFunnelActivityByMonth,
+  summarizeFunnelActivityMonths,
   FUNNEL_ACTIVITY_KINDS,
   type FunnelActivityKind,
 } from "@/lib/shows";
@@ -59,6 +60,11 @@ export default async function FunnelActivityRhythmPage() {
   const months = groupFunnelActivityByMonth(feed);
   const maxTotal = Math.max(1, ...months.map((m) => m.total));
   const totalTransitions = feed.length;
+  const summary = summarizeFunnelActivityMonths(months);
+  const monthlyAverage = summary.averagePerMonth.toLocaleString("pt-BR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1,
+  });
 
   return (
     <div className="space-y-6">
@@ -106,6 +112,72 @@ export default async function FunnelActivityRhythmPage() {
               </span>
             ))}
           </div>
+
+          {/* Leituras do ritmo: mês mais/menos movimentado, média mensal e
+              natureza predominante — o resumo acionável sobre as barras. */}
+          <section className="card">
+            <h2 className="mb-3 font-semibold">Resumo do ritmo</h2>
+            <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <div>
+                <dt className="text-xs text-gray-500">Média por mês</dt>
+                <dd className="text-lg font-semibold text-gray-900">
+                  {monthlyAverage}
+                </dd>
+                <dd className="text-xs text-gray-400">
+                  {totalTransitions} em {summary.monthCount}{" "}
+                  {summary.monthCount === 1 ? "mês" : "meses"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-gray-500">Mês mais movimentado</dt>
+                <dd className="text-lg font-semibold capitalize text-gray-900">
+                  {summary.busiest ? formatMonthHeader(summary.busiest.month) : "—"}
+                </dd>
+                {summary.busiest && (
+                  <dd className="text-xs text-gray-400">
+                    {summary.busiest.total}{" "}
+                    {summary.busiest.total === 1 ? "transição" : "transições"}
+                  </dd>
+                )}
+              </div>
+              <div>
+                <dt className="text-xs text-gray-500">Mês mais calmo</dt>
+                <dd className="text-lg font-semibold capitalize text-gray-900">
+                  {summary.quietest ? formatMonthHeader(summary.quietest.month) : "—"}
+                </dd>
+                {summary.quietest && (
+                  <dd className="text-xs text-gray-400">
+                    {summary.quietest.total}{" "}
+                    {summary.quietest.total === 1 ? "transição" : "transições"}
+                  </dd>
+                )}
+              </div>
+              <div>
+                <dt className="text-xs text-gray-500">Natureza predominante</dt>
+                <dd className="flex items-center gap-1.5 text-lg font-semibold text-gray-900">
+                  {summary.dominantKind ? (
+                    <>
+                      <span
+                        className={
+                          "inline-block h-2.5 w-2.5 rounded-full " +
+                          KIND_META[summary.dominantKind].dot
+                        }
+                        aria-hidden="true"
+                      />
+                      {KIND_META[summary.dominantKind].label}
+                    </>
+                  ) : (
+                    "—"
+                  )}
+                </dd>
+                {summary.dominantKind && (
+                  <dd className="text-xs text-gray-400">
+                    {summary.byKind[summary.dominantKind]} no total
+                  </dd>
+                )}
+              </div>
+            </dl>
+          </section>
 
           <section className="card">
             <h2 className="mb-1 font-semibold">Transições por mês</h2>

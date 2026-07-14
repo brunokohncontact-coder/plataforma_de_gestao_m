@@ -7,9 +7,28 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1782 testes**),
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1787 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 328 (D322) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 329 (D323) —
+RESUMO DO RITMO MENSAL da atividade do funil (`/shows/funil/atividade/ritmo`): quatro leituras acionáveis num
+card no topo das barras — Média por mês (com "N em M meses"), Mês mais movimentado, Mês mais calmo e Natureza
+predominante:** a D322 entregou as barras empilhadas por mês (o pulso do funil de cabo a rabo), mas o músico
+tinha de ler barra por barra para as perguntas de relance (qual mês mais/menos movimentado? média por mês? que
+natureza domina?). Uma peça pura, sem I/O nem dependência nova, sobre os mesmos meses já contados:
+`summarizeFunnelActivityMonths(months)` em `src/lib/shows.ts` (consome o `FunnelActivityMonthGroup[]` de
+`groupFunnelActivityByMonth`, não o feed cru) → `FunnelActivityMonthsSummary` `{monthCount, totalTransitions,
+averagePerMonth, busiest, quietest, byKind, dominantKind}`. **Pura e determinística — não depende de "agora":**
+empates de mês mais/menos movimentado caem no MAIS RECENTE (a ordem recente→antigo que o feed já garante +
+comparação estrita), e `dominantKind` desempata pela ordem canônica de `FUNNEL_ACTIVITY_KINDS`. A média é o
+ratio cru total÷meses-ATIVOS (não dilui com meses vazios); a página arredonda em pt-BR até 1 casa. Card
+"Resumo do ritmo" (`dl`/`dt`/`dd` semântico, ponto colorido do `KIND_META` na natureza) acima das barras.
+**+5 testes** (`shows.test.ts`: sem meses→tudo zerado/nulos; agrega total/média/extremos/predominante/byKind;
+empate de movimento→mês mais recente; empate de natureza→ordem canônica; soma de byKind e total = feed). DoD
+verde: `npm run build` (sem novo bundle de cliente), `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test`
+(**1787 testes**); smoke → `/login` 200, `/shows/funil/atividade/ritmo` 307→/login (auth-gated, sem 500);
+`npm audit` inalterado (10 advisories, zero dependência nova). **Próximo possível** — recorte por ano
+(`?ano=`) no ritmo, ou um nudge no Painel se a cadência despencar (adiado: exigiria "agora" + limiar-hipótese).
+Ver D323. **Antes disso, Sessão 328 (D322) —
 RITMO MENSAL da atividade do funil (`/shows/funil/atividade/ritmo`), abrindo uma leitura NOVA sobre os mesmos
 eventos de status: não "o que se moveu" (o feed cru D315–D321) mas "quão ativo esteve o funil, mês a mês" — o
 pulso da carteira ao longo do tempo:** o feed lista as transições uma a uma (paginado/filtrado/agrupado por
