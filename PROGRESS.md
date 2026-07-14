@@ -7,9 +7,39 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1766 testes**),
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1776 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 326 (D320) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 327 (D321) —
+RECORTE POR ANO (`?ano=`) no feed de atividade do funil (`/shows/funil/atividade`), fechando a última peça
+adiada da linha do feed (o recorte por ano que a D320 destravou ao entregar a paginação):** o feed
+(D315–D320) já listava as transições da carteira paginadas, filtráveis por natureza e agrupáveis por dia, mas
+não dava para isolar "o que se moveu no funil em 2025 vs 2026" numa carteira longeva. Três peças puras + fiação
+de consulta + reuso de componente, **zero migração/dependência nova**: `parseFeedYear(value)` (converte o cru
+de `?ano=` num ano inteiro de 4 dígitos em `[2000, 2100]` ou `null`=todos; ausente/vazio/fora-da-faixa/
+fracionário/texto → `null`; aceita `string`/`string[]`), `feedYearRangeUtc(year)` (limites UTC meia-abertos
+`[gte, lt)` de um ano civil, mesmo `Date.UTC` de `dayKey`, para recortar `createdAt` no banco sem deriva de
+fuso) e `feedActivityYears(oldest, newest)` (lista decrescente de anos a oferecer, cobrindo todo o intervalo
+contínuo entre o evento mais antigo e o mais novo — inclusive anos sem atividade — para o seletor não ter
+buracos; `[]` se qualquer ponta nula), todos em `src/lib/shows.ts`. A página lê `?ano=` e, quando há recorte,
+adiciona `createdAt: { gte, lt }` à `where` do stream, então a paginação (D320) corre DENTRO do ano; os anos do
+seletor vêm de dois pontos indexados (`findFirst` mais antigo/mais novo, em `Promise.all`), independentes do
+recorte atual, para o seletor ficar estável mesmo num ano vazio. Reusa o `PeriodPicker` compartilhado (pílula
+"Todos" + uma por ano, `active={activeYear ?? "all"}`, `params` preservando `natureza`+`agrupar`);
+`buildHref`/`exportHref` passaram a preservar `ano` e o export nomeia o arquivo `atividade-funil-{ano}.csv`.
+Coerência: trocar de ano VOLTA à 1ª página (o `PeriodPicker` não carrega `pagina`); o seletor fica visível
+sempre que a carteira tem qualquer evento (fora do `feed.length===0`), inclusive num ano vazio, para o usuário
+não ficar preso; novo estado vazio "Nenhuma atividade registrada em {ano}" (com "Ver todos os anos") distinto
+do da carteira sem histórico. **+10 testes** (`shows.test.ts`: `parseFeedYear` ausente-vazio→null / ano válido
+/ fora-da-faixa-fracionário-texto→null / array usa o 1º; `feedYearRangeUtc` limites meia-abertos + virada de
+ano; `feedActivityYears` sem-eventos→[] / mesmo-ano / intervalo contínuo incl. anos vazios / ano UTC). DoD
+verde: `npm run build` (`/shows/funil/atividade` 317 B → 96,3 kB, sem novo bundle de cliente), `npx tsc
+--noEmit`, `npm run lint` (0 warnings), `npm test` (**1776 testes**); smoke autenticado (sessão de dev com
+eventos em 2025 e 2026) → seletor lista "Todos/2026/2025", `?ano=2025` mostra só o evento de 2025, `?ano=2024`
+(vazio) mostra a mensagem própria + "Ver todos os anos" com o seletor visível, `/export?ano=2026` baixa
+`atividade-funil-2026.csv` só com a linha de 2026; rotas 307→/login (auth-gated, sem 500); `npm audit`
+inalterado (10 advisories, zero dependência nova). **Próximo possível** — ~~recorte por ano~~ (entregue,
+fechando a linha do feed), ou combinar ano+mês no `PeriodPicker` (adiado: ganho marginal para um log) ou
+paginação por cursor se a deriva de offset incomodar. Ver D321. **Antes disso, Sessão 326 (D320) —
 PAGINAÇÃO do feed de atividade do funil (`/shows/funil/atividade?pagina=`), fechando a linha do feed e
 destravando o recorte por ano que ficava adiado "até haver paginação":** a tela (D315–D319) sempre carregou uma
 janela FIXA das 100 transições mais recentes, sem alcançar as anteriores. Duas peças puras + fiação de consulta,
