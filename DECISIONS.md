@@ -11456,3 +11456,40 @@ contexto, decisão, justificativa e alternativas consideradas.
   `src/lib/shows.test.ts`.
 - **Nota de concorrência:** número **D324** escolhido como o próximo livre acima do maior D referenciado no
   PROGRESS/DECISIONS (D323). Se outra PR reivindicar D324, renumerar para o próximo livre no merge.
+
+## D325 — Exportação CSV do comparativo ano a ano do ritmo do funil (`/shows/funil/atividade/ritmo/comparativo/export`) (Sessão 332)
+
+- **Contexto:** o comparativo ano a ano do ritmo (D324, card "Ritmo {ano} vs. {ano-1}") entregou o sinal na
+  tela — total, média, meses ativos, os dois movers e a tabela por natureza — mas foi o único comparativo do app
+  SEM export CSV: a D324(b) adiou-o ("são só cinco linhas; reavaliar se surgir demanda"), destoando dos irmãos
+  (`gigSeasonalityComparisonToCsv`, `weekdayPerformanceComparisonToCsv`, `cityProfitComparisonToCsv`), todos com
+  o seu `⬇ CSV`. Fechando essa inconsistência para que a planilha do ritmo espelhe a da tabela on-screen.
+- **Decisão:** duas peças, zero migração/dependência nova:
+  1. **Serializador puro** `funnelActivityComparisonToCsv(comparison)` em `src/lib/csv.ts` (+ headers
+     `FUNNEL_ACTIVITY_COMPARISON_CSV_HEADERS`): uma linha por natureza (as cinco, na ordem canônica que o helper
+     já garante) com "Transições (ano anterior)", "Transições (ano corrente)" e "Δ" (assinado via `csvSignedCount`,
+     ASCII legível por máquina), fechando numa linha "Total". Rótulos plurais das naturezas
+     (`FUNNEL_ACTIVITY_KIND_PLURAL_LABELS`: Cadastros/Avanços/…), espelhando o card e o ritmo mensal, não os
+     rótulos-verbo do feed. Espelho fiel de `gigSeasonalityComparisonToCsv` (linhas + Total).
+  2. **Rota** `GET /shows/funil/atividade/ritmo/comparativo/export?ano=YYYY`: mesmo gate do card na página — exige
+     `?ano=` e atividade nos DOIS anos (senão 404) — carrega os eventos dos dois anos (índice `[userId]`, recorte
+     `createdAt` UTC, em `Promise.all`), agrupa por mês, computa `compareFunnelActivityMonths` e serializa com BOM
+     UTF-8. Nome do arquivo `ritmo-atividade-funil-comparativo-{ano}-vs-{ano-1}.csv`. Link `⬇ CSV` no cabeçalho do
+     `RhythmComparison`, junto ao delta total.
+- **Justificativa:** a **média por mês e os movers ficam de fora** do CSV — são leituras destiladas do card, não a
+  grão tabular; o CSV é a tabela por natureza + Total, o mesmo recorte exportável dos comparativos irmãos, que a
+  planilha pode reagregar. Reusar `compareFunnelActivityMonths`/`csvSignedCount` mantém a lógica numa fonte só; a
+  rota é fiação idêntica ao export da sazonalidade (`compareGigSeasonality` → `…ToCsv`), com o mesmo 404 quando
+  não há dois períodos para comparar.
+- **Alternativas consideradas:** (a) incluir média/movers no CSV — rejeitado: quebraria a forma tabular uniforme
+  dos irmãos e a planilha deriva isso das colunas. (b) delta com "−" tipográfico como a UI — rejeitado: o ASCII
+  "-" é a convenção legível por máquina dos CSVs irmãos (`csvSignedCount`). (c) exportar o ritmo mensal já cobre —
+  rejeitado: aquele é o pulso mês a mês de um ano; este é a quebra por natureza atual × anterior, outra pergunta.
+- **Verificação:** DoD verde — `npm run build` (nova rota `/shows/funil/atividade/ritmo/comparativo/export`, sem
+  novo bundle de cliente), `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1794 testes**, +2);
+  smoke → `?ano=2026`, sem ano e a página 307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories,
+  zero dependência nova). Mudança em `src/lib/csv.ts`,
+  `src/app/(app)/shows/funil/atividade/ritmo/comparativo/export/route.ts` (nova),
+  `src/app/(app)/shows/funil/atividade/ritmo/page.tsx` + testes em `src/lib/csv.test.ts`.
+- **Nota de concorrência:** número **D325** escolhido como o próximo livre acima do maior D referenciado no
+  PROGRESS/DECISIONS (D324). Se outra PR reivindicar D325, renumerar para o próximo livre no merge.

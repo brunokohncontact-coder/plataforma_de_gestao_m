@@ -108,6 +108,7 @@ import type {
   FunnelActivityEntry,
   FunnelActivityKind,
   FunnelActivityMonthGroup,
+  FunnelActivityYearComparison,
 } from "./shows";
 import {
   summarizeMonthShows,
@@ -4022,6 +4023,63 @@ export function funnelActivityMonthlyToCsv(
       String(m.byKind.reopen),
     ]);
   }
+  return toCsv(out, delimiter);
+}
+
+export const FUNNEL_ACTIVITY_COMPARISON_CSV_HEADERS = [
+  "Natureza",
+  "Transições (ano anterior)",
+  "Transições (ano corrente)",
+  "Δ",
+] as const;
+
+/**
+ * Rótulos plurais das naturezas — espelham o card "Ritmo {ano} vs. {ano-1}" e o
+ * ritmo mensal (`FUNNEL_ACTIVITY_MONTHLY_CSV_HEADERS`), não os rótulos-verbo do
+ * feed (`FUNNEL_ACTIVITY_KIND_LABELS`, "Avançou"/"Recuou"): aqui a linha é uma
+ * contagem agregada da natureza, não um evento.
+ */
+const FUNNEL_ACTIVITY_KIND_PLURAL_LABELS: Record<FunnelActivityKind, string> = {
+  create: "Cadastros",
+  advance: "Avanços",
+  regress: "Recuos",
+  cancel: "Cancelamentos",
+  reopen: "Reaberturas",
+};
+
+/**
+ * Serializa o comparativo ano a ano do ritmo da atividade do funil
+ * (`compareFunnelActivityMonths`) em CSV — espelha a tabela "Quebra por natureza"
+ * do card "Ritmo {ano} vs. {ano-1}" de `/shows/funil/atividade/ritmo`. Uma linha
+ * por natureza (sempre as cinco, na ordem canônica que o helper já garante) com o
+ * nº de transições de cada ano e a variação assinada, seguida de uma linha
+ * "Total". Os deltas saem assinados (`csvSignedCount`: "+3"/"-2"/"0", ASCII para
+ * ficar legível por máquina, como os irmãos), diferente do "−" tipográfico da UI.
+ * Os anos concretos vão no nome do arquivo, não nos cabeçalhos (mesma convenção de
+ * `gigSeasonalityComparisonToCsv`/`weekdayPerformanceComparisonToCsv`). A média
+ * por mês e os movers ficam de fora — são leituras do card, não a grão tabular; o
+ * CSV é a tabela por natureza + Total, espelho fiel dos irmãos de comparativo.
+ * Mesma convenção pt-BR (delimitador ";"). Pura.
+ */
+export function funnelActivityComparisonToCsv(
+  comparison: FunnelActivityYearComparison,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(FUNNEL_ACTIVITY_COMPARISON_CSV_HEADERS)];
+  for (const change of comparison.byKind) {
+    out.push([
+      FUNNEL_ACTIVITY_KIND_PLURAL_LABELS[change.kind],
+      String(change.previous),
+      String(change.current),
+      csvSignedCount(change.delta),
+    ]);
+  }
+  out.push([
+    "Total",
+    String(comparison.totalPrevious),
+    String(comparison.totalCurrent),
+    csvSignedCount(comparison.totalDelta),
+  ]);
   return toCsv(out, delimiter);
 }
 
