@@ -44,6 +44,7 @@ import {
   groupFunnelActivityByDay,
   groupFunnelActivityByMonth,
   summarizeFunnelActivityMonths,
+  compareFunnelActivityMonths,
   relativeDayLabel,
   parseFeedPage,
   sliceFeedPage,
@@ -1892,6 +1893,125 @@ describe("summarizeFunnelActivityMonths", () => {
     expect(summary.totalTransitions).toBe(feed.length);
     const byKindSum = Object.values(summary.byKind).reduce((s, v) => s + v, 0);
     expect(byKindSum).toBe(feed.length);
+  });
+});
+
+describe("compareFunnelActivityMonths", () => {
+  const monthsOf = (
+    events: {
+      showId: string;
+      fromStatus: string | null;
+      toStatus: string;
+      at: string;
+    }[],
+  ) =>
+    groupFunnelActivityByMonth(
+      buildFunnelActivityFeed(
+        events.map((e) => ({
+          showId: e.showId,
+          showTitle: "",
+          showDate: null,
+          fromStatus: e.fromStatus,
+          toStatus: e.toStatus,
+          at: e.at,
+        })),
+      ),
+    );
+
+  it("dois períodos vazios → tudo zerado, sem movers", () => {
+    expect(compareFunnelActivityMonths([], [])).toEqual({
+      totalCurrent: 0,
+      totalPrevious: 0,
+      totalDelta: 0,
+      monthCountCurrent: 0,
+      monthCountPrevious: 0,
+      averageCurrent: 0,
+      averagePrevious: 0,
+      byKind: [
+        { kind: "create", current: 0, previous: 0, delta: 0 },
+        { kind: "advance", current: 0, previous: 0, delta: 0 },
+        { kind: "regress", current: 0, previous: 0, delta: 0 },
+        { kind: "cancel", current: 0, previous: 0, delta: 0 },
+        { kind: "reopen", current: 0, previous: 0, delta: 0 },
+      ],
+      biggestGain: null,
+      biggestDrop: null,
+    });
+  });
+
+  it("agrega totais/médias e destila o mover que mais cresceu e o que mais caiu", () => {
+    // Ano atual: 2 cadastros + 1 avanço em 2 meses; ano anterior: 1 cadastro + 3 avanços em 1 mês.
+    const current = monthsOf([
+      { showId: "a", fromStatus: null, toStatus: "PROPOSED", at: "2026-03-02T09:00:00.000Z" },
+      { showId: "b", fromStatus: null, toStatus: "PROPOSED", at: "2026-04-05T09:00:00.000Z" },
+      { showId: "c", fromStatus: "PROPOSED", toStatus: "CONFIRMED", at: "2026-04-20T18:00:00.000Z" },
+    ]);
+    const previous = monthsOf([
+      { showId: "d", fromStatus: null, toStatus: "PROPOSED", at: "2025-06-02T09:00:00.000Z" },
+      { showId: "e", fromStatus: "PROPOSED", toStatus: "CONFIRMED", at: "2025-06-05T09:00:00.000Z" },
+      { showId: "f", fromStatus: "PROPOSED", toStatus: "CONFIRMED", at: "2025-06-06T09:00:00.000Z" },
+      { showId: "g", fromStatus: "PROPOSED", toStatus: "CONFIRMED", at: "2025-06-07T09:00:00.000Z" },
+    ]);
+    const cmp = compareFunnelActivityMonths(current, previous);
+    expect(cmp.totalCurrent).toBe(3);
+    expect(cmp.totalPrevious).toBe(4);
+    expect(cmp.totalDelta).toBe(-1);
+    expect(cmp.monthCountCurrent).toBe(2);
+    expect(cmp.monthCountPrevious).toBe(1);
+    expect(cmp.averageCurrent).toBe(1.5);
+    expect(cmp.averagePrevious).toBe(4);
+    // create: 2 − 1 = +1 (subiu); advance: 1 − 3 = −2 (caiu).
+    expect(cmp.byKind.find((c) => c.kind === "create")).toEqual({
+      kind: "create",
+      current: 2,
+      previous: 1,
+      delta: 1,
+    });
+    expect(cmp.byKind.find((c) => c.kind === "advance")).toEqual({
+      kind: "advance",
+      current: 1,
+      previous: 3,
+      delta: -2,
+    });
+    expect(cmp.biggestGain?.kind).toBe("create");
+    expect(cmp.biggestDrop?.kind).toBe("advance");
+  });
+
+  it("nenhuma natureza sobe/cai → movers nulos", () => {
+    const same = monthsOf([
+      { showId: "a", fromStatus: null, toStatus: "PROPOSED", at: "2026-03-02T09:00:00.000Z" },
+      { showId: "b", fromStatus: "PROPOSED", toStatus: "CONFIRMED", at: "2025-03-02T09:00:00.000Z" },
+    ]);
+    const other = monthsOf([
+      { showId: "c", fromStatus: null, toStatus: "PROPOSED", at: "2024-03-02T09:00:00.000Z" },
+      { showId: "d", fromStatus: "PROPOSED", toStatus: "CONFIRMED", at: "2024-04-02T09:00:00.000Z" },
+    ]);
+    const cmp = compareFunnelActivityMonths(same, other);
+    expect(cmp.totalDelta).toBe(0);
+    expect(cmp.biggestGain).toBeNull();
+    expect(cmp.biggestDrop).toBeNull();
+  });
+
+  it("empate de mover → quebra na ordem canônica de FUNNEL_ACTIVITY_KINDS", () => {
+    // create +1 e advance +1 (mesmo delta); canônica coloca 'create' antes.
+    const current = monthsOf([
+      { showId: "a", fromStatus: null, toStatus: "PROPOSED", at: "2026-03-02T09:00:00.000Z" },
+      { showId: "b", fromStatus: "PROPOSED", toStatus: "CONFIRMED", at: "2026-03-05T09:00:00.000Z" },
+    ]);
+    const cmp = compareFunnelActivityMonths(current, []);
+    expect(cmp.biggestGain?.kind).toBe("create");
+    expect(cmp.biggestDrop).toBeNull();
+  });
+
+  it("byKind cobre sempre as cinco naturezas na ordem canônica", () => {
+    const cmp = compareFunnelActivityMonths([], []);
+    expect(cmp.byKind.map((c) => c.kind)).toEqual([
+      "create",
+      "advance",
+      "regress",
+      "cancel",
+      "reopen",
+    ]);
   });
 });
 
