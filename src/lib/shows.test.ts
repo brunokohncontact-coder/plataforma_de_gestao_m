@@ -45,6 +45,7 @@ import {
   groupFunnelActivityByMonth,
   summarizeFunnelActivityMonths,
   compareFunnelActivityMonths,
+  funnelActivitySeasonality,
   relativeDayLabel,
   parseFeedPage,
   sliceFeedPage,
@@ -1893,6 +1894,127 @@ describe("summarizeFunnelActivityMonths", () => {
     expect(summary.totalTransitions).toBe(feed.length);
     const byKindSum = Object.values(summary.byKind).reduce((s, v) => s + v, 0);
     expect(byKindSum).toBe(feed.length);
+  });
+});
+
+describe("funnelActivitySeasonality", () => {
+  const feedOf = (
+    events: {
+      showId: string;
+      fromStatus: string | null;
+      toStatus: string;
+      at: string;
+    }[],
+  ) =>
+    buildFunnelActivityFeed(
+      events.map((e) => ({
+        showId: e.showId,
+        showTitle: "",
+        showDate: null,
+        fromStatus: e.fromStatus,
+        toStatus: e.toStatus,
+        at: e.at,
+      })),
+    );
+
+  it("feed vazio → 12 meses zerados, extremos e natureza predominante nulos", () => {
+    const season = funnelActivitySeasonality([]);
+    expect(season.months).toHaveLength(12);
+    expect(season.months.map((m) => m.month)).toEqual([
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+    ]);
+    expect(season.months.every((m) => m.total === 0 && m.years === 0)).toBe(true);
+    expect(season.months[0].label).toBe("Janeiro");
+    expect(season.totalTransitions).toBe(0);
+    expect(season.yearsObserved).toBe(0);
+    expect(season.busiest).toBeNull();
+    expect(season.quietest).toBeNull();
+    expect(season.byKind).toEqual({ create: 0, advance: 0, regress: 0, cancel: 0, reopen: 0 });
+    expect(season.dominantKind).toBeNull();
+  });
+
+  it("colapsa os anos num único calendário (fev de 2024 e 2025 caem no mesmo balde)", () => {
+    const season = funnelActivitySeasonality(
+      feedOf([
+        { showId: "a", fromStatus: null, toStatus: "PROPOSED", at: "2024-02-10T09:00:00.000Z" },
+        { showId: "b", fromStatus: null, toStatus: "PROPOSED", at: "2025-02-20T09:00:00.000Z" },
+        { showId: "c", fromStatus: "PROPOSED", toStatus: "CONFIRMED", at: "2025-02-25T09:00:00.000Z" },
+      ]),
+    );
+    const feb = season.months[1];
+    expect(feb.month).toBe(1);
+    expect(feb.total).toBe(3);
+    expect(feb.byKind).toEqual({ create: 2, advance: 1, regress: 0, cancel: 0, reopen: 0 });
+    // 2 anos distintos com movimento em fevereiro → média por ano-ativo = 3/2.
+    expect(feb.years).toBe(2);
+    expect(feb.avgPerYear).toBeCloseTo(1.5);
+    expect(feb.dominantKind).toBe("create");
+    expect(season.yearsObserved).toBe(2);
+    expect(season.totalTransitions).toBe(3);
+    // Fevereiro é o único mês ativo → mais movimentado e (sozinho) não conta como calmo distinto.
+    expect(season.busiest?.month).toBe(1);
+    expect(season.quietest?.month).toBe(1);
+  });
+
+  it("mais movimentado / mais calmo saem por total, entre os meses com transições", () => {
+    const season = funnelActivitySeasonality(
+      feedOf([
+        // Março: 3 transições
+        { showId: "a", fromStatus: null, toStatus: "PROPOSED", at: "2026-03-02T09:00:00.000Z" },
+        { showId: "b", fromStatus: null, toStatus: "PROPOSED", at: "2026-03-05T09:00:00.000Z" },
+        { showId: "c", fromStatus: "PROPOSED", toStatus: "CONFIRMED", at: "2026-03-20T09:00:00.000Z" },
+        // Agosto: 1 transição
+        { showId: "d", fromStatus: "CONFIRMED", toStatus: "CANCELLED", at: "2026-08-11T09:00:00.000Z" },
+      ]),
+    );
+    expect(season.busiest?.month).toBe(2); // março
+    expect(season.busiest?.total).toBe(3);
+    expect(season.quietest?.month).toBe(7); // agosto
+    expect(season.quietest?.total).toBe(1);
+    // Janeiro (vazio) não é o "mais calmo" — ausência de dado, não calmaria.
+    expect(season.months[0].total).toBe(0);
+  });
+
+  it("empate de total no mais movimentado/calmo → mês mais cedo (iteração jan→dez)", () => {
+    const season = funnelActivitySeasonality(
+      feedOf([
+        // Abril: 1
+        { showId: "a", fromStatus: null, toStatus: "PROPOSED", at: "2026-04-10T09:00:00.000Z" },
+        // Setembro: 1
+        { showId: "b", fromStatus: null, toStatus: "PROPOSED", at: "2026-09-10T09:00:00.000Z" },
+      ]),
+    );
+    // Ambos empatam em total=1 → o mais cedo (abril=3) vence os dois extremos.
+    expect(season.busiest?.month).toBe(3);
+    expect(season.quietest?.month).toBe(3);
+  });
+
+  it("share e byKind global somam corretamente; natureza predominante desempata pela ordem canônica", () => {
+    const season = funnelActivitySeasonality(
+      feedOf([
+        // 1 cadastro + 1 avanço no total → empate; canônica coloca 'create' antes.
+        { showId: "a", fromStatus: null, toStatus: "PROPOSED", at: "2026-03-02T09:00:00.000Z" },
+        { showId: "b", fromStatus: "PROPOSED", toStatus: "CONFIRMED", at: "2026-06-20T09:00:00.000Z" },
+      ]),
+    );
+    expect(season.byKind).toEqual({ create: 1, advance: 1, regress: 0, cancel: 0, reopen: 0 });
+    expect(season.dominantKind).toBe("create");
+    // Cada mês ativo detém metade do total.
+    expect(season.months[2].share).toBeCloseTo(0.5); // março
+    expect(season.months[5].share).toBeCloseTo(0.5); // junho
+    // A soma das participações dos 12 meses é 1 (só os ativos contribuem).
+    const shareSum = season.months.reduce((s, m) => s + m.share, 0);
+    expect(shareSum).toBeCloseTo(1);
+  });
+
+  it("usa o mês em UTC (transição no último instante do mês não vaza)", () => {
+    const season = funnelActivitySeasonality(
+      feedOf([
+        { showId: "x", fromStatus: null, toStatus: "PROPOSED", at: "2026-01-31T23:30:00.000Z" },
+      ]),
+    );
+    expect(season.months[0].total).toBe(1); // janeiro
+    expect(season.months[1].total).toBe(0); // fevereiro
   });
 });
 

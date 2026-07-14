@@ -7,9 +7,37 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1794 testes**),
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1802 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 332 —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 333 —
+SAZONALIDADE da ATIVIDADE do FUNIL (`/shows/funil/atividade/sazonalidade`), um eixo analítico NOVO (não mais um CSV
+de algo existente): em que meses do ANO você costuma fazer o trabalho de agendamento — cadastros, avanços,
+negociação — somando TODAS as temporadas. É a irmã sazonal do RITMO: onde o ritmo é a série temporal absoluta
+(`groupFunnelActivityByMonth`, meses "YYYY-MM" do mais recente ao mais antigo), a sazonalidade COLAPSA os anos num
+único calendário de 12 meses (fev/2024 e fev/2025 caem no mesmo balde "Fevereiro"), revelando "quando o telefone
+costuma tocar e quando é hora de correr atrás" — pergunta que o ritmo não responde numa carteira longeva. Nova peça
+pura `funnelActivitySeasonality(feed)` + tipos `FunnelActivitySeasonMonth`/`FunnelActivitySeasonality` em
+`src/lib/shows.ts`: agrega por `entry.at.getUTCMonth()` somando todos os anos; devolve sempre os 12 meses (mesmo
+zerados, para expor os vales), cada um com total, quebra por natureza, `years` (anos distintos com movimento),
+`avgPerYear` (total ÷ anos-ativos — "um fevereiro típico", denominador que não dilui por anos vazios, mesmo critério
+de `monthlySeasonality`/D35), `share` (participação no total) e `dominantKind` (empate → ordem canônica de
+`FUNNEL_ACTIVITY_KINDS`); no agregado, `busiest`/`quietest` (por total entre meses com transições, empate → mês mais
+cedo), `yearsObserved`, `byKind` e `dominantKind` globais. Página com legenda, três destaques (mais movimentado /
+mais calmo / natureza predominante) e barras empilhadas por natureza jan→dez (espelha o ritmo); SEM recorte por ano
+(a sazonalidade só faz sentido somando as temporadas — nada de `PeriodPicker`). CSV
+`funnelActivitySeasonalityToCsv` + `FUNNEL_ACTIVITY_SEASONALITY_CSV_HEADERS` em `src/lib/csv.ts` (Mês/Total/Anos
+ativos/Média-ano/%/as 5 naturezas/Destaque + linha Total; reusa `csvRate`/`csvShare`) na rota
+`/shows/funil/atividade/sazonalidade/export`. Links `🗓 Sazonalidade` no feed e no ritmo (cluster mútuo, como o
+ritmo↔feed); NÃO catalogada em `/relatorios` (segue o precedente do ritmo, a outra drill-down da atividade).
+**+8 testes** (`shows.test.ts` +6: vazio → 12 meses zerados; colapso de anos + avgPerYear; extremos por total só entre
+ativos; empate → mês mais cedo; share/byKind/dominante canônico; mês em UTC. `csv.test.ts` +2: vazio → 12 meses +
+Total; linha por mês com média/participação/destaque). Zero migração/dependência. DoD verde: `npm run build` (nova
+rota `/shows/funil/atividade/sazonalidade` 324 B → 96,3 kB + export, sem novo bundle de cliente), `npx tsc --noEmit`,
+`npm run lint` (0 warnings), `npm test` (**1802 testes**); smoke → `/login` 200, a página e o export 307→/login
+(auth-gated, sem 500); `npm audit` inalterado (10 advisories, zero dependência nova), ver D326. **Próximo possível** —
+comparativo ano a ano da sazonalidade da atividade (irmão de `compareGigSeasonality`, quais meses do calendário
+esquentaram/esfriaram vs. o ano anterior), se a carteira tiver histórico longo o bastante; ou uma manchete no Painel
+("você costuma prospectar em fev–mar; estamos em janeiro e o funil está parado"). **Antes disso, Sessão 332 —
 EXPORTAÇÃO CSV do COMPARATIVO ANO A ANO do RITMO do funil (`/shows/funil/atividade/ritmo/comparativo/export?ano=`),
 fechando a última inconsistência da linha do ritmo — era o único comparativo do app sem `⬇ CSV` (a D324(b) o
 adiara por serem "só cinco linhas"), enquanto sazonalidade/dias-semana/cidades/locais todos exportam:** nova peça

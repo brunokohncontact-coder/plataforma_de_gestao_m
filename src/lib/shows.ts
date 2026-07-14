@@ -2165,6 +2165,159 @@ export function summarizeFunnelActivityMonths(
   };
 }
 
+/** Uma leitura sazonal de um mês do calendário na atividade do funil. */
+export interface FunnelActivitySeasonMonth {
+  /** Mês do ano: 0 = janeiro .. 11 = dezembro (UTC). */
+  month: number;
+  /** Rótulo longo ("Janeiro", "Fevereiro"…). */
+  label: string;
+  /** Total de transições neste mês do calendário, somadas todas as edições anuais. */
+  total: number;
+  /** Quebra por natureza — sempre as cinco chaves (zeradas quando ausentes). */
+  byKind: Record<FunnelActivityKind, number>;
+  /** Nº de anos distintos com ao menos uma transição neste mês do calendário. */
+  years: number;
+  /**
+   * Média por ano-ativo: total ÷ years (ratio cru, `0` se years === 0) — um
+   * "fevereiro típico". O denominador são os anos COM movimento naquele mês, não a
+   * amplitude total do histórico, para a média não ser diluída por edições vazias
+   * de um histórico curto (mesmo critério de `monthlySeasonality`, ver D35). O
+   * chamador arredonda.
+   */
+  avgPerYear: number;
+  /** Participação no total geral de transições = total ÷ totalTransitions (0..1). */
+  share: number;
+  /**
+   * Natureza predominante neste mês (empate → ordem canônica de
+   * `FUNNEL_ACTIVITY_KINDS`); `null` quando o mês não teve transições.
+   */
+  dominantKind: FunnelActivityKind | null;
+}
+
+/** Leitura sazonal da atividade do funil por mês do ano (`funnelActivitySeasonality`). */
+export interface FunnelActivitySeasonality {
+  /** Sempre 12 entradas, de janeiro (0) a dezembro (11), inclusive meses zerados. */
+  months: FunnelActivitySeasonMonth[];
+  /** Total de transições consideradas (= tamanho do feed). */
+  totalTransitions: number;
+  /** Nº de anos distintos com qualquer transição (amplitude do histórico). */
+  yearsObserved: number;
+  /**
+   * Mês do calendário mais movimentado — maior total (empate → mês mais cedo);
+   * `null` quando não há transição. Onde a temporada de agendamento esquenta.
+   */
+  busiest: FunnelActivitySeasonMonth | null;
+  /**
+   * Mês mais calmo entre os que tiveram alguma transição (`total > 0`; empate →
+   * mês mais cedo); `null` quando não há transição. Um mês historicamente vazio
+   * não é "calmo", é ausência de dado.
+   */
+  quietest: FunnelActivitySeasonMonth | null;
+  /** Total geral por natureza (sempre as cinco chaves, zeradas quando ausentes). */
+  byKind: Record<FunnelActivityKind, number>;
+  /**
+   * Natureza predominante no ano inteiro (empate → ordem canônica de
+   * `FUNNEL_ACTIVITY_KINDS`); `null` quando não há nenhuma transição.
+   */
+  dominantKind: FunnelActivityKind | null;
+}
+
+/** Natureza dominante de um mapa de contagens (empate → ordem de `FUNNEL_ACTIVITY_KINDS`). */
+function dominantFunnelActivityKind(
+  counts: Record<FunnelActivityKind, number>,
+): FunnelActivityKind | null {
+  let dominant: FunnelActivityKind | null = null;
+  for (const kind of FUNNEL_ACTIVITY_KINDS) {
+    if (counts[kind] === 0) continue;
+    if (dominant === null || counts[kind] > counts[dominant]) dominant = kind;
+  }
+  return dominant;
+}
+
+/**
+ * Agrega a atividade do funil por MÊS DO CALENDÁRIO (jan→dez), somando todos os
+ * anos do histórico — respondendo "em que época do ano você costuma fazer o
+ * trabalho de agendamento (cadastros, avanços, negociação)?". Distinto do RITMO
+ * (`groupFunnelActivityByMonth`), que é a série temporal absoluta ("YYYY-MM"): aqui
+ * os anos colapsam num único calendário de 12 meses (fev/2024 e fev/2025 caem no
+ * mesmo balde "Fevereiro"), revelando a sua sazonalidade de prospecção — quando o
+ * telefone costuma tocar e quando é hora de correr atrás.
+ *
+ * - `months` traz sempre os 12 meses, mesmo os zerados, para o gráfico não pular
+ *   meses e expor os vales da temporada.
+ * - `avgPerYear` usa como denominador os anos COM movimento naquele mês, medindo
+ *   "um fevereiro típico em que houve trabalho" (mesmo critério de
+ *   `monthlySeasonality`, D35).
+ * - Mais movimentado / mais calmo saem por `total`, entre os meses com transições;
+ *   os empates caem no mês mais cedo (iteração jan→dez com `>`/`<` estritos).
+ * - O mês é extraído em UTC (`getUTCMonth`), estável em teste. Pura; não depende de
+ *   "agora" (o feed já traz `at` resolvido).
+ */
+export function funnelActivitySeasonality(
+  feed: FunnelActivityEntry[],
+): FunnelActivitySeasonality {
+  const byMonth: Array<Record<FunnelActivityKind, number>> = Array.from(
+    { length: 12 },
+    () => ({ create: 0, advance: 0, regress: 0, cancel: 0, reopen: 0 }),
+  );
+  const monthYears: Array<Set<number>> = Array.from({ length: 12 }, () => new Set());
+  const allYears = new Set<number>();
+  const grandByKind: Record<FunnelActivityKind, number> = {
+    create: 0,
+    advance: 0,
+    regress: 0,
+    cancel: 0,
+    reopen: 0,
+  };
+
+  for (const entry of feed) {
+    const idx = entry.at.getUTCMonth();
+    const year = entry.at.getUTCFullYear();
+    byMonth[idx][entry.kind] += 1;
+    grandByKind[entry.kind] += 1;
+    monthYears[idx].add(year);
+    allYears.add(year);
+  }
+
+  const totalTransitions = feed.length;
+
+  const months: FunnelActivitySeasonMonth[] = byMonth.map((counts, month) => {
+    const total = FUNNEL_ACTIVITY_KINDS.reduce((acc, k) => acc + counts[k], 0);
+    const years = monthYears[month].size;
+    return {
+      month,
+      label: MONTH_NAMES_LONG[month],
+      total,
+      byKind: { ...counts },
+      years,
+      avgPerYear: years > 0 ? total / years : 0,
+      share: totalTransitions > 0 ? total / totalTransitions : 0,
+      dominantKind: dominantFunnelActivityKind(counts),
+    };
+  });
+
+  // Mais movimentado / mais calmo por total, entre os meses COM transições —
+  // um mês historicamente vazio é ausência de dado, não "calmo". Iteramos jan→dez
+  // com `>`/`<` estritos → o empate cai no mês mais cedo.
+  const active = months.filter((m) => m.total > 0);
+  let busiest: FunnelActivitySeasonMonth | null = null;
+  let quietest: FunnelActivitySeasonMonth | null = null;
+  for (const m of active) {
+    if (busiest === null || m.total > busiest.total) busiest = m;
+    if (quietest === null || m.total < quietest.total) quietest = m;
+  }
+
+  return {
+    months,
+    totalTransitions,
+    yearsObserved: allYears.size,
+    busiest,
+    quietest,
+    byKind: grandByKind,
+    dominantKind: dominantFunnelActivityKind(grandByKind),
+  };
+}
+
 /** Variação de uma natureza entre dois períodos do ritmo (atual − anterior). */
 export interface FunnelActivityKindChange {
   kind: FunnelActivityKind;

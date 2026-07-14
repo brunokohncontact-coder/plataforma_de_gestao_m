@@ -167,6 +167,12 @@ export default async function FunnelActivityRhythmPage({
               ⬇ CSV
             </a>
           )}
+          <Link
+            href="/shows/funil/atividade/sazonalidade"
+            className="btn-secondary"
+          >
+            🗓 Sazonalidade
+          </Link>
           <Link href="/shows/funil/atividade" className="btn-secondary">
             🕒 Feed
           </Link>

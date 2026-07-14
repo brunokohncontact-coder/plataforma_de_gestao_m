@@ -278,6 +278,12 @@ export default async function FunnelActivityPage({
           <Link href="/shows/funil/atividade/ritmo" className="btn-secondary">
             📊 Ritmo mensal
           </Link>
+          <Link
+            href="/shows/funil/atividade/sazonalidade"
+            className="btn-secondary"
+          >
+            🗓 Sazonalidade
+          </Link>
           <Link href="/shows/funil" className="btn-secondary">
             ← Funil
           </Link>
