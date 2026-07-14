@@ -2092,6 +2092,79 @@ export function groupFunnelActivityByMonth(
   return groups;
 }
 
+/** Leitura de uma linha do tempo de ritmo mensal (`groupFunnelActivityByMonth`). */
+export interface FunnelActivityMonthsSummary {
+  /** Quantos meses têm ao menos uma transição. */
+  monthCount: number;
+  /** Soma das transições de todos os meses (= tamanho do feed). */
+  totalTransitions: number;
+  /**
+   * Média de transições por mês (total ÷ meses ativos), `0` quando não há mês.
+   * Ratio cru — o chamador arredonda; não conta meses vazios entre extremos.
+   */
+  averagePerMonth: number;
+  /** Mês mais movimentado (empate → o mais recente); `null` sem meses. */
+  busiest: FunnelActivityMonthGroup | null;
+  /** Mês menos movimentado (empate → o mais recente); `null` sem meses. */
+  quietest: FunnelActivityMonthGroup | null;
+  /** Total geral por natureza (sempre as cinco chaves, zeradas quando ausentes). */
+  byKind: Record<FunnelActivityKind, number>;
+  /**
+   * Natureza mais frequente no período inteiro (empate → ordem canônica de
+   * `FUNNEL_ACTIVITY_KINDS`); `null` quando não há nenhuma transição.
+   */
+  dominantKind: FunnelActivityKind | null;
+}
+
+/**
+ * Resume a linha do tempo de ritmo mensal (`groupFunnelActivityByMonth`) num
+ * punhado de leituras acionáveis: quantos meses ativos, total e média por mês,
+ * o mês mais e o menos movimentado, o total por natureza e a natureza
+ * predominante. Pura e determinística — não depende de "agora" e assume a ordem
+ * recente→antigo que `groupFunnelActivityByMonth` já garante, então os empates
+ * (mês mais/menos movimentado) caem no mês MAIS RECENTE. Não recalcula o feed:
+ * agrega só sobre os meses já contados.
+ */
+export function summarizeFunnelActivityMonths(
+  months: FunnelActivityMonthGroup[],
+): FunnelActivityMonthsSummary {
+  const byKind: Record<FunnelActivityKind, number> = {
+    create: 0,
+    advance: 0,
+    regress: 0,
+    cancel: 0,
+    reopen: 0,
+  };
+  let totalTransitions = 0;
+  let busiest: FunnelActivityMonthGroup | null = null;
+  let quietest: FunnelActivityMonthGroup | null = null;
+  for (const month of months) {
+    totalTransitions += month.total;
+    for (const kind of FUNNEL_ACTIVITY_KINDS) byKind[kind] += month.byKind[kind];
+    // `>`/`<` estritos preservam o primeiro em empate — e, como os meses vêm em
+    // ordem recente→antigo, o primeiro é sempre o mais recente.
+    if (busiest === null || month.total > busiest.total) busiest = month;
+    if (quietest === null || month.total < quietest.total) quietest = month;
+  }
+  const monthCount = months.length;
+  let dominantKind: FunnelActivityKind | null = null;
+  for (const kind of FUNNEL_ACTIVITY_KINDS) {
+    if (byKind[kind] === 0) continue;
+    if (dominantKind === null || byKind[kind] > byKind[dominantKind]) {
+      dominantKind = kind;
+    }
+  }
+  return {
+    monthCount,
+    totalTransitions,
+    averagePerMonth: monthCount === 0 ? 0 : totalTransitions / monthCount,
+    busiest,
+    quietest,
+    byKind,
+    dominantKind,
+  };
+}
+
 /**
  * Rótulo relativo de um dia do feed em relação a "hoje": "Hoje" para o próprio
  * dia, "Ontem" para o dia imediatamente anterior, `null` para qualquer outro (o
