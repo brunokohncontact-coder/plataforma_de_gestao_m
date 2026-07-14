@@ -7,9 +7,37 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1802 testes**),
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1807 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 333 —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 334 —
+COMPARATIVO ANO A ANO da SAZONALIDADE da atividade do funil (`/shows/funil/atividade/sazonalidade?ano=`),
+fechando o "próximo possível" que a D326 deixou explícito e o último eixo do funil sem comparativo
+(ritmo já tinha, D331):** a sazonalidade (D326) sempre somou TODAS as temporadas — ótimo para o padrão
+de fundo, mas sem responder "em que meses do calendário meu trabalho de agendamento esquentou/esfriou vs.
+o ano passado?". Nova peça pura `compareFunnelActivitySeasonality(current, previous)` + tipos
+`FunnelActivitySeasonMonthChange`/`FunnelActivitySeasonalityComparison` + classificador
+`classifyFunnelActivitySeasonMonthChange` (up/down/flat pelo `totalDelta`) em `src/lib/shows.ts`: irmão de
+`compareGigSeasonality` (D215) no eixo da atividade — como a sazonalidade já entrega os 12 meses em ordem
+(jan→dez), casa mês a mês pelo índice sem lookup, ancora no `total` de transições e destila os dois **movers**
+(mês que mais esquentou / mais esfriou; empate → mês mais cedo, iteração jan→dez com `>`/`<` estrito). Distinto
+do comparativo do RITMO (`compareFunnelActivityMonths`, que destila agregados por natureza porque o ritmo não
+tem calendário comum entre anos). A **página ganhou `PeriodPicker`** (`?ano=`, pelo `createdAt` do evento em UTC,
+reusando `parseFeedYear`/`feedYearRangeUtc`/`feedActivityYears` já provados no feed/ritmo, D321/D331) — invertendo
+o "sem recorte por ano" da D326, agora alinhada à sazonalidade de shows (`/shows/sazonalidade`, que tem seletor):
+default "todos os anos" (o padrão de fundo), e com `?ano=` a tela mostra a temporada isolada + o card
+`SeasonalityComparison` "Temporada {ano} vs. {ano-1}" (delta total no cabeçalho, dois movers por mês, tabela dos
+meses com movimento e Δ colorido) — só quando ambos os anos têm transições (ano anterior via consulta indexada
+`[userId]` recortada por `createdAt`, helper `loadSeason` extraído). O `⬇ CSV` e a rota `/sazonalidade/export`
+passaram a espelhar `?ano=` (mesma `where`, arquivo `sazonalidade-atividade-funil-{ano}.csv`). **+5 testes**
+(`shows.test.ts`: dois períodos vazios → 12 meses zerados sem movers; casa mês a mês + movers; empate no delta →
+mês mais cedo; só quedas → gain nulo; classificador up/down/flat). Zero migração/dependência. DoD verde:
+`npm run build` (`/shows/funil/atividade/sazonalidade` 322 B → 96,3 kB, sem novo bundle de cliente),
+`npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1807 testes**); smoke → `/login` 200, a página, a
+página `?ano=2026` e o export (com/sem `?ano=`) 307→/login (auth-gated, sem 500); `npm audit` inalterado (10
+advisories, zero dependência nova), ver D327. **Próximo possível** — export CSV do comparativo da sazonalidade
+(irmão de `gigSeasonalityComparisonToCsv`; a tela + tabela já entregam o sinal, seguindo o precedente D324→D325
+do ritmo, card primeiro, CSV depois); ou uma manchete no Painel ("você costuma prospectar em fev–mar; estamos em
+janeiro e o funil está parado"), que exigiria injetar "agora". **Antes disso, Sessão 333 —
 SAZONALIDADE da ATIVIDADE do FUNIL (`/shows/funil/atividade/sazonalidade`), um eixo analítico NOVO (não mais um CSV
 de algo existente): em que meses do ANO você costuma fazer o trabalho de agendamento — cadastros, avanços,
 negociação — somando TODAS as temporadas. É a irmã sazonal do RITMO: onde o ritmo é a série temporal absoluta

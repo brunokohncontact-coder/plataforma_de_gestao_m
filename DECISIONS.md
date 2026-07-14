@@ -5,6 +5,50 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-14 — D327: Comparativo ano a ano da sazonalidade da atividade do funil (+ `?ano=` na tela)
+- **Contexto:** a D326 (Sessão 333) entregou `/shows/funil/atividade/sazonalidade` — a forma da temporada de
+  agendamento somando TODAS as edições anuais, SEM recorte por ano ("a sazonalidade só faz sentido somando as
+  temporadas"). Mas o "próximo possível" que ela mesma registrou era o comparativo ano a ano ("quais meses do
+  calendário esquentaram/esfriaram vs. o ano anterior"), irmão de `compareGigSeasonality` (D215). Era também o
+  único eixo do funil sem comparativo — o ritmo já tinha o seu (D331). Um comparativo ano×ano exige, porém,
+  isolar UM ano por vez, o que a D326 não permitia.
+- **Decisão:**
+  - Novo helper puro `compareFunnelActivitySeasonality(current, previous)` + tipos
+    `FunnelActivitySeasonMonthChange`/`FunnelActivitySeasonalityComparison` e o classificador
+    `classifyFunnelActivitySeasonMonthChange` (`up`/`down`/`flat` pelo `totalDelta`) em `src/lib/shows.ts`.
+    Recebe duas `funnelActivitySeasonality` já computadas (uma por período); como ambas trazem os 12 meses em
+    ordem (jan→dez), casa mês a mês pelo índice (sem lookup), ancora no `total` de transições e destila os dois
+    movers — mês que mais cresceu e o que mais caiu, empate → mês mais cedo (iteração jan→dez com `>`/`<`
+    estrito, a mesma disciplina de `funnelActivitySeasonality`/`compareGigSeasonality`).
+  - **A tela ganhou `PeriodPicker` (`?ano=`)** — invertendo o "sem seletor" da D326. Default segue "todos os
+    anos" (o padrão de fundo); com `?ano=` a tela mostra a temporada daquele ano isolado + o card
+    `SeasonalityComparison` "Temporada {ano} vs. {ano-1}" (delta total, dois movers por mês, tabela dos meses com
+    movimento e Δ colorido), exibido só quando ambos os anos têm transições. Reusa
+    `parseFeedYear`/`feedYearRangeUtc`/`feedActivityYears` (já provados no feed/ritmo, D321/D331); o ano anterior
+    vem de uma consulta indexada `[userId]` recortada por `createdAt` (helper `loadSeason` extraído). O `⬇ CSV` e
+    a rota `/sazonalidade/export` passaram a espelhar `?ano=` (arquivo `sazonalidade-atividade-funil-{ano}.csv`).
+- **Justificativa:**
+  - **A restrição da D326 valia para o DEFAULT, não para o recorte.** A sazonalidade de shows
+    (`/shows/sazonalidade`) já tinha exatamente este arranjo (default somando anos + `?ano=` que revela um ano e
+    habilita o comparativo, D133b/D215) — trazer a atividade do funil para o mesmo padrão remove uma
+    inconsistência entre as duas telas de sazonalidade, sem descaracterizar o default (que continua somando as
+    temporadas).
+  - **Ancorar no `total` (não por natureza):** o valor da sazonalidade é a FORMA mensal; o comparativo do ritmo
+    (`compareFunnelActivityMonths`) já destila a mudança por natureza. Aqui a pergunta é "que MESES mudaram de
+    forma", então o mover é um mês, não uma natureza — espelhando `compareGigSeasonality` (que ancora no nº de
+    shows do mês).
+  - **Zero I/O novo na peça pura, zero dependência, zero migração:** só uma segunda leitura indexada (o ano
+    anterior) na página, como o ritmo (D331).
+- **Alternativas consideradas:**
+  - *Exportar o comparativo em CSV nesta sessão*: adiado, seguindo o precedente D324→D325 do ritmo (card
+    primeiro, CSV na sessão seguinte) — a tela + tabela por mês já entregam o sinal. Fica como próximo possível
+    (irmão de `gigSeasonalityComparisonToCsv`).
+  - *Incluir a quebra por natureza em cada mês do comparativo*: descartado — 12 meses × 5 naturezas inflaria a
+    tela; o comparativo do ritmo já cobre o "qual natureza mudou". Aqui o grão é o mês.
+  - *Manter a D326 (sem seletor) e comparar internamente o ano mais recente vs. o anterior sem `?ano=`*:
+    descartado — tiraria do usuário a escolha de QUAL par de anos comparar e divergiria da sazonalidade de shows;
+    o seletor é o padrão já estabelecido.
+
 ## 2026-07-14 — D323: Resumo do ritmo mensal da atividade do funil — leituras acionáveis sobre as barras
 - **Contexto:** a D322 entregou `/shows/funil/atividade/ritmo` (barras empilhadas por mês, o pulso do funil de
   cabo a rabo). A tela mostra a cadência mês a mês, mas o músico tem de ler barra por barra para responder as

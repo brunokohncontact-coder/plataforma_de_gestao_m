@@ -46,6 +46,8 @@ import {
   summarizeFunnelActivityMonths,
   compareFunnelActivityMonths,
   funnelActivitySeasonality,
+  compareFunnelActivitySeasonality,
+  classifyFunnelActivitySeasonMonthChange,
   relativeDayLabel,
   parseFeedPage,
   sliceFeedPage,
@@ -2015,6 +2017,108 @@ describe("funnelActivitySeasonality", () => {
     );
     expect(season.months[0].total).toBe(1); // janeiro
     expect(season.months[1].total).toBe(0); // fevereiro
+  });
+});
+
+describe("compareFunnelActivitySeasonality", () => {
+  const seasonOf = (
+    events: {
+      showId: string;
+      fromStatus: string | null;
+      toStatus: string;
+      at: string;
+    }[],
+  ) =>
+    funnelActivitySeasonality(
+      buildFunnelActivityFeed(
+        events.map((e) => ({
+          showId: e.showId,
+          showTitle: "",
+          showDate: null,
+          fromStatus: e.fromStatus,
+          toStatus: e.toStatus,
+          at: e.at,
+        })),
+      ),
+    );
+
+  it("dois períodos vazios → 12 meses zerados, sem movers", () => {
+    const cmp = compareFunnelActivitySeasonality(
+      funnelActivitySeasonality([]),
+      funnelActivitySeasonality([]),
+    );
+    expect(cmp.months).toHaveLength(12);
+    expect(cmp.months.every((m) => m.currentTotal === 0 && m.previousTotal === 0 && m.totalDelta === 0)).toBe(true);
+    expect(cmp.totalDelta).toBe(0);
+    expect(cmp.biggestGain).toBeNull();
+    expect(cmp.biggestDrop).toBeNull();
+  });
+
+  it("casa mês a mês do calendário e destila os movers (mês que mais subiu/caiu)", () => {
+    const current = seasonOf([
+      // Março: 3 (era 1) → +2, o maior ganho
+      { showId: "a", fromStatus: null, toStatus: "PROPOSED", at: "2026-03-02T09:00:00.000Z" },
+      { showId: "b", fromStatus: null, toStatus: "PROPOSED", at: "2026-03-05T09:00:00.000Z" },
+      { showId: "c", fromStatus: "PROPOSED", toStatus: "CONFIRMED", at: "2026-03-20T09:00:00.000Z" },
+      // Agosto: 0 (era 2) → −2, a maior queda
+    ]);
+    const previous = seasonOf([
+      { showId: "d", fromStatus: null, toStatus: "PROPOSED", at: "2025-03-10T09:00:00.000Z" },
+      { showId: "e", fromStatus: "CONFIRMED", toStatus: "CANCELLED", at: "2025-08-11T09:00:00.000Z" },
+      { showId: "f", fromStatus: "CONFIRMED", toStatus: "CANCELLED", at: "2025-08-12T09:00:00.000Z" },
+    ]);
+    const cmp = compareFunnelActivitySeasonality(current, previous);
+    const march = cmp.months[2];
+    expect(march.currentTotal).toBe(3);
+    expect(march.previousTotal).toBe(1);
+    expect(march.totalDelta).toBe(2);
+    const august = cmp.months[7];
+    expect(august.totalDelta).toBe(-2);
+    expect(cmp.totalDelta).toBe(0); // atual 3 − anterior 3 (1 março + 2 agosto)
+    expect(cmp.biggestGain?.month).toBe(2); // março
+    expect(cmp.biggestGain?.totalDelta).toBe(2);
+    expect(cmp.biggestDrop?.month).toBe(7); // agosto
+    expect(cmp.biggestDrop?.totalDelta).toBe(-2);
+  });
+
+  it("empate no delta → mês mais cedo vence (iteração jan→dez)", () => {
+    const current = seasonOf([
+      // Fevereiro: +1, Setembro: +1 → empate; fevereiro (mais cedo) é o maior ganho
+      { showId: "a", fromStatus: null, toStatus: "PROPOSED", at: "2026-02-10T09:00:00.000Z" },
+      { showId: "b", fromStatus: null, toStatus: "PROPOSED", at: "2026-09-10T09:00:00.000Z" },
+    ]);
+    const previous = funnelActivitySeasonality([]);
+    const cmp = compareFunnelActivitySeasonality(current, previous);
+    expect(cmp.biggestGain?.month).toBe(1); // fevereiro
+    expect(cmp.biggestDrop).toBeNull();
+  });
+
+  it("só quedas → biggestGain nulo, biggestDrop preenchido", () => {
+    const current = funnelActivitySeasonality([]);
+    const previous = seasonOf([
+      { showId: "a", fromStatus: null, toStatus: "PROPOSED", at: "2025-05-10T09:00:00.000Z" },
+    ]);
+    const cmp = compareFunnelActivitySeasonality(current, previous);
+    expect(cmp.biggestGain).toBeNull();
+    expect(cmp.biggestDrop?.month).toBe(4); // maio
+    expect(cmp.biggestDrop?.totalDelta).toBe(-1);
+    expect(cmp.totalDelta).toBe(-1);
+  });
+});
+
+describe("classifyFunnelActivitySeasonMonthChange", () => {
+  const change = (totalDelta: number) => ({
+    month: 0,
+    label: "Janeiro",
+    currentTotal: 0,
+    previousTotal: 0,
+    totalDelta,
+  });
+
+  it("delta positivo → up, negativo → down, zero → flat", () => {
+    expect(classifyFunnelActivitySeasonMonthChange(change(3))).toBe("up");
+    expect(classifyFunnelActivitySeasonMonthChange(change(-2))).toBe("down");
+    expect(classifyFunnelActivitySeasonMonthChange(change(0))).toBe("flat");
   });
 });
 
