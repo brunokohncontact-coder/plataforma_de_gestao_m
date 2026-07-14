@@ -43,6 +43,8 @@ import {
   countFunnelActivityByKind,
   groupFunnelActivityByDay,
   relativeDayLabel,
+  parseFeedPage,
+  sliceFeedPage,
   FUNNEL_ACTIVITY_KINDS,
   funnelStageDurations,
   stageTimeConcentration,
@@ -1789,6 +1791,58 @@ describe("relativeDayLabel", () => {
     expect(relativeDayLabel("2026-07-11", "2026-07-13")).toBeNull(); // anteontem
     expect(relativeDayLabel("2026-07-14", "2026-07-13")).toBeNull(); // amanhã
     expect(relativeDayLabel("2026-01-01", "2026-07-13")).toBeNull(); // distante
+  });
+});
+
+describe("parseFeedPage", () => {
+  it("ausente/vazio → 1 (primeira página)", () => {
+    expect(parseFeedPage(undefined)).toBe(1);
+    expect(parseFeedPage(null)).toBe(1);
+    expect(parseFeedPage("")).toBe(1);
+  });
+
+  it("inteiro válido >= 1 é aceito", () => {
+    expect(parseFeedPage("1")).toBe(1);
+    expect(parseFeedPage("2")).toBe(2);
+    expect(parseFeedPage("37")).toBe(37);
+  });
+
+  it("zero, negativo, fracionário ou texto → 1", () => {
+    expect(parseFeedPage("0")).toBe(1);
+    expect(parseFeedPage("-3")).toBe(1);
+    expect(parseFeedPage("2.5")).toBe(1);
+    expect(parseFeedPage("abc")).toBe(1);
+  });
+
+  it("array usa o primeiro valor (convenção dos outros parsers)", () => {
+    expect(parseFeedPage(["3", "9"])).toBe(3);
+    expect(parseFeedPage(["lixo"])).toBe(1);
+  });
+});
+
+describe("sliceFeedPage", () => {
+  it("lote menor que a página: devolve tudo, sem próxima", () => {
+    const r = sliceFeedPage([1, 2, 3], 5);
+    expect(r.items).toEqual([1, 2, 3]);
+    expect(r.hasNext).toBe(false);
+  });
+
+  it("lote exatamente do tamanho da página: sem próxima", () => {
+    const r = sliceFeedPage([1, 2, 3], 3);
+    expect(r.items).toEqual([1, 2, 3]);
+    expect(r.hasNext).toBe(false);
+  });
+
+  it("lote com o sentinela extra (pageSize + 1): descarta o extra e marca próxima", () => {
+    const r = sliceFeedPage([1, 2, 3, 4], 3);
+    expect(r.items).toEqual([1, 2, 3]);
+    expect(r.hasNext).toBe(true);
+  });
+
+  it("lote vazio: página vazia, sem próxima", () => {
+    const r = sliceFeedPage([], 3);
+    expect(r.items).toEqual([]);
+    expect(r.hasNext).toBe(false);
   });
 });
 

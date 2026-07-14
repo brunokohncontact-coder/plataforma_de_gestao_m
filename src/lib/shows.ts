@@ -2066,6 +2066,36 @@ export function relativeDayLabel(day: string, today: string): string | null {
   return diffDays === 1 ? "Ontem" : null;
 }
 
+/**
+ * Converte o parâmetro cru `?pagina=` num número de página inteiro `>= 1` (1 = a
+ * primeira, com as transições mais recentes). Qualquer coisa que não seja um
+ * inteiro `>= 1` — ausente, vazio, "0", negativo, fracionário, texto — cai em 1.
+ * Aceita `string` ou `string[]` (usa o primeiro), a mesma convenção dos outros
+ * parsers de query desta linha (`parseFunnelActivityKind`).
+ */
+export function parseFeedPage(
+  value: string | string[] | null | undefined,
+): number {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 1 ? n : 1;
+}
+
+/**
+ * Recorta uma página do feed a partir de um lote buscado com UM item extra
+ * (`pageSize + 1`): esse item-sentinela não é exibido — sua mera presença indica
+ * que ainda há uma página mais antiga adiante (`hasNext`). Devolve os itens da
+ * página (no máximo `pageSize`, preservando a ordem recebida) sem o sentinela.
+ * Genérico e puro; serve à página e à rota de export, que fazem a mesma consulta.
+ */
+export function sliceFeedPage<T>(
+  fetched: T[],
+  pageSize: number,
+): { items: T[]; hasNext: boolean } {
+  const hasNext = fetched.length > pageSize;
+  return { items: hasNext ? fetched.slice(0, pageSize) : fetched, hasNext };
+}
+
 // ── Tempo médio em cada etapa do funil (residence time) ───────────────────────
 // Agregado sobre o histórico de status (`ShowStatusEvent`) de VÁRIOS shows: para
 // cada etapa (PROPOSED, CONFIRMED, …) quanto tempo, tipicamente, um show fica
