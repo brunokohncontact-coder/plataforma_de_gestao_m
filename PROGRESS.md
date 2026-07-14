@@ -7,9 +7,32 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1776 testes**),
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1782 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 327 (D321) —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 328 (D322) —
+RITMO MENSAL da atividade do funil (`/shows/funil/atividade/ritmo`), abrindo uma leitura NOVA sobre os mesmos
+eventos de status: não "o que se moveu" (o feed cru D315–D321) mas "quão ativo esteve o funil, mês a mês" — o
+pulso da carteira ao longo do tempo:** o feed lista as transições uma a uma (paginado/filtrado/agrupado por
+dia), ótimo para auditar, mas não mostra a CADÊNCIA — meses de negociação intensa vs. calmaria. Uma peça pura +
+página + export + link, **zero migração/dependência nova**: `groupFunnelActivityByMonth(feed)` em
+`src/lib/shows.ts` (irmão de `groupFunnelActivityByDay`) rebaldeia o feed já ordenado em `FunnelActivityMonthGroup[]`
+(`{month:"YYYY-MM", total, byKind}`), meses na ordem recente→antigo do feed, com `total` e a quebra pelas cinco
+naturezas (sempre as cinco chaves, zeradas quando ausentes), usando `monthKey` (UTC) — a mesma convenção de mês do
+app. A página carrega TODOS os eventos de status da carteira (índice `[userId]`, sem janela/paginação — o ritmo é
+uma contagem, e só o essencial de cada evento é buscado, sem o show), monta o feed sem limite e renderiza uma barra
+EMPILHADA por mês (largura proporcional ao mês mais movimentado, segmentos coloridos por natureza reusando a paleta
+do feed) + contagens não-zeradas sob cada barra + legenda. Export CSV em `funnelActivityMonthlyToCsv` (`@/lib/csv`,
+testado): uma linha por mês, "Mês" por extenso pt-BR (`MONTH_NAMES_LONG`, UTC), colunas Total + as cinco naturezas.
+Link "📊 Ritmo mensal" no cabeçalho do feed. **+6 testes** (`shows.test.ts`: `groupFunnelActivityByMonth`
+vazio→[] / agrupa por mês UTC recente→antigo com total+byKind / chave UTC (23h30 do último dia não vaza) / soma dos
+totais e das naturezas = total do feed; `csv.test.ts`: `funnelActivityMonthlyToCsv` só-cabeçalho / uma linha por mês
+com mês por extenso e contagens). DoD verde: `npm run build` (`/shows/funil/atividade/ritmo` 321 B → 96,3 kB, sem
+novo bundle de cliente), `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1782 testes**); smoke →
+`/login` 200, `/shows/funil/atividade/ritmo` e `/ritmo/export` 307→/login (auth-gated, sem 500); `npm audit`
+inalterado (10 advisories, zero dependência nova). **Próximo possível** — recorte por ano (`?ano=`/`PeriodPicker`)
+no ritmo mensal (reusaria `feedActivityYears`/`feedYearRangeUtc`, hoje o ritmo cobre toda a carteira), ou uma linha
+de "média/mês" no cabeçalho, ou combinar ano+mês no `PeriodPicker` do feed (adiado: ganho marginal). Ver D322.
+**Antes disso, Sessão 327 (D321) —
 RECORTE POR ANO (`?ano=`) no feed de atividade do funil (`/shows/funil/atividade`), fechando a última peça
 adiada da linha do feed (o recorte por ano que a D320 destravou ao entregar a paginação):** o feed
 (D315–D320) já listava as transições da carteira paginadas, filtráveis por natureza e agrupáveis por dia, mas

@@ -42,6 +42,7 @@ import {
   filterFunnelActivityByKind,
   countFunnelActivityByKind,
   groupFunnelActivityByDay,
+  groupFunnelActivityByMonth,
   relativeDayLabel,
   parseFeedPage,
   sliceFeedPage,
@@ -1774,6 +1775,56 @@ describe("groupFunnelActivityByDay", () => {
     ]);
     const groups = groupFunnelActivityByDay(feed);
     expect(groups.reduce((n, g) => n + g.entries.length, 0)).toBe(feed.length);
+  });
+});
+
+describe("groupFunnelActivityByMonth", () => {
+  it("feed vazio → sem grupos", () => {
+    expect(groupFunnelActivityByMonth([])).toEqual([]);
+  });
+
+  it("agrupa por mês (UTC) na ordem recente→antigo, com total e quebra por natureza", () => {
+    const feed = buildFunnelActivityFeed([
+      { showId: "a", showTitle: "A", showDate: null, fromStatus: null, toStatus: "PROPOSED", at: "2026-03-02T09:00:00.000Z" },
+      { showId: "b", showTitle: "B", showDate: null, fromStatus: "PROPOSED", toStatus: "CONFIRMED", at: "2026-03-20T18:00:00.000Z" },
+      { showId: "c", showTitle: "C", showDate: null, fromStatus: "CONFIRMED", toStatus: "CANCELLED", at: "2026-02-11T12:00:00.000Z" },
+    ]);
+    const groups = groupFunnelActivityByMonth(feed);
+    expect(groups.map((g) => g.month)).toEqual(["2026-03", "2026-02"]);
+    expect(groups[0]).toEqual({
+      month: "2026-03",
+      total: 2,
+      byKind: { create: 1, advance: 1, regress: 0, cancel: 0, reopen: 0 },
+    });
+    expect(groups[1]).toEqual({
+      month: "2026-02",
+      total: 1,
+      byKind: { create: 0, advance: 0, regress: 0, cancel: 1, reopen: 0 },
+    });
+  });
+
+  it("usa a chave de mês em UTC (transição no último instante do mês não vaza)", () => {
+    const feed = buildFunnelActivityFeed([
+      { showId: "x", showTitle: "X", showDate: null, fromStatus: null, toStatus: "PROPOSED", at: "2026-01-31T23:30:00.000Z" },
+    ]);
+    const groups = groupFunnelActivityByMonth(feed);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].month).toBe("2026-01");
+  });
+
+  it("a soma dos totais (e das naturezas) preserva o total do feed", () => {
+    const feed = buildFunnelActivityFeed([
+      { showId: "a", showTitle: "A", showDate: null, fromStatus: null, toStatus: "PROPOSED", at: "2026-03-10T09:00:00.000Z" },
+      { showId: "b", showTitle: "B", showDate: null, fromStatus: "PROPOSED", toStatus: "CONFIRMED", at: "2025-12-08T18:00:00.000Z" },
+      { showId: "c", showTitle: "C", showDate: null, fromStatus: "CONFIRMED", toStatus: "PROPOSED", at: "2025-12-05T12:00:00.000Z" },
+    ]);
+    const groups = groupFunnelActivityByMonth(feed);
+    expect(groups.reduce((n, g) => n + g.total, 0)).toBe(feed.length);
+    const byKindSum = groups.reduce(
+      (n, g) => n + Object.values(g.byKind).reduce((s, v) => s + v, 0),
+      0,
+    );
+    expect(byKindSum).toBe(feed.length);
   });
 });
 
