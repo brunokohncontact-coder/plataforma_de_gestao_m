@@ -5,11 +5,17 @@ import {
   buildFunnelActivityFeed,
   groupFunnelActivityByMonth,
   summarizeFunnelActivityMonths,
+  parseFeedYear,
+  feedYearRangeUtc,
+  feedActivityYears,
   FUNNEL_ACTIVITY_KINDS,
   type FunnelActivityKind,
 } from "@/lib/shows";
+import { PeriodPicker } from "@/components/PeriodPicker";
 
 export const dynamic = "force-dynamic";
+
+type SearchParams = { [key: string]: string | string[] | undefined };
 
 /** Aparência de cada natureza — tom e rótulo curto (espelha a tela do feed). */
 const KIND_META: Record<FunnelActivityKind, { dot: string; label: string }> = {
@@ -34,14 +40,48 @@ const formatMonthHeader = (month: string): string => {
   });
 };
 
-export default async function FunnelActivityRhythmPage() {
+export default async function FunnelActivityRhythmPage({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
   const user = await requireUser();
 
-  // O ritmo cobre a carteira INTEIRA (não uma janela): buscamos todos os eventos
-  // de status (índice `[userId]`, ordenados no banco) e agregamos por mês. Só o
-  // essencial de cada evento — sem o show — porque o ritmo é uma contagem.
+  // Recorte por ano da atividade (`?ano=`, pelo `createdAt` do evento em UTC);
+  // `null` = toda a carteira. Filtra no banco, então o ritmo passa a contar só os
+  // meses do ano escolhido (a mesma convenção do feed em `/shows/funil/atividade`).
+  const activeYear = parseFeedYear(searchParams?.ano);
+  const yearRange = activeYear !== null ? feedYearRangeUtc(activeYear) : null;
+
+  // Anos oferecidos no seletor — derivados do evento mais antigo e do mais novo da
+  // carteira (dois pontos indexados, INDEPENDENTES do recorte atual, para o seletor
+  // ficar estável mesmo dentro de um ano vazio).
+  const [oldestEvent, newestEvent] = await Promise.all([
+    prisma.showStatusEvent.findFirst({
+      where: { userId: user.id },
+      orderBy: { createdAt: "asc" },
+      select: { createdAt: true },
+    }),
+    prisma.showStatusEvent.findFirst({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    }),
+  ]);
+  const years = feedActivityYears(
+    oldestEvent?.createdAt ?? null,
+    newestEvent?.createdAt ?? null,
+  );
+
+  // O ritmo cobre a carteira INTEIRA (não uma janela) dentro do recorte de ano:
+  // buscamos os eventos de status (índice `[userId]`, ordenados no banco) e
+  // agregamos por mês. Só o essencial de cada evento — sem o show — porque o
+  // ritmo é uma contagem.
   const events = await prisma.showStatusEvent.findMany({
-    where: { userId: user.id },
+    where: {
+      userId: user.id,
+      ...(yearRange ? { createdAt: { gte: yearRange.gte, lt: yearRange.lt } } : {}),
+    },
     orderBy: { createdAt: "desc" },
     select: { showId: true, fromStatus: true, toStatus: true, createdAt: true },
   });
@@ -66,6 +106,13 @@ export default async function FunnelActivityRhythmPage() {
     maximumFractionDigits: 1,
   });
 
+  // O link de export espelha o recorte por ano para baixar exatamente o ritmo
+  // exibido.
+  const exportHref =
+    activeYear !== null
+      ? `/shows/funil/atividade/ritmo/export?ano=${activeYear}`
+      : "/shows/funil/atividade/ritmo/export";
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -80,7 +127,7 @@ export default async function FunnelActivityRhythmPage() {
         </div>
         <div className="flex items-center gap-2">
           {months.length > 0 && (
-            <a href="/shows/funil/atividade/ritmo/export" className="btn-secondary">
+            <a href={exportHref} className="btn-secondary">
               ⬇ CSV
             </a>
           )}
@@ -93,11 +140,36 @@ export default async function FunnelActivityRhythmPage() {
         </div>
       </div>
 
+      {/* Seletor de período (ano da atividade, pelo `createdAt` do evento). Fica
+          visível sempre que a carteira tem algum evento — inclusive dentro de um
+          ano vazio — para o usuário poder trocar de ano ou voltar a "Todos". */}
+      {years.length > 0 && (
+        <PeriodPicker
+          years={years}
+          active={activeYear ?? "all"}
+          basePath="/shows/funil/atividade/ritmo"
+          ariaLabel="Período do ritmo"
+        />
+      )}
+
       {months.length === 0 ? (
-        <div className="card text-sm text-gray-500">
-          Nenhuma movimentação registrada ainda. Cadastre um show e mova-o pelo
-          funil (proposto → confirmado → realizado) para ver o ritmo aqui.
-        </div>
+        activeYear !== null ? (
+          <div className="card text-sm text-gray-500">
+            Nenhuma movimentação registrada em {activeYear}.{" "}
+            <Link
+              href="/shows/funil/atividade/ritmo"
+              className="text-brand-600 hover:underline"
+            >
+              Ver todos os anos
+            </Link>
+            .
+          </div>
+        ) : (
+          <div className="card text-sm text-gray-500">
+            Nenhuma movimentação registrada ainda. Cadastre um show e mova-o pelo
+            funil (proposto → confirmado → realizado) para ver o ritmo aqui.
+          </div>
+        )
       ) : (
         <>
           {/* Legenda das naturezas — a mesma paleta das barras. */}
