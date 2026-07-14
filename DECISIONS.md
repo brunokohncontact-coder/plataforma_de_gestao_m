@@ -5,6 +5,45 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-14 — D322: Ritmo mensal da atividade do funil (`/shows/funil/atividade/ritmo`) — uma leitura de cadência, não de log
+- **Contexto:** a linha do feed (`/shows/funil/atividade`, D315–D321) entrega o LOG cru das transições de
+  status da carteira — paginado, filtrável por natureza, agrupável por dia, recortável por ano. Isso responde
+  "o que se moveu, e quando", mas não "quão ativo esteve o funil ao longo do tempo": um músico não vê, num
+  relance, que março teve 20 movimentações e maio teve 2. A cadência (meses cheios de negociação vs. calmaria)
+  é um sinal de gestão distinto do log, e sai dos MESMOS eventos sem consulta nova de modelo.
+- **Decisão:**
+  - Novo helper puro `groupFunnelActivityByMonth(feed)` em `src/lib/shows.ts` (irmão de
+    `groupFunnelActivityByDay`): rebaldeia o feed já ordenado em `FunnelActivityMonthGroup[]`
+    (`{month:"YYYY-MM", total, byKind}`), meses na ordem recente→antigo do feed, com `total` e a quebra pelas
+    cinco naturezas (sempre as cinco chaves, zeradas quando ausentes). Usa `monthKey` (UTC), a mesma chave de
+    mês do resto do app.
+  - Página `/shows/funil/atividade/ritmo` (server component): carrega TODOS os eventos de status da carteira
+    (índice `[userId]`, sem janela nem paginação), monta o feed sem limite e renderiza uma barra EMPILHADA por
+    mês — largura proporcional ao mês mais movimentado, segmentos coloridos por natureza reusando a paleta do
+    feed — com as contagens não-zeradas sob cada barra e uma legenda. Export CSV em `funnelActivityMonthlyToCsv`
+    (`@/lib/csv`, testado): "Mês" por extenso pt-BR (`MONTH_NAMES_LONG`, UTC) + colunas Total e as cinco
+    naturezas. Link "📊 Ritmo mensal" no cabeçalho do feed.
+- **Justificativa:**
+  - **Carrega tudo, sem paginar** — ao contrário do feed (janela de 100). Uma agregação por mês precisa do
+    histórico inteiro para não mentir sobre a cadência; o custo é uma varredura do índice `[userId]` de
+    `ShowStatusEvent` buscando só 4 campos escalares (sem join com `Show`), o mesmo padrão de "carregar tudo e
+    agregar" que as outras telas analíticas já usam sobre `Show`. Se a carteira crescer a ponto de doer, dá para
+    recortar por ano depois (ver alternativas) sem mudar a peça pura.
+  - **Reuso máximo:** o `kind` de cada transição vem do MESMO `buildFunnelActivityFeed`/`classifyFunnelTransition`
+    do feed, então cadastro/avanço/recuo/cancelamento/reabertura são classificados de um único jeito no app; a
+    paleta e os rótulos espelham o `KIND_META` do feed.
+  - Barra empilhada (não uma linha temporal nem sparkline) porque comunica em um golpe as duas dimensões que
+    importam — **quanto** (largura total) e **de que tipo** (segmentos) — sem biblioteca de gráfico (zero
+    dependência nova, coerente com o resto do app, que desenha barras com `div`+`width`).
+- **Alternativas consideradas:**
+  - *Recorte por ano no próprio ritmo* (reusando `feedActivityYears`/`feedYearRangeUtc`): adiado — hoje o ritmo
+    cobre a carteira inteira, que é a leitura mais útil "de cabo a rabo"; o recorte vira o próximo passo natural
+    quando/se o volume pedir.
+  - *Sparkline/linha de tendência*: descartado por ora — a barra empilhada por mês já dá volume + composição, e
+    uma linha exigiria decidir métrica única (total? só avanços?) e preencher meses vazios.
+  - *Reaproveitar `?agrupar=mes` no feed*: descartado — o feed é um log item-a-item (paginado); misturar uma
+    agregação de contagem ali confundiria as duas leituras. Tela separada mantém cada uma coerente.
+
 ## 2026-07-14 — D321: Recorte por ano (`?ano=`) no feed de atividade do funil, reusando o `PeriodPicker`
 - **Contexto:** a D315 entregou `/shows/funil/atividade` (feed reverso-cronológico das transições de status da
   carteira), seguida de export CSV (D316), filtro por natureza (D317), agrupamento por dia (D318), rótulos

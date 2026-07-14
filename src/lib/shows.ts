@@ -4,7 +4,7 @@
 // separada de `finance.ts` por ser outro domínio, mas reaproveita os helpers
 // puros de texto/data de lá (uma fonte de verdade para normalização e chaves).
 
-import { CONVERSION_TREND_EPSILON, dayKey, isValidDateKey, normalizeText } from "./finance";
+import { CONVERSION_TREND_EPSILON, dayKey, monthKey, isValidDateKey, normalizeText } from "./finance";
 import { SHOW_STATUSES, type ShowStatus } from "./domain";
 import { MONTH_NAMES_LONG } from "./calendar";
 
@@ -2047,6 +2047,47 @@ export function groupFunnelActivityByDay(
       groups.push(group);
     }
     group.entries.push(entry);
+  }
+  return groups;
+}
+
+/** Um mês do feed de atividade: total de transições e quebra por natureza. */
+export interface FunnelActivityMonthGroup {
+  /** Chave do mês "YYYY-MM" (UTC, mesma convenção de `monthKey`). */
+  month: string;
+  /** Total de transições no mês (soma das cinco naturezas). */
+  total: number;
+  /** Contagem por natureza — sempre as cinco chaves (zeradas quando ausentes). */
+  byKind: Record<FunnelActivityKind, number>;
+}
+
+/**
+ * Agrupa o feed por mês da transição (`entry.at`), preservando a ordem
+ * recente→antigo: os meses saem na ordem em que aparecem no feed (o mais recente
+ * primeiro, já que `buildFunnelActivityFeed` ordena desc). Usa `monthKey` (UTC),
+ * a mesma chave de mês do restante do app. Cada grupo traz o total e a quebra por
+ * natureza (sempre as cinco chaves) — o "pulso" mensal do funil, não um log.
+ * Não recalcula nada além de rebaldear e contar; não depende de "agora".
+ */
+export function groupFunnelActivityByMonth(
+  feed: FunnelActivityEntry[],
+): FunnelActivityMonthGroup[] {
+  const groups: FunnelActivityMonthGroup[] = [];
+  const byMonth = new Map<string, FunnelActivityMonthGroup>();
+  for (const entry of feed) {
+    const month = monthKey(entry.at);
+    let group = byMonth.get(month);
+    if (group === undefined) {
+      group = {
+        month,
+        total: 0,
+        byKind: { create: 0, advance: 0, regress: 0, cancel: 0, reopen: 0 },
+      };
+      byMonth.set(month, group);
+      groups.push(group);
+    }
+    group.total += 1;
+    group.byKind[entry.kind] += 1;
   }
   return groups;
 }

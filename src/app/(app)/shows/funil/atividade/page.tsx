@@ -275,6 +275,9 @@ export default async function FunnelActivityPage({
               ⬇ CSV
             </a>
           )}
+          <Link href="/shows/funil/atividade/ritmo" className="btn-secondary">
+            📊 Ritmo mensal
+          </Link>
           <Link href="/shows/funil" className="btn-secondary">
             ← Funil
           </Link>

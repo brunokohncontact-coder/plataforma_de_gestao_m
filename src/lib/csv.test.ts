@@ -148,6 +148,8 @@ import {
   STALE_PROPOSALS_CSV_HEADERS,
   funnelActivityFeedToCsv,
   FUNNEL_ACTIVITY_CSV_HEADERS,
+  funnelActivityMonthlyToCsv,
+  FUNNEL_ACTIVITY_MONTHLY_CSV_HEADERS,
 } from "./csv";
 import {
   findOpenWeekends,
@@ -164,6 +166,7 @@ import {
   showGaps,
   gapDistribution,
   buildFunnelActivityFeed,
+  groupFunnelActivityByMonth,
   type ConflictShowLike,
   type LeadTimeShowLike,
   type StaleProposalShowLike,
@@ -4673,6 +4676,29 @@ describe("funnelActivityFeedToCsv", () => {
     expect(lines[2]).toBe(
       "01/02/2026;10:00;Gig sem data;Cancelou;Confirmado;Cancelado;",
     );
+  });
+});
+
+describe("funnelActivityMonthlyToCsv", () => {
+  it("sem meses: só o cabeçalho", () => {
+    const lines = funnelActivityMonthlyToCsv([]).split("\r\n");
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toBe(FUNNEL_ACTIVITY_MONTHLY_CSV_HEADERS.join(";"));
+  });
+
+  it("uma linha por mês (recente→antigo), mês por extenso pt-BR e contagens por natureza", () => {
+    const feed = buildFunnelActivityFeed([
+      { showId: "a", showTitle: "A", showDate: null, fromStatus: null, toStatus: "PROPOSED", at: "2026-03-02T09:00:00Z" },
+      { showId: "b", showTitle: "B", showDate: null, fromStatus: "PROPOSED", toStatus: "CONFIRMED", at: "2026-03-20T18:00:00Z" },
+      { showId: "c", showTitle: "C", showDate: null, fromStatus: "CONFIRMED", toStatus: "CANCELLED", at: "2026-02-11T12:00:00Z" },
+    ]);
+    const months = groupFunnelActivityByMonth(feed);
+    const lines = funnelActivityMonthlyToCsv(months).split("\r\n");
+    expect(lines[0]).toBe(FUNNEL_ACTIVITY_MONTHLY_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(3);
+    // março: 2 transições (1 cadastro + 1 avanço); depois fevereiro: 1 cancelamento.
+    expect(lines[1]).toBe("Março de 2026;2;1;1;0;0;0");
+    expect(lines[2]).toBe("Fevereiro de 2026;1;0;0;0;1;0");
   });
 });
 

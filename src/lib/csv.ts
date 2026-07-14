@@ -107,6 +107,7 @@ import type {
   GapDistribution,
   FunnelActivityEntry,
   FunnelActivityKind,
+  FunnelActivityMonthGroup,
 } from "./shows";
 import {
   summarizeMonthShows,
@@ -3973,6 +3974,52 @@ export function funnelActivityFeedToCsv(
       entry.fromStatus == null ? "" : showStatusLabel(entry.fromStatus),
       showStatusLabel(entry.toStatus),
       entry.showDate == null ? "" : csvDate(entry.showDate),
+    ]);
+  }
+  return toCsv(out, delimiter);
+}
+
+export const FUNNEL_ACTIVITY_MONTHLY_CSV_HEADERS = [
+  "Mês",
+  "Total",
+  "Cadastros",
+  "Avanços",
+  "Recuos",
+  "Cancelamentos",
+  "Reaberturas",
+] as const;
+
+/**
+ * Rótulo pt-BR "julho de 2025" de uma chave de mês "YYYY-MM" — em UTC (mesma
+ * convenção estável em teste dos irmãos que usam `MONTH_NAMES_LONG`).
+ */
+function funnelActivityMonthLabel(month: string): string {
+  const [y, m] = month.split("-").map(Number);
+  return `${MONTH_NAMES_LONG[m - 1]} de ${y}`;
+}
+
+/**
+ * Serializa o ritmo mensal da atividade do funil (`groupFunnelActivityByMonth`)
+ * em CSV — espelha a página `/shows/funil/atividade/ritmo`. Uma linha por mês, na
+ * MESMA ordem já resolvida pelo helper (mais recente → mais antigo); "Mês" sai
+ * por extenso em pt-BR (UTC); as demais colunas são as contagens (total + as
+ * cinco naturezas, sempre presentes). Mesma convenção pt-BR dos irmãos
+ * (delimitador ";"). Pura.
+ */
+export function funnelActivityMonthlyToCsv(
+  months: FunnelActivityMonthGroup[],
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(FUNNEL_ACTIVITY_MONTHLY_CSV_HEADERS)];
+  for (const m of months) {
+    out.push([
+      funnelActivityMonthLabel(m.month),
+      String(m.total),
+      String(m.byKind.create),
+      String(m.byKind.advance),
+      String(m.byKind.regress),
+      String(m.byKind.cancel),
+      String(m.byKind.reopen),
     ]);
   }
   return toCsv(out, delimiter);
