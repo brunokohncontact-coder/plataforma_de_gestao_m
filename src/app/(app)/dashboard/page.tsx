@@ -55,6 +55,7 @@ import {
   gigSeasonalityHeadline,
   gigSeasonalityLull,
   gigSeasonalityStall,
+  gigSeasonalityStallFirmness,
   findCitiesToReengage,
   citiesToReengageHeadline,
   type CityReengageShowLike,
@@ -890,7 +891,21 @@ export default async function DashboardPage() {
             <strong>
               {seasonStall.booked}{" "}
               {seasonStall.booked === 1 ? "show marcado" : "shows marcados"}
-            </strong>{" "}
+            </strong>
+            {/* Ressalva de firmeza (D339/D340): se os "marcados" são só propostas
+                em aberto, a agenda está mais vazia do que o número sugere — o
+                mesmo recorte firme que a página de sazonalidade já mostra. */}
+            {seasonStall.booked > 0 &&
+              gigSeasonalityStallFirmness(seasonStall) !== "all" && (
+                <>
+                  {" — "}
+                  {seasonStall.bookedFirm === 0
+                    ? "nenhum firme ainda"
+                    : `só ${seasonStall.bookedFirm} firme${
+                        seasonStall.bookedFirm === 1 ? "" : "s"
+                      }`}
+                </>
+              )}{" "}
             (
             <strong>{Math.round(seasonStall.shortfall * 100)}% abaixo</strong> do
             ritmo típico) — hora de encher a agenda.

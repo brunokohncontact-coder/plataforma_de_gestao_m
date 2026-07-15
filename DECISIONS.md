@@ -5,6 +5,34 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-15 — D340: Ressalva de firmeza no nudge de "mês forte com agenda rala" no Painel (`gigSeasonalityStallFirmness`)
+- **Contexto:** o banner compacto do "mês forte com agenda rala" no Painel (D336) diz "você tem só **N shows
+  marcados**" usando o `booked` amplo (não cancelado, inclui propostas em aberto). Desde a D339 a PÁGINA
+  `/shows/sazonalidade` já revela "dos quais N firmes (confirmado/realizado)", mas o Painel — a primeira tela que
+  o músico vê — não fazia essa ressalva. Uma agenda de "3 marcados" que na verdade são 3 propostas ainda abertas
+  está bem mais VAZIA do que o número sugere; sem a ressalva, o nudge subestima a própria urgência que ele existe
+  para sinalizar.
+- **Decisão:** classificador puro `gigSeasonalityStallFirmness(stall): "none" | "some" | "all"` em
+  `src/lib/finance.ts` (recebe `Pick<GigSeasonalityStall, "booked" | "bookedFirm">`): `"all"` quando todos os
+  marcados são firmes OU não há marcado algum (`booked === 0`, nada a ressalvar — as telas guardam `booked > 0`);
+  `"none"` quando há marcados mas nenhum é firme; `"some"` no meio. Defensivo contra dados fora do invariante
+  (`bookedFirm` clampado a `≥ 0`; `firm ≥ booked` vira `"all"`). O banner do Painel passa a anexar, só quando
+  `booked > 0` e o nível ≠ `"all"`, um recorte curto — "nenhum firme ainda" (nível `"none"`) ou "só N firme(s)"
+  (nível `"some"`) — logo após "N shows marcados", antes do parêntese de shortfall. Mudança de lógica pura
+  (classificador testado) + apresentacional (Painel); **zero migração/rota/dependência**. **+6 testes**
+  (`finance.test.ts`, `describe("gigSeasonalityStallFirmness")`: all/some/none, agenda vazia → `all`, e os dois
+  guardas defensivos).
+- **Justificativa:** fecha a assimetria entre a página (D339, já mostra o firme) e o Painel (que não mostrava),
+  usando o campo `bookedFirm` que já existe e já é testado — o nudge passa a refletir a emptiness real da agenda.
+  Extrair a decisão para um helper puro (em vez de repetir o `if` inline) trava a classificação com teste unitário,
+  o que importa porque o Painel é um Server Component difícil de testar isoladamente; o mesmo helper fica disponível
+  para a página unificar a frase no futuro, se quiser.
+- **Alternativas consideradas:** (a) renderizar o recorte inline no Painel sem helper (como a página faz na D339) —
+  rejeitado: a classificação all/some/none é lógica de negócio que merece teste próprio, e o Painel não é
+  testável por unidade. (b) refatorar já a página `/shows/sazonalidade` (D339) para consumir o helper — adiado para
+  não misturar churn presentacional no mesmo escopo; a página mostra a contagem crua (`bookedFirm`), que não
+  depende do nível. (c) mudar o gatilho do stall para firme-only — fora de escopo e já rejeitado na D339(a).
+
 ## 2026-07-15 — D339: Leitura FIRME (CONFIRMED+PLAYED) da agenda no "mês forte com agenda rala" (`GigSeasonalityStall.bookedFirm`)
 - **Contexto:** o `gigSeasonalityStall` (D336) conta como `booked` toda a agenda NÃO cancelada da próxima
   ocorrência do mês forte — de propósito amplo, "uma proposta já ocupa a agenda", para pecar por não-gritar-cedo

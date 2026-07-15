@@ -135,6 +135,7 @@ import {
   gigSeasonalityHeadline,
   gigSeasonalityLull,
   gigSeasonalityStall,
+  gigSeasonalityStallFirmness,
   GIG_SEASON_STALL_FACTOR,
   STRONG_MONTH_MIN_SHOWS,
   incomeMix,
@@ -8966,6 +8967,33 @@ describe("gigSeasonalityStall", () => {
 
   it("o fator de corte é 0,5 (metade do ritmo típico)", () => {
     expect(GIG_SEASON_STALL_FACTOR).toBe(0.5);
+  });
+});
+
+describe("gigSeasonalityStallFirmness", () => {
+  it("`all` quando todos os marcados são firmes", () => {
+    expect(gigSeasonalityStallFirmness({ booked: 3, bookedFirm: 3 })).toBe("all");
+  });
+
+  it("`some` quando parte é firme e parte é proposta em aberto", () => {
+    expect(gigSeasonalityStallFirmness({ booked: 3, bookedFirm: 1 })).toBe("some");
+  });
+
+  it("`none` quando há marcados mas nenhum é firme", () => {
+    expect(gigSeasonalityStallFirmness({ booked: 2, bookedFirm: 0 })).toBe("none");
+  });
+
+  it("`all` (sem ressalva) quando a agenda está vazia", () => {
+    // booked 0 → não há proposta em aberto a ressalvar; as telas guardam booked>0.
+    expect(gigSeasonalityStallFirmness({ booked: 0, bookedFirm: 0 })).toBe("all");
+  });
+
+  it("defensivo: `bookedFirm > booked` (fora do invariante) vira `all`", () => {
+    expect(gigSeasonalityStallFirmness({ booked: 2, bookedFirm: 5 })).toBe("all");
+  });
+
+  it("defensivo: `bookedFirm` negativo é tratado como 0 → `none`", () => {
+    expect(gigSeasonalityStallFirmness({ booked: 2, bookedFirm: -1 })).toBe("none");
   });
 });
 
