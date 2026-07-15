@@ -7,9 +7,39 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1844 testes**),
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1853 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 341 —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 342 —
+NUDGE de "MÊS FORTE COM AGENDA RALA" no PAINEL (`gigSeasonalityStall`), o análogo,
+no eixo das RESERVAS, do "funil parado" (`funnelActivitySeasonalityStall`/D333):** a
+sazonalidade dos shows já tinha `gigSeasonalityHeadline` (D134, "mês caro chegando —
+precifique") e `gigSeasonalityLull` (D135, vale à frente), mas nenhum cruzava o pico
+histórico de FATURAMENTO com a AGENDA real. Nova peça pura `gigSeasonalityStall(seasonality,
+shows, { now? })` + tipo `GigSeasonalityStall` + constante `GIG_SEASON_STALL_FACTOR` (=0,5)
+em `src/lib/finance.ts`: seleciona o MESMO mês forte à frente da manchete (o mais cedo em
+`STRONG_MONTH_HORIZON` meses com `feeShare ≥ STRONG_MONTH_FACTOR/12`) e dispara quando
+`booked < expected × 0,5`. O `expected` é a média de shows/ano naquele mês entre os JÁ
+REALIZADOS (mesma inclusão de `gigSeasonality`), por ano ativo — e como a ocorrência-alvo é
+FUTURA, todo ano contado já fechou (não há ano parcial a excluir, distinto da D335); o
+`booked` conta os shows NÃO cancelados datados na próxima ocorrência do mês, de propósito
+amplo (uma proposta já ocupa a agenda) para pecar por não-gritar-cedo. Se o mês forte mais
+próximo está com agenda saudável, NÃO dispara (nem varre mais longe) — a manchete comum
+cobre o "precifique". No **Painel** (`dashboard/page.tsx`), banner âmbar 📉 `Mês forte com
+agenda rala` linkando `/shows/sazonalidade`, reusando a `gigSeasonality` e os shows já
+carregados (zero I/O extra) e **tomando a frente** da manchete/vale de sazonalidade (mais
+urgente/específico; o grupo do funil já cede a qualquer nudge de faturamento — cascata
+atualizada para ceder também ao stall). **+9 testes** (`finance.test.ts`: sem amostra mínima
+não dispara; agenda vazia dispara com shortfall 1; agenda saudável não dispara; disparo
+parcial com shortfall 0,75; proposta conta como reserva e some o stall; cancelado não conta;
+mês forte mais próximo saudável não grita por um mais distante; `now` injetável tira o mês da
+janela; fator 0,5). Zero migração/dependência/rota nova. DoD verde: `npm run build`, `npx tsc
+--noEmit`, `npm run lint` (0 warnings), `npm test` (**1853 testes**); smoke → `/login` 200,
+`/dashboard` e `/shows/sazonalidade` 307→/login (auth-gated, sem 500); `npm audit` inalterado
+(10 advisories: 4 moderate/5 high/1 critical, zero dependência nova), ver D336. **Próximo
+possível** — dar ao stall um detalhe próprio na página `/shows/sazonalidade` (o mês forte, o
+esperado × marcados, com micro-barra), espelhando o que a D334 fez para o funil; ou restringir
+o `booked` a compromissos firmes (CONFIRMED+PLAYED) como leitura alternativa mais rígida.
+**Antes disso, Sessão 341 —
 BASELINE do "FUNIL PARADO" EXCLUI O ANO CORRENTE (parcial) do `expected`
 (`funnelActivitySeasonalityStall`), fechando o "próximo possível" que a Sessão 340 (D334)
 deixou explícito ("refinar `expected` excluindo o ano corrente parcial da base do
@@ -6040,5 +6070,10 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   antecipação) são **hipóteses** — quantas transições contam como histórico confiável e o que é um "pico de prospecção"
   varia por circuito/volume. Herdam os valores dos limiares de sazonalidade de faturamento (D134), ainda não medidos com
   uso real. Validar com músicos antes de virar premissa fixa.
+- **Mês forte com agenda rala (D336)**: `GIG_SEASON_STALL_FACTOR`=0,5 (a agenda de um mês-pico com menos da
+  metade do ritmo típico de shows já marcados vira alerta) é **hipótese** — o ponto em que a agenda de um
+  mês-pico está vazia o bastante para acionar o músico varia por circuito e por antecedência de fechamento.
+  Herda o espírito dos limiares de sazonalidade (D134), ainda não medidos com uso real. Validar antes de virar
+  premissa fixa.
 - **Segurança em produção**: definir `AUTH_SECRET` forte e migrar para PostgreSQL antes
   de qualquer deploy real. Revisar advisories do Next (D6) e planejar upgrade p/ Next 15+.

@@ -133,6 +133,8 @@ import {
   gigSeasonalityYears,
   gigSeasonalityHeadline,
   gigSeasonalityLull,
+  gigSeasonalityStall,
+  GIG_SEASON_STALL_FACTOR,
   STRONG_MONTH_MIN_SHOWS,
   incomeMix,
   incomeMixYears,
@@ -8734,6 +8736,156 @@ describe("gigSeasonalityLull", () => {
     const s = gigSeasonality(shows, { now });
     const l = gigSeasonalityLull(s, { now });
     expect(l.show).toBe(false);
+  });
+});
+
+describe("gigSeasonalityStall", () => {
+  // "now" em junho de 2027 → janela à frente cobre jul(6), ago(7), set(8), out(9);
+  // a ocorrência-alvo de cada um é em 2027 (o horizonte não cruza o ano aqui).
+  const now = new Date("2027-06-15T12:00:00.000Z");
+
+  function gig(partial: Partial<ReceivableShowLike>): ReceivableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-09-10T20:00:00.000Z",
+      ...partial,
+    };
+  }
+
+  // Histórico com setembro forte: N shows realizados/ano com bom cachê, espalhados
+  // por `years` anos passados → baseline = shows_de_setembro / anos ativos.
+  function septemberHistory(years: number[], perYear: number, fee: number) {
+    const shows: ReceivableShowLike[] = [];
+    for (const y of years) {
+      for (let i = 0; i < perYear; i++) {
+        shows.push(
+          gig({ id: `s-${y}-${i}`, date: `${y}-09-10T20:00:00.000Z`, fee }),
+        );
+      }
+    }
+    return shows;
+  }
+
+  it("não aparece sem amostra mínima de shows", () => {
+    // Só 3 shows de setembro → totalShows (3) < mínimo, ainda que setembro domine.
+    const shows = septemberHistory([2026], 3, 500_00);
+    const s = gigSeasonality(shows, { now });
+    expect(s.totalShows).toBeLessThan(STRONG_MONTH_MIN_SHOWS);
+    const stall = gigSeasonalityStall(s, shows, { now });
+    expect(stall.show).toBe(false);
+    expect(stall.month).toBeNull();
+    expect(stall.expected).toBe(0);
+    expect(stall.booked).toBe(0);
+  });
+
+  it("dispara quando o mês forte à frente está com a agenda vazia", () => {
+    // Setembro (mês 8, 3 à frente de junho) forte: 2 shows/ano em 3 anos →
+    // baseline 2. Nenhum show marcado para setembro/2027 → booked 0 < 2×0.5.
+    const shows = septemberHistory([2024, 2025, 2026], 2, 500_00);
+    const s = gigSeasonality(shows, { now });
+    expect(s.totalShows).toBeGreaterThanOrEqual(STRONG_MONTH_MIN_SHOWS);
+    const stall = gigSeasonalityStall(s, shows, { now });
+    expect(stall.show).toBe(true);
+    expect(stall.month?.month).toBe(8); // setembro
+    expect(stall.monthsAhead).toBe(3); // junho → setembro
+    expect(stall.expected).toBe(2); // 6 shows / 3 anos
+    expect(stall.booked).toBe(0);
+    expect(stall.shortfall).toBe(1);
+    expect(stall.lift).toBeGreaterThan(1.25);
+  });
+
+  it("não dispara quando a agenda do mês forte está saudável", () => {
+    // Mesmo histórico (baseline 2), mas 2 shows CONFIRMADOS já marcados para
+    // setembro/2027 → booked 2 ≥ 2×0.5 → sem stall (a manchete comum cobre).
+    const shows = [
+      ...septemberHistory([2024, 2025, 2026], 2, 500_00),
+      gig({ id: "b1", date: "2027-09-05T20:00:00.000Z", status: "CONFIRMED" }),
+      gig({ id: "b2", date: "2027-09-20T20:00:00.000Z", status: "CONFIRMED" }),
+    ];
+    const s = gigSeasonality(shows, { now });
+    const stall = gigSeasonalityStall(s, shows, { now });
+    expect(stall.show).toBe(false);
+  });
+
+  it("dispara parcialmente: agenda abaixo do ritmo típico, mas não vazia", () => {
+    // Setembro em 2 anos, 4 shows/ano → baseline 4. Só 1 marcado para 2027 →
+    // 1 < 4×0.5=2 → dispara; shortfall = 1 − 1/4 = 0,75.
+    const shows = [
+      ...septemberHistory([2025, 2026], 4, 500_00),
+      gig({ id: "b1", date: "2027-09-05T20:00:00.000Z", status: "CONFIRMED" }),
+    ];
+    const s = gigSeasonality(shows, { now });
+    const stall = gigSeasonalityStall(s, shows, { now });
+    expect(stall.show).toBe(true);
+    expect(stall.expected).toBe(4); // 8 shows / 2 anos
+    expect(stall.booked).toBe(1);
+    expect(stall.shortfall).toBeCloseTo(0.75, 5);
+  });
+
+  it("uma PROPOSTA já conta como agenda (booking amplo, não grita cedo)", () => {
+    // Baseline 2. Sem nada marcado, dispararia (booked 0 < 1). Adicionar UM show
+    // PROPOSTO para setembro/2027 leva booked a 1, que já NÃO é menor que 2×0.5=1
+    // → some o stall: a proposta ocupa a agenda como qualquer reserva.
+    const history = septemberHistory([2024, 2025, 2026], 2, 500_00);
+    const empty = gigSeasonality(history, { now });
+    expect(gigSeasonalityStall(empty, history, { now }).show).toBe(true);
+
+    const withProposal = [
+      ...history,
+      gig({ id: "p1", date: "2027-09-05T20:00:00.000Z", status: "PROPOSED" }),
+    ];
+    const s = gigSeasonality(withProposal, { now });
+    const stall = gigSeasonalityStall(s, withProposal, { now });
+    expect(stall.show).toBe(false);
+  });
+
+  it("shows CANCELADOS não contam como agenda", () => {
+    // Baseline 2; o único show de setembro/2027 está CANCELADO → booked 0 →
+    // dispara (a agenda está de fato vazia).
+    const shows = [
+      ...septemberHistory([2024, 2025, 2026], 2, 500_00),
+      gig({ id: "c1", date: "2027-09-05T20:00:00.000Z", status: "CANCELLED" }),
+    ];
+    const s = gigSeasonality(shows, { now });
+    const stall = gigSeasonalityStall(s, shows, { now });
+    expect(stall.booked).toBe(0);
+    expect(stall.show).toBe(true);
+  });
+
+  it("olha o mês forte MAIS CEDO: se ele está saudável, não grita por um mais distante", () => {
+    // Julho (1 à frente) e setembro (3 à frente) ambos fortes. Julho tem agenda
+    // cheia (2 marcados vs. baseline 2); setembro está vazio. Como o mais próximo
+    // (julho) está saudável, não dispara — não varre até setembro.
+    const shows = [
+      ...Array.from({ length: 2 }, (_, i) =>
+        gig({ id: `jul-25-${i}`, date: "2025-07-10T20:00:00.000Z", fee: 500_00 }),
+      ),
+      ...Array.from({ length: 2 }, (_, i) =>
+        gig({ id: `jul-26-${i}`, date: "2026-07-10T20:00:00.000Z", fee: 500_00 }),
+      ),
+      ...septemberHistory([2025, 2026], 2, 500_00),
+      // Julho/2027 já cheio.
+      gig({ id: "bjul1", date: "2027-07-05T20:00:00.000Z", status: "CONFIRMED" }),
+      gig({ id: "bjul2", date: "2027-07-20T20:00:00.000Z", status: "CONFIRMED" }),
+    ];
+    const s = gigSeasonality(shows, { now });
+    const stall = gigSeasonalityStall(s, shows, { now });
+    expect(stall.show).toBe(false);
+  });
+
+  it("`now` injetável muda a janela: setembro atrás do mês corrente não dispara", () => {
+    // Mesmo histórico de setembro vazio, mas com "now" em outubro/2027 setembro
+    // fica ATRÁS (11 meses à frente, fora do horizonte) → nada forte à frente.
+    const shows = septemberHistory([2024, 2025, 2026], 2, 500_00);
+    const s = gigSeasonality(shows, { now: "2027-10-15T12:00:00.000Z" });
+    const stall = gigSeasonalityStall(s, shows, { now: "2027-10-15T12:00:00.000Z" });
+    expect(stall.show).toBe(false);
+  });
+
+  it("o fator de corte é 0,5 (metade do ritmo típico)", () => {
+    expect(GIG_SEASON_STALL_FACTOR).toBe(0.5);
   });
 });
 
