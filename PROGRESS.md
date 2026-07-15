@@ -7,9 +7,36 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1871 testes**),
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1877 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 346 —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 347 —
+FRASE DE FIRMEZA da PÁGINA `/shows/sazonalidade` UNIFICADA pelo NÍVEL
+(`gigSeasonalityStallFirmnessDetail`, D341), fechando a alternativa (b) que a Sessão 346 (D340) adiou
+("refatorar a página para consumir o helper `gigSeasonalityStallFirmness`"):** o `StallDetail` da página
+mostrava sempre a CONTAGEM CRUA — "dos quais N firmes (confirmado/realizado)" — mesmo quando `N == booked`
+(agenda toda fechada, nada a ressalvar) ou `N == 0` (só propostas em aberto); o Painel (D340) já traduzia
+esse mesmo recorte em nível (todos/nenhum/parte). Novo helper puro
+`gigSeasonalityStallFirmnessDetail(stall): string | null` em `src/lib/finance.ts`, derivado de
+`gigSeasonalityStallFirmness`: `"all"` → "todos firmes (confirmado/realizado)"; `"none"` → "nenhum firme
+ainda (confirmado/realizado)"; `"some"` → "dos quais N firme[s] (confirmado/realizado)"; `null` quando
+`booked === 0`. A página (`shows/sazonalidade/page.tsx`, `StallDetail`) passa a renderizar essa frase no
+lugar do markup inline com a contagem crua, comunicando o NÍVEL como o Painel já faz. Lógica pura testada +
+apresentacional (página), zero migração/rota/dependência. **+6 testes** (`finance.test.ts`,
+`describe("gigSeasonalityStallFirmnessDetail")`: all/none/some(plural/singular), `booked===0` → `null`,
+guarda defensivo `bookedFirm > booked` → `all`). DoD verde: `npm run build`, `npx tsc --noEmit`,
+`npm run lint` (0 warnings), `npm test` (**1877 testes**); smoke → `/login` 200, `/dashboard` e
+`/shows/sazonalidade` 307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories: 4 moderate/5
+high/1 critical, zero dependência nova), ver D341. **Próximo possível** — o Painel poderia consumir o mesmo
+`gigSeasonalityStallFirmnessDetail` para unificar 100% da frase, mas ele omite o recorte no nível `"all"`
+(banner compacto) e a página sempre o mostra, então cada surface segue com sua própria condição de exibição
+(D341, alt. b). **Antes disso, Sessão 346 —
+RESSALVA DE FIRMEZA no NUDGE de "MÊS FORTE COM AGENDA RALA" no PAINEL
+(`gigSeasonalityStallFirmness`, D340), fechando a assimetria que a Sessão 345 (D339) deixou:**
+a D339 fez a PÁGINA `/shows/sazonalidade` revelar "dos quais N firmes", mas o banner compacto do
+Painel (D336) seguia dizendo "você tem só N shows marcados" com o `booked` amplo (inclui propostas
+em aberto) — a primeira tela que o músico vê subestimava a emptiness real da agenda. Novo
+classificador puro `gigSeasonalityStallFirmness(stall): "none" | "some" | "all"` em
+`src/lib/finance.ts` (recebe `{booked, bookedFirm}`, já computados pela D339): `"all"` quando todos
 RESSALVA DE FIRMEZA no NUDGE de "MÊS FORTE COM AGENDA RALA" no PAINEL
 (`gigSeasonalityStallFirmness`, D340), fechando a assimetria que a Sessão 345 (D339) deixou:**
 a D339 fez a PÁGINA `/shows/sazonalidade` revelar "dos quais N firmes", mas o banner compacto do

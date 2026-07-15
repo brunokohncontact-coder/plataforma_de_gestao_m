@@ -5,6 +5,7 @@ import {
   gigSeasonality,
   gigSeasonalityYears,
   gigSeasonalityStall,
+  gigSeasonalityStallFirmnessDetail,
   compareGigSeasonality,
   classifyGigSeasonalityMonthChange,
   parseProfitYear,
@@ -614,12 +615,12 @@ function StallDetail({ stall }: { stall: GigSeasonalityStall }) {
             {stall.booked === 1 ? "show na agenda" : "shows na agenda"} da próxima
             ocorrência
           </div>
-          {/* Leitura firme (CONFIRMED+PLAYED) do que está marcado, D339: revela
-              quando os "marcados" são propostas ainda em aberto, não agenda fechada. */}
-          {stall.booked > 0 && (
+          {/* Leitura firme (CONFIRMED+PLAYED) do que está marcado, D339/D341: a
+              frase segue o NÍVEL de firmeza (todos/nenhum/parte) via o mesmo
+              helper que o Painel consome, em vez da contagem crua. */}
+          {gigSeasonalityStallFirmnessDetail(stall) && (
             <div className="mt-1 text-xs text-amber-700">
-              dos quais <strong>{stall.bookedFirm} firme</strong>
-              {stall.bookedFirm === 1 ? "" : "s"} (confirmado/realizado)
+              {gigSeasonalityStallFirmnessDetail(stall)}
             </div>
           )}
         </div>
