@@ -9445,6 +9445,33 @@ export function gigSeasonalityStall(
   return none;
 }
 
+/**
+ * Quão "firme" está a agenda já marcada de um mês forte subagendado:
+ * - `"none"`  → há shows marcados, mas NENHUM é firme (só propostas em aberto);
+ * - `"some"`  → parte dos marcados é firme, parte ainda é proposta;
+ * - `"all"`   → todos os marcados são firmes (CONFIRMED+PLAYED), ou não há
+ *               marcado algum (`booked === 0`) — em ambos os casos não há
+ *               proposta em aberto a ressalvar.
+ * O disparo do `gigSeasonalityStall` (D336) olha o `booked` amplo de propósito
+ * (uma proposta já ocupa a agenda), mas para um leitor uma agenda de "3 marcados"
+ * que na verdade são 3 propostas ainda abertas está bem mais VAZIA do que o número
+ * sugere. Este classificador puro destila esse recorte para as telas sinalizarem a
+ * ressalva — sem repetir o `if` em cada surface (Painel + página de sazonalidade).
+ * Ver D339 (o campo `bookedFirm`) e D340.
+ */
+export type GigStallFirmnessLevel = "none" | "some" | "all";
+
+export function gigSeasonalityStallFirmness(
+  stall: Pick<GigSeasonalityStall, "booked" | "bookedFirm">,
+): GigStallFirmnessLevel {
+  // `bookedFirm` é, por construção, sempre `≤ booked` (subconjunto). Defensivo
+  // contra dados fora do invariante, tratamos `firm >= booked` como "all".
+  const firm = Math.max(0, stall.bookedFirm);
+  if (stall.booked <= 0 || firm >= stall.booked) return "all";
+  if (firm <= 0) return "none";
+  return "some";
+}
+
 /** Sequência de `count` meses "YYYY-MM" a partir de `startKey` (inclusive), em UTC. */
 function sequentialMonths(startKey: string, count: number): string[] {
   const [y, m] = startKey.split("-").map(Number);

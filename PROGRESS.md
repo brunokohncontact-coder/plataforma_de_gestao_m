@@ -7,9 +7,28 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1865 testes**),
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1871 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 345 —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 346 —
+RESSALVA DE FIRMEZA no NUDGE de "MÊS FORTE COM AGENDA RALA" no PAINEL
+(`gigSeasonalityStallFirmness`, D340), fechando a assimetria que a Sessão 345 (D339) deixou:**
+a D339 fez a PÁGINA `/shows/sazonalidade` revelar "dos quais N firmes", mas o banner compacto do
+Painel (D336) seguia dizendo "você tem só N shows marcados" com o `booked` amplo (inclui propostas
+em aberto) — a primeira tela que o músico vê subestimava a emptiness real da agenda. Novo
+classificador puro `gigSeasonalityStallFirmness(stall): "none" | "some" | "all"` em
+`src/lib/finance.ts` (recebe `{booked, bookedFirm}`, já computados pela D339): `"all"` quando todos
+os marcados são firmes ou `booked === 0` (nada a ressalvar), `"none"` quando nenhum é firme,
+`"some"` no meio; defensivo contra dados fora do invariante. O banner do Painel
+(`dashboard/page.tsx`) passa a anexar, só quando `booked > 0` e o nível ≠ `"all"`, um recorte curto
+("nenhum firme ainda" / "só N firme(s)") logo após "N shows marcados". Lógica pura testada +
+apresentacional (Painel), zero migração/rota/dependência. **+6 testes** (`finance.test.ts`,
+`describe("gigSeasonalityStallFirmness")`: all/some/none, agenda vazia → `all`, dois guardas
+defensivos). DoD verde: `npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test`
+(**1871 testes**); smoke → `/login` 200, `/dashboard` e `/shows/sazonalidade` 307→/login (auth-gated,
+sem 500); `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, zero dependência
+nova), ver D340. **Próximo possível** — a página `/shows/sazonalidade` (D339) pode unificar a frase
+do detalhe consumindo o mesmo helper `gigSeasonalityStallFirmness` (adiado: mostra a contagem crua,
+não o nível). **Antes disso, Sessão 345 —
 LEITURA FIRME (CONFIRMED+PLAYED) da AGENDA no "MÊS FORTE COM AGENDA RALA"
 (`GigSeasonalityStall.bookedFirm`, D339), fechando o "próximo possível" que a Sessão 342
 (D336) e a Sessão 344 (D338) deixaram explícito ("restringir o `booked` a compromissos firmes
