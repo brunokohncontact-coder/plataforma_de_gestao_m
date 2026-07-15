@@ -7,9 +7,38 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1826 testes**),
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1835 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 337 —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 338 —
+NUDGE de "FUNIL PARADO NUMA TEMPORADA FORTE" no PAINEL (`funnelActivitySeasonalityStall`),
+fechando o "próximo possível" que a D329/D332 (Sessões 336–337) deixaram explícito:** as manchetes de
+agendamento (`funnelActivitySeasonalityHeadline`/D329 e `...Lull`/D332) olhavam só para o FUTURO ("sua
+temporada está chegando"); faltava cruzar o pico histórico com o estado ATUAL — disparar "você costuma
+agendar AGORA, mas o funil está parado este mês". Nova peça pura
+`funnelActivitySeasonalityStall(seasonality, currentMonthTransitions, { now? })` + tipo
+`FunnelActivitySeasonalityStall` + constantes `FUNNEL_ACTIVITY_STALL_MIN_ELAPSED_FRACTION`(=0.25) e
+`FUNNEL_ACTIVITY_STALL_FACTOR`(=0.5) em `src/lib/shows.ts`: recebe a `funnelActivitySeasonality` já computada +
+a contagem REAL de transições do mês/ano corrente, injeta "agora" (`getUTCMonth`/`getUTCDate`, default
+`new Date()`) e dispara só quando TODOS valem — amostra mínima (`FUNNEL_ACTIVITY_SEASON_MIN_TRANSITIONS`=12); o
+mês CORRENTE é historicamente forte (`share` ≥ `FUNNEL_ACTIVITY_STRONG_SEASON_FACTOR`/12) e teve movimento antes
+(`avgPerYear > 0`, "você costuma agendar agora"); já decorreu ≥ 25% do mês (não chora lobo cedo); e a atividade
+real está abaixo do ritmo esperado proporcional ao trecho decorrido (`< avgPerYear × fraçãoDecorrida × 0.5`).
+Devolve `{ show, month, expected, actual, shortfall=clamp(1-actual/expected,0..1), lift=share*12 }`. No
+**Painel** (`dashboard/page.tsx`), banner 😴 `Funil parado numa temporada forte` linkando
+`/shows/funil/atividade/sazonalidade`, reaproveitando o MESMO feed de transições já montado para a sazonalidade
+(extraído para a const `funnelActivityFeed`), do qual conta as transições do mês/ano corrente — **zero I/O
+extra**. **Cascata dos banners sazonais (no máximo um por vez):** faturamento forte → faturamento vale → **funil
+parado (presente)** → funil forte (futuro) → funil vale (futuro): o "funil parado" toma a frente da manchete/vale
+de agendamento FUTURO (presente > futuro), mas cede aos nudges de FATURAMENTO. **+9 testes** (`shows.test.ts`:
+amostra abaixo do piso não exibe; mês corrente fraco não exibe; mês forte + atividade abaixo do ritmo dispara;
+atividade no ritmo não exibe; cedo demais no mês não exibe; borda inclusiva de 0,25 da fração decorrida dispara;
+mês corrente sem histórico não dispara; atividade zero satura `shortfall` em 1; `now` injetável muda o
+resultado). Zero migração/dependência. DoD verde: `npm run build` (sem novo bundle/rota — só a peça pura + o
+Painel), `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1835 testes**); smoke → `/login` 200,
+`/dashboard` e `/shows/funil/atividade/sazonalidade` 307→/login (auth-gated, sem 500); `npm audit` inalterado
+(10 advisories, zero dependência nova), ver D333. **Próximo possível** — dar ao "funil parado" um detalhe
+próprio na página de sazonalidade (destacar o ritmo do mês corrente vs. o esperado), ou refinar `expected`
+excluindo o ano corrente parcial da base (hoje conservador de propósito, D333). **Antes disso, Sessão 337 —
 NUDGE de "VALE DE AGENDAMENTO" no PAINEL (`funnelActivitySeasonalityLull`), fechando o "próximo possível"
 que a Sessão 336 registrou (um espelho de "vale de agendamento", `gigSeasonalityLull`):** o eixo de
 FATURAMENTO tinha o PAR de nudges sazonais (forte `gigSeasonalityHeadline`/D134 **e** vale `gigSeasonalityLull`/D135),
