@@ -7,9 +7,37 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1841 testes**),
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1844 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 340 —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 341 —
+BASELINE do "FUNIL PARADO" EXCLUI O ANO CORRENTE (parcial) do `expected`
+(`funnelActivitySeasonalityStall`), fechando o "próximo possível" que a Sessão 340 (D334)
+deixou explícito ("refinar `expected` excluindo o ano corrente parcial da base do
+`avgPerYear`, hoje conservador de propósito, D333"):** o `expected` do stall
+proporcionalizava `month.avgPerYear` (média sobre TODOS os anos, incluindo o corrente,
+parcial e — num mês parado — deprimido), diluindo o baseline com o próprio déficit que se
+quer diagnosticar. Agora proporcionaliza a média dos **anos ANTERIORES** neste mês, derivada
+dos agregados que já existem (sem restruturar `funnelActivitySeasonality`):
+`priorTotal = month.total − currentMonthTransitions`,
+`priorYears = month.years − (currentMonthTransitions > 0 ? 1 : 0)`,
+`baselinePerYear = priorYears > 0 && priorTotal > 0 ? priorTotal/priorYears : month.avgPerYear`.
+Sem histórico anterior (só o ano corrente com movimento) recai no `avgPerYear`, que aí iguala
+o realizado e nunca dispara — o guard natural "sem baseline anterior não há parada". A barra
+fica MENOS conservadora, porém mais fiel; a micro-barra da D334 e o cartão de detalhe passam a
+contrastar contra o ritmo histórico real, não contra a média diluída. Mudança **puramente na
+lógica pura** (`src/lib/shows.ts`), zero migração/dependência/rota. **+3 testes**
+(`shows.test.ts`: o baseline exclui o ano corrente — feed realista com ano passado + corrente
+parcial no mesmo feed, `expected` reflete o ritmo dos anos anteriores; excluir o ano corrente
+faz DISPARAR o que a média diluída silenciaria; sem ano anterior recai no `avgPerYear` e não
+dispara). Os testes legados (feeds de um único ano passado, onde `priorYears` colapsa a 0 →
+fallback) seguem intactos. DoD verde: `npm run build`, `npx tsc --noEmit`, `npm run lint`
+(0 warnings), `npm test` (**1844 testes**); smoke → `/login` 200, `/dashboard` e
+`/shows/funil/atividade/sazonalidade` 307→/login (auth-gated, sem 500); `npm audit` inalterado
+(10 advisories: 4 moderate/5 high/1 critical, zero dependência nova), ver D335. **Próximo
+possível** — marcar visualmente na barra o ponto do ritmo esperado se um dia o stall passar a
+exibir também cenários de `actual > expected`; ou levar o mesmo refino de baseline (excluir o
+ano corrente) à manchete `funnelActivitySeasonalityHeadline` se a antecedência também soar
+conservadora. **Antes disso, Sessão 340 —
 MICRO-BARRA VISUAL (realizado × esperado) no CARTÃO do "FUNIL PARADO" da PÁGINA de
 SAZONALIDADE (`/shows/funil/atividade/sazonalidade`), fechando o "próximo possível" que a
 Sessão 339 (D334) deixou explícito ("dar ao cartão do stall uma micro-barra visual — realizado
