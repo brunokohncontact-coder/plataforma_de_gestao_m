@@ -5,6 +5,40 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-15 — D334: Detalhe do "funil parado" na página de sazonalidade + peça `countCurrentMonthFunnelActivity`
+- **Contexto:** a D333 (Sessão 338) levou o nudge `funnelActivitySeasonalityStall` ao Painel como banner
+  compacto e registrou como "próximo possível" dar ao "funil parado" um detalhe próprio na página que ele
+  linka (`/shows/funil/atividade/sazonalidade`), destacando o ritmo do mês corrente vs. o esperado. A página
+  mostrava a sazonalidade agregada, mas não abria esse sinal do PRESENTE. Além disso, a contagem de transições
+  do mês/ano corrente estava escrita inline no Painel — repeti-la na página duplicaria a lógica.
+- **Decisão:**
+  - Nova peça pura `countCurrentMonthFunnelActivity(feed, { now? })` em `src/lib/shows.ts`: conta as transições
+    do mês/ano corrente dentro de um feed já montado (`buildFunnelActivityFeed`), pelo `at` em UTC, com `now`
+    injetável. É o `currentMonthTransitions` que `funnelActivitySeasonalityStall` consome. Reusada no Painel
+    (`dashboard/page.tsx`, substituindo o filtro inline) e na página de sazonalidade — mesma contagem, uma
+    definição só.
+  - Na página, `loadSeason` passou a devolver `{ feed, season }` (antes só a `season`) para alimentar a
+    contagem sem I/O extra — o feed já estava carregado para computar a sazonalidade. O stall só é computado na
+    visão de TODOS os anos (`activeYear === null`): o sinal é sobre o mês corrente do ano corrente medido
+    contra o padrão de fundo somando todas as temporadas; num recorte por ano (`?ano=`) a leitura seria de
+    outro contexto e o cartão não renderiza.
+  - Novo componente `StallDetail` na página: cartão âmbar `😴 Funil parado numa temporada forte` com o `lift`%
+    (quanto o mês concentra acima do médio), o `shortfall`% (quanto abaixo do ritmo esperado) e duas colunas —
+    **Realizadas até agora** (`actual`) vs. **Esperadas a esta altura** (`~expected` via `formatAverage`) — e
+    CTA `Trabalhar o pipeline →`. Renderizado no topo dos resultados (acima dos destaques), pois é o sinal de
+    maior prioridade quando dispara.
+- **Justificativa:** extrair a contagem elimina a duplicação entre Painel e página (uma fonte de verdade,
+  testável isoladamente) e o cartão fecha o loop "banner no Painel → detalhe na página" já estabelecido pelos
+  demais nudges. Limitar o cartão à visão agregada mantém a semântica do stall coerente com a do Painel.
+- **Alternativas consideradas:** (a) recomputar a contagem inline na página — rejeitada por duplicar lógica já
+  no Painel; (b) exibir o stall também nos recortes por ano — rejeitada por misturar "mês corrente do ano
+  corrente" com uma sazonalidade de outro ano; (c) micro-barra visual realizado-vs-esperado no cartão —
+  adiada como "próximo possível" para manter a sessão pequena e fechada.
+- **Nota de concorrência:** número **D334** escolhido como o próximo livre acima do maior D referenciado no
+  PROGRESS/DECISIONS (D333). Se outra PR reivindicar D334, renumerar para o próximo livre no merge.
+
+---
+
 ## 2026-07-15 — D333: Nudge de "funil parado numa temporada forte" no Painel (`funnelActivitySeasonalityStall`)
 - **Contexto:** a D329 (manchete de agendamento chegando) e a D332 (vale de agendamento chegando) levaram a
   sazonalidade da ATIVIDADE do funil ao Painel, mas ambas olham só para o FUTURO ("sua temporada está
