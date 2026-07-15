@@ -8919,6 +8919,51 @@ describe("gigSeasonalityStall", () => {
     expect(stall.show).toBe(false);
   });
 
+  it("`bookedFirm` conta só compromissos firmes (CONFIRMED+PLAYED), não propostas", () => {
+    // Baseline 6 (12 shows / 2 anos), corte 6×0.5=3. Para 2027: 1 CONFIRMADO +
+    // 1 PROPOSTO → booked 2 < 3 dispara; mas só 1 é firme.
+    const shows = [
+      ...septemberHistory([2025, 2026], 6, 500_00),
+      gig({ id: "b1", date: "2027-09-05T20:00:00.000Z", status: "CONFIRMED" }),
+      gig({ id: "p1", date: "2027-09-20T20:00:00.000Z", status: "PROPOSED" }),
+    ];
+    const s = gigSeasonality(shows, { now });
+    const stall = gigSeasonalityStall(s, shows, { now });
+    expect(stall.show).toBe(true);
+    expect(stall.booked).toBe(2);
+    expect(stall.bookedFirm).toBe(1); // só o CONFIRMADO
+  });
+
+  it("`bookedFirm` é 0 quando toda a agenda marcada são propostas em aberto", () => {
+    // Baseline 6, corte 3. Dois PROPOSTOS para 2027 → booked 2 < 3 dispara,
+    // mas nada firme: a agenda "cheia" é só interesse, não fechamento.
+    const shows = [
+      ...septemberHistory([2025, 2026], 6, 500_00),
+      gig({ id: "p1", date: "2027-09-05T20:00:00.000Z", status: "PROPOSED" }),
+      gig({ id: "p2", date: "2027-09-20T20:00:00.000Z", status: "PROPOSED" }),
+    ];
+    const s = gigSeasonality(shows, { now });
+    const stall = gigSeasonalityStall(s, shows, { now });
+    expect(stall.show).toBe(true);
+    expect(stall.booked).toBe(2);
+    expect(stall.bookedFirm).toBe(0);
+  });
+
+  it("agenda vazia e caso `none` têm `bookedFirm` 0", () => {
+    // Dispara com agenda vazia (booked 0) → bookedFirm 0; e o `none` (sem amostra)
+    // também expõe 0.
+    const empty = septemberHistory([2024, 2025, 2026], 2, 500_00);
+    const fired = gigSeasonalityStall(gigSeasonality(empty, { now }), empty, { now });
+    expect(fired.show).toBe(true);
+    expect(fired.booked).toBe(0);
+    expect(fired.bookedFirm).toBe(0);
+
+    const tiny = septemberHistory([2026], 3, 500_00);
+    const none = gigSeasonalityStall(gigSeasonality(tiny, { now }), tiny, { now });
+    expect(none.show).toBe(false);
+    expect(none.bookedFirm).toBe(0);
+  });
+
   it("o fator de corte é 0,5 (metade do ritmo típico)", () => {
     expect(GIG_SEASON_STALL_FACTOR).toBe(0.5);
   });
