@@ -104,6 +104,7 @@ import {
   BURN_WINDOW_PRESETS,
   taxReserve,
   DEFAULT_TAX_RATE,
+  parseTaxRatePercent,
   showPipeline,
   compareShowPipelines,
   CONVERSION_TREND_EPSILON,
@@ -6801,6 +6802,40 @@ describe("taxReserve", () => {
     expect(taxReserve(txs, { year: 2026, rate: 5 }).rate).toBe(1);
     expect(taxReserve(txs, { year: 2026, rate: -1 }).rate).toBe(0);
     expect(taxReserve(txs, { year: 2026, rate: NaN }).rate).toBe(DEFAULT_TAX_RATE);
+  });
+});
+
+describe("parseTaxRatePercent", () => {
+  it("aceita um número válido dentro da faixa", () => {
+    expect(parseTaxRatePercent("6")).toBe(6);
+    expect(parseTaxRatePercent("27.5")).toBe(27.5);
+  });
+
+  it("aceita vírgula como separador decimal e espaços em volta", () => {
+    expect(parseTaxRatePercent("  11,25 ")).toBe(11.25);
+  });
+
+  it("aceita os limites 0 e 100", () => {
+    expect(parseTaxRatePercent("0")).toBe(0);
+    expect(parseTaxRatePercent("100")).toBe(100);
+  });
+
+  it("devolve null para vazio, nulo ou indefinido", () => {
+    expect(parseTaxRatePercent("")).toBeNull();
+    expect(parseTaxRatePercent("   ")).toBeNull();
+    expect(parseTaxRatePercent(null)).toBeNull();
+    expect(parseTaxRatePercent(undefined)).toBeNull();
+  });
+
+  it("devolve null para valores fora da faixa [0, 100]", () => {
+    expect(parseTaxRatePercent("-1")).toBeNull();
+    expect(parseTaxRatePercent("100.1")).toBeNull();
+    expect(parseTaxRatePercent("250")).toBeNull();
+  });
+
+  it("devolve null para texto não numérico", () => {
+    expect(parseTaxRatePercent("abc")).toBeNull();
+    expect(parseTaxRatePercent("6%")).toBeNull();
   });
 });
 

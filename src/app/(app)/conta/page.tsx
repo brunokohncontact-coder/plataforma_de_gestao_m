@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/session";
 import { ProfileForm } from "./ProfileForm";
 import { EmailForm } from "./EmailForm";
 import { PasswordForm } from "./PasswordForm";
+import { TaxRateForm } from "./TaxRateForm";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,11 @@ export default async function ContaPage() {
       <section className="card space-y-4">
         <h2 className="text-lg font-semibold">Trocar senha</h2>
         <PasswordForm />
+      </section>
+
+      <section className="card space-y-4">
+        <h2 className="text-lg font-semibold">Reserva para impostos</h2>
+        <TaxRateForm value={user.taxRatePercent ?? null} />
       </section>
     </div>
   );

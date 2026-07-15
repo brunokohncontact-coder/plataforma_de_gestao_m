@@ -27,6 +27,11 @@ model User {
   name         String
   passwordHash String
   artistName   String? // nome artístico / da banda
+  // Alíquota de reserva para impostos, em PORCENTAGEM (0–100). Nula = usar o
+  // padrão genérico (`DEFAULT_TAX_RATE`, hipótese do Simples). Persistir a
+  // alíquota real do regime do músico evita re-digitar `?aliquota=` a cada
+  // visita a /financas/reserva-impostos (ver DECISIONS.md D41).
+  taxRatePercent Float?
   // Marca temporal da última troca de senha. Sessões (JWT) emitidas antes
   // desta data são invalidadas — desloga logins antigos ao trocar a senha
   // (ver DECISIONS.md D10).
