@@ -2638,6 +2638,31 @@ export function funnelActivitySeasonalityStall(
   };
 }
 
+/**
+ * Conta as transições do funil no MÊS corrente do ANO corrente dentro de um feed
+ * de atividade já montado (`buildFunnelActivityFeed`), pelo `at` em UTC. É o
+ * `currentMonthTransitions` que `funnelActivitySeasonalityStall` cruza com o ritmo
+ * sazonal esperado — extraído para reuso entre o Painel e a página de sazonalidade
+ * (mesma contagem, uma definição só, em vez de repetir o filtro em cada tela).
+ * Puro, com `now` injetável (`getUTCFullYear`/`getUTCMonth`, default `new Date()`).
+ */
+export function countCurrentMonthFunnelActivity(
+  feed: Pick<FunnelActivityEntry, "at">[],
+  opts: { now?: Date | string } = {},
+): number {
+  const nowDate =
+    opts.now == null
+      ? new Date()
+      : typeof opts.now === "string"
+        ? new Date(opts.now)
+        : opts.now;
+  const year = nowDate.getUTCFullYear();
+  const month = nowDate.getUTCMonth();
+  return feed.filter(
+    (e) => e.at.getUTCFullYear() === year && e.at.getUTCMonth() === month,
+  ).length;
+}
+
 /** Variação de um mês do calendário na sazonalidade da atividade, entre dois períodos. */
 export interface FunnelActivitySeasonMonthChange {
   /** Mês do ano: 0 = janeiro .. 11 = dezembro (UTC). */

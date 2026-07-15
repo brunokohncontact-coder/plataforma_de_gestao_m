@@ -49,6 +49,7 @@ import {
   funnelActivitySeasonalityHeadline,
   funnelActivitySeasonalityLull,
   funnelActivitySeasonalityStall,
+  countCurrentMonthFunnelActivity,
   compareFunnelActivitySeasonality,
   classifyFunnelActivitySeasonMonthChange,
   relativeDayLabel,
@@ -2407,6 +2408,107 @@ describe("funnelActivitySeasonalityStall", () => {
       now: "2025-05-15T00:00:00.000Z",
     });
     expect(inMay.show).toBe(false);
+  });
+});
+
+describe("countCurrentMonthFunnelActivity", () => {
+  const feedOf = (ats: string[]) =>
+    buildFunnelActivityFeed(
+      ats.map((at, i) => ({
+        showId: `s${i}`,
+        showTitle: "",
+        showDate: null,
+        fromStatus: null,
+        toStatus: "PROPOSED",
+        at,
+      })),
+    );
+
+  it("feed vazio → 0", () => {
+    expect(
+      countCurrentMonthFunnelActivity([], { now: "2025-03-15T00:00:00.000Z" }),
+    ).toBe(0);
+  });
+
+  it("conta só as transições do mês/ano corrente (UTC)", () => {
+    const feed = feedOf([
+      "2025-03-01T09:00:00.000Z", // conta
+      "2025-03-31T23:00:00.000Z", // conta
+      "2025-02-28T09:00:00.000Z", // outro mês
+      "2024-03-15T09:00:00.000Z", // mesmo mês, outro ano
+      "2025-04-01T00:00:00.000Z", // outro mês
+    ]);
+    expect(
+      countCurrentMonthFunnelActivity(feed, { now: "2025-03-15T12:00:00.000Z" }),
+    ).toBe(2);
+  });
+
+  it("distingue o mesmo mês em anos diferentes", () => {
+    const feed = feedOf([
+      "2024-03-10T09:00:00.000Z",
+      "2025-03-10T09:00:00.000Z",
+      "2025-03-20T09:00:00.000Z",
+    ]);
+    expect(
+      countCurrentMonthFunnelActivity(feed, { now: "2024-03-01T00:00:00.000Z" }),
+    ).toBe(1);
+    expect(
+      countCurrentMonthFunnelActivity(feed, { now: "2025-03-01T00:00:00.000Z" }),
+    ).toBe(2);
+  });
+
+  it("usa a fronteira UTC do mês (não o fuso local)", () => {
+    // 31/mar 23:30 UTC ainda é março em UTC, mesmo que já seja abril em fusos +.
+    const feed = feedOf(["2025-03-31T23:30:00.000Z"]);
+    expect(
+      countCurrentMonthFunnelActivity(feed, { now: "2025-03-31T23:59:00.000Z" }),
+    ).toBe(1);
+    expect(
+      countCurrentMonthFunnelActivity(feed, { now: "2025-04-01T00:30:00.000Z" }),
+    ).toBe(0);
+  });
+
+  it("aceita `now` como Date além de string", () => {
+    const feed = feedOf(["2025-06-05T09:00:00.000Z"]);
+    expect(
+      countCurrentMonthFunnelActivity(feed, {
+        now: new Date("2025-06-20T00:00:00.000Z"),
+      }),
+    ).toBe(1);
+  });
+
+  it("alimenta funnelActivitySeasonalityStall com a mesma contagem do Painel", () => {
+    // Espelha o uso real: monta o feed, conta o mês corrente e passa ao stall.
+    const feed = buildFunnelActivityFeed(
+      Array.from({ length: 60 }, (_, i) => ({
+        showId: `h${i}`,
+        showTitle: "",
+        showDate: null,
+        fromStatus: null,
+        toStatus: "PROPOSED",
+        at: `2024-01-${String((i % 28) + 1).padStart(2, "0")}T09:00:00.000Z`,
+      })).concat(
+        // 3 transições no mês corrente (jan/2025) — abaixo do ritmo esperado.
+        Array.from({ length: 3 }, (_, i) => ({
+          showId: `c${i}`,
+          showTitle: "",
+          showDate: null,
+          fromStatus: null,
+          toStatus: "PROPOSED",
+          at: `2025-01-0${i + 1}T09:00:00.000Z`,
+        })),
+      ),
+    );
+    const season = funnelActivitySeasonality(feed);
+    const count = countCurrentMonthFunnelActivity(feed, {
+      now: "2025-01-15T00:00:00.000Z",
+    });
+    expect(count).toBe(3);
+    const stall = funnelActivitySeasonalityStall(season, count, {
+      now: "2025-01-15T00:00:00.000Z",
+    });
+    expect(stall.show).toBe(true);
+    expect(stall.actual).toBe(3);
   });
 });
 

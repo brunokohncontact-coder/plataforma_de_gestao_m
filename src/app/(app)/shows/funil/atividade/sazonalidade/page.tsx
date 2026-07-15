@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import {
   buildFunnelActivityFeed,
   funnelActivitySeasonality,
+  funnelActivitySeasonalityStall,
+  countCurrentMonthFunnelActivity,
   compareFunnelActivitySeasonality,
   classifyFunnelActivitySeasonMonthChange,
   parseFeedYear,
@@ -12,6 +14,7 @@ import {
   FUNNEL_ACTIVITY_KINDS,
   type FunnelActivityKind,
   type FunnelActivitySeasonalityComparison,
+  type FunnelActivitySeasonalityStall,
 } from "@/lib/shows";
 import { PeriodPicker } from "@/components/PeriodPicker";
 
@@ -63,7 +66,7 @@ async function loadSeason(
       at: e.createdAt,
     })),
   );
-  return funnelActivitySeasonality(feed);
+  return { feed, season: funnelActivitySeasonality(feed) };
 }
 
 export default async function FunnelActivitySeasonalityPage({
@@ -101,16 +104,31 @@ export default async function FunnelActivitySeasonalityPage({
     newestEvent?.createdAt ?? null,
   );
 
-  const season = await loadSeason(user.id, yearRange);
+  const { feed, season } = await loadSeason(user.id, yearRange);
   // Escala das barras: maior total entre os meses (mínimo 1 para não dividir por 0).
   const peak = Math.max(1, ...season.months.map((m) => m.total));
+
+  // "Funil parado numa temporada forte" (D333): o detalhe da mesma leitura que o
+  // Painel exibe como banner — cruza o pico histórico com o estado ATUAL do mês
+  // corrente. Só faz sentido na visão de TODOS os anos (`activeYear === null`),
+  // porque o nudge é sobre o mês corrente do ano corrente medido contra o padrão
+  // de fundo somando todas as temporadas; num ano isolado a leitura seria de outro
+  // recorte. Reaproveita o feed já carregado (zero I/O extra) para contar as
+  // transições do mês/ano corrente e cruzá-las com o ritmo sazonal esperado.
+  const stall: FunnelActivitySeasonalityStall | null =
+    activeYear === null && season.totalTransitions > 0
+      ? funnelActivitySeasonalityStall(
+          season,
+          countCurrentMonthFunnelActivity(feed),
+        )
+      : null;
 
   // Comparativo ano a ano: só com um ano específico selecionado e ambos os
   // períodos com transições. O ano anterior sai de uma consulta indexada
   // `[userId]` recortada por `createdAt` (mesmo padrão do ritmo, D331).
   let comparison: FunnelActivitySeasonalityComparison | null = null;
   if (activeYear !== null && season.totalTransitions > 0) {
-    const prevSeason = await loadSeason(
+    const { season: prevSeason } = await loadSeason(
       user.id,
       feedYearRangeUtc(activeYear - 1),
     );
@@ -199,6 +217,12 @@ export default async function FunnelActivitySeasonalityPage({
               </span>
             ))}
           </div>
+
+          {/* Detalhe do "funil parado numa temporada forte" — o mesmo sinal que o
+              Painel resume num banner, aqui com o ritmo do mês corrente vs. o
+              esperado lado a lado. Só na visão de todos os anos (o stall é null nos
+              recortes por ano). */}
+          {stall?.show && stall.month && <StallDetail stall={stall} />}
 
           {/* Destaques da temporada de agendamento. */}
           <div className="grid gap-4 sm:grid-cols-3">
@@ -378,6 +402,65 @@ export default async function FunnelActivitySeasonalityPage({
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Detalhe do **funil parado numa temporada forte** (`funnelActivitySeasonalityStall`):
+ * o mesmo sinal que o Painel resume num banner, aqui aberto com o ritmo do mês
+ * corrente lado a lado com o esperado. Cruza o pico histórico (este mês costuma
+ * concentrar `lift`× o movimento do mês médio) com o estado ATUAL (você está
+ * `shortfall`% abaixo do ritmo esperado para esta altura do mês) — a hora de voltar
+ * a trabalhar o pipeline. Só renderiza quando `stall.show` (a página já garante).
+ */
+function StallDetail({ stall }: { stall: FunnelActivitySeasonalityStall }) {
+  const month = stall.month!;
+  const liftPct = Math.round((stall.lift - 1) * 100);
+  const shortfallPct = Math.round(stall.shortfall * 100);
+  return (
+    <section className="card border-amber-200 bg-amber-50">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="font-semibold text-amber-900">
+          😴 Funil parado numa temporada forte
+        </h2>
+        <Link
+          href="/shows/funil"
+          className="text-sm font-medium text-amber-700 hover:underline"
+        >
+          Trabalhar o pipeline →
+        </Link>
+      </div>
+      <p className="mt-1 text-sm text-amber-900">
+        <strong className="capitalize">{month.label}</strong> costuma concentrar{" "}
+        <strong>{liftPct}% mais</strong> movimento no funil que o mês médio, mas
+        você está <strong>{shortfallPct}% abaixo</strong> do ritmo esperado para
+        esta altura do mês.
+      </p>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-lg border border-amber-200 bg-white/60 p-3">
+          <div className="text-xs font-medium uppercase tracking-wide text-amber-700">
+            Realizadas até agora
+          </div>
+          <div className="mt-1 text-2xl font-bold text-amber-900">
+            {stall.actual}
+          </div>
+          <div className="text-xs text-amber-700">
+            {stall.actual === 1 ? "transição" : "transições"} neste mês
+          </div>
+        </div>
+        <div className="rounded-lg border border-amber-200 bg-white/60 p-3">
+          <div className="text-xs font-medium uppercase tracking-wide text-amber-700">
+            Esperadas a esta altura
+          </div>
+          <div className="mt-1 text-2xl font-bold text-amber-900">
+            ~{formatAverage(stall.expected)}
+          </div>
+          <div className="text-xs text-amber-700">
+            pelo ritmo típico do mês, proporcional aos dias já decorridos
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 

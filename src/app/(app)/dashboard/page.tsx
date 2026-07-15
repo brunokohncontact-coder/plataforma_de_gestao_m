@@ -98,6 +98,7 @@ import {
   funnelActivitySeasonalityHeadline,
   funnelActivitySeasonalityLull,
   funnelActivitySeasonalityStall,
+  countCurrentMonthFunnelActivity,
   type ConflictShowLike,
   type LeadTimeShowLike,
   type StaleProposalShowLike,
@@ -477,13 +478,8 @@ export default async function DashboardPage() {
   // compara ao ritmo sazonal esperado proporcional ao trecho decorrido do mês.
   // É o presente, então TOMA A FRENTE dos nudges de agendamento FUTURO (manchete/
   // vale) dentro do grupo do funil — mas cede aos de FATURAMENTO (via funnelSeason).
-  const nowMonthUtc = new Date();
   const funnelCurrentMonthTransitions = funnelActivityFeed
-    ? funnelActivityFeed.filter(
-        (e) =>
-          e.at.getUTCFullYear() === nowMonthUtc.getUTCFullYear() &&
-          e.at.getUTCMonth() === nowMonthUtc.getUTCMonth(),
-      ).length
+    ? countCurrentMonthFunnelActivity(funnelActivityFeed)
     : 0;
   const funnelStall = funnelSeason
     ? funnelActivitySeasonalityStall(funnelSeason, funnelCurrentMonthTransitions)

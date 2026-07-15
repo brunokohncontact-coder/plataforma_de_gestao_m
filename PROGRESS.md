@@ -7,9 +7,36 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1835 testes**),
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1841 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 338 —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 339 —
+DETALHE do "FUNIL PARADO NUMA TEMPORADA FORTE" na PÁGINA de SAZONALIDADE
+(`/shows/funil/atividade/sazonalidade`), fechando o "próximo possível" que a D333 (Sessão 338)
+deixou explícito ("dar ao 'funil parado' um detalhe próprio na página de sazonalidade,
+destacando o ritmo do mês corrente vs. o esperado"):** o nudge `funnelActivitySeasonalityStall`
+(D333) só aparecia como banner compacto no Painel; a página que ele linka não abria o sinal.
+Agora, na visão de TODOS os anos (`activeYear === null` — o stall é sobre o mês corrente do ano
+corrente medido contra o padrão de fundo somando todas as temporadas; num recorte por ano a
+leitura seria de outro contexto, então não renderiza), um cartão âmbar `😴 Funil parado numa
+temporada forte` abre o `lift`% (quanto o mês concentra acima do médio) e o `shortfall`% (quanto
+abaixo do ritmo esperado você está), com duas colunas lado a lado — **Realizadas até agora**
+(`actual`) vs. **Esperadas a esta altura** (`~expected`, `formatAverage`, proporcional aos dias
+decorridos) — e CTA `Trabalhar o pipeline →` para `/shows/funil`. Para não repetir a contagem
+do mês corrente em duas telas (o Painel já filtrava inline), extraí a peça pura
+`countCurrentMonthFunnelActivity(feed, { now? })` em `src/lib/shows.ts` (conta transições do
+mês/ano corrente pelo `at` em UTC, `now` injetável) e a reusei no Painel (`dashboard/page.tsx`,
+substituindo o filtro inline) e na página (`loadSeason` agora devolve `{ feed, season }` para
+alimentar a contagem — zero I/O extra, o feed já estava carregado). **+6 testes**
+(`shows.test.ts`: feed vazio → 0; conta só o mês/ano corrente em UTC; distingue o mesmo mês em
+anos diferentes; usa a fronteira UTC do mês, não o fuso local; aceita `now` como Date; alimenta
+`funnelActivitySeasonalityStall` com a mesma contagem do Painel). Zero migração/dependência. DoD
+verde: `npm run build` (sem nova rota/bundle — só a peça pura + a página + o Painel),
+`npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1841 testes**); smoke → `/login`
+200, `/dashboard` e a página de sazonalidade (com e sem `?ano=`) 307→/login (auth-gated, sem
+500); `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, zero dependência
+nova), ver D334. **Próximo possível** — dar ao cartão do stall uma micro-barra visual (realizado
+vs. esperado) para o contraste saltar num relance; ou refinar `expected` excluindo o ano corrente
+parcial da base do `avgPerYear` (hoje conservador de propósito, D333). **Antes disso, Sessão 338 —
 NUDGE de "FUNIL PARADO NUMA TEMPORADA FORTE" no PAINEL (`funnelActivitySeasonalityStall`),
 fechando o "próximo possível" que a D329/D332 (Sessões 336–337) deixaram explícito:** as manchetes de
 agendamento (`funnelActivitySeasonalityHeadline`/D329 e `...Lull`/D332) olhavam só para o FUTURO ("sua
