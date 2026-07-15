@@ -2417,6 +2417,95 @@ export function funnelActivitySeasonalityHeadline(
   return none;
 }
 
+/**
+ * Um mês conta como "fraco" (vale de agendamento) quando sua participação no
+ * total histórico de transições (`share`) fica abaixo da média uniforme (1/12)
+ * por este fator. 0.75 = pelo menos 25% abaixo do mês médio — fundo o bastante
+ * para ser de fato um vale de temporada, não uma flutuação qualquer. Espelha
+ * `FUNNEL_ACTIVITY_STRONG_SEASON_FACTOR` no sentido oposto; o horizonte e a
+ * amostra mínima são os mesmos do mês forte
+ * (`FUNNEL_ACTIVITY_SEASON_HORIZON`/`FUNNEL_ACTIVITY_SEASON_MIN_TRANSITIONS`) e
+ * casa com `WEAK_MONTH_FACTOR` da sazonalidade de faturamento (D135).
+ */
+export const FUNNEL_ACTIVITY_WEAK_SEASON_FACTOR = 0.75;
+
+/** Resumo de Painel do vale da sazonalidade da atividade do funil (`funnelActivitySeasonalityLull`). */
+export interface FunnelActivitySeasonalityLull {
+  /**
+   * Deve aparecer no Painel? Só quando há amostra suficiente
+   * (`totalTransitions >= FUNNEL_ACTIVITY_SEASON_MIN_TRANSITIONS`) **e** existe um
+   * mês fraco de agendamento dentro da janela à frente — caso contrário o nudge
+   * seria ruído (mesma disciplina de `funnelActivitySeasonalityHeadline`).
+   */
+  show: boolean;
+  /** O próximo mês fraco de agendamento na janela (o mais cedo que qualifica), ou null. */
+  month: FunnelActivitySeasonMonth | null;
+  /** Quantos meses à frente está (1 = mês que vem … HORIZON); 0 se nenhum. */
+  monthsAhead: number;
+  /**
+   * Quão abaixo da média uniforme (1/12) o `share` do mês fica, como fração:
+   * `1 - share * 12`. Ex.: 0.4 = esse mês historicamente concentra 40% menos
+   * atividade de funil que o mês médio. 0 quando não há mês fraco à frente.
+   */
+  shortfall: number;
+}
+
+/**
+ * Resumo de Painel da **sazonalidade da atividade do funil**, do lado do vale:
+ * deriva, de uma `funnelActivitySeasonality` já computada, o **próximo mês fraco
+ * de agendamento** que se aproxima — o mais cedo, dentro de
+ * `FUNNEL_ACTIVITY_SEASON_HORIZON` meses, cuja participação histórica no total de
+ * transições fica abaixo da média (≤ `FUNNEL_ACTIVITY_WEAK_SEASON_FACTOR`× o mês
+ * médio). Espelho exato de `funnelActivitySeasonalityHeadline` (mesma janela,
+ * mesma amostra mínima, mesmo `now` injetável), no sentido oposto: enquanto o mês
+ * forte é a temporada de prospecção chegando, o mês fraco é antecedência para
+ * **não deixar o funil esfriar** num mês em que você historicamente afrouxa o
+ * trabalho de agendamento.
+ *
+ * Enquanto `gigSeasonalityLull` (D135) diz "seu mês magro de faturamento chegando —
+ * encha a agenda antes", este diz "seu mês parado de prospecção chegando — mantenha
+ * o pipeline em movimento". Exige `total > 0` no mês candidato (simétrico ao mês
+ * forte): o sinal é "neste mês, em que você historicamente trabalha o funil, costuma
+ * afrouxar" — não "você ainda não tem dados desse mês". O detalhe completo está em
+ * `/shows/funil/atividade/sazonalidade`.
+ */
+export function funnelActivitySeasonalityLull(
+  seasonality: FunnelActivitySeasonality,
+  opts: { now?: Date | string } = {},
+): FunnelActivitySeasonalityLull {
+  const none: FunnelActivitySeasonalityLull = {
+    show: false,
+    month: null,
+    monthsAhead: 0,
+    shortfall: 0,
+  };
+  if (seasonality.totalTransitions < FUNNEL_ACTIVITY_SEASON_MIN_TRANSITIONS) {
+    return none;
+  }
+
+  const nowDate =
+    opts.now == null
+      ? new Date()
+      : typeof opts.now === "string"
+        ? new Date(opts.now)
+        : opts.now;
+  const currentMonth = nowDate.getUTCMonth();
+  const threshold = FUNNEL_ACTIVITY_WEAK_SEASON_FACTOR / 12;
+
+  for (let ahead = 1; ahead <= FUNNEL_ACTIVITY_SEASON_HORIZON; ahead++) {
+    const m = seasonality.months[(currentMonth + ahead) % 12];
+    if (m.total > 0 && m.share <= threshold) {
+      return {
+        show: true,
+        month: m,
+        monthsAhead: ahead,
+        shortfall: 1 - m.share * 12,
+      };
+    }
+  }
+  return none;
+}
+
 /** Variação de um mês do calendário na sazonalidade da atividade, entre dois períodos. */
 export interface FunnelActivitySeasonMonthChange {
   /** Mês do ano: 0 = janeiro .. 11 = dezembro (UTC). */

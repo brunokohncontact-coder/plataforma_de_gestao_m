@@ -96,6 +96,7 @@ import {
   buildFunnelActivityFeed,
   funnelActivitySeasonality,
   funnelActivitySeasonalityHeadline,
+  funnelActivitySeasonalityLull,
   type ConflictShowLike,
   type LeadTimeShowLike,
   type StaleProposalShowLike,
@@ -451,25 +452,35 @@ export default async function DashboardPage() {
   // CEDE A VEZ aos nudges de sazonalidade de shows (forte/vale): para não empilhar
   // banners de temporada, só aparece quando nenhum deles está no ar (no máximo um
   // nudge sazonal por vez). O detalhe está em /shows/funil/atividade/sazonalidade.
-  const funnelSeasonHeadline =
+  const funnelSeason =
     seasonHeadline.show || seasonLull.show
       ? null
-      : funnelActivitySeasonalityHeadline(
-          funnelActivitySeasonality(
-            buildFunnelActivityFeed(
-              shows.flatMap((s) =>
-                s.statusEvents.map((e) => ({
-                  showId: s.id,
-                  showTitle: "",
-                  showDate: null,
-                  fromStatus: e.fromStatus,
-                  toStatus: e.toStatus,
-                  at: e.createdAt,
-                })),
-              ),
+      : funnelActivitySeasonality(
+          buildFunnelActivityFeed(
+            shows.flatMap((s) =>
+              s.statusEvents.map((e) => ({
+                showId: s.id,
+                showTitle: "",
+                showDate: null,
+                fromStatus: e.fromStatus,
+                toStatus: e.toStatus,
+                at: e.createdAt,
+              })),
             ),
           ),
         );
+  const funnelSeasonHeadline = funnelSeason
+    ? funnelActivitySeasonalityHeadline(funnelSeason)
+    : null;
+  // Lado do vale da atividade do funil: o próximo mês FRACO de agendamento à
+  // frente — antecedência para não deixar o funil esfriar num mês em que você
+  // historicamente afrouxa a prospecção. Reaproveita a mesma `funnelSeason` (zero
+  // I/O extra) e cede a vez ao mês forte de agendamento acima: aparece só quando
+  // NÃO há um pico de agendamento chegando (no máximo um nudge sazonal por vez).
+  const funnelSeasonLull =
+    funnelSeason && !funnelSeasonHeadline?.show
+      ? funnelActivitySeasonalityLull(funnelSeason)
+      : null;
 
   // Antecedência de agendamento (D185): "estou fechando shows em cima da hora?".
   // Reaproveita os shows já carregados (createdAt vem na consulta, sem I/O extra):
@@ -899,6 +910,31 @@ export default async function DashboardPage() {
             movimento no funil que o mês médio — comece a prospectar antes.
           </span>
           <span className="text-brand-600">Prospectar →</span>
+        </Link>
+      )}
+
+      {/* Atenção: vale de agendamento chegando (sazonalidade da ATIVIDADE do funil —
+          mês em que você historicamente afrouxa a prospecção). Cede a vez ao mês
+          forte de agendamento acima e aos nudges de FATURAMENTO (no máximo um por
+          vez). */}
+      {funnelSeasonLull?.show && funnelSeasonLull.month && (
+        <Link
+          href="/shows/funil/atividade/sazonalidade"
+          className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 transition hover:bg-amber-100"
+        >
+          <span className="font-semibold">🥶 Vale de agendamento chegando</span>
+          <span>
+            <strong>{funnelSeasonLull.month.label}</strong>{" "}
+            {funnelSeasonLull.monthsAhead === 1
+              ? "(mês que vem)"
+              : `(daqui a ${funnelSeasonLull.monthsAhead} meses)`}{" "}
+            costuma concentrar{" "}
+            <strong>
+              {Math.round(funnelSeasonLull.shortfall * 100)}% menos
+            </strong>{" "}
+            movimento no funil que o mês médio — mantenha o pipeline em movimento.
+          </span>
+          <span className="text-amber-600">Prospectar →</span>
         </Link>
       )}
 
