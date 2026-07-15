@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import {
   gigSeasonality,
   gigSeasonalityYears,
+  gigSeasonalityStall,
   compareGigSeasonality,
   classifyGigSeasonalityMonthChange,
   parseProfitYear,
@@ -13,6 +14,7 @@ import {
   type GigMonthStat,
   type GigSeasonalityComparison,
   type GigSeasonalityMonthTrend,
+  type GigSeasonalityStall,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { PeriodPicker } from "@/components/PeriodPicker";
@@ -23,6 +25,14 @@ type SearchParams = { [key: string]: string | string[] | undefined };
 
 function pct(share: number): string {
   return `${Math.round(share * 100)}%`;
+}
+
+/** Média de shows/ano com no máximo uma casa decimal, em pt-BR ("2,3"). */
+function formatAvg(n: number): string {
+  return n.toLocaleString("pt-BR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1,
+  });
 }
 
 export default async function GigSeasonalityPage({
@@ -82,6 +92,18 @@ export default async function GigSeasonalityPage({
   // Escala das barras: maior nº de shows entre os meses.
   const peakCount = Math.max(1, ...season.months.map((m) => m.count));
 
+  // "Mês forte com agenda rala" (`gigSeasonalityStall`, D336): o detalhe da mesma
+  // leitura que o Painel exibe como banner — cruza o pico histórico de faturamento
+  // com a AGENDA real do próximo mês forte à frente. Só faz sentido na visão de
+  // TODOS os anos (`yearFilter === "all"`): o stall projeta a próxima ocorrência do
+  // mês contra o padrão de fundo somando todas as temporadas; num recorte por ano a
+  // leitura seria de outro contexto. Reaproveita a `season` de todos os anos (que
+  // aqui iguala a exibida) + a lista completa de `shows` (zero I/O extra).
+  const stall: GigSeasonalityStall | null =
+    yearFilter === "all" && season.totalShows > 0
+      ? gigSeasonalityStall(season, shows)
+      : null;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -129,6 +151,12 @@ export default async function GigSeasonalityPage({
         </div>
       ) : (
         <>
+          {/* Detalhe do "mês forte com agenda rala" — o mesmo sinal que o Painel
+              resume num banner, aqui aberto com a agenda do próximo mês forte vs. o
+              ritmo típico lado a lado. Só na visão de todos os anos (o stall é null
+              nos recortes por ano). */}
+          {stall?.show && stall.month && <StallDetail stall={stall} />}
+
           {/* Destaques */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Highlight
@@ -499,6 +527,107 @@ function MoverCard({
         <p className="mt-1 text-sm text-gray-400">Nenhum mês {tone === "emerald" ? "subiu" : "caiu"}.</p>
       )}
     </div>
+  );
+}
+
+/**
+ * Detalhe do **mês forte com agenda rala** (`gigSeasonalityStall`, D336): o mesmo
+ * sinal que o Painel resume num banner, aqui aberto com a agenda do próximo mês
+ * forte à frente lado a lado com o ritmo típico. Cruza o pico histórico de
+ * faturamento (este mês concentra `lift`× o faturamento do mês médio) com a AGENDA
+ * real (você tem só `booked` show[s] marcado[s], `shortfall`% abaixo do ritmo
+ * típico de ~`expected`/ano) — a hora de encher a agenda desse mês. Espelha o
+ * `StallDetail` do funil (`/shows/funil/atividade/sazonalidade`, D340). Só
+ * renderiza quando `stall.show` (a página já garante).
+ */
+function StallDetail({ stall }: { stall: GigSeasonalityStall }) {
+  const month = stall.month!;
+  const liftPct = Math.round((stall.lift - 1) * 100);
+  const shortfallPct = Math.round(stall.shortfall * 100);
+  const aheadLabel =
+    stall.monthsAhead === 1
+      ? "mês que vem"
+      : `daqui a ${stall.monthsAhead} meses`;
+  return (
+    <section className="card border-amber-200 bg-amber-50">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="font-semibold text-amber-900">
+          📉 Mês forte com agenda rala
+        </h2>
+        <Link
+          href="/shows/funil"
+          className="text-sm font-medium text-amber-700 hover:underline"
+        >
+          Prospectar →
+        </Link>
+      </div>
+      <p className="mt-1 text-sm text-amber-900">
+        <strong>{month.label}</strong> ({aheadLabel}) costuma concentrar{" "}
+        <strong>{liftPct}% mais</strong> faturamento que o mês médio, mas você tem
+        só{" "}
+        <strong>
+          {stall.booked} {stall.booked === 1 ? "show marcado" : "shows marcados"}
+        </strong>{" "}
+        — <strong>{shortfallPct}% abaixo</strong> do ritmo típico de ~
+        {formatAvg(stall.expected)} shows/ano.
+      </p>
+      {/* Micro-barra marcados × típico: a faixa é o ritmo típico (100%) e o
+          preenchimento é o já marcado, para o vão do shortfall saltar num relance.
+          O stall só dispara com `booked < expected`, mas mantemos o clamp por
+          segurança numérica. */}
+      <div className="mt-3">
+        <div
+          className="h-2.5 w-full overflow-hidden rounded-full bg-amber-100"
+          role="img"
+          aria-label={`${stall.booked} ${
+            stall.booked === 1 ? "show marcado" : "shows marcados"
+          } de ~${formatAvg(
+            stall.expected,
+          )} do ritmo típico do mês (${shortfallPct}% abaixo)`}
+        >
+          <div
+            className="h-full rounded-full bg-amber-500"
+            style={{
+              width: `${
+                Math.min(
+                  stall.expected > 0 ? stall.booked / stall.expected : 0,
+                  1,
+                ) * 100
+              }%`,
+            }}
+          />
+        </div>
+        <div className="mt-1 flex justify-between text-xs text-amber-700">
+          <span>Marcados {stall.booked}</span>
+          <span>Típico ~{formatAvg(stall.expected)}</span>
+        </div>
+      </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-lg border border-amber-200 bg-white/60 p-3">
+          <div className="text-xs font-medium uppercase tracking-wide text-amber-700">
+            Marcados para {month.label}
+          </div>
+          <div className="mt-1 text-2xl font-bold text-amber-900">
+            {stall.booked}
+          </div>
+          <div className="text-xs text-amber-700">
+            {stall.booked === 1 ? "show na agenda" : "shows na agenda"} da próxima
+            ocorrência
+          </div>
+        </div>
+        <div className="rounded-lg border border-amber-200 bg-white/60 p-3">
+          <div className="text-xs font-medium uppercase tracking-wide text-amber-700">
+            Ritmo típico
+          </div>
+          <div className="mt-1 text-2xl font-bold text-amber-900">
+            ~{formatAvg(stall.expected)}
+          </div>
+          <div className="text-xs text-amber-700">
+            shows/ano nesse mês, historicamente
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
