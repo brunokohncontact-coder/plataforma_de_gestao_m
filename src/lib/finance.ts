@@ -9257,6 +9257,155 @@ export function gigSeasonalityLull(
   return none;
 }
 
+/**
+ * Quão vazia a agenda de um mês forte precisa estar — em nº de shows já marcados
+ * contra a média histórica de shows/ano naquele mês — para o nudge de "mês forte
+ * subagendado" disparar. 0.5 = com menos da METADE dos shows que você costuma
+ * tocar naquele mês já na agenda, é hora de correr atrás. Espelha
+ * `FUNNEL_ACTIVITY_STALL_FACTOR` no eixo das RESERVAS (a agenda de shows) em vez do
+ * TRABALHO de prospecção (o funil). **Hipótese** a validar (ver DECISIONS.md).
+ */
+export const GIG_SEASON_STALL_FACTOR = 0.5;
+
+export interface GigSeasonalityStall {
+  /**
+   * Deve aparecer no Painel? Só quando há amostra suficiente
+   * (`totalShows >= STRONG_MONTH_MIN_SHOWS`), o próximo mês forte à frente está
+   * subagendado (`booked < expected × GIG_SEASON_STALL_FACTOR`) e há histórico de
+   * shows nele (`expected > 0`) — caso contrário o nudge seria ruído.
+   */
+  show: boolean;
+  /** O próximo mês forte à frente (o mais cedo que qualifica), ou null. */
+  month: GigMonthStat | null;
+  /** Quantos meses à frente está (1 = mês que vem … STRONG_MONTH_HORIZON); 0 se nenhum. */
+  monthsAhead: number;
+  /**
+   * Média histórica de shows/ano neste mês do calendário (só entre os anos que de
+   * fato tiveram show no mês), o ritmo típico da agenda para essa temporada.
+   */
+  expected: number;
+  /**
+   * Shows já na agenda (não cancelados — proposto/confirmado/realizado) para a
+   * PRÓXIMA ocorrência do mês (o ano-alvo derivado de `monthsAhead`).
+   */
+  booked: number;
+  /**
+   * Quão abaixo do ritmo típico a agenda está, como fração `clamp(1 −
+   * booked/expected, 0..1)`. Ex.: 0.6 = você tem 60% menos shows marcados do que
+   * costuma tocar nesse mês. 0 quando não há stall.
+   */
+  shortfall: number;
+  /**
+   * Quantas vezes o `feeShare` do mês supera a média uniforme (1/12), i.e.
+   * `feeShare * 12`. 0 quando não há mês forte subagendado à frente.
+   */
+  lift: number;
+}
+
+/**
+ * Resumo de Painel da **sazonalidade dos shows**, cruzando o pico histórico com a
+ * AGENDA real: deriva, de uma `gigSeasonality` já computada + a lista de shows, o
+ * **próximo mês forte à frente que está subagendado** — "Setembro costuma ser seu
+ * mês mais cheio, mas você só tem 1 show marcado para ele". Espelha
+ * `funnelActivitySeasonalityStall` (D333) no eixo das RESERVAS (a agenda) em vez
+ * do TRABALHO de prospecção (o funil): enquanto `gigSeasonalityHeadline` (D134) só
+ * diz "seu mês caro está chegando — precifique", este cruza esse pico com quantos
+ * shows você de fato já lançou para ele, e só grita quando a agenda está rala.
+ *
+ * Seleciona o MESMO mês da `gigSeasonalityHeadline` (o mais cedo, dentro de
+ * `STRONG_MONTH_HORIZON` meses, com `feeShare ≥ STRONG_MONTH_FACTOR/12`) e então
+ * decide pelo hiato de reserva; se esse mês está com agenda saudável, NÃO dispara
+ * (a manchete comum cobre o "precifique"). Não varre meses mais distantes: o valor
+ * do aviso é o mês forte mais PRÓXIMO.
+ *
+ * O `expected` é a média de shows/ano naquele mês do calendário só entre os shows
+ * que JÁ ACONTECERAM (mesma inclusão de `gigSeasonality`: PLAYED ou CONFIRMED com
+ * data passada, cachê > 0), por ano ativo. Como a ocorrência-alvo é FUTURA, todo
+ * ano contado no baseline já fechou — não há ano parcial a excluir (distinto de
+ * D341, que refinou o baseline do funil no MÊS corrente). O `booked` conta os
+ * shows NÃO cancelados datados naquele mês/ano — de propósito amplo (uma proposta
+ * já ocupa a agenda) para pecar por não-gritar-cedo, não por alarme falso. Puro,
+ * com `now` injetável. O detalhe completo está em `/shows/sazonalidade`.
+ */
+export function gigSeasonalityStall(
+  seasonality: GigSeasonality,
+  shows: ReceivableShowLike[],
+  opts: { now?: Date | string } = {},
+): GigSeasonalityStall {
+  const none: GigSeasonalityStall = {
+    show: false,
+    month: null,
+    monthsAhead: 0,
+    expected: 0,
+    booked: 0,
+    shortfall: 0,
+    lift: 0,
+  };
+  if (seasonality.totalShows < STRONG_MONTH_MIN_SHOWS) return none;
+
+  const nowDate =
+    opts.now == null
+      ? new Date()
+      : typeof opts.now === "string"
+        ? new Date(opts.now)
+        : opts.now;
+  const todayMs = utcMidnight(nowDate);
+  const currentMonth = nowDate.getUTCMonth();
+  const currentYear = nowDate.getUTCFullYear();
+  const threshold = STRONG_MONTH_FACTOR / 12;
+
+  for (let ahead = 1; ahead <= STRONG_MONTH_HORIZON; ahead++) {
+    const absolute = currentMonth + ahead;
+    const monthIdx = absolute % 12;
+    const m = seasonality.months[monthIdx];
+    // Pula até o mês forte mais próximo (mesma seleção de `gigSeasonalityHeadline`).
+    if (m.count === 0 || m.feeShare < threshold) continue;
+
+    // O ano da próxima ocorrência do mês (horizonte ≤ 4 → cruza no máximo um ano).
+    const targetYear = currentYear + Math.floor(absolute / 12);
+
+    // Baseline: média de shows/ano neste mês entre os shows JÁ REALIZADOS (mesma
+    // inclusão de `gigSeasonality`: happened + cachê > 0), por ano ativo.
+    const yearsWithGig = new Set<number>();
+    for (const s of shows) {
+      if (!isHappenedGig(s, todayMs)) continue;
+      if (s.fee <= 0) continue;
+      const d = typeof s.date === "string" ? new Date(s.date) : s.date;
+      if (d.getUTCMonth() === monthIdx) yearsWithGig.add(d.getUTCFullYear());
+    }
+    const activeYears = yearsWithGig.size;
+    const expected = activeYears > 0 ? m.count / activeYears : 0;
+    if (expected <= 0) return none;
+
+    // Agenda atual da ocorrência-alvo: shows NÃO cancelados datados no mês/ano
+    // (proposto/confirmado/realizado — tudo que já ocupa a agenda).
+    let booked = 0;
+    for (const s of shows) {
+      if (s.status === "CANCELLED") continue;
+      const d = typeof s.date === "string" ? new Date(s.date) : s.date;
+      if (d.getUTCMonth() === monthIdx && d.getUTCFullYear() === targetYear) {
+        booked += 1;
+      }
+    }
+
+    if (booked < expected * GIG_SEASON_STALL_FACTOR) {
+      return {
+        show: true,
+        month: m,
+        monthsAhead: ahead,
+        expected,
+        booked,
+        shortfall: Math.max(0, Math.min(1, 1 - booked / expected)),
+        lift: m.feeShare * 12,
+      };
+    }
+    // Mês forte mais próximo, mas com agenda saudável: não dispara (a manchete
+    // comum cobre o "precifique"). Não varre meses mais distantes.
+    return none;
+  }
+  return none;
+}
+
 /** Sequência de `count` meses "YYYY-MM" a partir de `startKey` (inclusive), em UTC. */
 function sequentialMonths(startKey: string, count: number): string[] {
   const [y, m] = startKey.split("-").map(Number);

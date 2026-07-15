@@ -5,6 +5,54 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-15 — D336: Nudge de "mês forte com agenda rala" no Painel (`gigSeasonalityStall`)
+- **Contexto:** a sazonalidade dos shows já tinha dois nudges no Painel — `gigSeasonalityHeadline` (D134, "seu
+  mês caro está chegando — precifique") e `gigSeasonalityLull` (D135, vale à frente). Ambos olham só a FORMA
+  histórica do faturamento por mês; nenhum cruza esse pico com a AGENDA real. Faltava o análogo, no eixo das
+  RESERVAS, do `funnelActivitySeasonalityStall` (D333, que cruza o pico de ATIVIDADE do funil com o ritmo do mês
+  corrente): "Setembro costuma ser seu mês mais cheio, mas você só tem 1 show marcado para ele — hora de encher
+  a agenda". Sem esse sinal, o músico só descobria a agenda rala do mês-pico quando ele já tinha chegado.
+- **Decisão:** nova peça pura `gigSeasonalityStall(seasonality, shows, { now? })` + tipo `GigSeasonalityStall` +
+  constante `GIG_SEASON_STALL_FACTOR` (=0,5) em `src/lib/finance.ts`. Seleciona o MESMO mês forte à frente que a
+  `gigSeasonalityHeadline` (o mais cedo em `STRONG_MONTH_HORIZON` meses com `feeShare ≥ STRONG_MONTH_FACTOR/12`) e
+  então decide pelo hiato de reserva: dispara quando `booked < expected × 0,5`. O `expected` é a média de
+  shows/ano naquele mês entre os shows JÁ REALIZADOS (mesma inclusão de `gigSeasonality`: PLAYED ou CONFIRMED com
+  data passada, cachê > 0), por ano ativo; o `booked` conta os shows NÃO cancelados datados na próxima ocorrência
+  do mês (o ano-alvo derivado de `monthsAhead`). Se o mês forte mais próximo está com agenda saudável, NÃO
+  dispara (nem varre meses mais distantes) — a manchete comum cobre o "precifique". No Painel, banner âmbar
+  📉 "Mês forte com agenda rala" linkando `/shows/sazonalidade`, TOMANDO A FRENTE da manchete/vale de
+  sazonalidade (mais urgente/específico) e mantendo o teto de um nudge sazonal por vez (o grupo do funil já cede
+  a qualquer nudge de faturamento).
+- **Justificativa:** o `expected` só conta anos JÁ FECHADOS (a ocorrência-alvo é futura), então — distinto da
+  D335, que precisou excluir o ano corrente parcial do baseline do MÊS corrente — aqui não há ano parcial a
+  excluir: o baseline é limpo por construção. O `booked` é deliberadamente AMPLO (uma proposta já ocupa a agenda)
+  para pecar por não-gritar-cedo, não por alarme falso — coerente com a disciplina de nudge do projeto (só
+  dispara com amostra mínima e um pico de fato à frente). Reusa a `gigSeasonality` e os shows já carregados no
+  Painel (zero I/O extra); sem migração, sem rota nova (o detalhe já vive em `/shows/sazonalidade`).
+- **Alternativas consideradas:** (a) medir o MÊS corrente (como o funil/D333) em vez do próximo mês forte à
+  frente — rejeitada: shows são reservados com antecedência, então quando o mês-pico chega já é tarde para
+  enchê-lo; o valor do aviso é a antecedência, e olhar à frente evita também o ano parcial; (b) contar como
+  `booked` só shows com cachê > 0 (simétrico ao baseline) — rejeitada: uma reserva sem cachê definido ainda ocupa
+  a agenda, e contar amplo é o lado seguro (menos alarme falso); (c) estender `GigMonthStat` com `years`/
+  `avgPerYear` para o baseline — rejeitada por quebrar o shape testado em muitas telas; derivar os anos ativos do
+  próprio `shows` dentro da peça basta e mantém o blast radius em código novo; (d) um gate de "fração decorrida do
+  mês" como no funil — rejeitada: como a ocorrência é futura, não há "cedo demais no mês" a proteger.
+- **Verificação:** DoD verde — `npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test`
+  (**1853 testes**, +9 em `finance.test.ts`: sem amostra mínima não dispara; agenda vazia dispara com shortfall 1;
+  agenda saudável não dispara; disparo parcial com shortfall 0,75; proposta conta como reserva e some o stall;
+  cancelado não conta; mês forte mais próximo saudável não grita por um mais distante; `now` injetável tira o mês
+  da janela; fator 0,5); smoke → `/login` 200, `/dashboard` e `/shows/sazonalidade` 307→/login (auth-gated, sem
+  500); `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, zero dependência nova). Mudança em
+  `src/lib/finance.ts` (peça pura) + `dashboard/page.tsx` (fiação/banner) + testes.
+- **Hipótese a validar:** `GIG_SEASON_STALL_FACTOR`=0,5 (metade do ritmo típico) é o limiar de "agenda rala" — o
+  ponto em que a agenda de um mês-pico está vazia o bastante para virar alerta varia por circuito/antecedência de
+  fechamento. Herda o espírito dos limiares de sazonalidade (D134), ainda não medidos com uso real. Validar com
+  músicos antes de virar premissa fixa.
+- **Nota de concorrência:** número **D336** escolhido como o próximo livre acima do maior D referenciado no
+  PROGRESS/DECISIONS (D335). Se outra PR reivindicar D336, renumerar para o próximo livre no merge.
+
+---
+
 ## 2026-07-15 — D335: Excluir o ano corrente (parcial) do baseline do "funil parado" (`funnelActivitySeasonalityStall`)
 - **Contexto:** o `expected` do stall (D333) proporcionalizava `month.avgPerYear` — a média por ano-ativo do mês
   corrente na sazonalidade — pela fração já decorrida do mês. Como a sazonalidade soma TODOS os anos, incluindo o

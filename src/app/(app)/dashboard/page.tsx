@@ -54,6 +54,7 @@ import {
   gigSeasonality,
   gigSeasonalityHeadline,
   gigSeasonalityLull,
+  gigSeasonalityStall,
   findCitiesToReengage,
   citiesToReengageHeadline,
   type CityReengageShowLike,
@@ -437,12 +438,20 @@ export default async function DashboardPage() {
   // Vira nudge só com amostra mínima e um pico de fato à frente — antecedência
   // para prospectar/precificar. O detalhe completo está em /shows/sazonalidade.
   const season = gigSeasonality(shows as ReceivableShowLike[]);
+  // "Mês forte subagendado": cruza o pico histórico com a AGENDA real — "seu mês
+  // mais cheio está chegando, mas você só tem N shows marcados para ele". Reusa a
+  // mesma `gigSeasonality` + os shows já carregados (zero I/O extra). É o sinal
+  // mais acionável da temporada de FATURAMENTO, então TOMA A FRENTE da manchete/
+  // vale de sazonalidade abaixo (mais específico que "precifique").
+  const seasonStall = gigSeasonalityStall(season, shows as ReceivableShowLike[]);
+  // Manchete (D134): o próximo mês FORTE à frente — antecedência para prospectar/
+  // precificar. Cede a vez ao "mês forte subagendado" acima (mais urgente).
   const seasonHeadline = gigSeasonalityHeadline(season);
   // Lado do vale (D135): o próximo mês FRACO à frente — antecedência para
   // prospectar e encher a agenda antes da baixa. Reaproveita a mesma
   // `gigSeasonality` (zero I/O extra). Para não adensar o Painel, cede a vez ao
-  // nudge de mês forte: aparece só quando NÃO há um pico chegando (no máximo um
-  // nudge de sazonalidade por vez).
+  // "mês forte subagendado" e ao nudge de mês forte: aparece só quando nenhum
+  // deles está no ar (no máximo um nudge de sazonalidade por vez).
   const seasonLull = gigSeasonalityLull(season);
 
   // Sazonalidade da ATIVIDADE do funil (D333/D326): "minha temporada de
@@ -455,7 +464,7 @@ export default async function DashboardPage() {
   // banners de temporada, só aparece quando nenhum deles está no ar (no máximo um
   // nudge sazonal por vez). O detalhe está em /shows/funil/atividade/sazonalidade.
   const funnelActivityFeed =
-    seasonHeadline.show || seasonLull.show
+    seasonStall.show || seasonHeadline.show || seasonLull.show
       ? null
       : buildFunnelActivityFeed(
           shows.flatMap((s) =>
@@ -863,8 +872,36 @@ export default async function DashboardPage() {
         </Link>
       )}
 
-      {/* Oportunidade: próximo mês forte da temporada (sazonalidade dos shows). */}
-      {seasonHeadline.show && seasonHeadline.month && (
+      {/* Atenção: mês forte da temporada chegando com a agenda rala (cruza o pico
+          histórico de faturamento com quantos shows você de fato já marcou). Mais
+          urgente/específico que a manchete comum, então toma a frente dela. */}
+      {seasonStall.show && seasonStall.month && (
+        <Link
+          href="/shows/sazonalidade"
+          className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 transition hover:bg-amber-100"
+        >
+          <span className="font-semibold">📉 Mês forte com agenda rala</span>
+          <span>
+            <strong>{seasonStall.month.label}</strong>{" "}
+            {seasonStall.monthsAhead === 1
+              ? "(mês que vem)"
+              : `(daqui a ${seasonStall.monthsAhead} meses)`}{" "}
+            costuma ser dos seus mais cheios, mas você tem só{" "}
+            <strong>
+              {seasonStall.booked}{" "}
+              {seasonStall.booked === 1 ? "show marcado" : "shows marcados"}
+            </strong>{" "}
+            (
+            <strong>{Math.round(seasonStall.shortfall * 100)}% abaixo</strong> do
+            ritmo típico) — hora de encher a agenda.
+          </span>
+          <span className="text-amber-600">Prospectar →</span>
+        </Link>
+      )}
+
+      {/* Oportunidade: próximo mês forte da temporada (sazonalidade dos shows).
+          Cede a vez ao "mês forte com agenda rala" acima (mais urgente). */}
+      {!seasonStall.show && seasonHeadline.show && seasonHeadline.month && (
         <Link
           href="/shows/sazonalidade"
           className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900 transition hover:bg-brand-100"
@@ -886,8 +923,9 @@ export default async function DashboardPage() {
       )}
 
       {/* Vale da temporada: próximo mês fraco à frente (sazonalidade dos shows).
-          Cede a vez ao nudge de mês forte para não adensar o Painel. */}
-      {!seasonHeadline.show && seasonLull.show && seasonLull.month && (
+          Cede a vez aos nudges de mês forte (subagendado/manchete) para não
+          adensar o Painel. */}
+      {!seasonStall.show && !seasonHeadline.show && seasonLull.show && seasonLull.month && (
         <Link
           href="/shows/sazonalidade"
           className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 transition hover:bg-amber-100"
