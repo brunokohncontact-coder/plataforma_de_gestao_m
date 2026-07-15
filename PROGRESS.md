@@ -7,9 +7,34 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1809 testes**),
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1817 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 335 —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 336 —
+MANCHETE NO PAINEL da SAZONALIDADE da ATIVIDADE do FUNIL (`funnelActivitySeasonalityHeadline`),
+fechando o "próximo possível" que a D328 registrou ("uma manchete no Painel: você costuma prospectar em
+fev–mar; estamos em janeiro e o funil está parado"):** o eixo de FATURAMENTO já tinha o par de nudges sazonais
+(`gigSeasonalityHeadline`/`gigSeasonalityLull`, D134/D135), mas o eixo do TRABALHO de agendamento
+(cadastros/avanços/negociação — a sazonalidade da atividade construída em D326–D328) não tinha nenhum. Nova
+peça pura `funnelActivitySeasonalityHeadline(seasonality, { now? })` + tipo `FunnelActivitySeasonalityHeadline`
++ constantes `FUNNEL_ACTIVITY_SEASON_HORIZON`(=4)/`FUNNEL_ACTIVITY_SEASON_MIN_TRANSITIONS`(=12)/
+`FUNNEL_ACTIVITY_STRONG_SEASON_FACTOR`(=1.25) em `src/lib/shows.ts` — espelho exato de `gigSeasonalityHeadline`
+no eixo da atividade: injeta "agora" (`getUTCMonth`, default `new Date()`), varre `ahead` 1..4 o próximo mês
+forte de agendamento (o mais cedo cujo `share` do total de transições ≥ 1.25/12, 25% acima do mês médio),
+devolve `{ show, month, monthsAhead, lift=share*12 }`, exclui o mês corrente (o valor é a antecedência). No
+**Painel** (`dashboard/page.tsx`), banner `📣 Temporada de agendamento chegando` linkando
+`/shows/funil/atividade/sazonalidade`, reaproveitando os `statusEvents` já carregados com os shows
+(`buildFunnelActivityFeed` sobre o flatMap das transições da carteira — **zero I/O extra**) e **cedendo a vez**
+aos nudges de faturamento (só computa/exibe quando `!seasonHeadline.show && !seasonLull.show`, no máximo um
+banner sazonal por vez). **+8 testes** (`shows.test.ts`: amostra abaixo do piso não exibe; aponta o mês forte
+mais cedo à frente; exclui o mês corrente; respeita o horizonte de 4 e a borda inclusa; dá a volta no ano
+dez→fev; atividade uniforme sem pico não exibe; `now` injetável muda o resultado). Zero migração/dependência.
+DoD verde: `npm run build` (sem novo bundle/rota — só a peça pura + o Painel), `npx tsc --noEmit`,
+`npm run lint` (0 warnings), `npm test` (**1817 testes**); smoke → `/login` 200, `/dashboard` e a página de
+sazonalidade 307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories, zero dependência nova),
+ver D329. **Próximo possível** — cruzar o pico histórico com o estado ATUAL do funil (disparar "você costuma
+agendar agora, mas o funil está parado este mês" comparando a atividade recente vs. a esperada), o passo que
+completaria literalmente a frase da D328; ou um espelho de "vale de agendamento" (`gigSeasonalityLull`), se o
+lado do vale mostrar valor. **Antes disso, Sessão 335 —
 EXPORTAÇÃO CSV do COMPARATIVO ANO A ANO da SAZONALIDADE da atividade do funil
 (`/shows/funil/atividade/sazonalidade/comparativo/export?ano=`), fechando o "próximo possível" que a D327
 deixou explícito (adiado pelo precedente D324→D325 do ritmo, card primeiro, CSV depois) e alinhando o eixo:
@@ -5879,5 +5904,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
 - **Antecedência do lembrete .ics (D295)**: `DEFAULT_REMINDER_MINUTES`=180 (3h antes) é
   **hipótese** — a antecedência ideal varia por perfil (quem viaja ao gig pode querer 1 dia).
   Validar com músicos antes de virar premissa fixa; o `?lembrete=` já oferece a saída.
+- **Manchete de temporada de agendamento (D329)**: os limiares `FUNNEL_ACTIVITY_SEASON_MIN_TRANSITIONS`=12
+  (amostra mínima de transições para a sazonalidade da atividade virar nudge), `FUNNEL_ACTIVITY_STRONG_SEASON_FACTOR`=1.25
+  (quanto acima do mês médio uniforme conta como "pico de agendamento") e `FUNNEL_ACTIVITY_SEASON_HORIZON`=4 (janela de
+  antecipação) são **hipóteses** — quantas transições contam como histórico confiável e o que é um "pico de prospecção"
+  varia por circuito/volume. Herdam os valores dos limiares de sazonalidade de faturamento (D134), ainda não medidos com
+  uso real. Validar com músicos antes de virar premissa fixa.
 - **Segurança em produção**: definir `AUTH_SECRET` forte e migrar para PostgreSQL antes
   de qualquer deploy real. Revisar advisories do Next (D6) e planejar upgrade p/ Next 15+.

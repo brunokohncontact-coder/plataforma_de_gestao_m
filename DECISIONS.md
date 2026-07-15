@@ -5,6 +5,59 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-15 — D329: Manchete no Painel da sazonalidade da atividade do funil (temporada de agendamento chegando)
+- **Contexto:** a D326/D327/D328 (Sessões 333–335) construíram a sazonalidade da ATIVIDADE do funil
+  (`/shows/funil/atividade/sazonalidade`) — em que meses do calendário você costuma fazer o trabalho de
+  agendamento (cadastros, avanços, negociação) —, com tela, comparativo ano a ano e CSV. Faltava a peça que
+  a própria D328 registrou como "próximo possível": levar esse sinal ao **Painel** como manchete acionável —
+  "você costuma prospectar em fev–mar; estamos em janeiro e o funil está parado". Isso exige injetar "agora"
+  (a peça de sazonalidade é pura e não conhece o mês corrente). O eixo de FATURAMENTO já tinha o par de
+  nudges sazonais (`gigSeasonalityHeadline`/`gigSeasonalityLull`, D134/D135); o de TRABALHO de agendamento
+  não tinha nenhum.
+- **Decisão:**
+  - Nova peça pura `funnelActivitySeasonalityHeadline(seasonality, { now? })` + tipo
+    `FunnelActivitySeasonalityHeadline` e constantes `FUNNEL_ACTIVITY_SEASON_HORIZON` (=4),
+    `FUNNEL_ACTIVITY_SEASON_MIN_TRANSITIONS` (=12) e `FUNNEL_ACTIVITY_STRONG_SEASON_FACTOR` (=1.25) em
+    `src/lib/shows.ts`. Espelho exato de `gigSeasonalityHeadline` (D134) no eixo da atividade: recebe uma
+    `funnelActivitySeasonality` já computada, injeta `now` (default `new Date()`, `getUTCMonth`) e varre
+    `ahead` 1..HORIZON o **próximo mês forte de agendamento** — o mais cedo cuja participação histórica no
+    total de transições (`share`) fica ≥ `FACTOR/12` (25% acima do mês médio uniforme). Devolve `{ show,
+    month, monthsAhead, lift }` com `lift = share*12`. Exclui o mês corrente (olha só para frente — o valor é
+    a antecedência para prospectar).
+  - **Painel** (`dashboard/page.tsx`): banner `📣 Temporada de agendamento chegando` linkando
+    `/shows/funil/atividade/sazonalidade`. Reaproveita os `statusEvents` já carregados com os shows
+    (`buildFunnelActivityFeed` sobre o flatMap de transições da carteira) — **zero I/O extra**. **Cede a vez**
+    aos nudges de sazonalidade de FATURAMENTO (forte/vale): só é computado/exibido quando
+    `!seasonHeadline.show && !seasonLull.show`, para no máximo um banner sazonal por vez.
+- **Justificativa:**
+  - **Reusa a mecânica provada do eixo de faturamento.** `gigSeasonalityHeadline` já resolvia exatamente este
+    formato (amostra mínima + pico à frente + `now` injetável + regra de exibição na própria peça); trazer a
+    atividade do funil ao mesmo molde mantém o Painel coerente e a peça testável sem depender do relógio real.
+  - **Piso de amostra mais alto que os 6 shows do faturamento.** Um show gera várias transições (cadastro,
+    avanço, negociação), então 12 transições ≈ um punhado de shows com histórico — evita tratar meia dúzia de
+    movimentos como "temporada". **Hipótese** a validar (ver Bloqueios no PROGRESS).
+  - **Ancorar no `share` do TOTAL de transições (não por natureza):** o sinal é "seu funil como um todo
+    esquenta neste mês", espelhando o `feeShare` do eixo de shows. A quebra por natureza continua sendo o
+    papel da tela de detalhe, não do nudge.
+  - **Zero dependência, zero migração, zero consulta nova:** a peça é pura; o Painel só rearranja dados já em
+    memória.
+- **Alternativas consideradas:**
+  - *Incluir o mês corrente (`ahead` a partir de 0) para disparar "estamos EM fevereiro e o funil está parado"*:
+    descartado nesta sessão — espelha a exclusão do mês corrente de `gigSeasonalityHeadline` (o valor do aviso
+    é a antecedência). Cruzar o pico histórico com o estado ATUAL do funil (parado/ativo agora) é um passo
+    maior (exigiria medir a atividade recente vs. a esperada) e fica como próximo possível.
+  - *Ponderar só cadastros+avanços (o trabalho de prospecção "puro"), excluindo cancel/regress do `share`*:
+    descartado por ora — a sazonalidade já define "movimento" como o total de transições e a tela usa o mesmo
+    critério; refinar para "só prospecção ativa" divergiria da peça-mãe. Reavaliar se o nudge disparar em
+    meses cujo pico é de cancelamentos.
+  - *Um segundo nudge de "vale de agendamento" (espelho de `gigSeasonalityLull`)*: adiado — o valor do lado do
+    vale na atividade é menos claro que no faturamento (um mês historicamente calmo de agendamento não é
+    necessariamente uma oportunidade); começar só pelo pico.
+  - *Não ceder a vez aos nudges de faturamento (mostrar os dois)*: descartado — empilharia banners de
+    temporada no Painel; a disciplina de "no máximo um nudge sazonal" já vale entre forte e vale (D135).
+- **Concorrência:** número **D329** escolhido como o próximo livre acima do maior D referenciado
+  (D328). Se outra PR reivindicar D329, renumerar para o próximo livre no merge.
+
 ## 2026-07-14 — D328: Exportação CSV do comparativo ano a ano da sazonalidade da atividade do funil
 - **Contexto:** a D327 (Sessão 334) entregou o comparativo ano a ano da sazonalidade da atividade
   (`/shows/funil/atividade/sazonalidade?ano=`) — card "Temporada {ano} vs. {ano-1}" com delta total, dois movers e

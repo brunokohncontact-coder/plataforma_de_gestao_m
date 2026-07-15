@@ -2318,6 +2318,105 @@ export function funnelActivitySeasonality(
   };
 }
 
+/**
+ * Quantos meses do calendário à frente o Painel varre em busca do próximo mês
+ * forte de agendamento. Inclui o mês seguinte (`monthsAhead` 1) e **exclui o mês
+ * corrente** — o valor do nudge é a antecedência para começar a prospectar antes
+ * da temporada esquentar. 4 = uma janela de preparação realista (~um trimestre).
+ * Espelha `STRONG_MONTH_HORIZON` da sazonalidade de shows (D134).
+ */
+export const FUNNEL_ACTIVITY_SEASON_HORIZON = 4;
+
+/**
+ * Mínimo de transições no histórico para a sazonalidade da atividade ser
+ * confiável o bastante para virar nudge no Painel. Abaixo disso a "temporada" é
+ * só ruído amostral e o aviso enganaria mais do que ajudaria. Um show costuma
+ * gerar várias transições (cadastro, avanço, negociação), então o piso é mais
+ * alto que os 6 SHOWS da sazonalidade de faturamento (`STRONG_MONTH_MIN_SHOWS`).
+ * **Hipótese** a validar (ver DECISIONS.md).
+ */
+export const FUNNEL_ACTIVITY_SEASON_MIN_TRANSITIONS = 12;
+
+/**
+ * Um mês conta como "forte" (temporada de agendamento) quando sua participação no
+ * total histórico de transições (`share`) supera a média uniforme (1/12) por este
+ * fator. 1.25 = pelo menos 25% acima do mês médio — alto o bastante para ser de
+ * fato um pico de atividade, não uma flutuação qualquer. Espelha
+ * `STRONG_MONTH_FACTOR` da sazonalidade de shows.
+ */
+export const FUNNEL_ACTIVITY_STRONG_SEASON_FACTOR = 1.25;
+
+/** Resumo de Painel da sazonalidade da atividade do funil (`funnelActivitySeasonalityHeadline`). */
+export interface FunnelActivitySeasonalityHeadline {
+  /**
+   * Deve aparecer no Painel? Só quando há amostra suficiente
+   * (`totalTransitions >= FUNNEL_ACTIVITY_SEASON_MIN_TRANSITIONS`) **e** existe um
+   * mês forte de agendamento dentro da janela à frente — caso contrário o nudge
+   * seria ruído (mesma disciplina de `gigSeasonalityHeadline`).
+   */
+  show: boolean;
+  /** O próximo mês forte de agendamento na janela (o mais cedo que qualifica), ou null. */
+  month: FunnelActivitySeasonMonth | null;
+  /** Quantos meses à frente está (1 = mês que vem … HORIZON); 0 se nenhum. */
+  monthsAhead: number;
+  /**
+   * Quantas vezes o `share` do mês supera a média uniforme (1/12), i.e.
+   * `share * 12`. Ex.: 1.8 = esse mês historicamente concentra 80% mais atividade
+   * de funil que o mês médio. 0 quando não há mês forte à frente.
+   */
+  lift: number;
+}
+
+/**
+ * Resumo de Painel da **sazonalidade da atividade do funil**: deriva, de uma
+ * `funnelActivitySeasonality` já computada, o **próximo mês forte de agendamento**
+ * que se aproxima — o mais cedo, dentro de `FUNNEL_ACTIVITY_SEASON_HORIZON` meses,
+ * cuja participação histórica no total de transições está acima da média
+ * (≥ `FUNNEL_ACTIVITY_STRONG_SEASON_FACTOR`× o mês médio). Pura, com `now`
+ * injetável — espelha `gigSeasonalityHeadline` (D134) no eixo do TRABALHO de
+ * agendamento (cadastros, avanços, negociação), não do faturamento dos shows.
+ *
+ * Enquanto a sazonalidade de faturamento (`gigSeasonalityHeadline`) diz "seu mês
+ * caro chegando — precifique", esta diz "sua temporada de prospecção chegando —
+ * comece a correr atrás antes de o funil esfriar" (responde ao "estamos em janeiro
+ * e o funil está parado, mas você costuma agendar em fev–mar"). Olha **só para
+ * frente** (a partir do mês que vem) porque o valor do aviso é a antecedência; e
+ * exige amostra mínima (`FUNNEL_ACTIVITY_SEASON_MIN_TRANSITIONS`) para não tratar
+ * um punhado de transições como "temporada". O detalhe completo está em
+ * `/shows/funil/atividade/sazonalidade`.
+ */
+export function funnelActivitySeasonalityHeadline(
+  seasonality: FunnelActivitySeasonality,
+  opts: { now?: Date | string } = {},
+): FunnelActivitySeasonalityHeadline {
+  const none: FunnelActivitySeasonalityHeadline = {
+    show: false,
+    month: null,
+    monthsAhead: 0,
+    lift: 0,
+  };
+  if (seasonality.totalTransitions < FUNNEL_ACTIVITY_SEASON_MIN_TRANSITIONS) {
+    return none;
+  }
+
+  const nowDate =
+    opts.now == null
+      ? new Date()
+      : typeof opts.now === "string"
+        ? new Date(opts.now)
+        : opts.now;
+  const currentMonth = nowDate.getUTCMonth();
+  const threshold = FUNNEL_ACTIVITY_STRONG_SEASON_FACTOR / 12;
+
+  for (let ahead = 1; ahead <= FUNNEL_ACTIVITY_SEASON_HORIZON; ahead++) {
+    const m = seasonality.months[(currentMonth + ahead) % 12];
+    if (m.total > 0 && m.share >= threshold) {
+      return { show: true, month: m, monthsAhead: ahead, lift: m.share * 12 };
+    }
+  }
+  return none;
+}
+
 /** Variação de um mês do calendário na sazonalidade da atividade, entre dois períodos. */
 export interface FunnelActivitySeasonMonthChange {
   /** Mês do ano: 0 = janeiro .. 11 = dezembro (UTC). */

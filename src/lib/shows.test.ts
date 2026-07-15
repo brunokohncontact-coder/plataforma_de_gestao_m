@@ -46,6 +46,7 @@ import {
   summarizeFunnelActivityMonths,
   compareFunnelActivityMonths,
   funnelActivitySeasonality,
+  funnelActivitySeasonalityHeadline,
   compareFunnelActivitySeasonality,
   classifyFunnelActivitySeasonMonthChange,
   relativeDayLabel,
@@ -2017,6 +2018,127 @@ describe("funnelActivitySeasonality", () => {
     );
     expect(season.months[0].total).toBe(1); // janeiro
     expect(season.months[1].total).toBe(0); // fevereiro
+  });
+});
+
+describe("funnelActivitySeasonalityHeadline", () => {
+  const seasonOf = (
+    events: { fromStatus: string | null; toStatus: string; at: string }[],
+  ) =>
+    funnelActivitySeasonality(
+      buildFunnelActivityFeed(
+        events.map((e, i) => ({
+          showId: `s${i}`,
+          showTitle: "",
+          showDate: null,
+          fromStatus: e.fromStatus,
+          toStatus: e.toStatus,
+          at: e.at,
+        })),
+      ),
+    );
+
+  // Gera N cadastros (create) num mesmo mês do calendário, espalhados por dia.
+  const spikeIn = (
+    month: number,
+    count: number,
+    year = 2025,
+  ): { fromStatus: string | null; toStatus: string; at: string }[] =>
+    Array.from({ length: count }, (_, i) => ({
+      fromStatus: null,
+      toStatus: "PROPOSED",
+      at: `${year}-${String(month + 1).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}T09:00:00.000Z`,
+    }));
+
+  it("amostra abaixo do piso → não exibe (evita ruído)", () => {
+    // 11 transições (< FUNNEL_ACTIVITY_SEASON_MIN_TRANSITIONS = 12), todas em março.
+    const season = seasonOf(spikeIn(2, 11));
+    const head = funnelActivitySeasonalityHeadline(season, {
+      now: "2025-01-15T00:00:00.000Z",
+    });
+    expect(head.show).toBe(false);
+    expect(head.month).toBeNull();
+    expect(head.monthsAhead).toBe(0);
+    expect(head.lift).toBe(0);
+  });
+
+  it("aponta o próximo mês forte à frente (o mais cedo que qualifica)", () => {
+    // Março concentra 15 de 18 transições (share ≈ 0.83 ≫ 1.25/12); jan/fev com 3.
+    const season = seasonOf([...spikeIn(2, 15), ...spikeIn(0, 2), ...spikeIn(1, 1)]);
+    const head = funnelActivitySeasonalityHeadline(season, {
+      now: "2025-01-15T00:00:00.000Z",
+    });
+    expect(head.show).toBe(true);
+    expect(head.month?.month).toBe(2); // março
+    expect(head.monthsAhead).toBe(2); // jan → março = 2 à frente
+    expect(head.lift).toBeCloseTo(season.months[2].share * 12);
+    expect(head.lift).toBeGreaterThan(1);
+  });
+
+  it("exclui o mês corrente — só olha para frente", () => {
+    // Todo o pico está em janeiro; em janeiro não há mês forte à FRENTE na janela.
+    const season = seasonOf(spikeIn(0, 20));
+    const head = funnelActivitySeasonalityHeadline(season, {
+      now: "2025-01-15T00:00:00.000Z",
+    });
+    expect(head.show).toBe(false);
+  });
+
+  it("respeita o horizonte de 4 meses (pico além da janela não dispara)", () => {
+    // Pico em julho (índice 6); em janeiro (índice 0) está a 6 meses → fora da janela.
+    const season = seasonOf(spikeIn(6, 20));
+    const head = funnelActivitySeasonalityHeadline(season, {
+      now: "2025-01-15T00:00:00.000Z",
+    });
+    expect(head.show).toBe(false);
+  });
+
+  it("mês forte dentro do horizonte dispara (borda: 4 meses à frente)", () => {
+    // Pico em maio (índice 4); em janeiro está exatamente a 4 meses (borda inclusa).
+    const season = seasonOf(spikeIn(4, 20));
+    const head = funnelActivitySeasonalityHeadline(season, {
+      now: "2025-01-15T00:00:00.000Z",
+    });
+    expect(head.show).toBe(true);
+    expect(head.month?.month).toBe(4);
+    expect(head.monthsAhead).toBe(4);
+  });
+
+  it("dá a volta no ano (dezembro → busca em jan..abr do ano seguinte)", () => {
+    // Pico em fevereiro; em dezembro (índice 11) fevereiro está a 2 meses à frente.
+    const season = seasonOf(spikeIn(1, 20));
+    const head = funnelActivitySeasonalityHeadline(season, {
+      now: "2025-12-10T00:00:00.000Z",
+    });
+    expect(head.show).toBe(true);
+    expect(head.month?.month).toBe(1); // fevereiro
+    expect(head.monthsAhead).toBe(2);
+  });
+
+  it("atividade espalhada sem pico (nenhum mês acima do fator) → não exibe", () => {
+    // 24 transições, 2 em cada mês → todo mês tem share = 1/12, nenhum ≥ 1.25/12.
+    const season = seasonOf(
+      Array.from({ length: 12 }, (_, m) => spikeIn(m, 2)).flat(),
+    );
+    const head = funnelActivitySeasonalityHeadline(season, {
+      now: "2025-01-15T00:00:00.000Z",
+    });
+    expect(head.show).toBe(false);
+  });
+
+  it("usa now injetável em UTC — mesmo pico, mês corrente diferente muda o resultado", () => {
+    const season = seasonOf(spikeIn(2, 20)); // pico em março
+    // De fevereiro, março está a 1 mês → dispara.
+    const fromFeb = funnelActivitySeasonalityHeadline(season, {
+      now: "2025-02-10T00:00:00.000Z",
+    });
+    expect(fromFeb.show).toBe(true);
+    expect(fromFeb.monthsAhead).toBe(1);
+    // De abril, março ficou para trás e só volta a 11 meses → fora da janela.
+    const fromApr = funnelActivitySeasonalityHeadline(season, {
+      now: "2025-04-10T00:00:00.000Z",
+    });
+    expect(fromApr.show).toBe(false);
   });
 });
 
