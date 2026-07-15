@@ -136,6 +136,7 @@ import {
   gigSeasonalityLull,
   gigSeasonalityStall,
   gigSeasonalityStallFirmness,
+  gigSeasonalityStallFirmnessDetail,
   GIG_SEASON_STALL_FACTOR,
   STRONG_MONTH_MIN_SHOWS,
   incomeMix,
@@ -8994,6 +8995,42 @@ describe("gigSeasonalityStallFirmness", () => {
 
   it("defensivo: `bookedFirm` negativo é tratado como 0 → `none`", () => {
     expect(gigSeasonalityStallFirmness({ booked: 2, bookedFirm: -1 })).toBe("none");
+  });
+});
+
+describe("gigSeasonalityStallFirmnessDetail", () => {
+  it("`all` → agenda toda firme, sem contagem crua", () => {
+    expect(gigSeasonalityStallFirmnessDetail({ booked: 3, bookedFirm: 3 })).toBe(
+      "todos firmes (confirmado/realizado)",
+    );
+  });
+
+  it("`none` → só propostas em aberto", () => {
+    expect(gigSeasonalityStallFirmnessDetail({ booked: 2, bookedFirm: 0 })).toBe(
+      "nenhum firme ainda (confirmado/realizado)",
+    );
+  });
+
+  it("`some` (plural) → mostra quantos são firmes", () => {
+    expect(gigSeasonalityStallFirmnessDetail({ booked: 3, bookedFirm: 2 })).toBe(
+      "dos quais 2 firmes (confirmado/realizado)",
+    );
+  });
+
+  it("`some` (singular) → concorda o número", () => {
+    expect(gigSeasonalityStallFirmnessDetail({ booked: 3, bookedFirm: 1 })).toBe(
+      "dos quais 1 firme (confirmado/realizado)",
+    );
+  });
+
+  it("sem marcado (`booked === 0`) → `null` (nada a ressalvar)", () => {
+    expect(gigSeasonalityStallFirmnessDetail({ booked: 0, bookedFirm: 0 })).toBeNull();
+  });
+
+  it("defensivo: `bookedFirm > booked` (fora do invariante) vira `all`", () => {
+    expect(gigSeasonalityStallFirmnessDetail({ booked: 2, bookedFirm: 5 })).toBe(
+      "todos firmes (confirmado/realizado)",
+    );
   });
 });
 

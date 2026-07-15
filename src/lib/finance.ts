@@ -9472,6 +9472,29 @@ export function gigSeasonalityStallFirmness(
   return "some";
 }
 
+/**
+ * Frase-ressalva de firmeza para o DETALHE do mês forte subagendado na página
+ * `/shows/sazonalidade` (`StallDetail`), derivada de `gigSeasonalityStallFirmness`.
+ * Antes o detalhe mostrava sempre a contagem crua ("dos quais N firmes") mesmo
+ * quando N == booked (nada a ressalvar) ou N == 0 — agora a frase segue o NÍVEL,
+ * espelhando o recorte que o Painel (D340) já faz:
+ * - `"all"`  → "todos firmes (confirmado/realizado)"  (agenda toda fechada);
+ * - `"none"` → "nenhum firme ainda (confirmado/realizado)"  (só propostas);
+ * - `"some"` → "dos quais N firme[s] (confirmado/realizado)".
+ * Retorna `null` quando não há marcado (`booked === 0`) — as telas já guardam
+ * `booked > 0`, mas o helper é defensivo. Ver D341 (unificação da frase).
+ */
+export function gigSeasonalityStallFirmnessDetail(
+  stall: Pick<GigSeasonalityStall, "booked" | "bookedFirm">,
+): string | null {
+  if (stall.booked <= 0) return null;
+  const level = gigSeasonalityStallFirmness(stall);
+  if (level === "all") return "todos firmes (confirmado/realizado)";
+  if (level === "none") return "nenhum firme ainda (confirmado/realizado)";
+  const firm = Math.max(0, Math.min(stall.bookedFirm, stall.booked));
+  return `dos quais ${firm} firme${firm === 1 ? "" : "s"} (confirmado/realizado)`;
+}
+
 /** Sequência de `count` meses "YYYY-MM" a partir de `startKey` (inclusive), em UTC. */
 function sequentialMonths(startKey: string, count: number): string[] {
   const [y, m] = startKey.split("-").map(Number);

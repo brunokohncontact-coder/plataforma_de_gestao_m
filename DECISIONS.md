@@ -5,6 +5,31 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-15 — D341: Frase de firmeza da página `/shows/sazonalidade` unificada pelo nível (`gigSeasonalityStallFirmnessDetail`)
+- **Contexto:** a D340 deixou explícito, como alternativa (b) adiada, "refatorar a página `/shows/sazonalidade` (D339)
+  para consumir o helper `gigSeasonalityStallFirmness`". O detalhe `StallDetail` daquela página mostrava sempre a
+  CONTAGEM CRUA — "dos quais **N** firmes (confirmado/realizado)" — mesmo quando `N == booked` (agenda toda fechada,
+  nada a ressalvar) ou `N == 0` (só propostas em aberto). O Painel (D340) já traduz esse mesmo recorte em nível
+  (todos/nenhum/parte), então as duas superfícies falavam do mesmo dado com granularidades diferentes.
+- **Decisão:** novo helper puro `gigSeasonalityStallFirmnessDetail(stall): string | null` em `src/lib/finance.ts`,
+  derivado de `gigSeasonalityStallFirmness`: `"all"` → `"todos firmes (confirmado/realizado)"`; `"none"` →
+  `"nenhum firme ainda (confirmado/realizado)"`; `"some"` → `"dos quais N firme[s] (confirmado/realizado)"`;
+  `null` quando `booked === 0` (nada a ressalvar). A página `/shows/sazonalidade` (`StallDetail`) passa a renderizar
+  essa frase em vez do markup inline com a contagem crua. Mudança de lógica pura (frase testada) + apresentacional
+  (página); **zero migração/rota/dependência**. **+6 testes** (`finance.test.ts`,
+  `describe("gigSeasonalityStallFirmnessDetail")`: all/none/some(plural/singular), `booked===0` → `null`, guarda
+  defensivo `bookedFirm > booked` → `all`).
+- **Justificativa:** fecha o adiamento (b) da D340. A página agora comunica o NÍVEL (não a contagem crua), então
+  o leitor distingue "agenda toda firme" de "3 marcados mas 0 firmes" sem interpretar o número — a mesma leitura que
+  o Painel já dá. Extrair a frase para um helper puro trava o texto com teste unitário (a página é Server Component,
+  difícil de testar por unidade) e mantém as duas superfícies derivando do mesmo classificador `bookedFirm`.
+- **Alternativas consideradas:** (a) manter a contagem crua na página — rejeitado: era exatamente o débito que a
+  D340(b) marcou para pagar; a contagem sozinha não distingue "todos firmes" de "nenhum firme". (b) fazer o Painel
+  também consumir `gigSeasonalityStallFirmnessDetail` para unificar 100% da frase — adiado: o Painel omite o recorte
+  quando o nível é `"all"` (contexto compacto) e a página sempre o mostra; forçar a mesma string nas duas trocaria a
+  semântica de uma delas. (c) devolver a frase já com markup (`<strong>`) — rejeitado: manteria o helper impuro/menos
+  testável; o realce visual não é essencial à ressalva.
+
 ## 2026-07-15 — D340: Ressalva de firmeza no nudge de "mês forte com agenda rala" no Painel (`gigSeasonalityStallFirmness`)
 - **Contexto:** o banner compacto do "mês forte com agenda rala" no Painel (D336) diz "você tem só **N shows
   marcados**" usando o `booked` amplo (não cancelado, inclui propostas em aberto). Desde a D339 a PÁGINA
