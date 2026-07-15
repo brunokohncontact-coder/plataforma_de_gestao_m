@@ -7374,6 +7374,31 @@ export function cashFlowTrend(months: CashFlowMonth[]): CashFlowTrend {
  */
 export const DEFAULT_TAX_RATE = 0.06;
 
+/** Menor alíquota de reserva aceita, em porcentagem. */
+export const MIN_TAX_RATE_PERCENT = 0;
+/** Maior alíquota de reserva aceita, em porcentagem. */
+export const MAX_TAX_RATE_PERCENT = 100;
+
+/**
+ * Sanea uma alíquota em PORCENTAGEM (0–100) vinda do usuário — query string
+ * (`?aliquota=`), formulário de Conta, etc. Aceita vírgula ou ponto como
+ * separador decimal e espaços em volta; devolve o número em porcentagem quando
+ * válido e dentro da faixa [0, 100], ou `null` quando vazio/ausente/inválido/
+ * fora da faixa. A conversão para a fração [0,1] que `taxReserve` espera fica a
+ * cargo do chamador (`percent / 100`). Pura, sem I/O — fonte única do parsing
+ * da alíquota, compartilhada pela página, pelo export CSV e pela ação de Conta.
+ */
+export function parseTaxRatePercent(raw: string | null | undefined): number | null {
+  if (raw == null) return null;
+  const trimmed = raw.trim();
+  if (trimmed === "") return null;
+  const n = Number(trimmed.replace(",", "."));
+  if (!Number.isFinite(n) || n < MIN_TAX_RATE_PERCENT || n > MAX_TAX_RATE_PERCENT) {
+    return null;
+  }
+  return n;
+}
+
 export interface TaxReserveMonth {
   /** Chave "YYYY-MM". */
   month: string;

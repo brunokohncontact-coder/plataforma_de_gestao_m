@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser, setSessionCookie } from "@/lib/session";
 import { hashPassword, verifyPassword } from "@/lib/auth";
+import { parseTaxRatePercent } from "@/lib/finance";
 import { updateProfileSchema, changePasswordSchema, changeEmailSchema } from "@/lib/validation";
 
 export interface FormState {
@@ -32,6 +33,32 @@ export async function updateProfileAction(
   // O cabeçalho exibe o nome/nome artístico — revalida o layout do app.
   revalidatePath("/", "layout");
   return { success: "Perfil atualizado." };
+}
+
+export async function updateTaxRateAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const user = await requireUser();
+  const raw = formData.get("taxRatePercent");
+  const rawStr = typeof raw === "string" ? raw.trim() : "";
+
+  // Campo vazio = limpar a preferência e voltar a usar o padrão genérico
+  // (`DEFAULT_TAX_RATE`) na tela de Reserva para impostos.
+  if (rawStr === "") {
+    await prisma.user.update({ where: { id: user.id }, data: { taxRatePercent: null } });
+    revalidatePath("/conta");
+    revalidatePath("/financas/reserva-impostos");
+    return { success: "Alíquota redefinida para o padrão." };
+  }
+
+  const pct = parseTaxRatePercent(rawStr);
+  if (pct == null) return { error: "Informe uma alíquota entre 0 e 100." };
+
+  await prisma.user.update({ where: { id: user.id }, data: { taxRatePercent: pct } });
+  revalidatePath("/conta");
+  revalidatePath("/financas/reserva-impostos");
+  return { success: `Alíquota salva: ${pct.toLocaleString("pt-BR")}%.` };
 }
 
 export async function changeEmailAction(

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { taxReserve, DEFAULT_TAX_RATE, type TxLike } from "@/lib/finance";
+import { taxReserve, DEFAULT_TAX_RATE, parseTaxRatePercent, type TxLike } from "@/lib/finance";
 import { taxReserveToCsv } from "@/lib/csv";
 
 export const dynamic = "force-dynamic";
@@ -18,26 +18,23 @@ function parseYear(raw: string | null, reference: Date = new Date()): number {
   return reference.getFullYear();
 }
 
-/** Alíquota em porcentagem (0–100) vinda da query; fallback ao padrão. Igual à página. */
-function parseRate(raw: string | null): number {
-  if (raw != null && raw.trim() !== "") {
-    const n = Number(raw.replace(",", "."));
-    if (Number.isFinite(n) && n >= 0 && n <= 100) return n / 100;
-  }
-  return DEFAULT_TAX_RATE;
-}
-
 // Exporta a reserva para impostos mês a mês em CSV — espelha a tabela
 // "Mês a mês" de `/financas/reserva-impostos`. Ano e alíquota vêm de `?ano=` e
 // `?aliquota=` (saneados como na página). A lógica pura está em `@/lib/finance`
 // (`taxReserve`) e `@/lib/csv` (`taxReserveToCsv`), ambas testadas; aqui só
-// fazemos a consulta, repetimos o parsing da página e embrulhamos no HTTP.
+// fazemos a consulta, repetimos a resolução de alíquota da página e embrulhamos
+// no HTTP.
 export async function GET(request: Request) {
   const user = await requireUser();
   const { searchParams } = new URL(request.url);
 
   const year = parseYear(searchParams.get("ano"));
-  const rate = parseRate(searchParams.get("aliquota"));
+  // Mesma precedência da página: `?aliquota=` > alíquota salva na Conta > padrão.
+  const effectivePct =
+    parseTaxRatePercent(searchParams.get("aliquota")) ??
+    user.taxRatePercent ??
+    DEFAULT_TAX_RATE * 100;
+  const rate = effectivePct / 100;
 
   const transactions = await prisma.transaction.findMany({
     where: { userId: user.id, type: "INCOME" },

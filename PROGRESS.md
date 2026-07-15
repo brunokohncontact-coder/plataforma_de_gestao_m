@@ -7,9 +7,27 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1853 testes**),
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1862 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 342 —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 343 —
+ALÍQUOTA DE RESERVA PARA IMPOSTOS PERSISTIDA POR USUÁRIO (D337):** a tela
+`/financas/reserva-impostos` já permitia ajustar a alíquota por `?aliquota=`, mas o padrão
+era sempre a HIPÓTESE genérica de 6% (Simples, D41) — o músico re-digitava o seu regime real
+a cada visita. Agora o regime é uma preferência da Conta: novo campo `taxRatePercent Float?`
+no modelo `User` (migração `20260715144111_add_user_tax_rate`, nula = usar o padrão) + nova
+peça pura `parseTaxRatePercent(raw)` + constantes `MIN/MAX_TAX_RATE_PERCENT` em
+`src/lib/finance.ts` (fonte única do parsing da alíquota: aceita vírgula/ponto e espaços,
+valida a faixa [0,100], devolve `null` para vazio/inválido — a conversão p/ fração fica no
+chamador). Nova seção "Reserva para impostos" na `/conta` (`TaxRateForm.tsx` +
+`updateTaxRateAction`: salva a alíquota, campo vazio limpa a preferência de volta ao padrão,
+rejeita fora da faixa). A página e o export de reserva resolvem a alíquota efetiva com a
+precedência `?aliquota=` (what-if pontual) > alíquota salva na Conta > padrão genérico, e a
+página troca a nota conforme a origem (amarela "estimativa · salve a sua na Conta" só no
+padrão; cinza "usando a alíquota salva · alterar na Conta" quando persistida). Fecha o eixo
+apontado na D41 (a alíquota real vira propriedade do usuário, não uma hipótese re-digitada).
+**+9 testes** (6 de `parseTaxRatePercent`, 3 de `updateTaxRateAction`). Build/typecheck/lint
+verdes; smoke → `/login` 200, `/conta` e `/financas/reserva-impostos` 307→/login; `npm audit`
+inalterado (10 advisories, zero dependência nova). Ver D337. Antes disso, **Sessão 342 —
 NUDGE de "MÊS FORTE COM AGENDA RALA" no PAINEL (`gigSeasonalityStall`), o análogo,
 no eixo das RESERVAS, do "funil parado" (`funnelActivitySeasonalityStall`/D333):** a
 sazonalidade dos shows já tinha `gigSeasonalityHeadline` (D134, "mês caro chegando —
@@ -6030,9 +6048,11 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
 ## Bloqueios / dúvidas (para validação humana)
 - Necessidades marcadas como **hipótese** em `personas-and-needs.md` (CRM, multiusuário)
   precisam de 5–10 entrevistas com músicos reais antes de investimento pesado.
-- **Reserva para impostos (Sessão 50/D41)**: a alíquota padrão de 6% é **hipótese** (faixa inicial do
+- **Reserva para impostos (Sessão 50/D41)**: a alíquota **padrão** de 6% é **hipótese** (faixa inicial do
   Simples Nacional). O regime real do músico (MEI/Simples/carnê-leão) varia muito — confirmar com
   contador a alíquota e o modelo (faturamento bruto vs. lucro/progressivo) antes de virar premissa fixa.
+  Desde a Sessão 343 (D337) o músico pode **salvar a sua alíquota real na Conta** (`User.taxRatePercent`),
+  que passa a ter precedência sobre o padrão de 6% (o `?aliquota=` segue como what-if pontual acima dela).
 - Foco **português/LATAM** e faixas de preço (`business-plan.md`) são hipóteses — validar.
 - **Praças para revisitar (D229)**: o limiar padrão de 90 dias sem tocar (`CITY_REENGAGE_STALE_DAYS`) para
   considerar uma cidade "fria" é **hipótese** — a cadência natural de retorno a uma praça varia por gênero/

@@ -11877,3 +11877,43 @@ contexto, decisão, justificativa e alternativas consideradas.
   Mudança em `src/lib/shows.ts` e `src/app/(app)/dashboard/page.tsx` + testes em `shows.test.ts`.
 - **Nota de concorrência:** número **D332** escolhido como o próximo livre acima do maior D referenciado no
   PROGRESS/DECISIONS (D331). Se outra PR reivindicar D332, renumerar para o próximo livre no merge.
+
+## D337 — Alíquota de reserva para impostos persistida por usuário (`User.taxRatePercent` + `parseTaxRatePercent`) (Sessão 343)
+- **Contexto:** a tela `/financas/reserva-impostos` (`taxReserve`) sugere quanto guardar do que entra aplicando uma
+  alíquota. O padrão era sempre `DEFAULT_TAX_RATE` (6%), uma **hipótese** genérica (faixa inicial do Simples, flagada na
+  D41): o regime real do músico (MEI/Simples/carnê-leão) varia muito. Dava para ajustar por `?aliquota=`, mas isso é um
+  what-if pontual — a cada visita o músico re-digitava a sua alíquota, e o export/nav perdia o valor sem carregá-lo na URL.
+- **Decisão:** tornar a alíquota uma **preferência da Conta**, persistida por usuário.
+  - Schema: novo campo `taxRatePercent Float?` no modelo `User` (porcentagem 0–100; **nulo = usar o padrão**). Migração
+    `20260715144111_add_user_tax_rate` (só `ADD COLUMN`, aditiva, sem backfill — usuários existentes ficam com `null` e
+    seguem no padrão de 6%).
+  - Peça pura `parseTaxRatePercent(raw): number | null` + constantes `MIN_TAX_RATE_PERCENT`(=0)/`MAX_TAX_RATE_PERCENT`(=100)
+    em `src/lib/finance.ts`: **fonte única** do parsing/validação da alíquota (aceita vírgula ou ponto decimal e espaços,
+    valida a faixa [0,100], devolve `null` para vazio/ausente/inválido/fora da faixa). A conversão para a fração [0,1] que
+    `taxReserve` espera fica a cargo do chamador (`percent / 100`) — a mesma responsabilidade da antiga `parseRate` local,
+    agora compartilhada pela página, pelo export e pela ação de Conta (elimina 3 cópias do mesmo parsing).
+  - UI de Conta: nova seção "Reserva para impostos" (`TaxRateForm.tsx` + `updateTaxRateAction` em `conta/actions.ts`):
+    salva a alíquota; **campo vazio limpa a preferência** (volta ao padrão); rejeita fora da faixa com mensagem clara.
+    Revalida `/conta` e `/financas/reserva-impostos`.
+  - Resolução da alíquota efetiva na página e no export de reserva, com **precedência** `?aliquota=` (what-if pontual) >
+    `user.taxRatePercent` (regime salvo) > `DEFAULT_TAX_RATE` (padrão genérico). A página troca a nota conforme a origem:
+    amarela ("estimativa de 6% · salve a sua alíquota na Conta") só quando cai no padrão; cinza ("usando a alíquota salva ·
+    alterar na Conta") quando a persistida está em uso.
+- **Justificativa:** transforma a hipótese fixa de 6% (D41) numa propriedade do usuário — o músico informa o regime real
+  uma vez e todas as sugestões de reserva passam a refleti-lo, sem re-digitar. O `?aliquota=` segue vivo para simulações
+  pontuais (precedência mais alta). Zero dependência nova; a regra de cálculo (`taxReserve`) e o CSV (`taxReserveToCsv`)
+  ficam intocados — só a RESOLUÇÃO da alíquota mudou, num único helper testado.
+- **Alternativas consideradas:** (a) guardar a alíquota como fração [0,1] no banco — rejeitado: a UI e o `?aliquota=`
+  falam porcentagem; guardar em porcentagem evita conversões de ida-e-volta e casa com o input do formulário. (b) um modelo
+  de "regime tributário" (enum MEI/Simples/carnê-leão) com alíquotas embutidas — adiado: exige tabelas/faixas que variam por
+  anexo e faturamento (escopo de contador); a alíquota livre é o passo simples e correto agora, e a nota segue recomendando
+  confirmar com um contador. (c) um segundo eixo por IP/borda — irrelevante aqui. A D41 (6% é hipótese) permanece válida
+  como *default*; o que muda é que o músico pode sobrescrevê-la de forma persistente.
+- **Verificação:** DoD verde — `npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1862
+  testes**, +9: 6 de `parseTaxRatePercent` em `finance.test.ts`, 3 de `updateTaxRateAction` em `conta/actions.test.ts`);
+  smoke → `/login` 200, `/conta` e `/financas/reserva-impostos` 307→/login (auth-gated, sem 500); `npm audit` inalterado
+  (10 advisories, zero dependência nova). Mudança em `prisma/schema.prisma` (+ migração), `src/lib/finance.ts`,
+  `src/app/(app)/financas/reserva-impostos/{page.tsx,export/route.ts}`, `src/app/(app)/conta/{page.tsx,actions.ts}` +
+  `TaxRateForm.tsx` (nova) + testes.
+- **Nota de concorrência:** número **D337** escolhido como o próximo livre acima do maior D referenciado no
+  PROGRESS/DECISIONS (D336). Se outra PR reivindicar D337, renumerar para o próximo livre no merge.

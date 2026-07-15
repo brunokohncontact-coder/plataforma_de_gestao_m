@@ -19,7 +19,12 @@ vi.mock("@/lib/session", () => ({
 import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyPassword } from "@/lib/auth";
 import { resetDb } from "@/test/db";
-import { changeEmailAction, changePasswordAction, updateProfileAction } from "./actions";
+import {
+  changeEmailAction,
+  changePasswordAction,
+  updateProfileAction,
+  updateTaxRateAction,
+} from "./actions";
 
 /** Cria um usuário com um hash de senha real (o helper padrão usa "x"). */
 async function createUserWithPassword(email: string, password: string) {
@@ -92,6 +97,49 @@ describe("updateProfileAction", () => {
     expect(result.error).toBeTruthy();
     const fresh = await prisma.user.findUnique({ where: { id: user.id } });
     expect(fresh?.name).toBe("a"); // inalterado (email.split antes do @)
+  });
+});
+
+describe("updateTaxRateAction", () => {
+  function taxForm(value: string): FormData {
+    const fd = new FormData();
+    fd.set("taxRatePercent", value);
+    return fd;
+  }
+
+  it("salva a alíquota informada (porcentagem)", async () => {
+    const user = await createUserWithPassword("a@example.com", "senha-original");
+    h.currentUser = user;
+
+    const result = await updateTaxRateAction({}, taxForm("11,5"));
+
+    expect(result.success).toBeTruthy();
+    const fresh = await prisma.user.findUnique({ where: { id: user.id } });
+    expect(fresh?.taxRatePercent).toBe(11.5);
+  });
+
+  it("limpa a alíquota (volta ao padrão) quando enviada vazia", async () => {
+    const user = await createUserWithPassword("a@example.com", "senha-original");
+    await prisma.user.update({ where: { id: user.id }, data: { taxRatePercent: 15 } });
+    h.currentUser = user;
+
+    const result = await updateTaxRateAction({}, taxForm("  "));
+
+    expect(result.success).toBeTruthy();
+    const fresh = await prisma.user.findUnique({ where: { id: user.id } });
+    expect(fresh?.taxRatePercent).toBeNull();
+  });
+
+  it("rejeita alíquota fora da faixa sem gravar", async () => {
+    const user = await createUserWithPassword("a@example.com", "senha-original");
+    await prisma.user.update({ where: { id: user.id }, data: { taxRatePercent: 6 } });
+    h.currentUser = user;
+
+    const result = await updateTaxRateAction({}, taxForm("250"));
+
+    expect(result.error).toBeTruthy();
+    const fresh = await prisma.user.findUnique({ where: { id: user.id } });
+    expect(fresh?.taxRatePercent).toBe(6); // inalterado
   });
 });
 

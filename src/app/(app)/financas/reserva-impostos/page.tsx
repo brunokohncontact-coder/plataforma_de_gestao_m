@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { taxReserve, DEFAULT_TAX_RATE, type TxLike } from "@/lib/finance";
+import { taxReserve, DEFAULT_TAX_RATE, parseTaxRatePercent, type TxLike } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 
 export const dynamic = "force-dynamic";
@@ -30,15 +30,6 @@ function parseYear(raw: string | undefined, reference: Date = new Date()): numbe
   return reference.getFullYear();
 }
 
-/** Alíquota em porcentagem (0–100) vinda da query; fallback ao padrão. */
-function parseRate(raw: string | undefined): number {
-  if (raw != null && raw.trim() !== "") {
-    const n = Number(raw.replace(",", "."));
-    if (Number.isFinite(n) && n >= 0 && n <= 100) return n / 100;
-  }
-  return DEFAULT_TAX_RATE;
-}
-
 export default async function TaxReservePage({
   searchParams,
 }: {
@@ -47,7 +38,15 @@ export default async function TaxReservePage({
   const user = await requireUser();
   const params = searchParams ?? {};
   const year = parseYear(readParam(params, "ano"));
-  const rate = parseRate(readParam(params, "aliquota"));
+  // Alíquota efetiva, em porcentagem: `?aliquota=` (what-if pontual) tem
+  // precedência sobre a alíquota salva na Conta (regime real do músico), que por
+  // sua vez cai no padrão genérico do Simples (`DEFAULT_TAX_RATE`) quando ausente.
+  const queryPct = parseTaxRatePercent(readParam(params, "aliquota"));
+  const savedPct = user.taxRatePercent ?? null;
+  const effectivePct = queryPct ?? savedPct ?? DEFAULT_TAX_RATE * 100;
+  const rate = effectivePct / 100;
+  const rateSource: "query" | "saved" | "default" =
+    queryPct != null ? "query" : savedPct != null ? "saved" : "default";
 
   const transactions = await prisma.transaction.findMany({
     where: { userId: user.id, type: "INCOME" },
@@ -66,7 +65,6 @@ export default async function TaxReservePage({
   const report = taxReserve(allTxs, { year, rate });
   const ratePct = Math.round(report.rate * 1000) / 10; // 1 casa decimal
   const hasActivity = report.totalReceivedIncome > 0;
-  const isDefaultRate = Math.abs(report.rate - DEFAULT_TAX_RATE) < 1e-9;
 
   // Escala das barras: maior reserva mensal do ano.
   const peak = Math.max(1, ...report.months.map((m) => m.reserve));
@@ -156,11 +154,24 @@ export default async function TaxReservePage({
         </div>
       </section>
 
-      {isDefaultRate && (
+      {rateSource === "default" && (
         <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
           A alíquota de {DEFAULT_TAX_RATE * 100}% é uma <strong>estimativa</strong> (faixa inicial
           do Simples Nacional). Seu regime real — MEI, Simples ou carnê-leão — pode ser bem
-          diferente. Ajuste a alíquota acima e confirme com um contador.
+          diferente.{" "}
+          <Link href="/conta" className="font-medium underline">
+            Salve a sua alíquota na Conta
+          </Link>{" "}
+          e confirme com um contador.
+        </p>
+      )}
+
+      {rateSource === "saved" && (
+        <p className="text-sm text-gray-500">
+          Usando a alíquota salva no seu perfil.{" "}
+          <Link href="/conta" className="text-brand-700 hover:underline">
+            Alterar na Conta
+          </Link>
         </p>
       )}
 
