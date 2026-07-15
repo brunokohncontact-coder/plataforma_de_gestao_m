@@ -5,6 +5,41 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-15 — D338: Detalhe do "mês forte com agenda rala" na página de sazonalidade dos shows (`StallDetail` em `/shows/sazonalidade`)
+- **Contexto:** o nudge `gigSeasonalityStall` (D336) só aparecia como banner compacto no Painel; a página que ele
+  linka (`/shows/sazonalidade`) não abria o sinal. O eixo do funil já tinha esse par completo — banner no Painel
+  (`funnelActivitySeasonalityStall`, D333) + cartão de detalhe com micro-barra na página de sazonalidade do funil
+  (D334, refinado na D340) — mas o eixo das RESERVAS parava no banner. Faltava a paridade: um cartão que abrisse a
+  agenda do próximo mês forte à frente vs. o ritmo típico, para o músico ver o vão de um relance ao chegar na tela.
+- **Decisão:** novo componente presentacional `StallDetail({ stall })` em `src/app/(app)/shows/sazonalidade/page.tsx`,
+  renderizado (âmbar, 📉 "Mês forte com agenda rala") logo acima dos destaques SOMENTE na visão de TODOS os anos
+  (`yearFilter === "all"` e `season.totalShows > 0`): o stall projeta a PRÓXIMA ocorrência do mês contra o padrão de
+  fundo somando todas as temporadas; num recorte por `?ano=` a leitura seria de outro contexto, então o `stall` fica
+  `null` e o cartão não aparece. Reusa a `season` de todos os anos (que nessa visão iguala a exibida) + a lista
+  completa de `shows` já carregada (zero I/O extra). O cartão abre o `lift`% (quanto o mês concentra acima do médio),
+  o `shortfall`% (quanto abaixo do ritmo) e uma micro-barra `role="img"` (faixa = ritmo típico ~`expected`,
+  preenchimento = `booked/expected` com clamp), mais duas colunas — "Marcados para {mês}" (`booked`) vs. "Ritmo
+  típico" (~`expected` shows/ano) — e CTA "Prospectar →" para `/shows/funil`. Espelha o `StallDetail` do funil.
+- **Justificativa:** mudança **puramente presentacional** — nenhuma peça pura nova; reusa `gigSeasonalityStall`
+  (D336) e seus campos (`booked`/`expected`/`shortfall`/`lift`/`monthsAhead`/`month`), todos já cobertos por teste —
+  então **sem novos testes** (1862 mantidos), no mesmo espírito da D340 (a micro-barra do funil, também sem testes
+  próprios). O padrão da barra (`role="img"` + `overflow-hidden rounded-full` + fill por `style.width`) e o clamp de
+  segurança seguem o precedente da D340. Restringir ao `yearFilter === "all"` casa com o gate do funil (o stall é
+  sobre a próxima ocorrência medida contra o fundo de todas as temporadas).
+- **Alternativas consideradas:** (a) mostrar o cartão também nos recortes por ano — rejeitada: o `booked` da próxima
+  ocorrência e o baseline de todos os anos não pertencem a um ano isolado (mesmo motivo do gate do funil, D334);
+  (b) CTA "Marcar um show →" para `/shows/novo` em vez de `/shows/funil` — preferi o funil (a prospecção que enche a
+  agenda vive lá, mesmo vocabulário "Prospectar" do banner do Painel); (c) repetir a contagem do `booked`/`expected`
+  na página em vez de chamar a peça pura — rejeitada: duplicaria lógica testada e arriscaria divergência com o Painel.
+- **Verificação:** DoD verde — `npm run build` (sem nova rota/bundle — só o componente), `npx tsc --noEmit`,
+  `npm run lint` (0 warnings), `npm test` (**1862 testes**, inalterado); smoke → `/login` 200, `/dashboard` e
+  `/shows/sazonalidade` (com e sem `?ano=`) 307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories:
+  4 moderate/5 high/1 critical, zero dependência nova). Mudança só em `src/app/(app)/shows/sazonalidade/page.tsx`.
+- **Nota de concorrência:** número **D338** escolhido como o próximo livre acima do maior D referenciado no
+  PROGRESS/DECISIONS (D337). Se outra PR reivindicar D338, renumerar para o próximo livre no merge.
+
+---
+
 ## 2026-07-15 — D336: Nudge de "mês forte com agenda rala" no Painel (`gigSeasonalityStall`)
 - **Contexto:** a sazonalidade dos shows já tinha dois nudges no Painel — `gigSeasonalityHeadline` (D134, "seu
   mês caro está chegando — precifique") e `gigSeasonalityLull` (D135, vale à frente). Ambos olham só a FORMA

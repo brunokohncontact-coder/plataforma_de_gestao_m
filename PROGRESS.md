@@ -9,7 +9,32 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1862 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 343 —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 344 —
+DETALHE do "MÊS FORTE COM AGENDA RALA" na PÁGINA de SAZONALIDADE dos SHOWS
+(`StallDetail` em `/shows/sazonalidade`, D338), fechando o "próximo possível" que a Sessão 342
+(D336) deixou explícito ("dar ao stall um detalhe próprio na página `/shows/sazonalidade` — o
+mês forte, o esperado × marcados, com micro-barra — espelhando o que a D334 fez para o funil"):**
+o nudge `gigSeasonalityStall` (D336) só aparecia como banner compacto no Painel; a página que ele
+linka não abria o sinal. Agora, na visão de TODOS os anos (`yearFilter === "all"` e
+`season.totalShows > 0` — o stall projeta a PRÓXIMA ocorrência do mês forte contra o padrão de
+fundo somando todas as temporadas; num recorte por `?ano=` a leitura seria de outro contexto,
+então o `stall` fica `null` e o cartão não renderiza), um cartão âmbar 📉 `Mês forte com agenda
+rala` (acima dos destaques) abre o `lift`% (quanto o mês concentra acima do médio) e o
+`shortfall`% (quanto abaixo do ritmo típico você está), com uma micro-barra `role="img"` (faixa =
+ritmo típico ~`expected`, preenchimento = `booked/expected` com clamp de segurança) e duas colunas
+lado a lado — **Marcados para {mês}** (`booked`, shows na agenda da próxima ocorrência) vs. **Ritmo
+típico** (~`expected` shows/ano, historicamente) — e CTA `Prospectar →` para `/shows/funil`.
+Espelha o `StallDetail` do funil (`/shows/funil/atividade/sazonalidade`, D334/D340). Mudança
+**puramente presentacional** (nenhuma peça pura nova; reusa `gigSeasonalityStall`/D336 e seus
+campos, já cobertos por teste) + a `season` de todos os anos e os `shows` já carregados (zero I/O
+extra), então **sem novos testes** (1862 mantidos). Zero migração/dependência/rota nova. DoD verde:
+`npm run build` (sem nova rota/bundle — só o componente), `npx tsc --noEmit`, `npm run lint`
+(0 warnings), `npm test` (**1862 testes**); smoke → `/login` 200, `/dashboard` e `/shows/sazonalidade`
+(com e sem `?ano=`) 307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories:
+4 moderate/5 high/1 critical, zero dependência nova), ver D338. **Próximo possível** — restringir
+o `booked` a compromissos firmes (CONFIRMED+PLAYED) como leitura alternativa mais rígida (a
+alternativa que a D336 deixou aberta); ou marcar na micro-barra o ponto do ritmo esperado se um dia
+o stall passar a exibir cenários de `booked > expected`. **Antes disso, Sessão 343 —
 ALÍQUOTA DE RESERVA PARA IMPOSTOS PERSISTIDA POR USUÁRIO (D337):** a tela
 `/financas/reserva-impostos` já permitia ajustar a alíquota por `?aliquota=`, mas o padrão
 era sempre a HIPÓTESE genérica de 6% (Simples, D41) — o músico re-digitava o seu regime real
