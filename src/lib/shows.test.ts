@@ -47,6 +47,7 @@ import {
   compareFunnelActivityMonths,
   funnelActivitySeasonality,
   funnelActivitySeasonalityHeadline,
+  funnelActivitySeasonalityLull,
   compareFunnelActivitySeasonality,
   classifyFunnelActivitySeasonMonthChange,
   relativeDayLabel,
@@ -2139,6 +2140,141 @@ describe("funnelActivitySeasonalityHeadline", () => {
       now: "2025-04-10T00:00:00.000Z",
     });
     expect(fromApr.show).toBe(false);
+  });
+});
+
+describe("funnelActivitySeasonalityLull", () => {
+  const seasonOf = (
+    events: { fromStatus: string | null; toStatus: string; at: string }[],
+  ) =>
+    funnelActivitySeasonality(
+      buildFunnelActivityFeed(
+        events.map((e, i) => ({
+          showId: `s${i}`,
+          showTitle: "",
+          showDate: null,
+          fromStatus: e.fromStatus,
+          toStatus: e.toStatus,
+          at: e.at,
+        })),
+      ),
+    );
+
+  // Gera N cadastros (create) num mesmo mês do calendário; o dia dá a volta em 28
+  // (múltiplas transições podem cair no mesmo dia — só a contagem mensal importa).
+  const spikeIn = (
+    month: number,
+    count: number,
+    year = 2025,
+  ): { fromStatus: string | null; toStatus: string; at: string }[] =>
+    Array.from({ length: count }, (_, i) => ({
+      fromStatus: null,
+      toStatus: "PROPOSED",
+      at: `${year}-${String(month + 1).padStart(2, "0")}-${String((i % 28) + 1).padStart(2, "0")}T09:00:00.000Z`,
+    }));
+
+  it("amostra abaixo do piso → não exibe (evita ruído)", () => {
+    // 11 transições (< FUNNEL_ACTIVITY_SEASON_MIN_TRANSITIONS = 12).
+    const season = seasonOf(spikeIn(2, 11));
+    const lull = funnelActivitySeasonalityLull(season, {
+      now: "2025-01-15T00:00:00.000Z",
+    });
+    expect(lull.show).toBe(false);
+    expect(lull.month).toBeNull();
+    expect(lull.monthsAhead).toBe(0);
+    expect(lull.shortfall).toBe(0);
+  });
+
+  it("aponta o próximo mês fraco à frente (o mais cedo que qualifica)", () => {
+    // Janeiro concentra 60 transições; março tem só 2 (share ≈ 0.032 ≤ 0.75/12).
+    const season = seasonOf([...spikeIn(0, 60), ...spikeIn(2, 2)]);
+    const lull = funnelActivitySeasonalityLull(season, {
+      now: "2025-01-15T00:00:00.000Z",
+    });
+    expect(lull.show).toBe(true);
+    expect(lull.month?.month).toBe(2); // março
+    expect(lull.monthsAhead).toBe(2); // jan → março = 2 à frente (fev tem total 0)
+    expect(lull.shortfall).toBeCloseTo(1 - season.months[2].share * 12);
+    expect(lull.shortfall).toBeGreaterThan(0);
+  });
+
+  it("mês vazio à frente não conta como vale (ausência de dado ≠ vale)", () => {
+    // Todo o pico está em janeiro; fev..mai têm total 0 → nenhum qualifica.
+    const season = seasonOf(spikeIn(0, 60));
+    const lull = funnelActivitySeasonalityLull(season, {
+      now: "2025-01-15T00:00:00.000Z",
+    });
+    expect(lull.show).toBe(false);
+  });
+
+  it("escolhe o vale mais cedo quando há mais de um à frente", () => {
+    // Janeiro pesado; fevereiro e abril ambos fracos → escolhe fevereiro.
+    const season = seasonOf([
+      ...spikeIn(0, 60),
+      ...spikeIn(1, 2),
+      ...spikeIn(3, 2),
+    ]);
+    const lull = funnelActivitySeasonalityLull(season, {
+      now: "2025-01-15T00:00:00.000Z",
+    });
+    expect(lull.show).toBe(true);
+    expect(lull.month?.month).toBe(1); // fevereiro
+    expect(lull.monthsAhead).toBe(1);
+  });
+
+  it("exclui o mês corrente — só olha para frente", () => {
+    // Janeiro é o único mês com movimento e é o mês corrente → nada à frente.
+    const season = seasonOf(spikeIn(0, 20));
+    const lull = funnelActivitySeasonalityLull(season, {
+      now: "2025-01-15T00:00:00.000Z",
+    });
+    expect(lull.show).toBe(false);
+  });
+
+  it("mês fraco dentro do horizonte dispara (borda: 4 meses à frente)", () => {
+    // Janeiro pesado; maio (índice 4) fraco, exatamente a 4 meses (borda inclusa).
+    const season = seasonOf([...spikeIn(0, 60), ...spikeIn(4, 2)]);
+    const lull = funnelActivitySeasonalityLull(season, {
+      now: "2025-01-15T00:00:00.000Z",
+    });
+    expect(lull.show).toBe(true);
+    expect(lull.month?.month).toBe(4);
+    expect(lull.monthsAhead).toBe(4);
+  });
+
+  it("respeita o horizonte de 4 meses (vale além da janela não dispara)", () => {
+    // Janeiro pesado; junho (índice 5) fraco está a 5 meses → fora da janela.
+    const season = seasonOf([...spikeIn(0, 60), ...spikeIn(5, 2)]);
+    const lull = funnelActivitySeasonalityLull(season, {
+      now: "2025-01-15T00:00:00.000Z",
+    });
+    expect(lull.show).toBe(false);
+  });
+
+  it("atividade uniforme sem vale (nenhum mês abaixo do fator) → não exibe", () => {
+    // 24 transições, 2 por mês → share = 1/12 em todos, nenhum ≤ 0.75/12.
+    const season = seasonOf(
+      Array.from({ length: 12 }, (_, m) => spikeIn(m, 2)).flat(),
+    );
+    const lull = funnelActivitySeasonalityLull(season, {
+      now: "2025-01-15T00:00:00.000Z",
+    });
+    expect(lull.show).toBe(false);
+  });
+
+  it("usa now injetável em UTC — mesmo vale, mês corrente diferente muda o resultado", () => {
+    const season = seasonOf([...spikeIn(0, 60), ...spikeIn(6, 2)]); // vale em julho
+    // De junho, julho está a 1 mês → dispara.
+    const fromJun = funnelActivitySeasonalityLull(season, {
+      now: "2025-06-10T00:00:00.000Z",
+    });
+    expect(fromJun.show).toBe(true);
+    expect(fromJun.monthsAhead).toBe(1);
+    // De janeiro, julho está a 6 meses → fora da janela.
+    const fromJan = funnelActivitySeasonalityLull(season, {
+      now: "2025-01-10T00:00:00.000Z",
+    });
+    expect(fromJan.show).toBe(false);
   });
 });
 

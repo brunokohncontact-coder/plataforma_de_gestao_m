@@ -11682,3 +11682,38 @@ contexto, decisão, justificativa e alternativas consideradas.
   `src/app/(app)/shows/funil/atividade/{page,ritmo/page}.tsx` (links) + testes em `shows.test.ts`/`csv.test.ts`.
 - **Nota de concorrência:** número **D326** escolhido como o próximo livre acima do maior D referenciado no
   PROGRESS/DECISIONS (D325). Se outra PR reivindicar D326, renumerar para o próximo livre no merge.
+
+## D332 — Nudge de "vale de agendamento" no Painel (`funnelActivitySeasonalityLull`) (Sessão 337)
+- **Contexto:** o eixo do TRABALHO de agendamento (sazonalidade da atividade do funil — cadastros/avanços/negociação,
+  D326/D333) ganhou seu nudge de mês FORTE no Painel na Sessão 336 (`funnelActivitySeasonalityHeadline`, "Temporada de
+  agendamento chegando"), espelhando `gigSeasonalityHeadline`. Mas o eixo de FATURAMENTO tinha o PAR de nudges sazonais
+  (forte `gigSeasonalityHeadline`/D134 **e** vale `gigSeasonalityLull`/D135) — a atividade do funil só tinha o lado forte.
+  Ficava o "próximo possível" que a própria Sessão 336 registrou: um espelho de "vale de agendamento".
+- **Decisão:** nova peça pura `funnelActivitySeasonalityLull(seasonality, { now? })` + tipo
+  `FunnelActivitySeasonalityLull` + constante `FUNNEL_ACTIVITY_WEAK_SEASON_FACTOR` (=0.75) em `src/lib/shows.ts` — espelho
+  exato de `gigSeasonalityLull` no eixo da atividade: injeta "agora" (`getUTCMonth`, default `new Date()`), varre `ahead`
+  1..`FUNNEL_ACTIVITY_SEASON_HORIZON` (=4) o próximo mês FRACO de agendamento (o mais cedo cujo `share` do total de
+  transições ≤ 0.75/12, i.e. 25% ABAIXO do mês médio), devolve `{ show, month, monthsAhead, shortfall=1-share*12 }`,
+  exige `total > 0` no candidato (simétrico ao mês forte: "neste mês em que você historicamente trabalha o funil, costuma
+  afrouxar" — não "ausência de dado") e exclui o mês corrente (o valor é a antecedência). Mesma amostra mínima
+  (`FUNNEL_ACTIVITY_SEASON_MIN_TRANSITIONS`=12) e mesmo horizonte do lado forte. No **Painel** (`dashboard/page.tsx`),
+  banner 🥶 `Vale de agendamento chegando` linkando `/shows/funil/atividade/sazonalidade`, reaproveitando a MESMA
+  `funnelActivitySeasonality` já computada para o nudge forte (extraída para a const `funnelSeason` — **zero I/O extra**).
+- **Justificativa:** completa a simetria dos dois eixos sazonais (faturamento tinha forte+vale, agendamento agora também);
+  reusa exatamente o mecanismo provado do `gigSeasonalityLull`; o sinal é acionável — "seu mês parado de prospecção
+  chegando, mantenha o pipeline em movimento" é a contraparte de "temporada de prospecção chegando, comece a correr atrás".
+- **Cascata de deferência dos banners sazonais (no máximo um por vez, para não adensar o Painel):** faturamento forte
+  (`seasonHeadline`) → faturamento vale (`seasonLull`, só se `!seasonHeadline.show`) → funil forte (`funnelSeasonHeadline`,
+  só se nenhum de faturamento) → funil vale (`funnelSeasonLull`, só se `!funnelSeasonHeadline.show`). O `funnelSeason` só é
+  computado quando nenhum nudge de faturamento está no ar (preserva o gate da Sessão 336).
+- **Alternativas consideradas:** (a) cruzar o pico histórico com o estado ATUAL do funil ("você costuma agendar agora mas o
+  funil está parado este mês") — adiado: exige medir a atividade recente vs. a esperada, escopo maior; o espelho do vale é o
+  passo simétrico e fechado. (b) deixar o vale do funil ceder a vez também ao vale de faturamento apenas (e não ao forte do
+  funil) — rejeitado: manteria a regra "no máximo um banner sazonal por vez" só se o vale ceder a TODOS os anteriores,
+  inclusive o forte do próprio funil.
+- **Verificação:** DoD verde — `npm run build` (sem nova rota/bundle — só a peça pura + o Painel), `npx tsc --noEmit`,
+  `npm run lint` (0 warnings), `npm test` (**1826 testes**, +9 em `shows.test.ts`); smoke → `/login` 200, `/dashboard` e
+  a página de sazonalidade 307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories, zero dependência nova).
+  Mudança em `src/lib/shows.ts` e `src/app/(app)/dashboard/page.tsx` + testes em `shows.test.ts`.
+- **Nota de concorrência:** número **D332** escolhido como o próximo livre acima do maior D referenciado no
+  PROGRESS/DECISIONS (D331). Se outra PR reivindicar D332, renumerar para o próximo livre no merge.

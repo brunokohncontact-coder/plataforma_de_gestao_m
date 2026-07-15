@@ -7,9 +7,32 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1817 testes**),
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1826 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 336 —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 337 —
+NUDGE de "VALE DE AGENDAMENTO" no PAINEL (`funnelActivitySeasonalityLull`), fechando o "próximo possível"
+que a Sessão 336 registrou (um espelho de "vale de agendamento", `gigSeasonalityLull`):** o eixo de
+FATURAMENTO tinha o PAR de nudges sazonais (forte `gigSeasonalityHeadline`/D134 **e** vale `gigSeasonalityLull`/D135),
+mas o eixo do TRABALHO de agendamento só tinha o lado forte (`funnelActivitySeasonalityHeadline`, entregue na Sessão
+336). Nova peça pura `funnelActivitySeasonalityLull(seasonality, { now? })` + tipo `FunnelActivitySeasonalityLull` +
+constante `FUNNEL_ACTIVITY_WEAK_SEASON_FACTOR`(=0.75) em `src/lib/shows.ts` — espelho exato de `gigSeasonalityLull` no
+eixo da atividade: injeta "agora" (`getUTCMonth`, default `new Date()`), varre `ahead` 1..4 o próximo mês FRACO de
+agendamento (o mais cedo cujo `share` do total de transições ≤ 0.75/12, 25% ABAIXO do mês médio), devolve
+`{ show, month, monthsAhead, shortfall=1-share*12 }`, exige `total > 0` no candidato (simétrico ao mês forte — "neste mês
+você historicamente afrouxa", não "ausência de dado") e exclui o mês corrente (o valor é a antecedência). Mesma amostra
+mínima (`FUNNEL_ACTIVITY_SEASON_MIN_TRANSITIONS`=12) e horizonte (`FUNNEL_ACTIVITY_SEASON_HORIZON`=4) do lado forte. No
+**Painel** (`dashboard/page.tsx`), banner 🥶 `Vale de agendamento chegando` linkando `/shows/funil/atividade/sazonalidade`,
+reaproveitando a MESMA `funnelActivitySeasonality` já computada para o nudge forte (extraída para a const `funnelSeason` —
+**zero I/O extra**). **Cascata de deferência dos banners sazonais (no máximo um por vez):** faturamento forte → faturamento
+vale (só se `!seasonHeadline.show`) → funil forte (só se nenhum de faturamento) → funil vale (só se `!funnelSeasonHeadline.show`).
+**+9 testes** (`shows.test.ts`: amostra abaixo do piso não exibe; aponta o vale mais cedo à frente; mês vazio à frente não é
+vale; escolhe o vale mais cedo entre vários; exclui o mês corrente; borda de 4 meses inclusa; respeita o horizonte de 4;
+atividade uniforme sem vale não exibe; `now` injetável muda o resultado). Zero migração/dependência. DoD verde:
+`npm run build` (sem novo bundle/rota — só a peça pura + o Painel), `npx tsc --noEmit`, `npm run lint` (0 warnings),
+`npm test` (**1826 testes**); smoke → `/login` 200, `/dashboard` e a página de sazonalidade 307→/login (auth-gated, sem
+500); `npm audit` inalterado (10 advisories, zero dependência nova), ver D332. **Próximo possível** — cruzar o pico
+histórico com o estado ATUAL do funil (disparar "você costuma agendar agora, mas o funil está parado este mês" comparando
+a atividade recente vs. a esperada), o passo que exige medir a atividade recente vs. a esperada. **Antes disso, Sessão 336 —
 MANCHETE NO PAINEL da SAZONALIDADE da ATIVIDADE do FUNIL (`funnelActivitySeasonalityHeadline`),
 fechando o "próximo possível" que a D328 registrou ("uma manchete no Painel: você costuma prospectar em
 fev–mar; estamos em janeiro e o funil está parado"):** o eixo de FATURAMENTO já tinha o par de nudges sazonais
