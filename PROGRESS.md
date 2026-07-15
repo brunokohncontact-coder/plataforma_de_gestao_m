@@ -9,7 +9,30 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1841 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 339 —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 340 —
+MICRO-BARRA VISUAL (realizado × esperado) no CARTÃO do "FUNIL PARADO" da PÁGINA de
+SAZONALIDADE (`/shows/funil/atividade/sazonalidade`), fechando o "próximo possível" que a
+Sessão 339 (D334) deixou explícito ("dar ao cartão do stall uma micro-barra visual — realizado
+vs. esperado — para o contraste saltar num relance"):** o `StallDetail` (componente presentacional
+em `page.tsx`) já abria os números lado a lado (`actual` × `~expected`), mas o vão do `shortfall`
+só aparecia em texto. Agora, entre o parágrafo e o grid de números, uma micro-barra `role="img"`
+onde a FAIXA (`bg-amber-100`, largura total) é o ritmo esperado a esta altura do mês e o
+PREENCHIMENTO (`bg-amber-500`) é o realizado até agora — largura `min(actual/expected, 1) × 100%`
+(clamp por segurança numérica; o stall só dispara com `actual < expected`, guarda também
+`expected > 0` contra divisão por zero) — com `aria-label` descrevendo "Realizadas N de ~E
+esperadas (X% abaixo do ritmo)" e rótulos "Realizadas N" / "Esperadas ~E" nas pontas. Mudança
+**puramente presentacional** (nenhuma peça pura nova; reusa `stall.actual`/`stall.expected`/
+`stall.shortfall` já computados por `funnelActivitySeasonalityStall`/`countCurrentMonthFunnelActivity`,
+ambos já cobertos por teste), então **sem novos testes** (1841 mantidos). Segue o padrão de barra do
+`tempo-em-etapa` (`role="img"` + `overflow-hidden rounded-full` + fill por `style.width`). Zero
+migração/dependência. DoD verde: `npm run build` (sem nova rota/bundle — só o componente), `npx tsc
+--noEmit`, `npm run lint` (0 warnings), `npm test` (**1841 testes**); smoke → `/login` 200,
+`/dashboard` e a página de sazonalidade (com e sem `?ano=`) 307→/login (auth-gated, sem 500);
+`npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, zero dependência nova), ver
+D334. **Próximo possível** — refinar `expected` excluindo o ano corrente parcial da base do
+`avgPerYear` (hoje conservador de propósito, D333); ou marcar visualmente na barra o ponto do
+ritmo esperado se um dia o stall passar a exibir também cenários de `actual > expected`. **Antes
+disso, Sessão 339 —
 DETALHE do "FUNIL PARADO NUMA TEMPORADA FORTE" na PÁGINA de SAZONALIDADE
 (`/shows/funil/atividade/sazonalidade`), fechando o "próximo possível" que a D333 (Sessão 338)
 deixou explícito ("dar ao 'funil parado' um detalhe próprio na página de sazonalidade,

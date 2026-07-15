@@ -436,6 +436,33 @@ function StallDetail({ stall }: { stall: FunnelActivitySeasonalityStall }) {
         você está <strong>{shortfallPct}% abaixo</strong> do ritmo esperado para
         esta altura do mês.
       </p>
+      {/* Micro-barra realizado × esperado: a faixa é o ritmo esperado (100%) e o
+          preenchimento é o realizado até agora, para o vão do shortfall saltar num
+          relance. O stall só dispara com `actual < expected`, mas mantemos o clamp
+          por segurança numérica. */}
+      <div className="mt-3">
+        <div
+          className="h-2.5 w-full overflow-hidden rounded-full bg-amber-100"
+          role="img"
+          aria-label={`Realizadas ${stall.actual} de ~${formatAverage(
+            stall.expected,
+          )} esperadas a esta altura do mês (${shortfallPct}% abaixo do ritmo)`}
+        >
+          <div
+            className="h-full rounded-full bg-amber-500"
+            style={{
+              width: `${Math.min(
+                stall.expected > 0 ? stall.actual / stall.expected : 0,
+                1,
+              ) * 100}%`,
+            }}
+          />
+        </div>
+        <div className="mt-1 flex justify-between text-xs text-amber-700">
+          <span>Realizadas {stall.actual}</span>
+          <span>Esperadas ~{formatAverage(stall.expected)}</span>
+        </div>
+      </div>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <div className="rounded-lg border border-amber-200 bg-white/60 p-3">
           <div className="text-xs font-medium uppercase tracking-wide text-amber-700">
