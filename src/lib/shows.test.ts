@@ -48,6 +48,7 @@ import {
   funnelActivitySeasonality,
   funnelActivitySeasonalityHeadline,
   funnelActivitySeasonalityLull,
+  funnelActivitySeasonalityStall,
   compareFunnelActivitySeasonality,
   classifyFunnelActivitySeasonMonthChange,
   relativeDayLabel,
@@ -2275,6 +2276,137 @@ describe("funnelActivitySeasonalityLull", () => {
       now: "2025-01-10T00:00:00.000Z",
     });
     expect(fromJan.show).toBe(false);
+  });
+});
+
+describe("funnelActivitySeasonalityStall", () => {
+  const seasonOf = (
+    events: { fromStatus: string | null; toStatus: string; at: string }[],
+  ) =>
+    funnelActivitySeasonality(
+      buildFunnelActivityFeed(
+        events.map((e, i) => ({
+          showId: `s${i}`,
+          showTitle: "",
+          showDate: null,
+          fromStatus: e.fromStatus,
+          toStatus: e.toStatus,
+          at: e.at,
+        })),
+      ),
+    );
+
+  // N cadastros num mesmo mês do calendário, num ano PASSADO (padrão 2024) — o
+  // histórico contra o qual o mês corrente (do ano seguinte) é comparado.
+  const spikeIn = (
+    month: number,
+    count: number,
+    year = 2024,
+  ): { fromStatus: string | null; toStatus: string; at: string }[] =>
+    Array.from({ length: count }, (_, i) => ({
+      fromStatus: null,
+      toStatus: "PROPOSED",
+      at: `${year}-${String(month + 1).padStart(2, "0")}-${String((i % 28) + 1).padStart(2, "0")}T09:00:00.000Z`,
+    }));
+
+  it("amostra abaixo do piso → não exibe (evita ruído)", () => {
+    // 11 transições (< FUNNEL_ACTIVITY_SEASON_MIN_TRANSITIONS = 12).
+    const season = seasonOf(spikeIn(0, 11));
+    const stall = funnelActivitySeasonalityStall(season, 0, {
+      now: "2025-01-15T00:00:00.000Z",
+    });
+    expect(stall.show).toBe(false);
+    expect(stall.month).toBeNull();
+  });
+
+  it("mês corrente historicamente fraco (não é temporada forte) → não exibe", () => {
+    // 24 transições espalhadas (2/mês) → janeiro tem share = 1/12, não ≥ 1.25/12.
+    const season = seasonOf(
+      Array.from({ length: 12 }, (_, m) => spikeIn(m, 2)).flat(),
+    );
+    const stall = funnelActivitySeasonalityStall(season, 0, {
+      now: "2025-01-15T00:00:00.000Z",
+    });
+    expect(stall.show).toBe(false);
+  });
+
+  it("mês corrente forte + atividade real abaixo do ritmo → dispara", () => {
+    // Janeiro é o único mês com movimento (60 transições em 2024) → forte, avgPerYear=60.
+    const season = seasonOf(spikeIn(0, 60));
+    // Em 15/jan, ~48% do mês decorreu; esperado ≈ 60 × 15/31 ≈ 29; real = 3 (< 14,5).
+    const stall = funnelActivitySeasonalityStall(season, 3, {
+      now: "2025-01-15T00:00:00.000Z",
+    });
+    expect(stall.show).toBe(true);
+    expect(stall.month?.month).toBe(0);
+    expect(stall.actual).toBe(3);
+    expect(stall.expected).toBeCloseTo((60 * 15) / 31);
+    expect(stall.lift).toBeCloseTo(12); // share = 1.0 → lift = 12
+    expect(stall.shortfall).toBeCloseTo(1 - 3 / ((60 * 15) / 31));
+    expect(stall.shortfall).toBeGreaterThan(0);
+  });
+
+  it("mês corrente forte mas atividade no ritmo esperado → não exibe", () => {
+    const season = seasonOf(spikeIn(0, 60));
+    // Real = 30 ≥ esperado(≈29) × 0.5 = 14,5 → não é parada.
+    const stall = funnelActivitySeasonalityStall(season, 30, {
+      now: "2025-01-15T00:00:00.000Z",
+    });
+    expect(stall.show).toBe(false);
+  });
+
+  it("cedo demais no mês (abaixo da fração mínima decorrida) → não exibe", () => {
+    const season = seasonOf(spikeIn(0, 60));
+    // Em 05/jan só 5/31 ≈ 0,16 do mês decorreu (< 0,25) — não chora lobo cedo.
+    const stall = funnelActivitySeasonalityStall(season, 0, {
+      now: "2025-01-05T00:00:00.000Z",
+    });
+    expect(stall.show).toBe(false);
+  });
+
+  it("fração decorrida na borda inclusiva (exatamente 0,25) dispara", () => {
+    // Fevereiro forte (60 em 2024); fev/2025 tem 28 dias → dia 7 = 7/28 = 0,25 exato.
+    const season = seasonOf(spikeIn(1, 60));
+    const stall = funnelActivitySeasonalityStall(season, 1, {
+      now: "2025-02-07T00:00:00.000Z",
+    });
+    expect(stall.show).toBe(true);
+    expect(stall.month?.month).toBe(1);
+    expect(stall.expected).toBeCloseTo(60 * 0.25);
+  });
+
+  it("mês corrente sem histórico (avgPerYear 0) não dispara, mesmo com outro mês forte", () => {
+    // Junho é a temporada forte; janeiro (mês corrente) nunca teve movimento.
+    const season = seasonOf(spikeIn(5, 60));
+    const stall = funnelActivitySeasonalityStall(season, 0, {
+      now: "2025-01-15T00:00:00.000Z",
+    });
+    expect(stall.show).toBe(false);
+  });
+
+  it("atividade zero num mês forte → shortfall satura em 1", () => {
+    const season = seasonOf(spikeIn(0, 60));
+    const stall = funnelActivitySeasonalityStall(season, 0, {
+      now: "2025-01-20T00:00:00.000Z",
+    });
+    expect(stall.show).toBe(true);
+    expect(stall.actual).toBe(0);
+    expect(stall.shortfall).toBe(1);
+  });
+
+  it("usa now injetável em UTC — mesma temporada, mês corrente diferente muda o resultado", () => {
+    // Março forte (60 em 2024). Em março o gatilho compara com o mês corrente forte…
+    const season = seasonOf(spikeIn(2, 60));
+    const inMarch = funnelActivitySeasonalityStall(season, 2, {
+      now: "2025-03-15T00:00:00.000Z",
+    });
+    expect(inMarch.show).toBe(true);
+    expect(inMarch.month?.month).toBe(2);
+    // …mas em maio o mês corrente não tem histórico → não dispara.
+    const inMay = funnelActivitySeasonalityStall(season, 2, {
+      now: "2025-05-15T00:00:00.000Z",
+    });
+    expect(inMay.show).toBe(false);
   });
 });
 

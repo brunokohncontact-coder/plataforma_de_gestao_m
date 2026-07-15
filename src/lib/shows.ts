@@ -2506,6 +2506,138 @@ export function funnelActivitySeasonalityLull(
   return none;
 }
 
+/**
+ * Fração mínima do mês corrente que precisa ter decorrido antes de o nudge de
+ * "funil parado" disparar. Cedo demais (dia 1–2) a atividade ainda não teve tempo
+ * de acontecer e o aviso choraria lobo; ~1/4 do mês dá margem para o ritmo se
+ * revelar. Baseado no dia do mês em UTC (`getUTCDate` ÷ dias do mês).
+ */
+export const FUNNEL_ACTIVITY_STALL_MIN_ELAPSED_FRACTION = 0.25;
+
+/**
+ * Quão abaixo do ritmo sazonal esperado (proporcional ao trecho já decorrido do
+ * mês) a atividade real precisa estar para o mês contar como "parado". 0.5 = a
+ * menos da metade do que um mês típico teria acumulado a esta altura — fundo o
+ * bastante para ser de fato uma parada, não uma flutuação. Espelha a disciplina
+ * conservadora dos demais nudges sazonais.
+ */
+export const FUNNEL_ACTIVITY_STALL_FACTOR = 0.5;
+
+/** Resumo de Painel do "funil parado num mês historicamente forte" (`funnelActivitySeasonalityStall`). */
+export interface FunnelActivitySeasonalityStall {
+  /**
+   * Deve aparecer no Painel? Só quando há amostra suficiente
+   * (`totalTransitions >= FUNNEL_ACTIVITY_SEASON_MIN_TRANSITIONS`), o mês CORRENTE
+   * é historicamente forte de agendamento (`share` ≥ o mesmo piso da manchete), já
+   * decorreu o bastante do mês (`>= FUNNEL_ACTIVITY_STALL_MIN_ELAPSED_FRACTION`) e a
+   * atividade real do mês está abaixo do ritmo esperado
+   * (`< esperado × FUNNEL_ACTIVITY_STALL_FACTOR`). Caso contrário o nudge seria ruído.
+   */
+  show: boolean;
+  /** O mês do calendário CORRENTE (a leitura sazonal dele), ou null quando não dispara. */
+  month: FunnelActivitySeasonMonth | null;
+  /**
+   * Transições que um mês típico teria acumulado ATÉ AQUI: a média por ano-ativo do
+   * mês (`avgPerYear`) proporcional à fração já decorrida do mês. 0 quando não dispara.
+   */
+  expected: number;
+  /** Transições REAIS registradas neste mês do ano corrente até agora. */
+  actual: number;
+  /**
+   * Quão atrás do ritmo esperado a atividade está, como fração (`1 - actual/expected`,
+   * limitada a 0..1). Ex.: 0.7 = 70% abaixo do que um mês típico teria a esta altura.
+   * 0 quando não dispara.
+   */
+  shortfall: number;
+  /**
+   * Quantas vezes o `share` do mês corrente supera a média uniforme (1/12), i.e.
+   * `share * 12` — o quanto esse mês historicamente concentra atividade. 0 quando
+   * não dispara.
+   */
+  lift: number;
+}
+
+/**
+ * Resumo de Painel do **funil parado**: cruza o pico histórico da atividade com o
+ * estado ATUAL do mês corrente — dispara "você costuma agendar agora, mas o funil
+ * está parado este mês". Enquanto `funnelActivitySeasonalityHeadline` (D329) é
+ * antecedência ("sua temporada de prospecção está CHEGANDO"), este é o presente
+ * ("sua temporada de prospecção é AGORA e você não está trabalhando o funil").
+ * Fecha o "próximo possível" que a D329/D332 deixaram explícito.
+ *
+ * Só dispara quando TODOS valem:
+ * - amostra mínima (`FUNNEL_ACTIVITY_SEASON_MIN_TRANSITIONS`), como os irmãos;
+ * - o mês CORRENTE é historicamente forte (`share` ≥ `FUNNEL_ACTIVITY_STRONG_SEASON_FACTOR`/12)
+ *   e teve movimento antes (`avgPerYear > 0`) — "você costuma agendar agora";
+ * - já decorreu ao menos `FUNNEL_ACTIVITY_STALL_MIN_ELAPSED_FRACTION` do mês, para
+ *   não chorar lobo nos primeiros dias;
+ * - a atividade real do mês (`currentMonthTransitions`) está abaixo do ritmo
+ *   esperado proporcional ao trecho decorrido (`< esperado × FUNNEL_ACTIVITY_STALL_FACTOR`).
+ *
+ * `expected` proporcionaliza `avgPerYear` (um mês típico com movimento) pela fração
+ * já decorrida do mês, assumindo atividade uniforme dentro do mês — uma aproximação
+ * documentada. Como a `seasonality` normalmente inclui o próprio ano corrente
+ * (parcial), `avgPerYear` já vem levemente puxado para baixo, o que torna a barra
+ * CONSERVADORA (erra para não disparar), coerente com a disciplina dos demais nudges.
+ * Puro, com `now` injetável (`getUTCMonth`/`getUTCDate`, default `new Date()`).
+ */
+export function funnelActivitySeasonalityStall(
+  seasonality: FunnelActivitySeasonality,
+  currentMonthTransitions: number,
+  opts: { now?: Date | string } = {},
+): FunnelActivitySeasonalityStall {
+  const none: FunnelActivitySeasonalityStall = {
+    show: false,
+    month: null,
+    expected: 0,
+    actual: currentMonthTransitions,
+    shortfall: 0,
+    lift: 0,
+  };
+  if (seasonality.totalTransitions < FUNNEL_ACTIVITY_SEASON_MIN_TRANSITIONS) {
+    return none;
+  }
+
+  const nowDate =
+    opts.now == null
+      ? new Date()
+      : typeof opts.now === "string"
+        ? new Date(opts.now)
+        : opts.now;
+  const currentMonth = nowDate.getUTCMonth();
+  const month = seasonality.months[currentMonth];
+
+  // "Você costuma agendar AGORA": o mês corrente precisa ser historicamente forte
+  // (mesmo piso da manchete) e ter tido movimento antes.
+  const strongThreshold = FUNNEL_ACTIVITY_STRONG_SEASON_FACTOR / 12;
+  if (month.avgPerYear <= 0 || month.share < strongThreshold) return none;
+
+  // Fração decorrida do mês corrente, pelo dia UTC (1..dias do mês).
+  const daysInMonth = new Date(
+    Date.UTC(nowDate.getUTCFullYear(), currentMonth + 1, 0),
+  ).getUTCDate();
+  const elapsedFraction = nowDate.getUTCDate() / daysInMonth;
+  if (elapsedFraction < FUNNEL_ACTIVITY_STALL_MIN_ELAPSED_FRACTION) return none;
+
+  const expected = month.avgPerYear * elapsedFraction;
+  if (currentMonthTransitions >= expected * FUNNEL_ACTIVITY_STALL_FACTOR) {
+    return none;
+  }
+
+  const shortfall =
+    expected > 0
+      ? Math.min(1, Math.max(0, 1 - currentMonthTransitions / expected))
+      : 0;
+  return {
+    show: true,
+    month,
+    expected,
+    actual: currentMonthTransitions,
+    shortfall,
+    lift: month.share * 12,
+  };
+}
+
 /** Variação de um mês do calendário na sazonalidade da atividade, entre dois períodos. */
 export interface FunnelActivitySeasonMonthChange {
   /** Mês do ano: 0 = janeiro .. 11 = dezembro (UTC). */

@@ -5,6 +5,48 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-15 — D333: Nudge de "funil parado numa temporada forte" no Painel (`funnelActivitySeasonalityStall`)
+- **Contexto:** a D329 (manchete de agendamento chegando) e a D332 (vale de agendamento chegando) levaram a
+  sazonalidade da ATIVIDADE do funil ao Painel, mas ambas olham só para o FUTURO ("sua temporada está
+  chegando"). As duas registraram como "próximo possível" cruzar o pico histórico com o estado ATUAL do funil —
+  disparar "você costuma agendar AGORA, mas o funil está parado este mês", comparando a atividade recente vs.
+  a esperada. Faltava exatamente essa peça do PRESENTE.
+- **Decisão:**
+  - Nova peça pura `funnelActivitySeasonalityStall(seasonality, currentMonthTransitions, { now? })` + tipo
+    `FunnelActivitySeasonalityStall` e constantes `FUNNEL_ACTIVITY_STALL_MIN_ELAPSED_FRACTION` (=0.25) e
+    `FUNNEL_ACTIVITY_STALL_FACTOR` (=0.5) em `src/lib/shows.ts`. Recebe a `funnelActivitySeasonality` já
+    computada + a contagem REAL de transições do mês corrente do ano corrente, injeta `now` (default
+    `new Date()`, `getUTCMonth`/`getUTCDate`) e dispara só quando TODOS valem: amostra mínima
+    (`FUNNEL_ACTIVITY_SEASON_MIN_TRANSITIONS`=12, o mesmo piso dos irmãos); o mês CORRENTE é historicamente
+    forte (`share` ≥ `FUNNEL_ACTIVITY_STRONG_SEASON_FACTOR`/12) e teve movimento antes (`avgPerYear > 0`); já
+    decorreu ao menos `FUNNEL_ACTIVITY_STALL_MIN_ELAPSED_FRACTION` do mês; e a atividade real está abaixo do
+    ritmo esperado proporcional ao trecho decorrido (`< avgPerYear × fraçãoDecorrida × FUNNEL_ACTIVITY_STALL_FACTOR`).
+    Devolve `{ show, month, expected, actual, shortfall=clamp(1-actual/expected,0..1), lift=share*12 }`.
+  - No **Painel** (`dashboard/page.tsx`), banner 😴 `Funil parado numa temporada forte`. Reaproveita o MESMO
+    feed de transições já montado para a sazonalidade (extraído para a const `funnelActivityFeed`), do qual
+    conta as transições do mês/ano corrente (`getUTCFullYear`/`getUTCMonth`) — **zero I/O extra**.
+  - **Cascata (no máximo um banner sazonal por vez):** faturamento forte → faturamento vale → **funil parado
+    (presente)** → funil forte (futuro) → funil vale (futuro). O "funil parado" TOMA A FRENTE da manchete/vale
+    de agendamento futuro dentro do grupo do funil (presente > futuro), mas cede aos nudges de FATURAMENTO
+    (o eixo do dinheiro mantém precedência, via `funnelActivityFeed` só existir quando nenhum deles aparece).
+- **Justificativa:**
+  - `expected` proporcionaliza `avgPerYear` (um mês típico com movimento) pela fração já decorrida do mês
+    (`getUTCDate` ÷ dias do mês), assumindo atividade uniforme dentro do mês — aproximação simples e testável.
+  - A `seasonality` do Painel normalmente inclui o próprio ano corrente (parcial), então `avgPerYear` já vem
+    levemente puxado para baixo — o que torna a barra CONSERVADORA (erra para NÃO disparar), coerente com a
+    disciplina dos demais nudges (melhor sub-avisar que chorar lobo). Não excluí o ano corrente para não
+    duplicar I/O nem complicar a fiação; se o sinal se mostrar fraco demais, dá para passar uma sazonalidade
+    sem o ano corrente depois.
+  - `FUNNEL_ACTIVITY_STALL_MIN_ELAPSED_FRACTION`=0.25 evita chorar lobo nos primeiros dias (quando a atividade
+    ainda não teve tempo de acontecer); `FUNNEL_ACTIVITY_STALL_FACTOR`=0.5 (menos da metade do ritmo esperado)
+    é fundo o bastante para ser de fato uma parada. Ambos **hipóteses** a validar com uso real (a exibir/afrouxar).
+- **Alternativas consideradas:** (a) comparar só quando o mês termina — descartado, perde o valor de avisar no
+  meio do mês, quando ainda dá para reagir; (b) dar ao "funil parado" precedência sobre os nudges de
+  faturamento — descartado, o eixo do dinheiro mantém prioridade (D329); (c) excluir o ano corrente da
+  sazonalidade para um `expected` mais limpo — adiado (custo de I/O/fiação; o viés atual é conservador).
+- **Nota de concorrência:** número **D333** escolhido como o próximo livre acima do maior D referenciado no
+  PROGRESS/DECISIONS (D332). Se outra PR reivindicar D333, renumerar para o próximo livre no merge.
+
 ## 2026-07-15 — D329: Manchete no Painel da sazonalidade da atividade do funil (temporada de agendamento chegando)
 - **Contexto:** a D326/D327/D328 (Sessões 333–335) construíram a sazonalidade da ATIVIDADE do funil
   (`/shows/funil/atividade/sazonalidade`) — em que meses do calendário você costuma fazer o trabalho de
