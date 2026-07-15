@@ -5,6 +5,42 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-15 — D335: Excluir o ano corrente (parcial) do baseline do "funil parado" (`funnelActivitySeasonalityStall`)
+- **Contexto:** o `expected` do stall (D333) proporcionalizava `month.avgPerYear` — a média por ano-ativo do mês
+  corrente na sazonalidade — pela fração já decorrida do mês. Como a sazonalidade soma TODOS os anos, incluindo o
+  próprio ano corrente (parcial e, justamente num mês "parado", deprimido), o `avgPerYear` já vinha puxado para
+  baixo pelo número que o stall quer diagnosticar. A D333/D334 registraram isso como "conservador de propósito" e
+  deixaram como "próximo possível" refinar o `expected` excluindo o ano corrente parcial da base.
+- **Decisão:** o `expected` passa a proporcionalizar a média dos **anos ANTERIORES** neste mês, não o `avgPerYear`
+  cheio. Deriva dos agregados que já existem, sem restruturar `funnelActivitySeasonality`: `month.total` e
+  `month.years` incluem o ano corrente (vêm do mesmo feed que alimenta `currentMonthTransitions`), então
+  `priorTotal = month.total − currentMonthTransitions` e `priorYears = month.years − (currentMonthTransitions > 0 ? 1 : 0)`;
+  `baselinePerYear = priorYears > 0 && priorTotal > 0 ? priorTotal/priorYears : month.avgPerYear`. Sem histórico
+  anterior (só o ano corrente com movimento) recai no `avgPerYear`, que aí iguala o realizado e nunca dispara — o
+  guard natural "sem baseline anterior não há parada".
+- **Justificativa:** medir o realizado contra uma média que já embute o próprio déficit subestima o ritmo esperado
+  e faz o stall sub-disparar (e a micro-barra/D334 exagerar quão perto do normal você está). O baseline dos anos
+  anteriores é a leitura correta de "um mês típico ANTES deste ano"; a barra fica MENOS conservadora, porém mais
+  fiel. O fallback preserva a disciplina (nenhum disparo espúrio sem histórico) e mantém intactos os testes
+  legados, que usam feeds de um único ano passado (onde `priorYears` colapsa a 0 → fallback). Reverte a postura
+  "conservador de propósito" da D333, agora que o cartão de detalhe (D334) expõe os números lado a lado e um
+  baseline diluído enganaria a leitura.
+- **Alternativas consideradas:** (a) manter `avgPerYear` cheio (status quo) — rejeitada: dilui o baseline com o
+  déficit diagnosticado; (b) adicionar quebra por ano ao agregado `FunnelActivitySeasonMonth` para computar o
+  baseline "de fora" — rejeitada por ser restruturação desnecessária: a subtração dos agregados existentes basta e
+  é exata porque `currentMonthTransitions` e `month.total` vêm do mesmo feed; (c) excluir o ano corrente também de
+  `avgPerYear`/`share` na própria `funnelActivitySeasonality` — rejeitada por mudar a semântica da sazonalidade
+  agregada (que legitimamente soma todos os anos) e afetar telas não relacionadas ao stall.
+- **Verificação:** DoD verde — `npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test`
+  (**1844 testes**, +3 em `shows.test.ts`: baseline exclui o ano corrente; a exclusão faz disparar o que a média
+  diluída silenciaria; fallback sem ano anterior não dispara); smoke → `/login` 200, `/dashboard` e
+  `/shows/funil/atividade/sazonalidade` 307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories:
+  4 moderate/5 high/1 critical, zero dependência nova). Mudança puramente em `src/lib/shows.ts` (+ testes).
+- **Nota de concorrência:** número **D335** escolhido como o próximo livre acima do maior D referenciado no
+  PROGRESS/DECISIONS (D334). Se outra PR reivindicar D335, renumerar para o próximo livre no merge.
+
+---
+
 ## 2026-07-15 — D334: Detalhe do "funil parado" na página de sazonalidade + peça `countCurrentMonthFunnelActivity`
 - **Contexto:** a D333 (Sessão 338) levou o nudge `funnelActivitySeasonalityStall` ao Painel como banner
   compacto e registrou como "próximo possível" dar ao "funil parado" um detalhe próprio na página que ele

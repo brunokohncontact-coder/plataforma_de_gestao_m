@@ -2537,8 +2537,10 @@ export interface FunnelActivitySeasonalityStall {
   /** O mês do calendário CORRENTE (a leitura sazonal dele), ou null quando não dispara. */
   month: FunnelActivitySeasonMonth | null;
   /**
-   * Transições que um mês típico teria acumulado ATÉ AQUI: a média por ano-ativo do
-   * mês (`avgPerYear`) proporcional à fração já decorrida do mês. 0 quando não dispara.
+   * Transições que um mês típico teria acumulado ATÉ AQUI: a média por ano dos ANOS
+   * ANTERIORES neste mês (exclui o próprio ano corrente do denominador, ver D335)
+   * proporcional à fração já decorrida do mês. Sem histórico anterior recai no
+   * `avgPerYear`. 0 quando não dispara.
    */
   expected: number;
   /** Transições REAIS registradas neste mês do ano corrente até agora. */
@@ -2574,11 +2576,15 @@ export interface FunnelActivitySeasonalityStall {
  * - a atividade real do mês (`currentMonthTransitions`) está abaixo do ritmo
  *   esperado proporcional ao trecho decorrido (`< esperado × FUNNEL_ACTIVITY_STALL_FACTOR`).
  *
- * `expected` proporcionaliza `avgPerYear` (um mês típico com movimento) pela fração
- * já decorrida do mês, assumindo atividade uniforme dentro do mês — uma aproximação
- * documentada. Como a `seasonality` normalmente inclui o próprio ano corrente
- * (parcial), `avgPerYear` já vem levemente puxado para baixo, o que torna a barra
- * CONSERVADORA (erra para não disparar), coerente com a disciplina dos demais nudges.
+ * `expected` proporcionaliza pela fração já decorrida do mês (assumindo atividade
+ * uniforme dentro do mês — uma aproximação documentada) uma média por ano que
+ * EXCLUI o próprio ano corrente do denominador: como a `seasonality` inclui o ano
+ * corrente (parcial e, num mês parado, deprimido), medir o realizado contra uma
+ * média que já embute esse número baixo diluiria o baseline com o próprio déficit
+ * que se quer diagnosticar. Usa-se então a média dos ANOS ANTERIORES neste mês
+ * (`(total − corrente) / (anos − ano corrente)`); sem histórico anterior recai no
+ * `avgPerYear`, que aí iguala o realizado e não dispara (ver D335, que revê a
+ * antiga postura "conservador de propósito" da D333).
  * Puro, com `now` injetável (`getUTCMonth`/`getUTCDate`, default `new Date()`).
  */
 export function funnelActivitySeasonalityStall(
@@ -2619,7 +2625,22 @@ export function funnelActivitySeasonalityStall(
   const elapsedFraction = nowDate.getUTCDate() / daysInMonth;
   if (elapsedFraction < FUNNEL_ACTIVITY_STALL_MIN_ELAPSED_FRACTION) return none;
 
-  const expected = month.avgPerYear * elapsedFraction;
+  // Base do ritmo esperado: a média por ano dos ANOS ANTERIORES neste mês —
+  // exclui o próprio ano corrente (parcial e, num mês parado, deprimido) do
+  // denominador, para não diluir o baseline com o número baixo que estamos
+  // justamente diagnosticando (fecha o "próximo possível" da D333/D334, revendo
+  // a postura "conservador de propósito" — ver D335). Deriva dos agregados que já
+  // temos: `month.total`/`month.years` incluem o ano corrente, pois vêm do MESMO
+  // feed que alimenta `currentMonthTransitions`; subtraímos as transições do mês
+  // corrente do total e, quando elas existem (o ano corrente teve movimento neste
+  // mês), o próprio ano da contagem de anos. Sem histórico anterior (só o ano
+  // corrente com movimento) recai no `avgPerYear` — que aí iguala o realizado e
+  // nunca dispara, o guard natural "sem baseline não há parada".
+  const priorYears = month.years - (currentMonthTransitions > 0 ? 1 : 0);
+  const priorTotal = month.total - currentMonthTransitions;
+  const baselinePerYear =
+    priorYears > 0 && priorTotal > 0 ? priorTotal / priorYears : month.avgPerYear;
+  const expected = baselinePerYear * elapsedFraction;
   if (currentMonthTransitions >= expected * FUNNEL_ACTIVITY_STALL_FACTOR) {
     return none;
   }

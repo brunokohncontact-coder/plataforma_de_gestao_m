@@ -2395,6 +2395,79 @@ describe("funnelActivitySeasonalityStall", () => {
     expect(stall.shortfall).toBe(1);
   });
 
+  it("exclui o ano corrente (parcial) do baseline — expected reflete o ritmo dos anos anteriores", () => {
+    // Feed REALISTA: jan/2024 = 60 (histórico) + jan/2025 = 3 (ano corrente,
+    // parcial), tudo no MESMO feed — como no uso real, onde a mesma origem
+    // alimenta a sazonalidade e a contagem do mês corrente.
+    const feed = buildFunnelActivityFeed(
+      [...spikeIn(0, 60, 2024), ...spikeIn(0, 3, 2025)].map((e, i) => ({
+        showId: `s${i}`,
+        showTitle: "",
+        showDate: null,
+        fromStatus: e.fromStatus,
+        toStatus: e.toStatus,
+        at: e.at,
+      })),
+    );
+    const season = funnelActivitySeasonality(feed);
+    const now = "2025-01-15T00:00:00.000Z";
+    const current = countCurrentMonthFunnelActivity(feed, { now });
+    expect(current).toBe(3);
+    // avgPerYear diluído seria 63/2 = 31,5; o baseline correto exclui 2025:
+    // (63 − 3) / (2 − 1) = 60 → expected = 60 × 15/31, não 31,5 × 15/31.
+    const stall = funnelActivitySeasonalityStall(season, current, { now });
+    expect(stall.show).toBe(true);
+    expect(stall.expected).toBeCloseTo((60 * 15) / 31);
+    expect(stall.actual).toBe(3);
+    expect(stall.shortfall).toBeCloseTo(1 - 3 / ((60 * 15) / 31));
+  });
+
+  it("excluir o ano corrente pode fazer disparar o que a média diluída silenciaria", () => {
+    // jan/2024 = 40 (histórico), jan/2025 = 12 (corrente, em 20/jan → 20/31≈0,645).
+    const feed = buildFunnelActivityFeed(
+      [...spikeIn(0, 40, 2024), ...spikeIn(0, 12, 2025)].map((e, i) => ({
+        showId: `s${i}`,
+        showTitle: "",
+        showDate: null,
+        fromStatus: e.fromStatus,
+        toStatus: e.toStatus,
+        at: e.at,
+      })),
+    );
+    const season = funnelActivitySeasonality(feed);
+    const now = "2025-01-20T00:00:00.000Z";
+    const current = countCurrentMonthFunnelActivity(feed, { now });
+    expect(current).toBe(12);
+    // Média diluída = 52/2 = 26 → expected ≈ 26×20/31 ≈ 16,8; limiar 8,4; 12 ≥ 8,4
+    // NÃO dispararia. Baseline dos anos anteriores = 40 → expected ≈ 40×20/31 ≈
+    // 25,8; limiar 12,9; 12 < 12,9 → dispara. É o ponto da D335.
+    const stall = funnelActivitySeasonalityStall(season, current, { now });
+    expect(stall.show).toBe(true);
+    expect(stall.expected).toBeCloseTo((40 * 20) / 31);
+  });
+
+  it("sem ano anterior (só o ano corrente com movimento) recai no avgPerYear e não dispara", () => {
+    // Todo o histórico é do próprio ano corrente (2025) — não há baseline anterior.
+    const feed = buildFunnelActivityFeed(
+      spikeIn(0, 60, 2025).map((e, i) => ({
+        showId: `s${i}`,
+        showTitle: "",
+        showDate: null,
+        fromStatus: e.fromStatus,
+        toStatus: e.toStatus,
+        at: e.at,
+      })),
+    );
+    const season = funnelActivitySeasonality(feed);
+    const now = "2025-01-15T00:00:00.000Z";
+    const current = countCurrentMonthFunnelActivity(feed, { now });
+    expect(current).toBe(60);
+    // priorYears = 1 − 1 = 0 → fallback avgPerYear = 60; expected = 60×15/31 < 60
+    // = actual → nunca dispara: "sem baseline anterior não há parada".
+    const stall = funnelActivitySeasonalityStall(season, current, { now });
+    expect(stall.show).toBe(false);
+  });
+
   it("usa now injetável em UTC — mesma temporada, mês corrente diferente muda o resultado", () => {
     // Março forte (60 em 2024). Em março o gatilho compara com o mês corrente forte…
     const season = seasonOf(spikeIn(2, 60));
