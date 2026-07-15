@@ -9315,6 +9315,15 @@ export interface GigSeasonalityStall {
    */
   booked: number;
   /**
+   * Subconjunto FIRME de `booked`: só compromissos confirmados/realizados
+   * (CONFIRMED+PLAYED), excluindo propostas ainda em aberto. Leitura mais rígida
+   * de "quanto da agenda desse mês está de fato fechado" — sempre `≤ booked`.
+   * O disparo do stall continua olhando o `booked` amplo (uma proposta já ocupa a
+   * agenda; pecar por não-gritar-cedo), mas o detalhe pode revelar que, dos
+   * marcados, poucos (ou nenhum) são firmes. Ver D339.
+   */
+  bookedFirm: number;
+  /**
    * Quão abaixo do ritmo típico a agenda está, como fração `clamp(1 −
    * booked/expected, 0..1)`. Ex.: 0.6 = você tem 60% menos shows marcados do que
    * costuma tocar nesse mês. 0 quando não há stall.
@@ -9363,6 +9372,7 @@ export function gigSeasonalityStall(
     monthsAhead: 0,
     expected: 0,
     booked: 0,
+    bookedFirm: 0,
     shortfall: 0,
     lift: 0,
   };
@@ -9403,13 +9413,16 @@ export function gigSeasonalityStall(
     if (expected <= 0) return none;
 
     // Agenda atual da ocorrência-alvo: shows NÃO cancelados datados no mês/ano
-    // (proposto/confirmado/realizado — tudo que já ocupa a agenda).
+    // (proposto/confirmado/realizado — tudo que já ocupa a agenda). `bookedFirm`
+    // é o subconjunto firme (CONFIRMED+PLAYED), a leitura mais rígida.
     let booked = 0;
+    let bookedFirm = 0;
     for (const s of shows) {
       if (s.status === "CANCELLED") continue;
       const d = typeof s.date === "string" ? new Date(s.date) : s.date;
       if (d.getUTCMonth() === monthIdx && d.getUTCFullYear() === targetYear) {
         booked += 1;
+        if (s.status === "CONFIRMED" || s.status === "PLAYED") bookedFirm += 1;
       }
     }
 
@@ -9420,6 +9433,7 @@ export function gigSeasonalityStall(
         monthsAhead: ahead,
         expected,
         booked,
+        bookedFirm,
         shortfall: Math.max(0, Math.min(1, 1 - booked / expected)),
         lift: m.feeShare * 12,
       };

@@ -614,6 +614,14 @@ function StallDetail({ stall }: { stall: GigSeasonalityStall }) {
             {stall.booked === 1 ? "show na agenda" : "shows na agenda"} da próxima
             ocorrência
           </div>
+          {/* Leitura firme (CONFIRMED+PLAYED) do que está marcado, D339: revela
+              quando os "marcados" são propostas ainda em aberto, não agenda fechada. */}
+          {stall.booked > 0 && (
+            <div className="mt-1 text-xs text-amber-700">
+              dos quais <strong>{stall.bookedFirm} firme</strong>
+              {stall.bookedFirm === 1 ? "" : "s"} (confirmado/realizado)
+            </div>
+          )}
         </div>
         <div className="rounded-lg border border-amber-200 bg-white/60 p-3">
           <div className="text-xs font-medium uppercase tracking-wide text-amber-700">

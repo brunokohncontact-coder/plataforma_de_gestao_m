@@ -7,9 +7,29 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1862 testes**),
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1865 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 344 —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 345 —
+LEITURA FIRME (CONFIRMED+PLAYED) da AGENDA no "MÊS FORTE COM AGENDA RALA"
+(`GigSeasonalityStall.bookedFirm`, D339), fechando o "próximo possível" que a Sessão 342
+(D336) e a Sessão 344 (D338) deixaram explícito ("restringir o `booked` a compromissos firmes
+(CONFIRMED+PLAYED) como leitura alternativa mais rígida"):** o `gigSeasonalityStall` conta como
+`booked` toda a agenda NÃO cancelada da próxima ocorrência do mês forte — de propósito amplo
+("uma proposta já ocupa a agenda", D336) — mas o `StallDetail` (D338) não revelava quando esses
+"marcados" são só propostas em aberto, não agenda fechada. Novo campo `bookedFirm: number` em
+`GigSeasonalityStall` (`src/lib/finance.ts`), computado no MESMO laço do `booked` (subconjunto
+com `status ∈ {CONFIRMED, PLAYED}`, sempre `≤ booked`); o DISPARO segue olhando o `booked` amplo
+(a semântica da D336 não muda). O `StallDetail` em `/shows/sazonalidade` ganha a linha "dos quais
+N firmes (confirmado/realizado)" sob o número de marcados (só quando `booked > 0`). Mudança de
+lógica pura + apresentacional, **+3 testes** (`finance.test.ts`: mix confirmado+proposto → só o
+firme; agenda toda proposta → 0; agenda vazia e `none` → 0). Zero migração/dependência/rota nova.
+DoD verde: `npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test`
+(**1865 testes**); smoke → `/login` 200, `/dashboard` e `/shows/sazonalidade` (com e sem `?ano=`)
+307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories: 4 moderate/5 high/1
+critical, zero dependência nova), ver D339. **Próximo possível** — expor o `bookedFirm` também no
+export CSV da sazonalidade, se surgir demanda de planilha; ou levar o mesmo par firme/amplo ao
+`funnelActivitySeasonalityStall` (D333) se aquele eixo também misturar interesse e compromisso.
+**Antes disso, Sessão 344 —
 DETALHE do "MÊS FORTE COM AGENDA RALA" na PÁGINA de SAZONALIDADE dos SHOWS
 (`StallDetail` em `/shows/sazonalidade`, D338), fechando o "próximo possível" que a Sessão 342
 (D336) deixou explícito ("dar ao stall um detalhe próprio na página `/shows/sazonalidade` — o

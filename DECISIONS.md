@@ -5,6 +5,31 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-15 — D339: Leitura FIRME (CONFIRMED+PLAYED) da agenda no "mês forte com agenda rala" (`GigSeasonalityStall.bookedFirm`)
+- **Contexto:** o `gigSeasonalityStall` (D336) conta como `booked` toda a agenda NÃO cancelada da próxima
+  ocorrência do mês forte — de propósito amplo, "uma proposta já ocupa a agenda", para pecar por não-gritar-cedo
+  (D336). A própria D336 deixou aberta a "leitura alternativa mais rígida": restringir a compromissos firmes
+  (CONFIRMED+PLAYED). O `StallDetail` da página `/shows/sazonalidade` (D338) mostrava só o `booked` amplo, sem
+  revelar quando esses "marcados" são, na verdade, propostas ainda em aberto — um mês pode parecer meio-cheio
+  quando nada está de fato fechado.
+- **Decisão:** novo campo `bookedFirm: number` em `GigSeasonalityStall` (`src/lib/finance.ts`), computado no MESMO
+  laço do `booked` — o subconjunto com `status ∈ {CONFIRMED, PLAYED}` (mesma noção firme de `FIRM_LEAD_STATUSES`
+  em `shows.ts`, D190), sempre `≤ booked`. O DISPARO do stall continua olhando o `booked` amplo (a semântica da
+  D336 não muda: interesse ocupa a agenda). O `StallDetail` ganha uma linha "dos quais N firmes
+  (confirmado/realizado)" sob o número de marcados, só quando `booked > 0`. Mudança de lógica pura + apresentacional,
+  zero migração/rota/dependência. **+3 testes** (`finance.test.ts`: mix confirmado+proposto → `bookedFirm` só o
+  firme; agenda toda proposta → `bookedFirm` 0; agenda vazia e `none` → `bookedFirm` 0).
+- **Justificativa:** separa "agenda cheia de intenção" de "agenda cheia de compromisso" sem sacrificar o alarme
+  antecipado (o gatilho ainda pega o mês cedo). Adição de campo (não troca de default) preserva o Painel e todo o
+  comportamento existente; o detalhe é opt-in visual. Espelha o precedente D190/D191 (escopo firme vs. amplo na
+  antecedência de agendamento) no eixo da sazonalidade.
+- **Alternativas consideradas:** (a) trocar o `booked` do gatilho para firme-only — rejeitado: mudaria a semântica
+  deliberada da D336 e faria o nudge gritar tarde (propostas deixariam de contar). (b) parâmetro `scope` como em
+  `bookingLeadTime` — rejeitado por ora: o Painel não tem UI de escopo e a página só precisa exibir ambos os
+  números lado a lado, então um campo derivado é mais simples que um eixo de configuração. (c) marcar o ponto do
+  ritmo esperado na micro-barra (a outra alternativa da D338) — descartado: o stall só dispara com `booked <
+  expected`, então `booked > expected` nunca ocorre e o marcador seria morto.
+
 ## 2026-07-15 — D338: Detalhe do "mês forte com agenda rala" na página de sazonalidade dos shows (`StallDetail` em `/shows/sazonalidade`)
 - **Contexto:** o nudge `gigSeasonalityStall` (D336) só aparecia como banner compacto no Painel; a página que ele
   linka (`/shows/sazonalidade`) não abria o sinal. O eixo do funil já tinha esse par completo — banner no Painel
