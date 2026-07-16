@@ -120,6 +120,8 @@ import {
   indexClientShareChanges,
   CLIENT_SHARE_TREND_EPSILON,
   clientRetention,
+  retentionPricingSignal,
+  RETENTION_PRICING_EPSILON,
   filterContacts,
   findContactsToReengage,
   hasActiveContactFilter,
@@ -423,8 +425,44 @@ describe("clientRetention", () => {
     expect(r.totalFee).toBe(0);
     expect(r.recurringFee).toBe(0);
     expect(r.recurringFeeShare).toBeNull();
+    expect(r.recurringShows).toBe(0);
+    expect(r.oneTimeFee).toBe(0);
+    expect(r.recurringAvgFee).toBeNull();
+    expect(r.oneTimeAvgFee).toBeNull();
     expect(r.avgShowsPerClient).toBe(0);
     expect(r.mostLoyal).toBeNull();
+  });
+
+  it("calcula o cachê médio POR SHOW de cada segmento (recorrentes × únicos)", () => {
+    const r = clientRetention(
+      [
+        // recorrente: 3 shows, 900 → 300/show
+        item("rec", "Recorrente", [
+          s({ fee: 300_00 }),
+          s({ fee: 300_00 }),
+          s({ fee: 300_00 }),
+        ]),
+        // únicos: 1 show cada
+        item("u1", "Único 1", [s({ fee: 200_00 })]),
+        item("u2", "Único 2", [s({ fee: 400_00 })]),
+      ],
+      NOW,
+    );
+    expect(r.recurringShows).toBe(3);
+    expect(r.recurringFee).toBe(900_00);
+    expect(r.recurringAvgFee).toBe(300_00);
+    expect(r.oneTimeFee).toBe(600_00);
+    expect(r.oneTimeAvgFee).toBe(300_00); // (200+400)/2 clientes
+  });
+
+  it("deixa os médios por segmento nulos quando o segmento não existe", () => {
+    const soloRecurring = clientRetention([item("rec", "Rec", [s(), s()])], NOW);
+    expect(soloRecurring.recurringAvgFee).not.toBeNull();
+    expect(soloRecurring.oneTimeAvgFee).toBeNull();
+
+    const soloOneTime = clientRetention([item("uni", "Uni", [s()])], NOW);
+    expect(soloOneTime.recurringAvgFee).toBeNull();
+    expect(soloOneTime.oneTimeAvgFee).not.toBeNull();
   });
 
   it("ignora contatos sem shows não cancelados", () => {
@@ -509,6 +547,85 @@ describe("clientRetention", () => {
     );
     expect(r.rows[0].lastShowDate?.toISOString()).toBe("2026-09-15T23:00:00.000Z");
     expect(r.rows[0].recurring).toBe(true);
+  });
+});
+
+describe("retentionPricingSignal", () => {
+  function s(over: Partial<ContactRankShowLike> = {}): ContactRankShowLike {
+    return { status: "CONFIRMED", date: "2026-05-01T20:00:00Z", fee: 100_00, ...over };
+  }
+  function item(
+    id: string,
+    name: string,
+    shows: ContactRankShowLike[],
+  ): ContactWithShows<ContactRankLike> {
+    return { contact: { id, name }, shows };
+  }
+
+  it("é null sem um dos dois segmentos", () => {
+    expect(retentionPricingSignal(clientRetention([], NOW))).toBeNull();
+    // só recorrentes
+    expect(
+      retentionPricingSignal(clientRetention([item("r", "R", [s(), s()])], NOW)),
+    ).toBeNull();
+    // só únicos
+    expect(
+      retentionPricingSignal(clientRetention([item("u", "U", [s()])], NOW)),
+    ).toBeNull();
+  });
+
+  it("é null quando algum segmento tem cachê médio zero", () => {
+    const r = clientRetention(
+      [
+        item("rec", "Rec", [s({ fee: 0 }), s({ fee: 0 })]), // médio recorrente 0
+        item("uni", "Uni", [s({ fee: 200_00 })]),
+      ],
+      NOW,
+    );
+    expect(retentionPricingSignal(r)).toBeNull();
+  });
+
+  it("aponta 'recurring-more' quando o fiel paga mais por show", () => {
+    const r = clientRetention(
+      [
+        item("rec", "Rec", [s({ fee: 500_00 }), s({ fee: 500_00 })]), // 500/show
+        item("uni", "Uni", [s({ fee: 200_00 })]), // 200/show
+      ],
+      NOW,
+    );
+    const sig = retentionPricingSignal(r)!;
+    expect(sig.direction).toBe("recurring-more");
+    expect(sig.recurringAvgFee).toBe(500_00);
+    expect(sig.oneTimeAvgFee).toBe(200_00);
+    expect(sig.delta).toBe(300_00);
+    expect(sig.relativeDelta).toBeCloseTo(0.6);
+  });
+
+  it("aponta 'recurring-less' quando o fiel paga menos (loyalty creep)", () => {
+    const r = clientRetention(
+      [
+        item("rec", "Rec", [s({ fee: 200_00 }), s({ fee: 200_00 })]), // 200/show
+        item("uni", "Uni", [s({ fee: 500_00 })]), // 500/show
+      ],
+      NOW,
+    );
+    const sig = retentionPricingSignal(r)!;
+    expect(sig.direction).toBe("recurring-less");
+    expect(sig.delta).toBe(-300_00);
+    expect(sig.relativeDelta).toBeCloseTo(-0.6);
+  });
+
+  it("empata em 'similar' dentro do limiar relativo de 5%", () => {
+    const r = clientRetention(
+      [
+        item("rec", "Rec", [s({ fee: 400_00 }), s({ fee: 400_00 })]), // 400/show
+        item("uni", "Uni", [s({ fee: 410_00 })]), // 410/show → ~2,4% de diferença
+      ],
+      NOW,
+    );
+    const sig = retentionPricingSignal(r)!;
+    expect(sig.direction).toBe("similar");
+    expect(Math.abs(sig.relativeDelta)).toBeLessThan(RETENTION_PRICING_EPSILON);
   });
 });
 
