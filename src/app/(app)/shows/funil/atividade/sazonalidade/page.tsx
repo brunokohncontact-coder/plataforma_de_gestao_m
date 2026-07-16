@@ -423,12 +423,21 @@ function StallDetail({ stall }: { stall: FunnelActivitySeasonalityStall }) {
         <h2 className="font-semibold text-amber-900">
           😴 Funil parado numa temporada forte
         </h2>
-        <Link
-          href="/shows/funil"
-          className="text-sm font-medium text-amber-700 hover:underline"
-        >
-          Trabalhar o pipeline →
-        </Link>
+        <div className="flex items-center gap-3">
+          <a
+            href="/shows/funil/atividade/sazonalidade/stall/export"
+            className="text-sm font-medium text-amber-700 hover:underline"
+            download
+          >
+            ⬇ CSV
+          </a>
+          <Link
+            href="/shows/funil"
+            className="text-sm font-medium text-amber-700 hover:underline"
+          >
+            Trabalhar o pipeline →
+          </Link>
+        </div>
       </div>
       <p className="mt-1 text-sm text-amber-900">
         <strong className="capitalize">{month.label}</strong> costuma concentrar{" "}

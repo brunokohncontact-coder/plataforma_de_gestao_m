@@ -160,6 +160,8 @@ import {
   FUNNEL_ACTIVITY_COMPARISON_CSV_HEADERS,
   funnelActivitySeasonalityToCsv,
   FUNNEL_ACTIVITY_SEASONALITY_CSV_HEADERS,
+  funnelActivitySeasonalityStallToCsv,
+  FUNNEL_ACTIVITY_SEASONALITY_STALL_CSV_HEADERS,
   funnelActivitySeasonalityComparisonToCsv,
   FUNNEL_ACTIVITY_SEASONALITY_COMPARISON_CSV_HEADERS,
 } from "./csv";
@@ -181,6 +183,7 @@ import {
   groupFunnelActivityByMonth,
   compareFunnelActivityMonths,
   funnelActivitySeasonality,
+  funnelActivitySeasonalityStall,
   compareFunnelActivitySeasonality,
   type ConflictShowLike,
   type LeadTimeShowLike,
@@ -5015,6 +5018,64 @@ describe("funnelActivitySeasonalityToCsv", () => {
     expect(lines[8]).toBe("Agosto;1;1;1,0;25%;0;0;0;1;0;Mês mais calmo");
     // Total: 4 transições, 2 anos observados, participação/média/destaque em branco.
     expect(lines[13]).toBe("Total;4;2;;;2;1;0;1;0;");
+  });
+});
+
+describe("funnelActivitySeasonalityStallToCsv", () => {
+  const seasonOf = (
+    events: { fromStatus: string | null; toStatus: string; at: string }[],
+  ) =>
+    funnelActivitySeasonality(
+      buildFunnelActivityFeed(
+        events.map((e, i) => ({
+          showId: `s${i}`,
+          showTitle: "",
+          showDate: null,
+          fromStatus: e.fromStatus,
+          toStatus: e.toStatus,
+          at: e.at,
+        })),
+      ),
+    );
+
+  // N cadastros no mês `month` (0-based) de um ano PASSADO — o histórico contra o
+  // qual o mês corrente do ano seguinte é medido (espelha `spikeIn` de shows.test).
+  const spikeIn = (month: number, count: number, year = 2024) =>
+    Array.from({ length: count }, (_, i) => ({
+      fromStatus: null as string | null,
+      toStatus: "PROPOSED",
+      at: `${year}-${String(month + 1).padStart(2, "0")}-${String((i % 28) + 1).padStart(2, "0")}T09:00:00.000Z`,
+    }));
+
+  it("traz só o cabeçalho quando o funil não está parado num mês forte", () => {
+    // Amostra abaixo do piso (11 < 12) → stall.month é null.
+    const stall = funnelActivitySeasonalityStall(seasonOf(spikeIn(0, 11)), 0, {
+      now: "2025-01-15T00:00:00.000Z",
+    });
+    expect(stall.month).toBeNull();
+    const lines = funnelActivitySeasonalityStallToCsv(stall).split("\r\n");
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toBe(FUNNEL_ACTIVITY_SEASONALITY_STALL_CSV_HEADERS.join(";"));
+  });
+
+  it("serializa o mês forte parado com realizado × esperado e o shortfall", () => {
+    // Janeiro é o único mês com movimento (60 transições em 2024) → forte, lift 12×.
+    // Em 15/jan/2025, ~48% do mês decorreu; esperado ≈ 60×15/31 ≈ 29,0; real = 3.
+    const stall = funnelActivitySeasonalityStall(seasonOf(spikeIn(0, 60)), 3, {
+      now: "2025-01-15T00:00:00.000Z",
+    });
+    expect(stall.show).toBe(true);
+    const lines = funnelActivitySeasonalityStallToCsv(stall).split("\r\n");
+    expect(lines[0]).toBe("Indicador;Valor");
+    expect(lines[1]).toBe("Mês forte;Janeiro");
+    // share = 1.0 → lift 12× → (12−1)×100 = 1100%.
+    expect(lines[2]).toBe("Concentra acima do mês médio (%);1100%");
+    expect(lines[3]).toBe("Realizadas até agora;3");
+    // 60×15/31 = 29,032… → csvCountAvg → "29,0".
+    expect(lines[4]).toBe("Esperadas a esta altura;29,0");
+    // shortfall = 1 − 3/29,03 ≈ 0,897 → 90%.
+    expect(lines[5]).toBe("Abaixo do ritmo esperado (%);90%");
+    expect(lines).toHaveLength(6);
   });
 });
 
