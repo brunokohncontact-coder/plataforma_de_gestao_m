@@ -109,6 +109,7 @@ import {
   compareShowPipelines,
   CONVERSION_TREND_EPSILON,
   feeTrend,
+  feeTrendByYear,
   gigCadence,
   feeDistribution,
   feeDistributionYears,
@@ -137,6 +138,7 @@ import {
   gigSeasonalityStall,
   gigSeasonalityStallFirmness,
   gigSeasonalityStallFirmnessDetail,
+  gigSeasonalityStallBar,
   GIG_SEASON_STALL_FACTOR,
   STRONG_MONTH_MIN_SHOWS,
   incomeMix,
@@ -7117,6 +7119,106 @@ describe("feeTrend", () => {
   });
 });
 
+describe("feeTrendByYear", () => {
+  const now = new Date("2026-06-15T12:00:00.000Z");
+
+  function gig(partial: Partial<ReceivableShowLike>): ReceivableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-01-10T20:00:00.000Z",
+      ...partial,
+    };
+  }
+
+  it("sem shows realizados retorna vazio e yoy nulo", () => {
+    const t = feeTrendByYear([], { now });
+    expect(t.years).toEqual([]);
+    expect(t.yoy).toBeNull();
+  });
+
+  it("agrupa por ano civil com média/total/min/max por ano", () => {
+    const t = feeTrendByYear(
+      [
+        gig({ id: "a", date: "2025-03-05T20:00:00.000Z", fee: 100_00 }),
+        gig({ id: "b", date: "2025-08-20T20:00:00.000Z", fee: 300_00 }),
+        gig({ id: "c", date: "2026-02-02T20:00:00.000Z", fee: 500_00 }),
+      ],
+      { now },
+    );
+    expect(t.years.map((y) => y.year)).toEqual([2025, 2026]);
+    expect(t.years[0]).toMatchObject({
+      year: 2025,
+      count: 2,
+      totalFee: 400_00,
+      avgFee: 200_00,
+      minFee: 100_00,
+      maxFee: 300_00,
+    });
+    expect(t.years[1]).toMatchObject({ year: 2026, count: 1, avgFee: 500_00 });
+  });
+
+  it("considera só shows realizados com cachê (ignora proposto/cancelado/futuro/fee 0)", () => {
+    const t = feeTrendByYear(
+      [
+        gig({ id: "played", status: "PLAYED", date: "2025-05-10T20:00:00.000Z" }),
+        gig({ id: "confPast", status: "CONFIRMED", date: "2026-02-10T20:00:00.000Z" }),
+        gig({ id: "confFut", status: "CONFIRMED", date: "2026-09-10T20:00:00.000Z" }),
+        gig({ id: "prop", status: "PROPOSED", date: "2025-01-10T20:00:00.000Z" }),
+        gig({ id: "canc", status: "CANCELLED", date: "2025-01-10T20:00:00.000Z" }),
+        gig({ id: "free", fee: 0, date: "2025-01-10T20:00:00.000Z" }),
+      ],
+      { now },
+    );
+    expect(t.years.map((y) => y.year)).toEqual([2025, 2026]);
+    expect(t.years.reduce((n, y) => n + y.count, 0)).toBe(2);
+  });
+
+  it("yoy compara o ano mais recente com o civil imediatamente anterior", () => {
+    const t = feeTrendByYear(
+      [
+        gig({ id: "a", date: "2025-04-10T20:00:00.000Z", fee: 200_00 }),
+        gig({ id: "b", date: "2026-04-10T20:00:00.000Z", fee: 300_00 }),
+      ],
+      { now },
+    );
+    expect(t.yoy).not.toBeNull();
+    expect(t.yoy!.current.year).toBe(2026);
+    expect(t.yoy!.previous.year).toBe(2025);
+    expect(t.yoy!.delta.current).toBe(300_00);
+    expect(t.yoy!.delta.previous).toBe(200_00);
+    expect(t.yoy!.delta.delta).toBe(100_00);
+    expect(t.yoy!.delta.direction).toBe("up");
+    expect(t.yoy!.delta.pct).toBeCloseTo(0.5, 5);
+  });
+
+  it("yoy é null com um único ano ativo", () => {
+    const t = feeTrendByYear(
+      [
+        gig({ id: "a", date: "2026-01-05T20:00:00.000Z", fee: 100_00 }),
+        gig({ id: "b", date: "2026-07-25T20:00:00.000Z", fee: 200_00 }),
+      ],
+      { now },
+    );
+    expect(t.years).toHaveLength(1);
+    expect(t.yoy).toBeNull();
+  });
+
+  it("yoy é null quando há um hiato entre o ano mais recente e o anterior com shows", () => {
+    const t = feeTrendByYear(
+      [
+        gig({ id: "a", date: "2024-04-10T20:00:00.000Z", fee: 100_00 }),
+        gig({ id: "b", date: "2026-04-10T20:00:00.000Z", fee: 300_00 }),
+      ],
+      { now },
+    );
+    // 2024 e 2026 existem, mas 2025 está vazio — não é um "ano a ano" honesto.
+    expect(t.years.map((y) => y.year)).toEqual([2024, 2026]);
+    expect(t.yoy).toBeNull();
+  });
+});
+
 describe("gigCadence", () => {
   const now = new Date("2026-06-15T12:00:00.000Z");
 
@@ -9031,6 +9133,67 @@ describe("gigSeasonalityStallFirmnessDetail", () => {
     expect(gigSeasonalityStallFirmnessDetail({ booked: 2, bookedFirm: 5 })).toBe(
       "todos firmes (confirmado/realizado)",
     );
+  });
+});
+
+describe("gigSeasonalityStallBar", () => {
+  it("agenda toda firme → só o segmento firme, tentativo 0", () => {
+    // booked 2 de 8 típicos → 25% marcados, todos firmes.
+    expect(gigSeasonalityStallBar({ expected: 8, booked: 2, bookedFirm: 2 })).toEqual({
+      firmPct: 25,
+      tentativePct: 0,
+    });
+  });
+
+  it("agenda só propostas → só o segmento tentativo, firme 0", () => {
+    expect(gigSeasonalityStallBar({ expected: 8, booked: 2, bookedFirm: 0 })).toEqual({
+      firmPct: 0,
+      tentativePct: 25,
+    });
+  });
+
+  it("mix firme + proposta → dois segmentos que somam a fração marcada", () => {
+    // booked 4 de 8 → 50% marcados; 1 firme (12,5%) + 3 propostas (37,5%).
+    expect(gigSeasonalityStallBar({ expected: 8, booked: 4, bookedFirm: 1 })).toEqual({
+      firmPct: 12.5,
+      tentativePct: 37.5,
+    });
+  });
+
+  it("sem ritmo típico (`expected <= 0`) → ambos 0", () => {
+    expect(gigSeasonalityStallBar({ expected: 0, booked: 3, bookedFirm: 1 })).toEqual({
+      firmPct: 0,
+      tentativePct: 0,
+    });
+  });
+
+  it("agenda vazia (`booked === 0`) → ambos 0", () => {
+    expect(gigSeasonalityStallBar({ expected: 8, booked: 0, bookedFirm: 0 })).toEqual({
+      firmPct: 0,
+      tentativePct: 0,
+    });
+  });
+
+  it("clamp: `booked > expected` satura o total em 100%, tentativo completa o firme", () => {
+    // booked 10 de 8 → total clampado a 100%; 4 firmes = 50%, resto tentativo = 50%.
+    expect(gigSeasonalityStallBar({ expected: 8, booked: 10, bookedFirm: 4 })).toEqual({
+      firmPct: 50,
+      tentativePct: 50,
+    });
+  });
+
+  it("defensivo: `bookedFirm > booked` clampa o firme ao total marcado (tentativo 0)", () => {
+    expect(gigSeasonalityStallBar({ expected: 8, booked: 2, bookedFirm: 5 })).toEqual({
+      firmPct: 25,
+      tentativePct: 0,
+    });
+  });
+
+  it("defensivo: `bookedFirm` negativo é tratado como 0 (tudo tentativo)", () => {
+    expect(gigSeasonalityStallBar({ expected: 8, booked: 2, bookedFirm: -1 })).toEqual({
+      firmPct: 0,
+      tentativePct: 25,
+    });
   });
 });
 

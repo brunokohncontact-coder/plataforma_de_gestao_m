@@ -6,6 +6,7 @@ import {
   gigSeasonalityYears,
   gigSeasonalityStall,
   gigSeasonalityStallFirmnessDetail,
+  gigSeasonalityStallBar,
   compareGigSeasonality,
   classifyGigSeasonalityMonthChange,
   parseProfitYear,
@@ -545,6 +546,8 @@ function StallDetail({ stall }: { stall: GigSeasonalityStall }) {
   const month = stall.month!;
   const liftPct = Math.round((stall.lift - 1) * 100);
   const shortfallPct = Math.round(stall.shortfall * 100);
+  const bar = gigSeasonalityStallBar(stall);
+  const firmnessDetail = gigSeasonalityStallFirmnessDetail(stall);
   const aheadLabel =
     stall.monthsAhead === 1
       ? "mês que vem"
@@ -574,34 +577,41 @@ function StallDetail({ stall }: { stall: GigSeasonalityStall }) {
       </p>
       {/* Micro-barra marcados × típico: a faixa é o ritmo típico (100%) e o
           preenchimento é o já marcado, para o vão do shortfall saltar num relance.
-          O stall só dispara com `booked < expected`, mas mantemos o clamp por
-          segurança numérica. */}
+          O preenchimento vem em dois tons — firme (CONFIRMED+PLAYED, âmbar cheio)
+          e tentativo (propostas em aberto, âmbar claro) — para que uma agenda só de
+          propostas não pareça tão cheia quanto uma fechada (D339/D340/D341). As
+          larguras vêm do helper puro `gigSeasonalityStallBar` (clamp incluso). */}
       <div className="mt-3">
         <div
-          className="h-2.5 w-full overflow-hidden rounded-full bg-amber-100"
+          className="flex h-2.5 w-full overflow-hidden rounded-full bg-amber-100"
           role="img"
           aria-label={`${stall.booked} ${
             stall.booked === 1 ? "show marcado" : "shows marcados"
-          } de ~${formatAvg(
-            stall.expected,
-          )} do ritmo típico do mês (${shortfallPct}% abaixo)`}
+          } de ~${formatAvg(stall.expected)} do ritmo típico do mês (${shortfallPct}% abaixo)${
+            firmnessDetail ? `, ${firmnessDetail}` : ""
+          }`}
         >
-          <div
-            className="h-full rounded-full bg-amber-500"
-            style={{
-              width: `${
-                Math.min(
-                  stall.expected > 0 ? stall.booked / stall.expected : 0,
-                  1,
-                ) * 100
-              }%`,
-            }}
-          />
+          <div className="h-full bg-amber-500" style={{ width: `${bar.firmPct}%` }} />
+          <div className="h-full bg-amber-300" style={{ width: `${bar.tentativePct}%` }} />
         </div>
         <div className="mt-1 flex justify-between text-xs text-amber-700">
           <span>Marcados {stall.booked}</span>
           <span>Típico ~{formatAvg(stall.expected)}</span>
         </div>
+        {/* Legenda dos dois tons só quando há proposta em aberto a distinguir
+            (tentativo > 0); numa agenda toda firme a barra é de um tom só. */}
+        {bar.tentativePct > 0 && (
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-amber-700">
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block h-2 w-2 rounded-full bg-amber-500" />
+              firmes (confirmado/realizado)
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block h-2 w-2 rounded-full bg-amber-300" />
+              propostas em aberto
+            </span>
+          </div>
+        )}
       </div>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <div className="rounded-lg border border-amber-200 bg-white/60 p-3">
@@ -618,10 +628,8 @@ function StallDetail({ stall }: { stall: GigSeasonalityStall }) {
           {/* Leitura firme (CONFIRMED+PLAYED) do que está marcado, D339/D341: a
               frase segue o NÍVEL de firmeza (todos/nenhum/parte) via o mesmo
               helper que o Painel consome, em vez da contagem crua. */}
-          {gigSeasonalityStallFirmnessDetail(stall) && (
-            <div className="mt-1 text-xs text-amber-700">
-              {gigSeasonalityStallFirmnessDetail(stall)}
-            </div>
+          {firmnessDetail && (
+            <div className="mt-1 text-xs text-amber-700">{firmnessDetail}</div>
           )}
         </div>
         <div className="rounded-lg border border-amber-200 bg-white/60 p-3">

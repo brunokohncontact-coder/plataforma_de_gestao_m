@@ -7780,6 +7780,97 @@ export function feeTrend(
   };
 }
 
+// ── Cachê médio ano a ano (estou cobrando mais este ano do que no passado?) ──
+
+export interface FeeTrendYear {
+  /** Ano civil (UTC), ex.: 2026. */
+  year: number;
+  /** Nº de shows realizados com cachê no ano. */
+  count: number;
+  /** Soma dos cachês do ano (centavos). */
+  totalFee: number;
+  /** Cachê médio do ano = round(totalFee / count) (centavos). */
+  avgFee: number;
+  /** Menor cachê individual do ano (centavos). */
+  minFee: number;
+  /** Maior cachê individual do ano (centavos). */
+  maxFee: number;
+}
+
+export interface FeeTrendByYear {
+  /** Anos com shows realizados, em ordem cronológica crescente. */
+  years: FeeTrendYear[];
+  /**
+   * Variação **ano a ano** do cachê médio: o ano mais recente com shows vs. o
+   * ano civil **imediatamente anterior** — mas só quando esse ano anterior
+   * também tem shows realizados. Se o ano anterior está vazio (um hiato), não é
+   * um "ano a ano" honesto e `yoy` fica `null` (o salto de 2024→2026 misturaria
+   * duas variações num delta só). `null` também com menos de dois anos ativos.
+   * Reaproveita `computeDelta`. Distinto do `trend` mês-a-mês de `feeTrend`, que
+   * compara o primeiro e o último mês e por isso mistura sazonalidade (jan × dez).
+   */
+  yoy: {
+    /** Ano mais recente com shows realizados. */
+    current: FeeTrendYear;
+    /** Ano civil imediatamente anterior (também com shows). */
+    previous: FeeTrendYear;
+    /** Variação do cachê médio (atual vs. anterior). */
+    delta: MetricDelta;
+  } | null;
+}
+
+/**
+ * Evolução do cachê médio dos shows realizados agrupada por **ano civil**,
+ * respondendo à pergunta central da página no eixo que não sofre com
+ * sazonalidade: "estou cobrando mais este ano do que no ano passado?". Mesmos
+ * critérios de inclusão de `feeTrend` (só `isHappenedGig` com `fee > 0`); a
+ * chave de ano vem de `monthKey` (UTC) para casar exatamente com o agrupamento
+ * mensal. Pura; `now` injetável para teste.
+ */
+export function feeTrendByYear(
+  shows: ReceivableShowLike[],
+  opts: { now?: Date | string } = {},
+): FeeTrendByYear {
+  const todayMs = utcMidnight(opts.now ?? new Date());
+
+  const feesByYear = new Map<number, number[]>();
+  for (const s of shows) {
+    if (!isHappenedGig(s, todayMs)) continue;
+    if (s.fee <= 0) continue;
+    const year = Number(monthKey(s.date).slice(0, 4));
+    const list = feesByYear.get(year);
+    if (list) list.push(s.fee);
+    else feesByYear.set(year, [s.fee]);
+  }
+
+  const years: FeeTrendYear[] = [...feesByYear.keys()]
+    .sort((a, b) => a - b)
+    .map((year) => {
+      const fees = feesByYear.get(year)!;
+      const totalFee = sum(fees);
+      return {
+        year,
+        count: fees.length,
+        totalFee,
+        avgFee: Math.round(totalFee / fees.length),
+        minFee: Math.min(...fees),
+        maxFee: Math.max(...fees),
+      };
+    });
+
+  let yoy: FeeTrendByYear["yoy"] = null;
+  if (years.length >= 2) {
+    const current = years[years.length - 1];
+    const previous = years[years.length - 2];
+    // Só é "ano a ano" se o anterior é o ano civil imediatamente antes (sem hiato).
+    if (previous.year === current.year - 1) {
+      yoy = { current, previous, delta: computeDelta(current.avgFee, previous.avgFee) };
+    }
+  }
+
+  return { years, yoy };
+}
+
 // ── Distribuição de cachês por faixa de preço (em que faixa eu mais toco?) ───
 
 export type FeeBandKey =
@@ -9493,6 +9584,51 @@ export function gigSeasonalityStallFirmnessDetail(
   if (level === "none") return "nenhum firme ainda (confirmado/realizado)";
   const firm = Math.max(0, Math.min(stall.bookedFirm, stall.booked));
   return `dos quais ${firm} firme${firm === 1 ? "" : "s"} (confirmado/realizado)`;
+}
+
+/**
+ * Larguras (%, 0..100) dos dois segmentos da micro-barra "marcados × ritmo típico"
+ * do `StallDetail` (`/shows/sazonalidade`), quebrando o preenchimento em FIRME
+ * (CONFIRMED+PLAYED) e TENTATIVO (propostas ainda em aberto).
+ *
+ * Até a D341 a barra pintava `booked/expected` num tom só — uma agenda de "3
+ * marcados" que são 3 PROPOSTAS em aberto ficava visualmente idêntica a 3 shows
+ * FECHADOS, subestimando a emptiness real (a mesma assimetria que a D340 corrigiu
+ * no TEXTO do Painel, mas aqui na barra). Este helper puro destila o par de larguras
+ * para a barra ganhar dois tons: o firme cheio, o tentativo claro. `firmPct` é a
+ * fração firme do ritmo típico; `tentativePct` completa dela até o total marcado.
+ *
+ * Ambos são frações de `expected`, com o TOTAL (firme+tentativo) clampado a 100% —
+ * o stall só dispara com `booked < expected`, mas mantemos o clamp por segurança
+ * numérica (idêntico ao clamp inline que a barra já fazia). `bookedFirm` é, por
+ * construção, `≤ booked`; defensivo contra dados fora do invariante, clampamos o
+ * firme a `[0, booked]` antes de dividir, então `tentativePct ≥ 0` sempre.
+ * `{0, 0}` quando não há ritmo típico (`expected ≤ 0`) ou nada marcado. Ver D339
+ * (`bookedFirm`), D340 (ressalva no Painel) e D341 (frase unificada).
+ */
+export interface GigSeasonalityStallBar {
+  /** Largura % (0..100) do segmento FIRME (CONFIRMED+PLAYED), tom cheio. */
+  firmPct: number;
+  /**
+   * Largura % (0..100) do segmento TENTATIVO (propostas em aberto), tom claro.
+   * Somado a `firmPct` dá a fração marcada do ritmo típico (clampada a 100%).
+   */
+  tentativePct: number;
+}
+
+export function gigSeasonalityStallBar(
+  stall: Pick<GigSeasonalityStall, "expected" | "booked" | "bookedFirm">,
+): GigSeasonalityStallBar {
+  const expected = stall.expected;
+  if (!(expected > 0)) return { firmPct: 0, tentativePct: 0 };
+  const booked = Math.max(0, stall.booked);
+  // `bookedFirm` é subconjunto de `booked`; clamp defensivo a `[0, booked]`.
+  const firm = Math.max(0, Math.min(stall.bookedFirm, booked));
+  const firmPct = Math.min(firm / expected, 1) * 100;
+  const bookedPct = Math.min(booked / expected, 1) * 100;
+  // Tentativo preenche do firme até o total marcado; `firm ≤ booked` ⇒ `≥ 0`.
+  const tentativePct = Math.max(0, bookedPct - firmPct);
+  return { firmPct, tentativePct };
 }
 
 /** Sequência de `count` meses "YYYY-MM" a partir de `startKey` (inclusive), em UTC. */

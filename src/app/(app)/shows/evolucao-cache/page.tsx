@@ -1,7 +1,14 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { feeTrend, type ReceivableShowLike, type MetricDelta, type FeeTrendMonth } from "@/lib/finance";
+import {
+  feeTrend,
+  feeTrendByYear,
+  type ReceivableShowLike,
+  type MetricDelta,
+  type FeeTrendMonth,
+  type FeeTrendByYear,
+} from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { MONTH_NAMES_LONG } from "@/lib/calendar";
 
@@ -31,9 +38,12 @@ export default async function FeeTrendPage() {
   }));
 
   const trend = feeTrend(shows);
+  const byYear = feeTrendByYear(shows);
 
   // Escala das barras: maior média mensal de cachê entre os meses.
   const peak = Math.max(1, ...trend.months.map((m) => m.avgFee));
+  // Escala das barras anuais: maior média de cachê entre os anos.
+  const yearPeak = Math.max(1, ...byYear.years.map((y) => y.avgFee));
 
   return (
     <div className="space-y-6">
@@ -95,6 +105,45 @@ export default async function FeeTrendPage() {
               firstMonth={trend.months[0]}
               lastMonth={trend.months[trend.months.length - 1]}
             />
+          )}
+
+          {/* Ano a ano: sinal de preço sem sazonalidade */}
+          {byYear.years.length >= 2 && (
+            <section className="card overflow-x-auto">
+              <h2 className="mb-1 font-semibold">Cachê médio ano a ano</h2>
+              <p className="mb-4 text-xs text-gray-500">
+                O mesmo sinal de preço, mas por ano civil — sem a distorção da
+                sazonalidade que a comparação mês a mês carrega.
+              </p>
+              {byYear.yoy && <YoYCard yoy={byYear.yoy} />}
+              <table className="mt-4 w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs uppercase tracking-wide text-gray-500">
+                    <th className="pb-2 pr-3 font-medium">Ano</th>
+                    <th className="pb-2 px-3 text-right font-medium">Cachê médio</th>
+                    <th className="pb-2 px-3 text-right font-medium">Faixa</th>
+                    <th className="pb-2 pl-3 text-right font-medium">Shows</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {byYear.years.map((y) => (
+                    <tr key={y.year} className="border-b last:border-0">
+                      <td className="py-2 pr-3 font-medium">{y.year}</td>
+                      <td className="py-2 px-3 text-right text-gray-900">
+                        {formatMoney(y.avgFee)}
+                        <Bar value={y.avgFee} peak={yearPeak} />
+                      </td>
+                      <td className="py-2 px-3 text-right text-xs text-gray-500">
+                        {y.minFee === y.maxFee
+                          ? formatMoney(y.minFee)
+                          : `${formatMoney(y.minFee)} – ${formatMoney(y.maxFee)}`}
+                      </td>
+                      <td className="py-2 pl-3 text-right text-xs text-gray-500">{y.count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
           )}
 
           {/* Cachê médio mês a mês */}
@@ -179,6 +228,47 @@ function TrendCard({
       <p className="mt-1 text-xs text-gray-500">
         Comparando {shortMonthLabel(firstMonth.month)} ({formatMoney(firstMonth.avgFee)})
         com {shortMonthLabel(lastMonth.month)} ({formatMoney(lastMonth.avgFee)}).
+      </p>
+    </div>
+  );
+}
+
+function YoYCard({ yoy }: { yoy: NonNullable<FeeTrendByYear["yoy"]> }) {
+  const { delta, current, previous } = yoy;
+  const colorClass =
+    delta.direction === "up"
+      ? "text-emerald-600"
+      : delta.direction === "down"
+        ? "text-red-600"
+        : "text-gray-500";
+  const arrow = delta.direction === "up" ? "▲" : delta.direction === "down" ? "▼" : "→";
+  const pctLabel = delta.pct == null ? "novo" : `${Math.round(Math.abs(delta.pct) * 100)}%`;
+  const headline =
+    delta.direction === "up"
+      ? `Você está cobrando mais em ${current.year} do que em ${previous.year}`
+      : delta.direction === "down"
+        ? `Você está cobrando menos em ${current.year} do que em ${previous.year}`
+        : `Seu cachê médio está estável entre ${previous.year} e ${current.year}`;
+
+  return (
+    <div className="rounded-lg bg-gray-50 p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+        Ano a ano
+      </p>
+      <p className={"mt-1 text-lg font-bold " + colorClass}>
+        {headline}{" "}
+        {delta.direction !== "flat" && (
+          <span>
+            {arrow} {formatMoney(Math.abs(delta.delta))}{" "}
+            <span className="opacity-70">({pctLabel})</span>
+          </span>
+        )}
+      </p>
+      <p className="mt-1 text-xs text-gray-500">
+        {previous.year}: {formatMoney(previous.avgFee)} ({previous.count}{" "}
+        {previous.count === 1 ? "show" : "shows"}) · {current.year}:{" "}
+        {formatMoney(current.avgFee)} ({current.count}{" "}
+        {current.count === 1 ? "show" : "shows"}).
       </p>
     </div>
   );
