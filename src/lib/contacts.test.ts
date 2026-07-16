@@ -121,6 +121,8 @@ import {
   CLIENT_SHARE_TREND_EPSILON,
   clientRetention,
   retentionPricingSignal,
+  retentionPricingSignalForYear,
+  compareRetentionPricingYoY,
   underpricedLoyalClients,
   RETENTION_PRICING_EPSILON,
   filterContacts,
@@ -724,6 +726,194 @@ describe("underpricedLoyalClients", () => {
     const result = underpricedLoyalClients(r)!;
     // mesmo shortfall → ordem alfabética pt-BR (Ávila antes de Zeca)
     expect(result.clients.map((c) => c.contact.name)).toEqual(["Ávila", "Zeca"]);
+  });
+});
+
+describe("retentionPricingSignalForYear / compareRetentionPricingYoY", () => {
+  function s(
+    date: string,
+    fee: number,
+    status: string = "CONFIRMED",
+  ): ContactRankShowLike {
+    return { status, date, fee };
+  }
+  function item(
+    id: string,
+    name: string,
+    shows: ContactRankShowLike[],
+  ): ContactWithShows<ContactRankLike> {
+    return { contact: { id, name }, shows };
+  }
+
+  describe("retentionPricingSignalForYear", () => {
+    it("recorta os shows ao ano civil (UTC) antes de medir o sinal", () => {
+      const items = [
+        // Fiel em 2025 (2 shows a 200) e único em 2026 (1 show a 500).
+        item("rec25", "Rec 25", [
+          s("2025-03-01T20:00:00Z", 200_00),
+          s("2025-09-01T20:00:00Z", 200_00),
+        ]),
+        // Único em 2025 (500/show).
+        item("uni25", "Uni 25", [s("2025-06-01T20:00:00Z", 500_00)]),
+      ];
+      const sig = retentionPricingSignalForYear(items, 2025)!;
+      expect(sig.recurringAvgFee).toBe(200_00);
+      expect(sig.oneTimeAvgFee).toBe(500_00);
+      expect(sig.direction).toBe("recurring-less");
+      // 2026 não tem shows → sem sinal.
+      expect(retentionPricingSignalForYear(items, 2026)).toBeNull();
+    });
+
+    it("um mesmo contato pode ser recorrente num ano e único em outro", () => {
+      const items = [
+        item("a", "A", [
+          s("2025-01-01T20:00:00Z", 300_00),
+          s("2025-07-01T20:00:00Z", 300_00), // recorrente em 2025
+          s("2026-01-01T20:00:00Z", 300_00), // único em 2026
+        ]),
+        item("b", "B", [s("2025-02-01T20:00:00Z", 100_00)]), // único em 2025
+        item("c", "C", [
+          s("2026-02-01T20:00:00Z", 100_00),
+          s("2026-08-01T20:00:00Z", 100_00), // recorrente em 2026
+        ]),
+      ];
+      // 2025: recorrente A (300) × único B (100) → recurring-more.
+      expect(retentionPricingSignalForYear(items, 2025)!.direction).toBe("recurring-more");
+      // 2026: recorrente C (100) × único A (300) → recurring-less.
+      expect(retentionPricingSignalForYear(items, 2026)!.direction).toBe("recurring-less");
+    });
+
+    it("ignora shows cancelados no recorte anual", () => {
+      const items = [
+        item("rec", "Rec", [
+          s("2025-03-01T20:00:00Z", 200_00),
+          s("2025-09-01T20:00:00Z", 200_00),
+          s("2025-11-01T20:00:00Z", 900_00, "CANCELLED"), // não conta
+        ]),
+        item("uni", "Uni", [s("2025-06-01T20:00:00Z", 500_00)]),
+      ];
+      const sig = retentionPricingSignalForYear(items, 2025)!;
+      expect(sig.recurringAvgFee).toBe(200_00);
+    });
+  });
+
+  describe("compareRetentionPricingYoY", () => {
+    it("é null com menos de dois anos consecutivos comparáveis", () => {
+      expect(compareRetentionPricingYoY([])).toBeNull();
+      // Só 2025 tem sinal; 2024 inexistente.
+      const oneYear = [
+        item("rec", "Rec", [
+          s("2025-03-01T20:00:00Z", 200_00),
+          s("2025-09-01T20:00:00Z", 200_00),
+        ]),
+        item("uni", "Uni", [s("2025-06-01T20:00:00Z", 500_00)]),
+      ];
+      expect(compareRetentionPricingYoY(oneYear)).toBeNull();
+    });
+
+    it("é null quando os anos com sinal não são consecutivos", () => {
+      const gap = [
+        // 2026 e 2024 têm sinal, mas 2025 não → sem par consecutivo.
+        item("r26", "R26", [
+          s("2026-03-01T20:00:00Z", 200_00),
+          s("2026-09-01T20:00:00Z", 200_00),
+        ]),
+        item("u26", "U26", [s("2026-06-01T20:00:00Z", 500_00)]),
+        item("r24", "R24", [
+          s("2024-03-01T20:00:00Z", 200_00),
+          s("2024-09-01T20:00:00Z", 200_00),
+        ]),
+        item("u24", "U24", [s("2024-06-01T20:00:00Z", 500_00)]),
+      ];
+      expect(compareRetentionPricingYoY(gap)).toBeNull();
+    });
+
+    it("'worsened' quando o desconto de fidelidade se aprofunda ano a ano", () => {
+      const items = [
+        // 2025: fiel 400 × único 420 → quase empate (leve desconto).
+        item("r25", "R25", [
+          s("2025-03-01T20:00:00Z", 400_00),
+          s("2025-09-01T20:00:00Z", 400_00),
+        ]),
+        item("u25", "U25", [s("2025-06-01T20:00:00Z", 420_00)]),
+        // 2026: fiel 200 × único 500 → desconto forte.
+        item("r26", "R26", [
+          s("2026-03-01T20:00:00Z", 200_00),
+          s("2026-09-01T20:00:00Z", 200_00),
+        ]),
+        item("u26", "U26", [s("2026-06-01T20:00:00Z", 500_00)]),
+      ];
+      const cmp = compareRetentionPricingYoY(items)!;
+      expect(cmp.year).toBe(2026);
+      expect(cmp.previousYear).toBe(2025);
+      expect(cmp.current.direction).toBe("recurring-less");
+      expect(cmp.gapDelta).toBeLessThan(0);
+      expect(cmp.trend).toBe("worsened");
+    });
+
+    it("'improved' quando o preço da fidelidade se recupera ano a ano", () => {
+      const items = [
+        // 2025: desconto forte (fiel 200 × único 500).
+        item("r25", "R25", [
+          s("2025-03-01T20:00:00Z", 200_00),
+          s("2025-09-01T20:00:00Z", 200_00),
+        ]),
+        item("u25", "U25", [s("2025-06-01T20:00:00Z", 500_00)]),
+        // 2026: fiel passa a pagar prêmio (fiel 500 × único 200).
+        item("r26", "R26", [
+          s("2026-03-01T20:00:00Z", 500_00),
+          s("2026-09-01T20:00:00Z", 500_00),
+        ]),
+        item("u26", "U26", [s("2026-06-01T20:00:00Z", 200_00)]),
+      ];
+      const cmp = compareRetentionPricingYoY(items)!;
+      expect(cmp.trend).toBe("improved");
+      expect(cmp.gapDelta).toBeGreaterThan(0);
+    });
+
+    it("'stable' quando o gap mal se move entre os anos", () => {
+      const items = [
+        // 2025: fiel 500 × único 200 (gap +0.6).
+        item("r25", "R25", [
+          s("2025-03-01T20:00:00Z", 500_00),
+          s("2025-09-01T20:00:00Z", 500_00),
+        ]),
+        item("u25", "U25", [s("2025-06-01T20:00:00Z", 200_00)]),
+        // 2026: fiel 505 × único 200 (gap ~+0.604 → variação < 5%).
+        item("r26", "R26", [
+          s("2026-03-01T20:00:00Z", 505_00),
+          s("2026-09-01T20:00:00Z", 505_00),
+        ]),
+        item("u26", "U26", [s("2026-06-01T20:00:00Z", 200_00)]),
+      ];
+      const cmp = compareRetentionPricingYoY(items)!;
+      expect(cmp.trend).toBe("stable");
+      expect(Math.abs(cmp.gapDelta)).toBeLessThan(RETENTION_PRICING_EPSILON);
+    });
+
+    it("escolhe o par consecutivo mais recente quando há vários", () => {
+      const items = [
+        // 2024, 2025, 2026 todos com sinal → deve comparar 2026 vs 2025.
+        item("r24", "R24", [
+          s("2024-03-01T20:00:00Z", 300_00),
+          s("2024-09-01T20:00:00Z", 300_00),
+        ]),
+        item("u24", "U24", [s("2024-06-01T20:00:00Z", 300_00)]),
+        item("r25", "R25", [
+          s("2025-03-01T20:00:00Z", 300_00),
+          s("2025-09-01T20:00:00Z", 300_00),
+        ]),
+        item("u25", "U25", [s("2025-06-01T20:00:00Z", 300_00)]),
+        item("r26", "R26", [
+          s("2026-03-01T20:00:00Z", 300_00),
+          s("2026-09-01T20:00:00Z", 300_00),
+        ]),
+        item("u26", "U26", [s("2026-06-01T20:00:00Z", 300_00)]),
+      ];
+      const cmp = compareRetentionPricingYoY(items)!;
+      expect(cmp.year).toBe(2026);
+      expect(cmp.previousYear).toBe(2025);
+    });
   });
 });
 
