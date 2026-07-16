@@ -243,12 +243,20 @@ function UnderpricedLoyalSection({
   return (
     <section className="card p-0">
       <div className="border-b border-amber-100 bg-amber-50/60 px-4 py-3">
-        <h2 className="font-semibold text-amber-800">
-          🟠 Fiéis cobrando abaixo do balcão
-          <span className="ml-2 text-sm font-normal text-amber-600">
-            {clients.length}
-          </span>
-        </h2>
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="font-semibold text-amber-800">
+            🟠 Fiéis cobrando abaixo do balcão
+            <span className="ml-2 text-sm font-normal text-amber-600">
+              {clients.length}
+            </span>
+          </h2>
+          <a
+            href="/contatos/retencao/subprecificados/export"
+            className="shrink-0 text-xs font-medium text-amber-700 hover:underline"
+          >
+            ⬇ CSV
+          </a>
+        </div>
         <p className="mt-0.5 text-xs text-amber-700">
           Recorrentes cujo cachê médio por show está abaixo do que um contratante de um
           show só te paga ({formatMoney(benchmark)}/show). São os alvos concretos de

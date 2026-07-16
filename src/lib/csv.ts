@@ -84,6 +84,7 @@ import type {
   ContactPipeline,
   ContactRankLike,
   ReengageList,
+  UnderpricedLoyalClients,
 } from "./contacts";
 import {
   indexClientShareChanges,
@@ -2352,6 +2353,50 @@ export function clientRetentionToCsv<C extends ContactRankLike & { role: string 
     "",
     `${retention.recurringClients}/${retention.totalClients}`,
   ]);
+  return toCsv(out, delimiter);
+}
+
+export const UNDERPRICED_LOYAL_CSV_HEADERS = [
+  "Contratante",
+  "Papel",
+  "Shows",
+  "Cachê/show (R$)",
+  "Balcão (R$)",
+  "Abaixo do balcão (R$)",
+  "Abaixo do balcão (%)",
+] as const;
+
+/**
+ * Serializa a lista de "fiéis cobrando abaixo do balcão"
+ * (`underpricedLoyalClients`/D346) em CSV, pronto para download — os alvos
+ * concretos de renegociação. Espelha fielmente a seção "🟠 Fiéis cobrando abaixo
+ * do balcão" de `/contatos/retencao`: uma linha por recorrente cujo cachê médio
+ * por show está abaixo do balcão dos contratantes de um show só, na mesma ordem
+ * da tela (maior desconto → menor). Colunas: contratante, papel (a tela mostra
+ * como selo; entra para a planilha abrir auto-suficiente), nº de shows não
+ * cancelados, cachê médio por show do recorrente, o balcão de referência
+ * (`benchmark`, o mesmo em todas as linhas — deixa a planilha reconstruir o
+ * desconto sozinha), quanto está abaixo do balcão em R$ (`shortfall`) e o mesmo
+ * desconto em % (`shortfallPct`, via `csvShare` como nos irmãos). Sem linha
+ * "Total": é uma lista de alvos, não uma distribuição — somar descontos por-show
+ * de contratantes com volumes diferentes não teria significado. Mesma convenção
+ * pt-BR dos irmãos (delimitador ";", decimal com vírgula). Pura.
+ */
+export function underpricedLoyalClientsToCsv<
+  C extends ContactRankLike & { role: string },
+>(list: UnderpricedLoyalClients<C>, delimiter = DEFAULT_DELIMITER): string {
+  const out: string[][] = [Array.from(UNDERPRICED_LOYAL_CSV_HEADERS)];
+  for (const row of list.clients) {
+    out.push([
+      row.contact.name,
+      contactRoleLabel(row.contact.role),
+      String(row.activeShows),
+      centsToCsvAmount(row.avgFeePerShow),
+      centsToCsvAmount(list.benchmark),
+      centsToCsvAmount(row.shortfall),
+      csvShare(row.shortfallPct),
+    ]);
+  }
   return toCsv(out, delimiter);
 }
 

@@ -12134,3 +12134,50 @@ contexto, decisão, justificativa e alternativas consideradas.
 - **Nota de concorrência:** número **D346** escolhido como o próximo livre acima do maior D mergeado na `main`
   (D345, PR #380); as PRs abertas #377/#378 reivindicam D342/D343. Se outra PR reivindicar D346 antes do merge,
   renumerar para o próximo livre.
+
+## D347 — Exportação CSV dos "fiéis cobrando abaixo do balcão" (`underpricedLoyalClientsToCsv`) (Sessão 351)
+- **Contexto:** a D346 pôs na tela `/contatos/retencao` a seção "🟠 Fiéis cobrando abaixo do balcão"
+  (`underpricedLoyalClients`) — a LISTA acionável de recorrentes cujo cachê médio por show está abaixo do
+  balcão dos contratantes de um show só, os alvos concretos de renegociação. Mas essa seção era a única lista
+  acionável da carteira SEM CSV próprio: o export existente (`/contatos/retencao/export`) serializa a carteira
+  inteira (`clientRetentionToCsv`, todas as linhas com "Recorrente" Sim/Não e cachê médio/show), de onde o
+  desconto vs. balcão até é reconstruível, mas obriga o músico a montar a tabela dinâmica na planilha — o mesmo
+  atrito que a D271 já rejeitou ao dar CSV próprio à distribuição das secas. Levar a lista de renegociação para
+  a mesa (imprimir, cruzar com contratos) pedia o download direto.
+- **Decisão:**
+  - Novo serializador puro `underpricedLoyalClientsToCsv(list)` + `UNDERPRICED_LOYAL_CSV_HEADERS`
+    (`Contratante`/`Papel`/`Shows`/`Cachê/show (R$)`/`Balcão (R$)`/`Abaixo do balcão (R$)`/`Abaixo do balcão (%)`)
+    em `src/lib/csv.ts`: espelho fiel da seção da tela — uma linha por alvo, na mesma ordem (maior desconto →
+    menor). Inclui o `benchmark` (o balcão de referência, o mesmo em todas as linhas) para a planilha reconstruir
+    o desconto sozinha, e o `shortfall`/`shortfallPct` já computados. **Sem linha "Total"**: é uma lista de alvos,
+    não uma distribuição — somar descontos por-show de contratantes com volumes diferentes não teria significado
+    (contraste deliberado com `clientRetentionToCsv`/`feeDistributionToCsv`, que têm Total). Mesma convenção pt-BR
+    dos irmãos (`;`, decimal com vírgula, `csvShare` para o %).
+  - Rota `/contatos/retencao/subprecificados/export` (irmã de `/contatos/retencao/export`, mesma query enxuta
+    `status`+`date`+`fee`, BOM UTF-8, nome `fieis-abaixo-do-balcao.csv`): deriva `underpricedLoyalClients` do
+    `clientRetention` e, sem balcão mensurável (lista `null`), emite CSV só com o cabeçalho (`{ benchmark: 0,
+    clients: [] }`).
+  - Um botão "⬇ CSV" no cabeçalho da própria seção "🟠 Fiéis cobrando abaixo do balcão"
+    (`UnderpricedLoyalSection`), ao lado do título.
+- **Justificativa:** fecha a última lista acionável da carteira sem export, seguindo o padrão consolidado do
+  app ("toda lista/distribuição acionável ganha o seu CSV") e revertendo a mesma deferência "derivável" que a
+  D271 já superou noutro relatório. Camada puramente de serialização (pura, testada); reusa o `clientRetention`
+  já consumido pelo export irmão; zero migração/dependência nova.
+- **Alternativas consideradas:** (a) NÃO exportar (o CSV da carteira inteira já traz cachê/show + Recorrente,
+  de onde o desconto é derivável) — rejeitado: obriga o músico a filtrar/calcular na planilha, o atrito que a
+  D271 rejeitou; e a coluna "Abaixo do balcão" (shortfall vs. benchmark) não está no CSV da carteira. (b) somar
+  os alvos numa linha "Total" — rejeitado: descontos por-show de contratantes com volumes diferentes não somam
+  em algo acionável (≠ distribuições, que têm Total). (c) uma coluna "uplift potencial" (`shortfall × shows`)
+  — adiada: introduziria lógica de negócio nova na camada CSV; o serializador espelha a tela (só serializa).
+  (d) juntar a lista ao CSV da carteira como colunas extras — rejeitado: polui o export geral e mistura dois
+  recortes (todos os contatos × só os alvos).
+- **Verificação:** DoD verde — `npm run build` (nova rota registrada, 0 B como as irmãs de export),
+  `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1892 testes**, +2 em `underpricedLoyalClientsToCsv`:
+  lista vazia → só cabeçalho / dois alvos ordenados pelo maior desconto com balcão e R$/%); smoke → `/login` 200,
+  `/dashboard`, `/contatos/retencao`, `/contatos/retencao/export` e `/contatos/retencao/subprecificados/export`
+  307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, zero
+  dependência nova). Mudança em `src/lib/csv.ts`, `src/lib/csv.test.ts`,
+  `src/app/(app)/contatos/retencao/page.tsx` e a nova rota `.../subprecificados/export/route.ts`.
+- **Nota de concorrência:** número **D347** escolhido como o próximo livre acima do maior D mergeado na `main`
+  (D346, PR #381); as PRs abertas #377/#378 reivindicam D342/D343 (abaixo, sem colisão). Se outra PR reivindicar
+  D347 antes do merge, renumerar para o próximo livre.
