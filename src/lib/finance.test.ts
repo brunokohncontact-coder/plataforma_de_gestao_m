@@ -138,6 +138,7 @@ import {
   gigSeasonalityStall,
   gigSeasonalityStallFirmness,
   gigSeasonalityStallFirmnessDetail,
+  gigSeasonalityStallBar,
   GIG_SEASON_STALL_FACTOR,
   STRONG_MONTH_MIN_SHOWS,
   incomeMix,
@@ -9132,6 +9133,67 @@ describe("gigSeasonalityStallFirmnessDetail", () => {
     expect(gigSeasonalityStallFirmnessDetail({ booked: 2, bookedFirm: 5 })).toBe(
       "todos firmes (confirmado/realizado)",
     );
+  });
+});
+
+describe("gigSeasonalityStallBar", () => {
+  it("agenda toda firme → só o segmento firme, tentativo 0", () => {
+    // booked 2 de 8 típicos → 25% marcados, todos firmes.
+    expect(gigSeasonalityStallBar({ expected: 8, booked: 2, bookedFirm: 2 })).toEqual({
+      firmPct: 25,
+      tentativePct: 0,
+    });
+  });
+
+  it("agenda só propostas → só o segmento tentativo, firme 0", () => {
+    expect(gigSeasonalityStallBar({ expected: 8, booked: 2, bookedFirm: 0 })).toEqual({
+      firmPct: 0,
+      tentativePct: 25,
+    });
+  });
+
+  it("mix firme + proposta → dois segmentos que somam a fração marcada", () => {
+    // booked 4 de 8 → 50% marcados; 1 firme (12,5%) + 3 propostas (37,5%).
+    expect(gigSeasonalityStallBar({ expected: 8, booked: 4, bookedFirm: 1 })).toEqual({
+      firmPct: 12.5,
+      tentativePct: 37.5,
+    });
+  });
+
+  it("sem ritmo típico (`expected <= 0`) → ambos 0", () => {
+    expect(gigSeasonalityStallBar({ expected: 0, booked: 3, bookedFirm: 1 })).toEqual({
+      firmPct: 0,
+      tentativePct: 0,
+    });
+  });
+
+  it("agenda vazia (`booked === 0`) → ambos 0", () => {
+    expect(gigSeasonalityStallBar({ expected: 8, booked: 0, bookedFirm: 0 })).toEqual({
+      firmPct: 0,
+      tentativePct: 0,
+    });
+  });
+
+  it("clamp: `booked > expected` satura o total em 100%, tentativo completa o firme", () => {
+    // booked 10 de 8 → total clampado a 100%; 4 firmes = 50%, resto tentativo = 50%.
+    expect(gigSeasonalityStallBar({ expected: 8, booked: 10, bookedFirm: 4 })).toEqual({
+      firmPct: 50,
+      tentativePct: 50,
+    });
+  });
+
+  it("defensivo: `bookedFirm > booked` clampa o firme ao total marcado (tentativo 0)", () => {
+    expect(gigSeasonalityStallBar({ expected: 8, booked: 2, bookedFirm: 5 })).toEqual({
+      firmPct: 25,
+      tentativePct: 0,
+    });
+  });
+
+  it("defensivo: `bookedFirm` negativo é tratado como 0 (tudo tentativo)", () => {
+    expect(gigSeasonalityStallBar({ expected: 8, booked: 2, bookedFirm: -1 })).toEqual({
+      firmPct: 0,
+      tentativePct: 25,
+    });
   });
 });
 
