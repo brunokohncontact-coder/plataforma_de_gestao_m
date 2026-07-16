@@ -7,9 +7,32 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1877 testes**),
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1885 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 347 —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 348 —
+MICRO-BARRA de DOIS TONS (firme × proposta) no `StallDetail` de `/shows/sazonalidade`
+(`gigSeasonalityStallBar`, D342), fechando a assimetria VISUAL que a D340/D341 fecharam no TEXTO:**
+até aqui a micro-barra "marcados × ritmo típico" pintava `booked/expected` num tom só — uma agenda de
+"3 marcados" que são 3 PROPOSTAS em aberto ficava visualmente IDÊNTICA a 3 shows FECHADOS, subestimando
+a emptiness real (a mesma leitura que a D340 corrigiu no texto do Painel e a D341 na frase da página, mas
+a barra ainda não). Novo helper puro `gigSeasonalityStallBar(stall): { firmPct, tentativePct }` em
+`src/lib/finance.ts`: devolve as duas larguras (%) do preenchimento — `firmPct` (fração firme
+CONFIRMED+PLAYED do ritmo típico) e `tentativePct` (completa dela até o total marcado, as propostas em
+aberto) — ambas frações de `expected` com o TOTAL clampado a 100% (mesmo clamp que a barra fazia inline);
+`bookedFirm` clampado a `[0, booked]` defensivo, então `tentativePct ≥ 0` sempre; `{0,0}` quando
+`expected ≤ 0` ou nada marcado. A barra do `StallDetail` (`shows/sazonalidade/page.tsx`) passa a renderizar
+dois segmentos (âmbar cheio = firme; âmbar claro = tentativo) com uma legenda de cores que só aparece quando
+há proposta a distinguir (`tentativePct > 0`); o `aria-label` anexa a frase de firmeza
+(`gigSeasonalityStallFirmnessDetail`) para o leitor de tela receber o mesmo recorte que os dois tons
+comunicam. Lógica pura testada + apresentacional (página), zero migração/rota/dependência. **+8 testes**
+(`finance.test.ts`, `describe("gigSeasonalityStallBar")`: todo firme/só propostas/mix, `expected ≤ 0`,
+`booked === 0`, clamp `booked > expected`, e os dois guardas defensivos de `bookedFirm`). DoD verde:
+`npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1885 testes**); smoke →
+`/login` 200, `/dashboard` e `/shows/sazonalidade` 307→/login (auth-gated, sem 500); `npm audit` inalterado
+(10 advisories: 4 moderate/5 high/1 critical, zero dependência nova), ver D342. **Próximo possível** — levar
+o mesmo par de tons ao `StallDetail` do funil (`/shows/funil/atividade/sazonalidade`, D334) se aquele eixo
+também expuser um subconjunto firme; ou marcar na barra o ponto do ritmo esperado se o stall passar a
+exibir cenários de `booked > expected`. **Antes disso, Sessão 347 —
 FRASE DE FIRMEZA da PÁGINA `/shows/sazonalidade` UNIFICADA pelo NÍVEL
 (`gigSeasonalityStallFirmnessDetail`, D341), fechando a alternativa (b) que a Sessão 346 (D340) adiou
 ("refatorar a página para consumir o helper `gigSeasonalityStallFirmness`"):** o `StallDetail` da página

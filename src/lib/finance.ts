@@ -9495,6 +9495,51 @@ export function gigSeasonalityStallFirmnessDetail(
   return `dos quais ${firm} firme${firm === 1 ? "" : "s"} (confirmado/realizado)`;
 }
 
+/**
+ * Larguras (%, 0..100) dos dois segmentos da micro-barra "marcados × ritmo típico"
+ * do `StallDetail` (`/shows/sazonalidade`), quebrando o preenchimento em FIRME
+ * (CONFIRMED+PLAYED) e TENTATIVO (propostas ainda em aberto).
+ *
+ * Até a D341 a barra pintava `booked/expected` num tom só — uma agenda de "3
+ * marcados" que são 3 PROPOSTAS em aberto ficava visualmente idêntica a 3 shows
+ * FECHADOS, subestimando a emptiness real (a mesma assimetria que a D340 corrigiu
+ * no TEXTO do Painel, mas aqui na barra). Este helper puro destila o par de larguras
+ * para a barra ganhar dois tons: o firme cheio, o tentativo claro. `firmPct` é a
+ * fração firme do ritmo típico; `tentativePct` completa dela até o total marcado.
+ *
+ * Ambos são frações de `expected`, com o TOTAL (firme+tentativo) clampado a 100% —
+ * o stall só dispara com `booked < expected`, mas mantemos o clamp por segurança
+ * numérica (idêntico ao clamp inline que a barra já fazia). `bookedFirm` é, por
+ * construção, `≤ booked`; defensivo contra dados fora do invariante, clampamos o
+ * firme a `[0, booked]` antes de dividir, então `tentativePct ≥ 0` sempre.
+ * `{0, 0}` quando não há ritmo típico (`expected ≤ 0`) ou nada marcado. Ver D339
+ * (`bookedFirm`), D340 (ressalva no Painel) e D341 (frase unificada).
+ */
+export interface GigSeasonalityStallBar {
+  /** Largura % (0..100) do segmento FIRME (CONFIRMED+PLAYED), tom cheio. */
+  firmPct: number;
+  /**
+   * Largura % (0..100) do segmento TENTATIVO (propostas em aberto), tom claro.
+   * Somado a `firmPct` dá a fração marcada do ritmo típico (clampada a 100%).
+   */
+  tentativePct: number;
+}
+
+export function gigSeasonalityStallBar(
+  stall: Pick<GigSeasonalityStall, "expected" | "booked" | "bookedFirm">,
+): GigSeasonalityStallBar {
+  const expected = stall.expected;
+  if (!(expected > 0)) return { firmPct: 0, tentativePct: 0 };
+  const booked = Math.max(0, stall.booked);
+  // `bookedFirm` é subconjunto de `booked`; clamp defensivo a `[0, booked]`.
+  const firm = Math.max(0, Math.min(stall.bookedFirm, booked));
+  const firmPct = Math.min(firm / expected, 1) * 100;
+  const bookedPct = Math.min(booked / expected, 1) * 100;
+  // Tentativo preenche do firme até o total marcado; `firm ≤ booked` ⇒ `≥ 0`.
+  const tentativePct = Math.max(0, bookedPct - firmPct);
+  return { firmPct, tentativePct };
+}
+
 /** Sequência de `count` meses "YYYY-MM" a partir de `startKey` (inclusive), em UTC. */
 function sequentialMonths(startKey: string, count: number): string[] {
   const [y, m] = startKey.split("-").map(Number);

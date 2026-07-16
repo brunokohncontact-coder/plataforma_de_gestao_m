@@ -5,6 +5,44 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-16 — D342: Micro-barra de dois tons (firme × proposta) no `StallDetail` de `/shows/sazonalidade` (`gigSeasonalityStallBar`)
+- **Contexto:** o `StallDetail` do "mês forte com agenda rala" (`/shows/sazonalidade`, D336/D338) mostra uma
+  micro-barra "marcados × ritmo típico" cujo preenchimento era `booked/expected` num TOM só. A D340 (Painel) e a
+  D341 (frase da página) já ressalvavam, no TEXTO, que dos marcados poucos (ou nenhum) podem ser firmes — mas a
+  BARRA seguia pintando uma agenda de 3 propostas em aberto exatamente igual a 3 shows fechados, subestimando
+  visualmente a emptiness real que o nudge existe para sinalizar.
+- **Decisão:** novo helper puro `gigSeasonalityStallBar(stall): { firmPct: number; tentativePct: number }` em
+  `src/lib/finance.ts` (recebe `Pick<GigSeasonalityStall, "expected" | "booked" | "bookedFirm">`). Devolve as duas
+  larguras (%, 0..100) do preenchimento: `firmPct` = fração FIRME (`bookedFirm`, CONFIRMED+PLAYED) do ritmo típico;
+  `tentativePct` = completa do firme até o total marcado (as propostas em aberto). Ambas frações de `expected` com o
+  TOTAL (firme+tentativo) clampado a 100% — idêntico ao clamp inline que a barra já fazia, mantido por segurança
+  numérica (o stall só dispara com `booked < expected`). Defensivo: `bookedFirm` clampado a `[0, booked]` antes de
+  dividir, logo `firmPct ≤ bookedPct` e `tentativePct ≥ 0` sempre; `{0, 0}` quando `expected ≤ 0` ou `booked === 0`.
+  A barra do `StallDetail` (`shows/sazonalidade/page.tsx`) passa a renderizar dois segmentos (âmbar-500 = firme;
+  âmbar-300 = tentativo) num track flex, com uma legenda de cores exibida só quando `tentativePct > 0` (numa agenda
+  toda firme a barra é de um tom só, sem legenda a explicar). O `aria-label` anexa a frase de firmeza
+  (`gigSeasonalityStallFirmnessDetail`, D341) para o leitor de tela receber o mesmo recorte que os dois tons
+  comunicam visualmente. Mudança de lógica pura (larguras testadas) + apresentacional (página); **zero
+  migração/rota/dependência**. **+8 testes** (`finance.test.ts`, `describe("gigSeasonalityStallBar")`).
+- **Justificativa:** fecha a última assimetria firme/tentativo — o Painel (D340) e a frase da página (D341) já
+  distinguem, mas a barra (o elemento mais escaneável do cartão) não. Extrair as larguras para um helper puro trava
+  o clamp/split com teste unitário (a página é Server Component, difícil de testar por unidade) e mantém a barra
+  derivando do mesmo `bookedFirm` já testado, sem repetir a aritmética de clamp inline no JSX.
+- **Alternativas consideradas:** (a) manter a barra de um tom só e confiar no texto/frase — rejeitado: a barra é o
+  que o olho lê primeiro; deixá-la cega ao firme contradiz a leitura que o resto do cartão já dá. (b) sobrepor o
+  segmento firme por cima do total (dois divs absolutos) em vez de dois segmentos lado a lado — rejeitado: empilhar
+  com flex é mais simples, sem `position`/z-index, e o clamp do total já garante que a soma ≤ 100%. (c) sempre
+  mostrar a legenda de cores — rejeitado: numa agenda toda firme não há tentativo a distinguir, então a legenda
+  seria ruído; ela só aparece quando `tentativePct > 0`. (d) expor firme/tentativo também no CSV da sazonalidade —
+  fora de escopo (o CSV é por mês; o stall é um nudge de uma ocorrência), adiado até surgir demanda.
+- **Verificação:** DoD verde — `npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test`
+  (**1885 testes**, +8); smoke → `/login` 200, `/dashboard` e `/shows/sazonalidade` 307→/login (auth-gated, sem
+  500); `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, zero dependência nova). Mudança em
+  `src/lib/finance.ts` (helper + interface `GigSeasonalityStallBar`), `src/lib/finance.test.ts` e
+  `src/app/(app)/shows/sazonalidade/page.tsx` (barra + import).
+- **Nota de concorrência:** número **D342** escolhido como o próximo livre acima do maior D referenciado no
+  PROGRESS/DECISIONS (D341). Se outra PR reivindicar D342, renumerar para o próximo livre no merge.
+
 ## 2026-07-15 — D341: Frase de firmeza da página `/shows/sazonalidade` unificada pelo nível (`gigSeasonalityStallFirmnessDetail`)
 - **Contexto:** a D340 deixou explícito, como alternativa (b) adiada, "refatorar a página `/shows/sazonalidade` (D339)
   para consumir o helper `gigSeasonalityStallFirmness`". O detalhe `StallDetail` daquela página mostrava sempre a
