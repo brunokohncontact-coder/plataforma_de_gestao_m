@@ -558,12 +558,21 @@ function StallDetail({ stall }: { stall: GigSeasonalityStall }) {
         <h2 className="font-semibold text-amber-900">
           📉 Mês forte com agenda rala
         </h2>
-        <Link
-          href="/shows/funil"
-          className="text-sm font-medium text-amber-700 hover:underline"
-        >
-          Prospectar →
-        </Link>
+        <div className="flex items-center gap-3">
+          <a
+            href="/shows/sazonalidade/stall/export"
+            className="text-sm font-medium text-amber-700 hover:underline"
+            download
+          >
+            ⬇ CSV
+          </a>
+          <Link
+            href="/shows/funil"
+            className="text-sm font-medium text-amber-700 hover:underline"
+          >
+            Prospectar →
+          </Link>
+        </div>
       </div>
       <p className="mt-1 text-sm text-amber-900">
         <strong>{month.label}</strong> ({aheadLabel}) costuma concentrar{" "}

@@ -36,6 +36,7 @@ import {
   type GigSeasonality,
   type GigSeasonalityComparison,
   type GigSeasonalityMonthTrend,
+  type GigSeasonalityStall,
   type GigMonthStat,
   type GigCadence,
   type WeekdayPerformance,
@@ -1552,6 +1553,57 @@ export function gigSeasonalityComparisonToCsv(
     centsToCsvAmount(comparison.totalFeeDelta),
     "",
   ]);
+  return toCsv(out, delimiter);
+}
+
+// ── Mês forte com agenda rala (o stall de `/shows/sazonalidade`) ──────────────
+
+export const GIG_SEASONALITY_STALL_CSV_HEADERS = ["Indicador", "Valor"] as const;
+
+/** Média de contagem (não-monetária) -> 1 casa decimal com vírgula: 2.5 → "2,5",
+ * 3 → "3,0". Para o "ritmo típico" (shows/ano) na planilha do stall. */
+function csvCountAvg(n: number): string {
+  return n.toFixed(1).replace(".", ",");
+}
+
+/**
+ * Serializa o **mês forte com agenda rala** (`gigSeasonalityStall`) em CSV, pronto
+ * para download — a única leitura ACIONÁVEL e prospectiva de `/shows/sazonalidade`
+ * (o `StallDetail`) que ainda não tinha export, ao contrário da tabela mensal
+ * (`gigSeasonalityToCsv`) e do comparativo (`gigSeasonalityComparisonToCsv`), ambos
+ * retrospectivos. Layout indicador/valor (uma linha por métrica, não tabela larga):
+ * é um único registro instantâneo, e o empilhado espelha os cards do `StallDetail`.
+ *
+ * Traz o que a tela mostra: o mês forte à frente, quantos meses adiante, o ritmo
+ * típico (~shows/ano historicamente), quantos shows já estão marcados e — o ponto
+ * desta exportação — o recorte **firme × tentativo** dessa agenda ("Firmes" =
+ * CONFIRMED+PLAYED = `bookedFirm`; "Propostas em aberto" = `booked − bookedFirm`),
+ * para a planilha distinguir uma agenda fechada de uma só de propostas, como a
+ * micro-barra de dois tons faz na tela (D339/D342). Fecha "% abaixo do ritmo
+ * típico" (`shortfall`) e "% de faturamento acima da média" (`lift`, na forma
+ * `(lift−1)×100` que a manchete usa). Sem mês forte à frente (`month == null`), o
+ * CSV traz só o cabeçalho — mesma disciplina de `underpricedLoyalClientsToCsv`
+ * quando não há alvo. Convenção pt-BR (delimitador ";", decimal com vírgula). Pura.
+ */
+export function gigSeasonalityStallToCsv(
+  stall: GigSeasonalityStall,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(GIG_SEASONALITY_STALL_CSV_HEADERS)];
+  const month = stall.month;
+  if (month) {
+    out.push(["Mês forte", month.label]);
+    out.push(["Meses à frente", String(stall.monthsAhead)]);
+    out.push(["Ritmo típico (shows/ano)", csvCountAvg(stall.expected)]);
+    out.push(["Shows marcados", String(stall.booked)]);
+    out.push(["Firmes (confirmado/realizado)", String(stall.bookedFirm)]);
+    out.push(["Propostas em aberto", String(stall.booked - stall.bookedFirm)]);
+    out.push(["Abaixo do ritmo típico (%)", `${Math.round(stall.shortfall * 100)}%`]);
+    out.push([
+      "Faturamento acima da média (%)",
+      `${Math.round((stall.lift - 1) * 100)}%`,
+    ]);
+  }
   return toCsv(out, delimiter);
 }
 

@@ -5,6 +5,37 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-16 — D349: CSV do "mês forte com agenda rala" em `/shows/sazonalidade` (`gigSeasonalityStallToCsv`)
+- **Contexto:** a página `/shows/sazonalidade` tem três blocos e dois deles já exportavam CSV — a tabela mensal
+  (`gigSeasonalityToCsv`, D205) e o comparativo ano a ano (`gigSeasonalityComparisonToCsv`). O terceiro, o `StallDetail`
+  ("📉 Mês forte com agenda rala", D336) — a **única leitura acionável e PROSPECTIVA** da página, que cruza o pico
+  histórico de faturamento com a AGENDA real do próximo mês forte à frente e mostra o recorte **firme × tentativo**
+  (`booked`/`bookedFirm`, D339/D342) numa micro-barra de dois tons — era o único sem export. O firme/tentativo, que a
+  D342 pôs na tela, não tinha como sair para a planilha.
+- **Decisão:** novo serializador puro `gigSeasonalityStallToCsv(stall)` + `GIG_SEASONALITY_STALL_CSV_HEADERS`
+  (`Indicador`/`Valor`) em `src/lib/csv.ts`. Layout **indicador/valor** (uma linha por métrica, não tabela larga): é um
+  único registro instantâneo, e o empilhado espelha os cards do `StallDetail`. Traz o mês forte, quantos meses à frente,
+  o ritmo típico (~shows/ano), os shows marcados e — o ponto da exportação — **Firmes (confirmado/realizado)** =
+  `bookedFirm` e **Propostas em aberto** = `booked − bookedFirm`, além de "Abaixo do ritmo típico (%)" (`shortfall`) e
+  "Faturamento acima da média (%)" (`(lift−1)×100`, como a manchete). Sem mês forte à frente (`month == null`), o CSV traz
+  **só o cabeçalho** (mesma disciplina de `underpricedLoyalClientsToCsv`, D347). Rota `/shows/sazonalidade/stall/export`
+  (BOM UTF-8, `agenda-mes-forte.csv`) que **ignora o `?ano=`** e sempre usa o acervo inteiro — o stall só faz sentido
+  somando todas as temporadas (projeta a próxima ocorrência contra o padrão de fundo), espelhando a condição
+  `yearFilter === "all"` da página. Botão "⬇ CSV" no cabeçalho do `StallDetail` (que só renderiza quando há stall real).
+  **Camada puramente de serialização** (pura, testada); reusa `gigSeasonalityStall`/`ReceivableShowLike`; zero
+  migração/dependência.
+- **Justificativa:** fecha a última lacuna de export da página com o padrão de CSV já consolidado (serializador puro +
+  rota irmã fina + botão que espelha a seção). O firme/tentativo é a informação de maior valor da tela para planejamento
+  — uma agenda de "2 marcados" que são 2 propostas está bem mais vazia do que o número sugere —, e levá-la ao CSV deixa
+  a planilha distinguir agenda fechada de só-interesse sem depender da tela.
+- **Alternativas consideradas:** (a) anexar uma linha de stall ao CSV mensal (`gigSeasonalityToCsv`) — rejeitada por
+  misturar um registro prospectivo (a agenda futura de um mês) com a tabela retrospectiva (12 meses realizados), quebrando
+  a leitura por máquina; (b) tabela larga de uma linha só — descartada porque um único registro heterogêneo (rótulo de mês,
+  contagens, média fracionária, percentuais) lê melhor empilhado, como os cards da tela; (c) respeitar o `?ano=` como as
+  outras duas exportações — rejeitada porque o stall é inerentemente "todos os anos" (a página já o anula nos recortes por
+  ano). **+3 testes** (`csv.test.ts`, `describe("gigSeasonalityStallToCsv")`: só cabeçalho sem mês forte / recorte firme ×
+  tentativo com 1 firme + 1 proposta / 0 firmes quando a agenda é só propostas).
+
 ## 2026-07-16 — D348: CSV do recorte ANUAL da evolução do cachê (`feeTrendByYearToCsv`)
 - **Contexto:** a D343 pôs na tela `/shows/evolucao-cache` a seção "Cachê médio ano a ano" (`feeTrendByYear`) — o sinal
   de preço por ano civil, que neutraliza a sazonalidade que o mês a mês carrega — mas **adiou explicitamente** tocar no
