@@ -4,7 +4,28 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 353 — CSV DO RECORTE ANUAL da evolução do cachê em `/shows/evolucao-cache` (`feeTrendByYearToCsv`, D348),
+**Sessão 354 — CSV DO "MÊS FORTE COM AGENDA RALA" em `/shows/sazonalidade` (`gigSeasonalityStallToCsv`, D349),
+fechando a última lacuna de export da página:** a página tinha três blocos e só dois exportavam — a tabela mensal
+(`gigSeasonalityToCsv`) e o comparativo ano a ano (`gigSeasonalityComparisonToCsv`). O terceiro, o `StallDetail`
+("📉 Mês forte com agenda rala", D336) — a única leitura ACIONÁVEL e PROSPECTIVA da página, que cruza o pico histórico
+de faturamento com a AGENDA real do próximo mês forte à frente e mostra o recorte **firme × tentativo**
+(`booked`/`bookedFirm`, D339/D342) numa micro-barra de dois tons — não tinha export, e o firme/tentativo que a D342 pôs
+na tela não saía para a planilha. Agora um serializador puro `gigSeasonalityStallToCsv(stall)` +
+`GIG_SEASONALITY_STALL_CSV_HEADERS` (`Indicador`/`Valor`) em `src/lib/csv.ts`, layout indicador/valor (um registro
+instantâneo, empilhado como os cards): mês forte, meses à frente, ritmo típico (~shows/ano), shows marcados, **Firmes
+(confirmado/realizado)** (=`bookedFirm`) e **Propostas em aberto** (=`booked − bookedFirm`), "Abaixo do ritmo típico
+(%)" (`shortfall`) e "Faturamento acima da média (%)" (`(lift−1)×100`). Sem mês forte à frente (`month == null`), CSV só
+com o cabeçalho (disciplina de `underpricedLoyalClientsToCsv`, D347). Rota `/shows/sazonalidade/stall/export` (BOM UTF-8,
+`agenda-mes-forte.csv`) que IGNORA o `?ano=` e sempre usa o acervo inteiro — o stall só faz sentido somando todas as
+temporadas, espelhando a condição `yearFilter === "all"` da página — + botão "⬇ CSV" no cabeçalho do `StallDetail` (que
+só renderiza quando há stall real). Camada puramente de serialização (pura, testada); reusa
+`gigSeasonalityStall`/`ReceivableShowLike`; zero migração/dependência. **+3 testes** (`csv.test.ts`,
+`describe("gigSeasonalityStallToCsv")`). DoD verde: `npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings),
+`npm test` (**1912 testes**); smoke → `/login` 200, `/shows/sazonalidade` e `/shows/sazonalidade/stall/export` 307→/login
+(auth-gated, sem 500); `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, zero dependência nova), ver
+D349. **Próximo possível** — comparar o desconto de fidelidade ano a ano (movers); ou levar o mesmo recorte
+firme/tentativo à sazonalidade do funil (`/shows/funil/atividade/sazonalidade`, que tem `StallDetail` irmão sem CSV).
+**Antes disso, Sessão 353 — CSV DO RECORTE ANUAL da evolução do cachê em `/shows/evolucao-cache` (`feeTrendByYearToCsv`, D348),
 fechando a lacuna que a D343 adiou de propósito:** a D343 (Sessão consolidadora) pôs na tela a seção "Cachê médio ano
 a ano" (`feeTrendByYear`) — o sinal de preço por ano civil, sem a sazonalidade que o mês a mês carrega — mas sua
 alternativa (c) adiou explicitamente tocar no CSV ("exportar o recorte anual é um 'próximo possível' barato"). O único

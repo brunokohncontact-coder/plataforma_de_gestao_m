@@ -25,6 +25,8 @@ import {
   paymentLagToCsv,
   gigSeasonalityToCsv,
   gigSeasonalityComparisonToCsv,
+  gigSeasonalityStallToCsv,
+  GIG_SEASONALITY_STALL_CSV_HEADERS,
   monthlySeasonalityToCsv,
   MONTHLY_SEASONALITY_CSV_HEADERS,
   TRANSACTION_CSV_HEADERS,
@@ -190,6 +192,7 @@ import {
   quarterlySummary,
   gigSeasonality,
   compareGigSeasonality,
+  gigSeasonalityStall,
   gigCadence,
   feeTrend,
   feeTrendByYear,
@@ -1581,6 +1584,83 @@ describe("gigSeasonalityComparisonToCsv", () => {
     const total = gigSeasonalityComparisonToCsv(comparison).split("\r\n")[13].split(";");
     expect(total[3]).toBe("-1");
     expect(total[4]).toBe("-3000,00");
+  });
+});
+
+describe("gigSeasonalityStallToCsv", () => {
+  // "now" em junho/2027: a janela à frente cobre jul→out; setembro (mês 8) fica
+  // 3 meses à frente e a ocorrência-alvo é 2027 (mesma montagem de finance.test).
+  const now = new Date("2027-06-15T12:00:00.000Z");
+
+  function gig(partial: Partial<ReceivableShowLike>): ReceivableShowLike {
+    return {
+      id: "g1",
+      fee: 500_00,
+      status: "PLAYED",
+      date: "2026-09-10T20:00:00.000Z",
+      ...partial,
+    };
+  }
+
+  // Histórico com setembro E março fortes (6 shows/ano cada em 2025 e 2026): a
+  // participação de setembro no faturamento fica em 0,5 → lift 6× (feeShare×12).
+  const strongHistory: ReceivableShowLike[] = [];
+  for (const y of [2025, 2026]) {
+    for (let i = 0; i < 6; i++) {
+      strongHistory.push(gig({ id: `set-${y}-${i}`, date: `${y}-09-10T20:00:00.000Z` }));
+      strongHistory.push(gig({ id: `mar-${y}-${i}`, date: `${y}-03-10T20:00:00.000Z` }));
+    }
+  }
+
+  function stallFrom(extra: ReceivableShowLike[]) {
+    const shows = [...strongHistory, ...extra];
+    return gigSeasonalityStall(gigSeasonality(shows, { now }), shows, { now });
+  }
+
+  it("traz só o cabeçalho quando não há mês forte à frente (sem stall)", () => {
+    // Só 3 shows de setembro → amostra abaixo do mínimo → stall.month é null.
+    const shows = [
+      gig({ id: "a", date: "2026-09-10T20:00:00.000Z" }),
+      gig({ id: "b", date: "2026-09-11T20:00:00.000Z" }),
+      gig({ id: "c", date: "2026-09-12T20:00:00.000Z" }),
+    ];
+    const stall = gigSeasonalityStall(gigSeasonality(shows, { now }), shows, { now });
+    expect(stall.month).toBeNull();
+    const lines = gigSeasonalityStallToCsv(stall).split("\r\n");
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toBe(GIG_SEASONALITY_STALL_CSV_HEADERS.join(";"));
+  });
+
+  it("serializa o mês forte com o recorte firme × tentativo da agenda", () => {
+    // 2027/setembro: 1 CONFIRMADO + 1 PROPOSTO → booked 2 (< 6×0.5=3, dispara),
+    // dos quais 1 firme e 1 tentativo. Baseline 6, shortfall 1−2/6=67%, lift 6×.
+    const stall = stallFrom([
+      gig({ id: "b1", date: "2027-09-05T20:00:00.000Z", status: "CONFIRMED" }),
+      gig({ id: "p1", date: "2027-09-20T20:00:00.000Z", status: "PROPOSED" }),
+    ]);
+    expect(stall.show).toBe(true);
+    const lines = gigSeasonalityStallToCsv(stall).split("\r\n");
+    expect(lines[0]).toBe("Indicador;Valor");
+    expect(lines[1]).toBe("Mês forte;Setembro");
+    expect(lines[2]).toBe("Meses à frente;3");
+    expect(lines[3]).toBe("Ritmo típico (shows/ano);6,0");
+    expect(lines[4]).toBe("Shows marcados;2");
+    expect(lines[5]).toBe("Firmes (confirmado/realizado);1");
+    expect(lines[6]).toBe("Propostas em aberto;1");
+    expect(lines[7]).toBe("Abaixo do ritmo típico (%);67%");
+    expect(lines[8]).toBe("Faturamento acima da média (%);500%");
+    expect(lines).toHaveLength(9);
+  });
+
+  it("registra 0 firmes quando a agenda marcada é só de propostas em aberto", () => {
+    const stall = stallFrom([
+      gig({ id: "p1", date: "2027-09-05T20:00:00.000Z", status: "PROPOSED" }),
+      gig({ id: "p2", date: "2027-09-20T20:00:00.000Z", status: "PROPOSED" }),
+    ]);
+    const lines = gigSeasonalityStallToCsv(stall).split("\r\n");
+    expect(lines[4]).toBe("Shows marcados;2");
+    expect(lines[5]).toBe("Firmes (confirmado/realizado);0");
+    expect(lines[6]).toBe("Propostas em aberto;2");
   });
 });
 
