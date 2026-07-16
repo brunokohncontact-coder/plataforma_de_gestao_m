@@ -5,6 +5,30 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-16 — D345: Cachê médio POR SHOW no CSV da fidelização (`clientRetentionToCsv`)
+- **Contexto:** a Sessão 348 (D344) trouxe à tela `/contatos/retencao` o cartão "Cachê médio por show"
+  (`retentionPricingSignal`), que compara o preço POR GIG de quem volta × de quem contrata uma vez só — mas
+  o CSV exportado (`clientRetentionToCsv`) só trazia o **cachê total por contato**, sem o eixo por-show. Quem
+  abre a planilha para conferir/ordenar o preço por gig não tinha a coluna; teria de dividir manualmente
+  total ÷ shows linha a linha.
+- **Decisão:** nova coluna **"Cachê médio/show (R$)"** em `CLIENT_RETENTION_CSV_HEADERS`, entre "Cachê total (R$)"
+  e "Último show", preenchida por um helper puro `retentionAvgFeePerShow(totalFee, shows)` (= `Math.round(totalFee/shows)`
+  em centavos, com guarda de divisão por zero → 0). Cada linha traz a média por show do contratante; a linha "Total"
+  traz a média por show de toda a carteira (`totalFee/totalShows`). Cruzada com a coluna "Recorrente" (Sim/Não) já
+  existente, a planilha reconstrói o mesmo sinal do cartão de preço (D344) sem depender da tela. Mudança **puramente
+  na camada CSV** (pura, testada); **zero migração/rota/dependência** — a rota `/contatos/retencao/export` já consome
+  o serializador e não muda.
+- **Justificativa:** fecha a lacuna entre a tela (que já mostra o preço por show, D344) e a planilha (que não).
+  O eixo por-show é derivável dos campos que a `row` já carrega (`totalFee`/`activeShows`, ambos ≥ 0, com `activeShows ≥ 1`
+  por construção — só entram contatos com ≥1 show não cancelado), então não exige recomputar nada nem novo I/O. Extrair
+  o cálculo para um helper puro trava o arredondamento ao centavo com teste unitário e serve tanto às linhas quanto ao Total.
+- **Alternativas consideradas:** (a) anexar um bloco-rodapé com o `retentionPricingSignal` (recorrentes × únicos + Δ%) —
+  rejeitado: misturaria uma segunda forma de linha (semântica diferente das colunas por-contato) num CSV tabular; a coluna
+  por-linha + a coluna "Recorrente" já deixam o leitor segmentar. (b) Deixar o leitor dividir total ÷ shows na planilha —
+  rejeitado: é justamente o trabalho manual que a coluna elimina, e o arredondamento consistente (centavo) evita divergência.
+  (c) Emitir a média em reais com casas decimais fracionárias — rejeitado: o padrão pt-BR do arquivo é centavos inteiros
+  (`centsToCsvAmount`); arredondar ao centavo mantém a convenção dos irmãos.
+
 ## 2026-07-15 — D341: Frase de firmeza da página `/shows/sazonalidade` unificada pelo nível (`gigSeasonalityStallFirmnessDetail`)
 - **Contexto:** a D340 deixou explícito, como alternativa (b) adiada, "refatorar a página `/shows/sazonalidade` (D339)
   para consumir o helper `gigSeasonalityStallFirmness`". O detalhe `StallDetail` daquela página mostrava sempre a

@@ -2615,7 +2615,8 @@ describe("clientRetentionToCsv", () => {
     const lines = csv.split("\r\n");
     expect(lines[0]).toBe(CLIENT_RETENTION_CSV_HEADERS.join(";"));
     expect(lines).toHaveLength(2);
-    expect(lines[1]).toBe("Total;;0;0,00;;0/0");
+    // Total zerado: cachê médio/show cai para 0,00 (guarda de divisão por zero).
+    expect(lines[1]).toBe("Total;;0;0,00;0,00;;0/0");
   });
 
   it("uma linha por contratante (ordem shows desc) com Recorrente Sim/Não + Total", () => {
@@ -2634,10 +2635,13 @@ describe("clientRetentionToCsv", () => {
     const lines = clientRetentionToCsv(retention).split("\r\n");
     // cabeçalho + 2 contratantes (mais shows primeiro) + Total.
     expect(lines).toHaveLength(4);
-    expect(lines[1]).toBe("Bar do Zé;Casa de show;2;2500,00;15/05/2026;Sim");
-    expect(lines[2]).toBe("Produtora Lua;Produtor/Promoter;1;2000,00;20/03/2026;Não");
-    // Total: 3 shows, 4500,00; "recorrentes/total" = 1/2.
-    expect(lines[3]).toBe("Total;;3;4500,00;;1/2");
+    // Bar do Zé: 2 shows, 2500,00 total → 1250,00/show. Produtora Lua: 1 show → 2000,00/show.
+    expect(lines[1]).toBe("Bar do Zé;Casa de show;2;2500,00;1250,00;15/05/2026;Sim");
+    expect(lines[2]).toBe(
+      "Produtora Lua;Produtor/Promoter;1;2000,00;2000,00;20/03/2026;Não",
+    );
+    // Total: 3 shows, 4500,00 → 1500,00/show; "recorrentes/total" = 1/2.
+    expect(lines[3]).toBe("Total;;3;4500,00;1500,00;;1/2");
   });
 
   it("exclui contratantes só com shows cancelados; futuro confirmado conta para recorrência", () => {
@@ -2656,8 +2660,26 @@ describe("clientRetentionToCsv", () => {
     const lines = clientRetentionToCsv(retention).split("\r\n");
     // só "Casa Nova" vira linha — o cancelado-puro fica de fora.
     expect(lines).toHaveLength(3);
-    expect(lines[1]).toBe("Casa Nova;Outro;2;4000,00;01/06/2099;Sim");
-    expect(lines[2]).toBe("Total;;2;4000,00;;1/1");
+    // 2 shows não cancelados, 4000,00 total → 2000,00/show (o cancelado não dilui).
+    expect(lines[1]).toBe("Casa Nova;Outro;2;4000,00;2000,00;01/06/2099;Sim");
+    expect(lines[2]).toBe("Total;;2;4000,00;2000,00;;1/1");
+  });
+
+  it("cachê médio/show arredonda para o centavo (divisão não exata)", () => {
+    const retention = clientRetention<C>(
+      [
+        // 3 shows, 100,00 total → 33,3333.../show → arredonda para 33,33.
+        item({ id: "r", name: "Recorrente Ímpar", role: "VENUE" }, [
+          { status: "PLAYED", date: "2026-01-10T00:00:00.000Z", fee: 4000 },
+          { status: "PLAYED", date: "2026-02-10T00:00:00.000Z", fee: 3000 },
+          { status: "PLAYED", date: "2026-03-10T00:00:00.000Z", fee: 3000 },
+        ]),
+      ],
+      new Date(NOW),
+    );
+    const lines = clientRetentionToCsv(retention).split("\r\n");
+    expect(lines[1]).toBe("Recorrente Ímpar;Casa de show;3;100,00;33,33;10/03/2026;Sim");
+    expect(lines[2]).toBe("Total;;3;100,00;33,33;;1/1");
   });
 });
 

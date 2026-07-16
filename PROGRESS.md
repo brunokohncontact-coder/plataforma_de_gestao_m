@@ -9,7 +9,24 @@
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1884 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 348 —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 349 —
+CACHÊ MÉDIO POR SHOW no CSV da FIDELIZAÇÃO (`clientRetentionToCsv`, D345), fechando a
+lacuna que a Sessão 348 (D344) deixou:** a tela `/contatos/retencao` já mostra o cartão "Cachê
+médio por show" (`retentionPricingSignal`, D344 — preço por gig de recorrentes × únicos), mas o CSV
+exportado só trazia o cachê TOTAL por contato, sem o eixo por-show. Agora `CLIENT_RETENTION_CSV_HEADERS`
+ganha a coluna **"Cachê médio/show (R$)"** (entre "Cachê total (R$)" e "Último show"), preenchida por um
+novo helper puro `retentionAvgFeePerShow(totalFee, shows)` (= `Math.round(totalFee/shows)` em centavos, com
+guarda de divisão por zero): cada linha traz a média por show do contratante e o "Total" a média da carteira
+inteira. Cruzada com a coluna "Recorrente" (Sim/Não) já existente, a planilha reconstrói o sinal de preço da
+D344 sem depender da tela. Mudança **puramente na camada CSV** (pura, testada); a rota
+`/contatos/retencao/export` já consome o serializador e não muda; zero migração/rota/dependência.
+**+1 teste** e **3 testes existentes atualizados** (`csv.test.ts`, `describe("clientRetentionToCsv")`: nova
+coluna nos casos existentes + arredondamento ao centavo em divisão não exata + Total zerado → `0,00`). DoD
+verde: `npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1885 testes**); smoke →
+`/login` 200, `/contatos/retencao`, `/contatos/retencao/export` e `/dashboard` 307→/login (auth-gated, sem 500);
+`npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, zero dependência nova), ver D345. **Próximo
+possível** — comparar o preço da fidelidade ano a ano (movers) se a carteira crescer, ou levar o mesmo eixo
+por-show à concentração por papel. **Antes disso, Sessão 348 —
 PREÇO DA FIDELIDADE em `/contatos/retencao` (`retentionPricingSignal`, D344):** a tela de
 fidelização já media VOLUME (taxa de recompra + `recurringFeeShare`), mas não o PREÇO — dentre
 quem volta e quem contrata uma vez só, quem paga mais **por gig**? Agora `clientRetention`
