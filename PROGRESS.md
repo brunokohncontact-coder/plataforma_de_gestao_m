@@ -4,7 +4,21 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
+**Sessão 352 — CONSOLIDAÇÃO DE TRABALHO PARALELO: landing das PRs abertas #377 (D342) e #378 (D343).**
+Duas PRs de sessões paralelas estavam abertas, verdes no CI (`build-and-test`) porém sem merge (só a checagem
+de deploy do Vercel — não-bloqueante, sempre vermelha no histórico — reprovava), e conflitavam com a `main`
+apenas nos arquivos append-only `PROGRESS.md`/`DECISIONS.md` (o código mergeava limpo). Como a `main` já
+reservava D342/D343 para elas ("sem colisão") e as funções (`gigSeasonalityStallBar`, `feeTrendByYear`) estavam
+genuinamente ausentes, esta sessão consolidou ambas na branch de trabalho em vez de abrir uma terceira linha
+concorrente: **(D343, PR #378)** helper puro `feeTrendByYear(shows,{now?})` em `src/lib/finance.ts` + seção "Cachê
+médio ano a ano" (`YoYCard`) em `/shows/evolucao-cache` (ano civil × ano civil, neutraliza sazonalidade; +6 testes);
+**(D342, PR #377)** helper puro `gigSeasonalityStallBar(stall)` em `src/lib/finance.ts` + micro-barra de dois tons
+(firme × proposta) no `StallDetail` de `/shows/sazonalidade`, coexistindo com a frase da D341 (+8 testes). Docs
+reconciliados na branch consolidadora; as duas PRs originais são fechadas como consolidadas (seus commits entram
+na `main` via os merges). DoD revalidado na base consolidada (build/typecheck/lint/test/smoke/audit). **Próximo
+possível** — os "próximos possíveis" herdados: expor o recorte anual (`feeTrendByYear`) no CSV `/export` da evolução
+de cachê; ou levar firme/tentativo ao CSV da sazonalidade. **Antes disso, Fase 1 (MVP) — núcleo funcional + ciclos
+de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
 O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1892 testes**),

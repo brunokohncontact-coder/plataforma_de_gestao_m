@@ -5,6 +5,68 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-16 — D343: Cachê médio ano a ano em `/shows/evolucao-cache` (`feeTrendByYear`)
+- **Contexto:** a página `/shows/evolucao-cache` existe para responder "estou cobrando mais?", mas o único indicador
+  de tendência (`feeTrend.trend`) compara o **primeiro mês** com shows ao **último mês** com shows. Quando esses dois
+  meses caem em estações diferentes (ex.: um janeiro fraco × um dezembro de festas), o delta mistura evolução real de
+  preço com **sazonalidade** — um sinal enganoso justamente na métrica central da página. Faltava o corte que neutraliza
+  a estação: ano civil × ano civil.
+- **Decisão:** novo helper puro `feeTrendByYear(shows, { now? })` em `src/lib/finance.ts`, irmão de `feeTrend`, com os
+  mesmos critérios de inclusão (`isHappenedGig` + `fee > 0`) e a **mesma chave de ano** derivada de `monthKey` (UTC) para
+  casar exatamente com o agrupamento mensal. Devolve `years[]` (ano civil crescente, com `count`/`totalFee`/`avgFee`/
+  `minFee`/`maxFee`) e um `yoy` — o ano mais recente vs. o **civil imediatamente anterior** (via `computeDelta`), **só
+  quando esse ano anterior também tem shows** (sem hiato). A página ganha a seção "Cachê médio ano a ano" (só com ≥2 anos
+  ativos): um card `YoYCard` com a manchete direcional ("Você está cobrando mais em 2026 do que em 2025 ▲ …") e uma
+  tabela ano a ano com barras, reaproveitando o `Bar` já existente. **Lógica pura testada + apresentacional**; **zero
+  migração/rota/dependência**.
+- **Justificativa:** o "ano a ano" é o eixo padrão de comparação de preço que já se repete no app (cidades, dias da
+  semana, faixas de cachê, sazonalidade — todos com "comparativo ano a ano"); trazê-lo à evolução do cachê fecha uma
+  lacuna real sem inventar UI nova (mesmos `Bar`/`Stat`/formatação). O gate anti-hiato (`previous.year === current.year - 1`)
+  mantém o delta honesto: comparar 2026 a 2024 pulando um ano vazio somaria duas variações num número só.
+- **Alternativas consideradas:** (a) uma subpágina/rota `/comparativo` como as demais telas de comparativo — descartada
+  por excesso de superfície para um único par de anos (o card + tabela na própria página bastam e evitam mais uma rota
+  fina); (b) comparar o ano recente ao "último ano com shows" mesmo com hiato — rejeitada por não ser um "ano a ano"
+  honesto; (c) tocar no CSV `/export` — adiada para manter o escopo fechado (a seção é leitura na página; exportar o
+  recorte anual é um "próximo possível" barato). **+6 testes** (`finance.test.ts`, `describe("feeTrendByYear")`).
+
+## 2026-07-16 — D342: Micro-barra de dois tons (firme × proposta) no `StallDetail` de `/shows/sazonalidade` (`gigSeasonalityStallBar`)
+- **Contexto:** o `StallDetail` do "mês forte com agenda rala" (`/shows/sazonalidade`, D336/D338) mostra uma
+  micro-barra "marcados × ritmo típico" cujo preenchimento era `booked/expected` num TOM só. A D340 (Painel) e a
+  D341 (frase da página) já ressalvavam, no TEXTO, que dos marcados poucos (ou nenhum) podem ser firmes — mas a
+  BARRA seguia pintando uma agenda de 3 propostas em aberto exatamente igual a 3 shows fechados, subestimando
+  visualmente a emptiness real que o nudge existe para sinalizar.
+- **Decisão:** novo helper puro `gigSeasonalityStallBar(stall): { firmPct: number; tentativePct: number }` em
+  `src/lib/finance.ts` (recebe `Pick<GigSeasonalityStall, "expected" | "booked" | "bookedFirm">`). Devolve as duas
+  larguras (%, 0..100) do preenchimento: `firmPct` = fração FIRME (`bookedFirm`, CONFIRMED+PLAYED) do ritmo típico;
+  `tentativePct` = completa do firme até o total marcado (as propostas em aberto). Ambas frações de `expected` com o
+  TOTAL (firme+tentativo) clampado a 100% — idêntico ao clamp inline que a barra já fazia, mantido por segurança
+  numérica (o stall só dispara com `booked < expected`). Defensivo: `bookedFirm` clampado a `[0, booked]` antes de
+  dividir, logo `firmPct ≤ bookedPct` e `tentativePct ≥ 0` sempre; `{0, 0}` quando `expected ≤ 0` ou `booked === 0`.
+  A barra do `StallDetail` (`shows/sazonalidade/page.tsx`) passa a renderizar dois segmentos (âmbar-500 = firme;
+  âmbar-300 = tentativo) num track flex, com uma legenda de cores exibida só quando `tentativePct > 0` (numa agenda
+  toda firme a barra é de um tom só, sem legenda a explicar). O `aria-label` anexa a frase de firmeza
+  (`gigSeasonalityStallFirmnessDetail`, D341) para o leitor de tela receber o mesmo recorte que os dois tons
+  comunicam visualmente. Mudança de lógica pura (larguras testadas) + apresentacional (página); **zero
+  migração/rota/dependência**. **+8 testes** (`finance.test.ts`, `describe("gigSeasonalityStallBar")`).
+- **Justificativa:** fecha a última assimetria firme/tentativo — o Painel (D340) e a frase da página (D341) já
+  distinguem, mas a barra (o elemento mais escaneável do cartão) não. Extrair as larguras para um helper puro trava
+  o clamp/split com teste unitário (a página é Server Component, difícil de testar por unidade) e mantém a barra
+  derivando do mesmo `bookedFirm` já testado, sem repetir a aritmética de clamp inline no JSX.
+- **Alternativas consideradas:** (a) manter a barra de um tom só e confiar no texto/frase — rejeitado: a barra é o
+  que o olho lê primeiro; deixá-la cega ao firme contradiz a leitura que o resto do cartão já dá. (b) sobrepor o
+  segmento firme por cima do total (dois divs absolutos) em vez de dois segmentos lado a lado — rejeitado: empilhar
+  com flex é mais simples, sem `position`/z-index, e o clamp do total já garante que a soma ≤ 100%. (c) sempre
+  mostrar a legenda de cores — rejeitado: numa agenda toda firme não há tentativo a distinguir, então a legenda
+  seria ruído; ela só aparece quando `tentativePct > 0`. (d) expor firme/tentativo também no CSV da sazonalidade —
+  fora de escopo (o CSV é por mês; o stall é um nudge de uma ocorrência), adiado até surgir demanda.
+- **Verificação:** DoD verde — `npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test`
+  (**1885 testes**, +8); smoke → `/login` 200, `/dashboard` e `/shows/sazonalidade` 307→/login (auth-gated, sem
+  500); `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, zero dependência nova). Mudança em
+  `src/lib/finance.ts` (helper + interface `GigSeasonalityStallBar`), `src/lib/finance.test.ts` e
+  `src/app/(app)/shows/sazonalidade/page.tsx` (barra + import).
+- **Nota de concorrência:** número **D342** escolhido como o próximo livre acima do maior D referenciado no
+  PROGRESS/DECISIONS (D341). Se outra PR reivindicar D342, renumerar para o próximo livre no merge.
+
 ## 2026-07-16 — D345: Cachê médio POR SHOW no CSV da fidelização (`clientRetentionToCsv`)
 - **Contexto:** a Sessão 348 (D344) trouxe à tela `/contatos/retencao` o cartão "Cachê médio por show"
   (`retentionPricingSignal`), que compara o preço POR GIG de quem volta × de quem contrata uma vez só — mas
