@@ -4,8 +4,10 @@ import { prisma } from "@/lib/prisma";
 import {
   clientRetention,
   retentionPricingSignal,
+  underpricedLoyalClients,
   type ContactRankLike,
   type RetentionPricingSignal,
+  type UnderpricedLoyalClient,
 } from "@/lib/contacts";
 import { formatMoney } from "@/lib/money";
 import { formatDate } from "@/lib/format";
@@ -46,6 +48,7 @@ export default async function ContatosRetencaoPage() {
 
   const retention = clientRetention(items);
   const pricing = retentionPricingSignal(retention);
+  const underpriced = underpricedLoyalClients(retention);
 
   return (
     <div className="space-y-6">
@@ -142,6 +145,13 @@ export default async function ContatosRetencaoPage() {
 
           {pricing && <PricingSignalCard pricing={pricing} />}
 
+          {underpriced && underpriced.clients.length > 0 && (
+            <UnderpricedLoyalSection
+              benchmark={underpriced.benchmark}
+              clients={underpriced.clients}
+            />
+          )}
+
           <section className="card p-0">
             <div className="flex items-center justify-between px-4 py-3">
               <h2 className="font-semibold">
@@ -221,6 +231,75 @@ export default async function ContatosRetencaoPage() {
 
 function formatPct(value: number): string {
   return `${Math.abs(value * 100).toFixed(0)}%`;
+}
+
+function UnderpricedLoyalSection({
+  benchmark,
+  clients,
+}: {
+  benchmark: number;
+  clients: UnderpricedLoyalClient<RetentionContact>[];
+}) {
+  return (
+    <section className="card p-0">
+      <div className="border-b border-amber-100 bg-amber-50/60 px-4 py-3">
+        <h2 className="font-semibold text-amber-800">
+          🟠 Fiéis cobrando abaixo do balcão
+          <span className="ml-2 text-sm font-normal text-amber-600">
+            {clients.length}
+          </span>
+        </h2>
+        <p className="mt-0.5 text-xs text-amber-700">
+          Recorrentes cujo cachê médio por show está abaixo do que um contratante de um
+          show só te paga ({formatMoney(benchmark)}/show). São os alvos concretos de
+          renegociação na próxima renovação.
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-500">
+              <th className="px-4 py-3 font-medium">Contratante</th>
+              <th className="px-4 py-3 text-right font-medium">Shows</th>
+              <th className="px-4 py-3 text-right font-medium">Cachê/show</th>
+              <th className="px-4 py-3 text-right font-medium">Abaixo do balcão</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {clients.map(({ contact, activeShows, avgFeePerShow, shortfall, shortfallPct }) => (
+              <tr key={contact.id} className="hover:bg-gray-50">
+                <td className="px-4 py-3">
+                  <Link
+                    href={`/contatos/${contact.id}`}
+                    className="font-medium text-brand-700 hover:underline"
+                  >
+                    {contact.name}
+                  </Link>
+                  <div className="mt-0.5">
+                    <span className="badge bg-brand-50 text-brand-700">
+                      {CONTACT_ROLE_LABELS[contact.role as ContactRole] ?? contact.role}
+                    </span>
+                  </div>
+                </td>
+                <td className="px-4 py-3 text-right font-semibold text-gray-700">
+                  {activeShows}
+                </td>
+                <td className="px-4 py-3 text-right font-semibold text-gray-900">
+                  {formatMoney(avgFeePerShow)}
+                </td>
+                <td className="px-4 py-3 text-right font-semibold text-amber-600">
+                  −{formatMoney(shortfall)}
+                  <span className="ml-1 text-xs font-normal text-amber-500">
+                    ({formatPct(shortfallPct)})
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
 }
 
 function PricingSignalCard({ pricing }: { pricing: RetentionPricingSignal }) {
