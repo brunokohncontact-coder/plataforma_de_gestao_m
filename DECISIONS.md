@@ -5,6 +5,30 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-16 — D348: CSV do recorte ANUAL da evolução do cachê (`feeTrendByYearToCsv`)
+- **Contexto:** a D343 pôs na tela `/shows/evolucao-cache` a seção "Cachê médio ano a ano" (`feeTrendByYear`) — o sinal
+  de preço por ano civil, que neutraliza a sazonalidade que o mês a mês carrega — mas **adiou explicitamente** tocar no
+  CSV (alternativa (c) da própria D343: "exportar o recorte anual é um 'próximo possível' barato"). O único export da
+  página (`/shows/evolucao-cache/export`, `feeTrendToCsv`) só levava o eixo MENSAL à planilha; a série anual da tela não
+  tinha como sair para o Excel.
+- **Decisão:** novo serializador puro `feeTrendByYearToCsv(byYear)` + `FEE_TREND_BY_YEAR_CSV_HEADERS`
+  (`Ano`/`Cachê médio (R$)`/`Cachê mínimo (R$)`/`Cachê máximo (R$)`/`Shows`) em `src/lib/csv.ts`: espelho fiel da tabela
+  anual (uma linha por ano civil ativo, ordem cronológica crescente; a "Faixa" da tela vira duas colunas mín/máx como no
+  irmão mensal). Rota irmã `/shows/evolucao-cache/anos/export` (mesma query do export mensal, BOM UTF-8,
+  `evolucao-cache-anual.csv`) e um segundo botão no cabeçalho da página — os dois botões passam a rotular o eixo
+  ("⬇ CSV mês" / "⬇ CSV ano"), o de ano só quando há ≥2 anos ativos (a mesma condição de visibilidade da seção na tela).
+  **Camada puramente de serialização** (pura, testada); reusa `feeTrendByYear`/`ReceivableShowLike` já existentes; zero
+  migração/dependência.
+- **Justificativa:** fecha a lacuna que a D343 deixou de propósito, com o padrão de CSV já consolidado no app (serializador
+  puro + rota irmã fina + botão que espelha a seção). Manter o export anual numa rota/arquivo próprios (em vez de anexar
+  linhas ao CSV mensal) preserva cada planilha limpa e de eixo único — casa com o `feeTrendToCsv` intocado.
+- **Alternativas consideradas:** (a) anexar as linhas anuais ao CSV mensal existente — rejeitada por misturar dois eixos
+  (mês × ano) e duas granularidades numa planilha só, quebrando a leitura por máquina; (b) incluir uma linha "Total" no
+  CSV anual — rejeitada porque a tela também não a mostra e uma "média das médias" anuais não bate com o cachê médio geral
+  (a série anual é uma linha do tempo, não uma distribuição); (c) levar o veredito `yoy` ao CSV — dispensada por ser leitura
+  de UI derivável das duas últimas linhas. **+3 testes** (`csv.test.ts`, `describe("feeTrendByYearToCsv")`: só cabeçalho sem
+  shows / uma linha por ano ativo sem Total / filtragem de propostos-cancelados-futuros-sem-cachê).
+
 ## 2026-07-16 — D343: Cachê médio ano a ano em `/shows/evolucao-cache` (`feeTrendByYear`)
 - **Contexto:** a página `/shows/evolucao-cache` existe para responder "estou cobrando mais?", mas o único indicador
   de tendência (`feeTrend.trend`) compara o **primeiro mês** com shows ao **último mês** com shows. Quando esses dois

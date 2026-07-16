@@ -47,6 +47,7 @@ import {
   type FeeDistributionComparison,
   indexFeeBandShareChanges,
   type FeeTrend,
+  type FeeTrendByYear,
   type CashFlowMonth,
   type CashflowProjection,
   type BookedRevenueForecast,
@@ -2284,6 +2285,47 @@ export function feeTrendToCsv(trend: FeeTrend, delimiter = DEFAULT_DELIMITER): s
     centsToCsvAmount(trend.highestFee),
     String(trend.totalShows),
   ]);
+  return toCsv(out, delimiter);
+}
+
+// ── Evolução do cachê ANO A ANO (sinal de preço sem sazonalidade) ─────────────
+
+export const FEE_TREND_BY_YEAR_CSV_HEADERS = [
+  "Ano",
+  "Cachê médio (R$)",
+  "Cachê mínimo (R$)",
+  "Cachê máximo (R$)",
+  "Shows",
+] as const;
+
+/**
+ * Serializa o recorte ANUAL da evolução do cachê (`feeTrendByYear`) em CSV.
+ * Espelha a tabela "Cachê médio ano a ano" de `/shows/evolucao-cache`: uma linha
+ * por ano civil ATIVO (com ao menos um show realizado e cachê registrado), em
+ * ordem cronológica crescente, com cachê médio, mínimo e máximo do ano e a
+ * contagem de shows — o mesmo sinal de preço da tela mensal, mas por ano civil,
+ * sem a distorção de sazonalidade que o mês a mês carrega. Como o irmão
+ * `feeTrendToCsv`, a "Faixa" da tela vira duas colunas (mínimo/máximo) para abrir
+ * limpo na planilha; ao contrário dele, **não há linha "Total"**: a tela também
+ * não a mostra (a série anual é uma linha do tempo, não uma distribuição — uma
+ * "média das médias" anuais não bate com o cachê médio geral e enganaria). O
+ * veredito ano a ano (`yoy`) fica de fora: é uma leitura de UI derivável das duas
+ * últimas linhas. Mesma convenção pt-BR dos irmãos (delimitador ";"). Pura.
+ */
+export function feeTrendByYearToCsv(
+  byYear: FeeTrendByYear,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(FEE_TREND_BY_YEAR_CSV_HEADERS)];
+  for (const y of byYear.years) {
+    out.push([
+      String(y.year),
+      centsToCsvAmount(y.avgFee),
+      centsToCsvAmount(y.minFee),
+      centsToCsvAmount(y.maxFee),
+      String(y.count),
+    ]);
+  }
   return toCsv(out, delimiter);
 }
 
