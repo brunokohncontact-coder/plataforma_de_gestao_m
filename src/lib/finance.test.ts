@@ -109,6 +109,7 @@ import {
   compareShowPipelines,
   CONVERSION_TREND_EPSILON,
   feeTrend,
+  feeTrendByYear,
   gigCadence,
   feeDistribution,
   feeDistributionYears,
@@ -7114,6 +7115,106 @@ describe("feeTrend", () => {
     // médias: jan 100, fev 200, mar 100 → melhor=fev; pior empata jan/mar → jan.
     expect(t.bestMonth?.month).toBe("2026-02");
     expect(t.worstMonth?.month).toBe("2026-01");
+  });
+});
+
+describe("feeTrendByYear", () => {
+  const now = new Date("2026-06-15T12:00:00.000Z");
+
+  function gig(partial: Partial<ReceivableShowLike>): ReceivableShowLike {
+    return {
+      id: "g1",
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-01-10T20:00:00.000Z",
+      ...partial,
+    };
+  }
+
+  it("sem shows realizados retorna vazio e yoy nulo", () => {
+    const t = feeTrendByYear([], { now });
+    expect(t.years).toEqual([]);
+    expect(t.yoy).toBeNull();
+  });
+
+  it("agrupa por ano civil com média/total/min/max por ano", () => {
+    const t = feeTrendByYear(
+      [
+        gig({ id: "a", date: "2025-03-05T20:00:00.000Z", fee: 100_00 }),
+        gig({ id: "b", date: "2025-08-20T20:00:00.000Z", fee: 300_00 }),
+        gig({ id: "c", date: "2026-02-02T20:00:00.000Z", fee: 500_00 }),
+      ],
+      { now },
+    );
+    expect(t.years.map((y) => y.year)).toEqual([2025, 2026]);
+    expect(t.years[0]).toMatchObject({
+      year: 2025,
+      count: 2,
+      totalFee: 400_00,
+      avgFee: 200_00,
+      minFee: 100_00,
+      maxFee: 300_00,
+    });
+    expect(t.years[1]).toMatchObject({ year: 2026, count: 1, avgFee: 500_00 });
+  });
+
+  it("considera só shows realizados com cachê (ignora proposto/cancelado/futuro/fee 0)", () => {
+    const t = feeTrendByYear(
+      [
+        gig({ id: "played", status: "PLAYED", date: "2025-05-10T20:00:00.000Z" }),
+        gig({ id: "confPast", status: "CONFIRMED", date: "2026-02-10T20:00:00.000Z" }),
+        gig({ id: "confFut", status: "CONFIRMED", date: "2026-09-10T20:00:00.000Z" }),
+        gig({ id: "prop", status: "PROPOSED", date: "2025-01-10T20:00:00.000Z" }),
+        gig({ id: "canc", status: "CANCELLED", date: "2025-01-10T20:00:00.000Z" }),
+        gig({ id: "free", fee: 0, date: "2025-01-10T20:00:00.000Z" }),
+      ],
+      { now },
+    );
+    expect(t.years.map((y) => y.year)).toEqual([2025, 2026]);
+    expect(t.years.reduce((n, y) => n + y.count, 0)).toBe(2);
+  });
+
+  it("yoy compara o ano mais recente com o civil imediatamente anterior", () => {
+    const t = feeTrendByYear(
+      [
+        gig({ id: "a", date: "2025-04-10T20:00:00.000Z", fee: 200_00 }),
+        gig({ id: "b", date: "2026-04-10T20:00:00.000Z", fee: 300_00 }),
+      ],
+      { now },
+    );
+    expect(t.yoy).not.toBeNull();
+    expect(t.yoy!.current.year).toBe(2026);
+    expect(t.yoy!.previous.year).toBe(2025);
+    expect(t.yoy!.delta.current).toBe(300_00);
+    expect(t.yoy!.delta.previous).toBe(200_00);
+    expect(t.yoy!.delta.delta).toBe(100_00);
+    expect(t.yoy!.delta.direction).toBe("up");
+    expect(t.yoy!.delta.pct).toBeCloseTo(0.5, 5);
+  });
+
+  it("yoy é null com um único ano ativo", () => {
+    const t = feeTrendByYear(
+      [
+        gig({ id: "a", date: "2026-01-05T20:00:00.000Z", fee: 100_00 }),
+        gig({ id: "b", date: "2026-07-25T20:00:00.000Z", fee: 200_00 }),
+      ],
+      { now },
+    );
+    expect(t.years).toHaveLength(1);
+    expect(t.yoy).toBeNull();
+  });
+
+  it("yoy é null quando há um hiato entre o ano mais recente e o anterior com shows", () => {
+    const t = feeTrendByYear(
+      [
+        gig({ id: "a", date: "2024-04-10T20:00:00.000Z", fee: 100_00 }),
+        gig({ id: "b", date: "2026-04-10T20:00:00.000Z", fee: 300_00 }),
+      ],
+      { now },
+    );
+    // 2024 e 2026 existem, mas 2025 está vazio — não é um "ano a ano" honesto.
+    expect(t.years.map((y) => y.year)).toEqual([2024, 2026]);
+    expect(t.yoy).toBeNull();
   });
 });
 

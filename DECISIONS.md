@@ -5,6 +5,30 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-16 — D343: Cachê médio ano a ano em `/shows/evolucao-cache` (`feeTrendByYear`)
+- **Contexto:** a página `/shows/evolucao-cache` existe para responder "estou cobrando mais?", mas o único indicador
+  de tendência (`feeTrend.trend`) compara o **primeiro mês** com shows ao **último mês** com shows. Quando esses dois
+  meses caem em estações diferentes (ex.: um janeiro fraco × um dezembro de festas), o delta mistura evolução real de
+  preço com **sazonalidade** — um sinal enganoso justamente na métrica central da página. Faltava o corte que neutraliza
+  a estação: ano civil × ano civil.
+- **Decisão:** novo helper puro `feeTrendByYear(shows, { now? })` em `src/lib/finance.ts`, irmão de `feeTrend`, com os
+  mesmos critérios de inclusão (`isHappenedGig` + `fee > 0`) e a **mesma chave de ano** derivada de `monthKey` (UTC) para
+  casar exatamente com o agrupamento mensal. Devolve `years[]` (ano civil crescente, com `count`/`totalFee`/`avgFee`/
+  `minFee`/`maxFee`) e um `yoy` — o ano mais recente vs. o **civil imediatamente anterior** (via `computeDelta`), **só
+  quando esse ano anterior também tem shows** (sem hiato). A página ganha a seção "Cachê médio ano a ano" (só com ≥2 anos
+  ativos): um card `YoYCard` com a manchete direcional ("Você está cobrando mais em 2026 do que em 2025 ▲ …") e uma
+  tabela ano a ano com barras, reaproveitando o `Bar` já existente. **Lógica pura testada + apresentacional**; **zero
+  migração/rota/dependência**.
+- **Justificativa:** o "ano a ano" é o eixo padrão de comparação de preço que já se repete no app (cidades, dias da
+  semana, faixas de cachê, sazonalidade — todos com "comparativo ano a ano"); trazê-lo à evolução do cachê fecha uma
+  lacuna real sem inventar UI nova (mesmos `Bar`/`Stat`/formatação). O gate anti-hiato (`previous.year === current.year - 1`)
+  mantém o delta honesto: comparar 2026 a 2024 pulando um ano vazio somaria duas variações num número só.
+- **Alternativas consideradas:** (a) uma subpágina/rota `/comparativo` como as demais telas de comparativo — descartada
+  por excesso de superfície para um único par de anos (o card + tabela na própria página bastam e evitam mais uma rota
+  fina); (b) comparar o ano recente ao "último ano com shows" mesmo com hiato — rejeitada por não ser um "ano a ano"
+  honesto; (c) tocar no CSV `/export` — adiada para manter o escopo fechado (a seção é leitura na página; exportar o
+  recorte anual é um "próximo possível" barato). **+6 testes** (`finance.test.ts`, `describe("feeTrendByYear")`).
+
 ## 2026-07-15 — D341: Frase de firmeza da página `/shows/sazonalidade` unificada pelo nível (`gigSeasonalityStallFirmnessDetail`)
 - **Contexto:** a D340 deixou explícito, como alternativa (b) adiada, "refatorar a página `/shows/sazonalidade` (D339)
   para consumir o helper `gigSeasonalityStallFirmness`". O detalhe `StallDetail` daquela página mostrava sempre a

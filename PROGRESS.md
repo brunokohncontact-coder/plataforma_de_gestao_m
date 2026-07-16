@@ -7,7 +7,27 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1877 testes**),
+**Sessão 348 — CACHÊ MÉDIO ANO A ANO em `/shows/evolucao-cache` (`feeTrendByYear`, D343):** a página
+existe para responder "estou cobrando mais?", mas o único indicador de tendência (`feeTrend.trend`)
+comparava o PRIMEIRO mês com shows ao ÚLTIMO — quando caem em estações diferentes (jan fraco × dez de
+festas), o delta misturava evolução de preço com SAZONALIDADE, enganando na métrica central da página.
+Faltava o corte que neutraliza a estação: ano civil × ano civil. Novo helper puro
+`feeTrendByYear(shows, { now? })` em `src/lib/finance.ts` (irmão de `feeTrend`, mesmos critérios
+`isHappenedGig` + `fee > 0`, mesma chave de ano via `monthKey`/UTC): devolve `years[]` (ano civil
+crescente, `count`/`totalFee`/`avgFee`/`minFee`/`maxFee`) e um `yoy` — o ano mais recente vs. o civil
+IMEDIATAMENTE anterior (via `computeDelta`), só quando esse ano anterior também tem shows (gate
+anti-hiato: `previous.year === current.year - 1`, senão 2026×2024 somaria duas variações num delta só).
+A página (`shows/evolucao-cache/page.tsx`) ganha a seção "Cachê médio ano a ano" (só com ≥2 anos ativos):
+um card `YoYCard` com manchete direcional ("Você está cobrando mais em 2026 do que em 2025 ▲ …") + tabela
+ano a ano com barras (reaproveita o `Bar` existente). Lógica pura testada + apresentacional; zero
+migração/rota/dependência. **+6 testes** (`finance.test.ts`, `describe("feeTrendByYear")`: vazio→yoy
+null, agrupamento por ano, só realizados com cachê, yoy up, ano único→null, hiato→null). DoD verde:
+`npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1883 testes**); smoke →
+`/login` 200, `/dashboard` e `/shows/evolucao-cache` 307→/login (auth-gated, sem 500); `npm audit`
+inalterado (10 advisories: 4 moderate/5 high/1 critical, zero dependência nova), ver D343. **Próximo
+possível** — levar o recorte anual ao CSV `/shows/evolucao-cache/export` (hoje só mensal), reaproveitando
+`feeTrendByYear`. **Antes disso:**
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1883 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
 do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 347 —
 FRASE DE FIRMEZA da PÁGINA `/shows/sazonalidade` UNIFICADA pelo NÍVEL
