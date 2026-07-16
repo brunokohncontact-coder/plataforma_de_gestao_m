@@ -5,6 +5,39 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-16 — D351: Movimento do desconto de fidelidade ano a ano em `/contatos/retencao` (`compareRetentionPricingYoY`/`retentionPricingSignalForYear`)
+- **Contexto:** o `retentionPricingSignal` (D344) e a lista `underpricedLoyalClients` (D346) medem o preço da fidelidade
+  num retrato ESTÁTICO da carteira inteira ("hoje seus fiéis pagam menos por gig"), mas nada dizia se esse desconto está
+  se APROFUNDANDO ou ENCOLHENDO no tempo — a leitura de TENDÊNCIA que as sessões 348–355 vinham listando como "próximo
+  possível" ("comparar o desconto de fidelidade ano a ano — movers"). Um desconto de fidelidade que cresce ano após ano é
+  vazamento de preço silencioso; um que encolhe é margem sendo recuperada. As sessões anteriores adiavam o recorte por
+  ano na retenção porque "recorrente é conceito de carteira" (medir recorrência num único ano muda a semântica).
+- **Decisão:** dois helpers puros em `src/lib/contacts.ts`. (1) `retentionPricingSignalForYear(items, year)` recorta cada
+  contato aos shows de um ano civil (UTC) ANTES de computar `clientRetention`/`retentionPricingSignal` — de modo que,
+  DENTRO daquele ano, "recorrente" = ≥2 shows no ano. (2) `compareRetentionPricingYoY(items, epsilon?)` varre os anos com
+  shows não cancelados do mais novo ao mais antigo e devolve o primeiro par CONSECUTIVO `(y, y-1)` em que ambos têm sinal
+  mensurável, com `gapDelta` (`current.relativeDelta − previous.relativeDelta`) e veredito `improved`/`worsened`/`stable`
+  contra `RETENTION_PRICING_EPSILON` (5%) — espelho de `compareCancellationRate` (D122) no eixo do preço da fidelidade.
+  Devolve `null` sem par consecutivo comparável. A página `/contatos/retencao` ganha o cartão "Movimento do desconto de
+  fidelidade · {ano−1} → {ano}" (`PricingTrendCard`, logo abaixo do `PricingSignalCard`, só quando o comparativo existe):
+  manchete direcional, o gap de cada ano lado a lado (fiéis ±%, com os dois médios por show) e nota de que aqui a
+  recorrência é medida dentro do ano. Auto-deriva os anos (sem picker); pura + apresentacional; não toca CSV/rota; zero
+  migração/dependência. **+9 testes** (`contacts.test.ts`).
+- **Justificativa:** transforma um retrato estático numa leitura de tendência acionável ("o desconto está piorando —
+  renegocie") reusando toda a máquina de preço já testada (D344), sem recomputar nada novo além do recorte anual. Escolher
+  o par CONSECUTIVO mais recente mantém a comparação honesta: anos não adjacentes deixariam a sazonalidade da carteira
+  poluir o Δ. Medir "recorrente" DENTRO do ano resolve a tensão que barrava o recorte anual na retenção — o sinal agregado
+  (carteira inteira) segue intacto no cartão de cima, e o novo cartão explicita a diferença de definição, então as duas
+  leituras coexistem sem se confundir.
+- **Alternativas consideradas:** (a) adicionar um picker `?ano=` à página e recortar a carteira toda por ano — rejeitado:
+  reabre a tensão "recorrente é conceito de carteira" na leitura PRINCIPAL da tela e some com o retrato all-time; o
+  auto-comparativo adjacente entrega a tendência sem descaracterizar a página. (b) comparar anos NÃO adjacentes (ex.: o
+  ano corrente parcial × o último ano cheio) — rejeitado: mistura um ano incompleto com um completo e a sazonalidade
+  distorce o gap; par consecutivo é a base honesta. (c) "movers" por-CONTATO já nesta sessão (quem você subiu/baixou o
+  preço ano a ano) — adiado: é uma tabela maior (join de contato × ano) que merece sessão própria; o agregado direcional
+  entrega o sinal de tendência primeiro e fica como "próximo possível". (d) levar já ao CSV — adiado: o `PricingSignalCard`
+  irmão também não exporta, e o eixo tabular está esgotado; sem urgência.
+
 ## 2026-07-16 — D350: CSV do "funil parado numa temporada forte" em `/shows/funil/atividade/sazonalidade` (`funnelActivitySeasonalityStallToCsv`)
 - **Contexto:** a página `/shows/funil/atividade/sazonalidade` tem três blocos e dois já exportavam CSV — a tabela mensal
   (`funnelActivitySeasonalityToCsv`) e o comparativo ano a ano (`funnelActivitySeasonalityComparisonToCsv`). O terceiro, o

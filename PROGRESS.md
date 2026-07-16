@@ -4,7 +4,34 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 355 — CSV DO "FUNIL PARADO NUMA TEMPORADA FORTE" em `/shows/funil/atividade/sazonalidade`
+**Sessão 356 — MOVIMENTO DO DESCONTO DE FIDELIDADE ANO A ANO em `/contatos/retencao`
+(`compareRetentionPricingYoY`/`retentionPricingSignalForYear`, D351), fechando o "próximo possível" recorrente
+que atravessava as sessões 348–355 ("comparar o desconto de fidelidade ano a ano — movers"):** o
+`retentionPricingSignal` (D344) e sua lista acionável `underpricedLoyalClients` (D346) davam o retrato ESTÁTICO
+do preço da fidelidade — "hoje seus fiéis pagam menos por gig" —, mas nada dizia se esse desconto está PIORANDO
+ou MELHORANDO no tempo. Um desconto de fidelidade que se aprofunda ano após ano é vazamento de preço silencioso;
+um que encolhe é o músico recuperando margem. Agora dois helpers puros em `src/lib/contacts.ts`:
+`retentionPricingSignalForYear(items, year)` recorta cada contato aos shows de um ano civil (UTC) ANTES de computar
+`clientRetention`/`retentionPricingSignal` — dentro do ano, "recorrente" passa a ser ≥2 shows NAQUELE ano (o
+recorte honesto para leitura anual; a carteira toda segue no sinal agregado, evitando a tensão "recorrente é
+conceito de carteira" que as sessões anteriores citavam); e `compareRetentionPricingYoY(items)` varre os anos com
+shows não cancelados do mais novo ao mais antigo e devolve o primeiro par CONSECUTIVO `(y, y-1)` em que ambos têm
+sinal mensurável, com `gapDelta` (variação do gap relativo de preço) e veredito `improved`/`worsened`/`stable`
+contra o mesmo limiar `RETENTION_PRICING_EPSILON` (5%) — espelho de `compareCancellationRate` (D122) no eixo de
+preço da fidelidade. `null` sem par consecutivo comparável (carteira nova, ano isolado, ou ano sem os dois
+segmentos). A página ganha o cartão "Movimento do desconto de fidelidade · {ano−1} → {ano}" (`PricingTrendCard`,
+logo abaixo do `PricingSignalCard`, só quando o comparativo existe): manchete direcional (🟢 melhorou / 🟠 desconto
+se aprofundou / ⚪ estável), o gap de cada ano lado a lado (fiéis ±%, com os dois médios por show) e nota
+explicando que aqui a recorrência é medida DENTRO do ano. Lógica pura testada + apresentacional; auto-deriva os
+anos (sem picker), não toca CSV/rota; zero migração/dependência. **+9 testes** (`contacts.test.ts`,
+`describe("retentionPricingSignalForYear / compareRetentionPricingYoY")`: recorte anual, contato recorrente num ano
+e único em outro, cancelados ignorados, null sem par/par não-consecutivo, worsened/improved/stable e escolha do par
+mais recente). DoD verde: `npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1923
+testes**); smoke → `/login` 200, `/contatos/retencao` e `/contatos/retencao/export` 307→/login (auth-gated, sem 500);
+`npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, zero dependência nova), ver D351. **Próximo
+possível** — levar o mesmo movimento por-CONTATO (movers individuais: quem você subiu/baixou o preço ano a ano) ou
+ao CSV; ou o eixo de export tabular segue esgotado e próximas sessões podem evoluir feature maior.
+**Antes disso, Sessão 355 — CSV DO "FUNIL PARADO NUMA TEMPORADA FORTE" em `/shows/funil/atividade/sazonalidade`
 (`funnelActivitySeasonalityStallToCsv`, D350), fechando a última lacuna de export da página e levando à
 paridade os dois `StallDetail` do app:** a Sessão 354 (D349) fechou o CSV do `StallDetail` de `/shows/sazonalidade`
 e apontou como "próximo possível" o `StallDetail` irmão do funil, que tinha a mesma lacuna — a página tinha três

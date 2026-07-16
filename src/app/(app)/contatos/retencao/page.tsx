@@ -4,9 +4,11 @@ import { prisma } from "@/lib/prisma";
 import {
   clientRetention,
   retentionPricingSignal,
+  compareRetentionPricingYoY,
   underpricedLoyalClients,
   type ContactRankLike,
   type RetentionPricingSignal,
+  type RetentionPricingComparison,
   type UnderpricedLoyalClient,
 } from "@/lib/contacts";
 import { formatMoney } from "@/lib/money";
@@ -48,6 +50,7 @@ export default async function ContatosRetencaoPage() {
 
   const retention = clientRetention(items);
   const pricing = retentionPricingSignal(retention);
+  const pricingYoY = compareRetentionPricingYoY(items);
   const underpriced = underpricedLoyalClients(retention);
 
   return (
@@ -144,6 +147,8 @@ export default async function ContatosRetencaoPage() {
           )}
 
           {pricing && <PricingSignalCard pricing={pricing} />}
+
+          {pricingYoY && <PricingTrendCard comparison={pricingYoY} />}
 
           {underpriced && underpriced.clients.length > 0 && (
             <UnderpricedLoyalSection
@@ -355,6 +360,73 @@ function PricingSignalCard({ pricing }: { pricing: RetentionPricingSignal }) {
         </div>
       </div>
       <p className="mt-3 text-xs text-gray-500">{copy.note}</p>
+    </div>
+  );
+}
+
+function gapLabel(relativeDelta: number, direction: RetentionPricingSignal["direction"]): string {
+  if (direction === "recurring-more") return `fiéis +${formatPct(relativeDelta)}`;
+  if (direction === "recurring-less") return `fiéis −${formatPct(relativeDelta)}`;
+  return `parecido (${formatPct(relativeDelta)})`;
+}
+
+function PricingTrendCard({ comparison }: { comparison: RetentionPricingComparison }) {
+  const { year, previousYear, current, previous, gapDelta, trend } = comparison;
+
+  const copy = {
+    improved: {
+      emoji: "🟢",
+      title: "O preço da fidelidade melhorou",
+      tone: "text-emerald-600",
+      note: `Os fiéis passaram a pagar relativamente mais por gig do que em ${previousYear} (+${formatPct(gapDelta)} no gap de preço).`,
+    },
+    worsened: {
+      emoji: "🟠",
+      title: "O desconto de fidelidade se aprofundou",
+      tone: "text-amber-600",
+      note: `Os fiéis pagam relativamente menos por gig do que em ${previousYear} (−${formatPct(gapDelta)} no gap de preço) — vale revisar o preço na renovação.`,
+    },
+    stable: {
+      emoji: "⚪",
+      title: "O preço da fidelidade ficou estável",
+      tone: "text-gray-700",
+      note: `O gap de preço entre fiéis e únicos mal se moveu de ${previousYear} para ${year} (${formatPct(gapDelta)}).`,
+    },
+  }[trend];
+
+  return (
+    <div className="card">
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+        Movimento do desconto de fidelidade · {previousYear} → {year}
+      </p>
+      <p className={"mt-1 font-semibold " + copy.tone}>
+        {copy.emoji} {copy.title}
+      </p>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div>
+          <p className="text-xs text-gray-400">{previousYear}</p>
+          <p className="text-lg font-bold text-gray-900">
+            {gapLabel(previous.relativeDelta, previous.direction)}
+          </p>
+          <p className="text-xs text-gray-400">
+            {formatMoney(previous.recurringAvgFee)} × {formatMoney(previous.oneTimeAvgFee)}/show
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-400">{year}</p>
+          <p className="text-lg font-bold text-gray-900">
+            {gapLabel(current.relativeDelta, current.direction)}
+          </p>
+          <p className="text-xs text-gray-400">
+            {formatMoney(current.recurringAvgFee)} × {formatMoney(current.oneTimeAvgFee)}/show
+          </p>
+        </div>
+      </div>
+      <p className="mt-3 text-xs text-gray-500">{copy.note}</p>
+      <p className="mt-2 text-xs text-gray-400">
+        Aqui &ldquo;recorrente&rdquo; é medido dentro de cada ano (≥2 shows no ano), diferente do
+        cartão acima, que olha a carteira inteira.
+      </p>
     </div>
   );
 }

@@ -682,6 +682,103 @@ export function underpricedLoyalClients<C extends ContactRankLike>(
   return { benchmark, clients };
 }
 
+// ── Movimento do desconto de fidelidade ano a ano ───────────────────────────
+// O `retentionPricingSignal` (D344) dá um retrato ESTÁTICO da carteira inteira
+// ("hoje seus fiéis pagam menos por gig"), mas não diz se isso está PIORANDO ou
+// MELHORANDO. Um desconto de fidelidade que se aprofunda ano após ano é um
+// vazamento de preço silencioso; um que encolhe é o músico recuperando margem.
+// Este helper recorta os shows por ano civil (UTC), calcula o sinal de preço de
+// cada ano isoladamente — dentro do ano, "recorrente" = ≥2 shows NAQUELE ano —
+// e compara o ano cheio mais recente com o anterior, como os demais comparativos
+// ano a ano (`compareCancellationRate`/D122). Distinto do sinal agregado: ali a
+// recorrência é conceito de CARTEIRA (todo o histórico); aqui é dentro do ano,
+// para que "fiel × único" faça sentido no recorte anual. Ver DECISIONS.md D351.
+
+export interface RetentionPricingComparison {
+  /** Ano civil (UTC) do período atual (o mais recente comparável). */
+  year: number;
+  /** Ano civil anterior (`year - 1`). */
+  previousYear: number;
+  /** Sinal de preço da fidelidade DENTRO do ano atual. */
+  current: RetentionPricingSignal;
+  /** Sinal de preço da fidelidade DENTRO do ano anterior. */
+  previous: RetentionPricingSignal;
+  /**
+   * Variação do gap relativo de preço (`current.relativeDelta −
+   * previous.relativeDelta`, em pontos, faixa -2..2). Positivo = os fiéis
+   * passaram a pagar relativamente MAIS por gig (prêmio cresceu / desconto
+   * encolheu); negativo = o desconto de fidelidade se aprofundou.
+   */
+  gapDelta: number;
+  /**
+   * Direção do movimento contra o limiar `RETENTION_PRICING_EPSILON`:
+   * - "improved": o preço da fidelidade moveu a favor (gap subiu além do limiar);
+   * - "worsened": desconto de fidelidade se aprofundou (gap caiu além do limiar);
+   * - "stable": variação dentro do limiar (ruído, sem leitura de tendência).
+   */
+  trend: "improved" | "worsened" | "stable";
+}
+
+/**
+ * Sinal de preço da fidelidade (`retentionPricingSignal`) restrito aos shows de
+ * um ANO civil (UTC) específico. Recorta cada contato aos shows daquele ano
+ * ANTES de computar a retenção, de modo que "recorrente" passa a significar ≥2
+ * shows NAQUELE ano — o recorte honesto para uma leitura anual (a carteira toda
+ * segue no sinal agregado). Devolve `null` quando o ano não tem os dois
+ * segmentos com cachê mensurável. Pura e determinística; usa o ano UTC da `date`,
+ * consistente com `filterShowsByYear`/`clientConcentrationYears`.
+ */
+export function retentionPricingSignalForYear<C extends ContactRankLike>(
+  items: ContactWithShows<C>[],
+  year: number,
+): RetentionPricingSignal | null {
+  const filtered = items.map(({ contact, shows }) => ({
+    contact,
+    shows: shows.filter((s) => new Date(s.date).getUTCFullYear() === year),
+  }));
+  return retentionPricingSignal(clientRetention(filtered));
+}
+
+/**
+ * Compara o preço da fidelidade entre o ano cheio mais recente que tem sinal e o
+ * ano IMEDIATAMENTE anterior — a "ano a ano" honesta exige anos consecutivos, do
+ * contrário a sazonalidade da carteira polui a leitura. Varre os anos com shows
+ * não cancelados do mais novo ao mais antigo e devolve o primeiro par
+ * consecutivo `(y, y-1)` em que AMBOS têm um sinal mensurável; `null` se nenhum
+ * par consecutivo qualifica (carteira nova, ano isolado, ou algum ano sem os dois
+ * segmentos). O veredito de tendência usa o mesmo limiar relativo do sinal
+ * (`RETENTION_PRICING_EPSILON`, 5%). Pura, sem I/O nem `now`: o recorte é por ano
+ * civil da `date`, não pelo relógio.
+ */
+export function compareRetentionPricingYoY<C extends ContactRankLike>(
+  items: ContactWithShows<C>[],
+  epsilon: number = RETENTION_PRICING_EPSILON,
+): RetentionPricingComparison | null {
+  const years = new Set<number>();
+  for (const { shows } of items) {
+    for (const s of shows) {
+      if (s.status === "CANCELLED") continue;
+      years.add(new Date(s.date).getUTCFullYear());
+    }
+  }
+
+  const sorted = [...years].sort((a, b) => b - a);
+  for (const year of sorted) {
+    const current = retentionPricingSignalForYear(items, year);
+    if (!current) continue;
+    const previous = retentionPricingSignalForYear(items, year - 1);
+    if (!previous) continue;
+
+    const gapDelta = current.relativeDelta - previous.relativeDelta;
+    const trend =
+      gapDelta >= epsilon ? "improved" : gapDelta <= -epsilon ? "worsened" : "stable";
+
+    return { year, previousYear: year - 1, current, previous, gapDelta, trend };
+  }
+
+  return null;
+}
+
 // ── Concentração de receita por contratante (risco de dependência) ──────────
 // Responde "quão dependente a minha receita é de poucos contratantes?": uma
 // leitura de RISCO (não de volume como o ranking, nem de recompra como a
