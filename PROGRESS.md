@@ -7,9 +7,28 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1877 testes**),
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1884 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 347 —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 348 —
+PREÇO DA FIDELIDADE em `/contatos/retencao` (`retentionPricingSignal`, D344):** a tela de
+fidelização já media VOLUME (taxa de recompra + `recurringFeeShare`), mas não o PREÇO — dentre
+quem volta e quem contrata uma vez só, quem paga mais **por gig**? Agora `clientRetention`
+(`src/lib/contacts.ts`) expõe quatro campos aditivos (`recurringShows`, `oneTimeFee`,
+`recurringAvgFee` e `oneTimeAvgFee`, todos **por show**; os únicos têm 1 show cada, então a média
+por show == por cliente nesse grupo) e um novo helper puro `retentionPricingSignal(retention)`
++ `RETENTION_PRICING_EPSILON`(=0,05) + tipo `RetentionPricingDirection` compara os dois médios com
+limiar RELATIVO (dentro de ±5% empata em `similar`, acima `recurring-more`/`recurring-less`), devolvendo
+`null` sem um dos segmentos. A página ganha o cartão "Cachê médio por show" (`PricingSignalCard`, só quando
+o sinal existe) com manchete direcional (🟢 fiéis pagam mais / 🟠 desconto de fidelidade silencioso / ⚪
+parecido), os dois médios lado a lado e o Δ%. Lógica pura testada + apresentacional; reusa o `clientRetention`
+já carregado (zero I/O extra); não toca o CSV; zero migração/rota/dependência. **+7 testes** (`contacts.test.ts`:
+2 em `clientRetention` — médios por segmento e nulos por segmento — e 5 em `retentionPricingSignal`). DoD verde:
+`npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1884 testes**); smoke → `/login`
+200, `/contatos/retencao` e `/dashboard` 307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories:
+4 moderate/5 high/1 critical, zero dependência nova), ver D344. **Próximo possível** — comparar o preço da fidelidade
+ano a ano (movers) se a carteira crescer, ou levar o mesmo eixo por-show à concentração por papel; adiados um nudge no
+Painel (é sinal de planejamento, não urgência diária) e o recorte por `?ano=` (recorrente é conceito de carteira).
+**Antes disso, Sessão 347 —
 FRASE DE FIRMEZA da PÁGINA `/shows/sazonalidade` UNIFICADA pelo NÍVEL
 (`gigSeasonalityStallFirmnessDetail`, D341), fechando a alternativa (b) que a Sessão 346 (D340) adiou
 ("refatorar a página para consumir o helper `gigSeasonalityStallFirmness`"):** o `StallDetail` da página

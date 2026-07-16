@@ -455,6 +455,14 @@ export interface ClientRetention<C extends ContactRankLike> {
   recurringFee: number;
   /** recurringFee / totalFee; null sem faturamento. */
   recurringFeeShare: number | null;
+  /** Nº de shows não cancelados vindos dos contratantes recorrentes. */
+  recurringShows: number;
+  /** Soma do cachê dos contratantes de um show só (centavos). */
+  oneTimeFee: number;
+  /** Cachê médio POR SHOW dos recorrentes (centavos); null sem shows recorrentes. */
+  recurringAvgFee: number | null;
+  /** Cachê médio POR SHOW dos únicos (centavos); null sem contratante único. */
+  oneTimeAvgFee: number | null;
   /** Média de shows por contratante; 0 sem contratantes. */
   avgShowsPerClient: number;
   /** Contratante com mais shows não cancelados (o mais fiel), ou null. */
@@ -514,24 +522,84 @@ export function clientRetention<C extends ContactRankLike>(
   const recurring = rows.filter((r) => r.recurring);
   const totalClients = rows.length;
   const recurringClients = recurring.length;
+  const oneTimeClients = totalClients - recurringClients;
   const totalShows = rows.reduce((acc, r) => acc + r.activeShows, 0);
   const totalFee = rows.reduce((acc, r) => acc + r.totalFee, 0);
   const recurringFee = recurring.reduce((acc, r) => acc + r.totalFee, 0);
+  const recurringShows = recurring.reduce((acc, r) => acc + r.activeShows, 0);
+  // Contratantes de um show só têm exatamente 1 show cada, então o nº de shows
+  // únicos == oneTimeClients e o cachê médio por show == oneTimeFee / clientes.
+  const oneTimeFee = totalFee - recurringFee;
 
   return {
     rows,
     recurring,
     totalClients,
     recurringClients,
-    oneTimeClients: totalClients - recurringClients,
+    oneTimeClients,
     repeatRate: totalClients > 0 ? recurringClients / totalClients : null,
     totalShows,
     totalFee,
     recurringFee,
     recurringFeeShare: totalFee > 0 ? recurringFee / totalFee : null,
+    recurringShows,
+    oneTimeFee,
+    recurringAvgFee: recurringShows > 0 ? recurringFee / recurringShows : null,
+    oneTimeAvgFee: oneTimeClients > 0 ? oneTimeFee / oneTimeClients : null,
     avgShowsPerClient: totalClients > 0 ? totalShows / totalClients : 0,
     mostLoyal: rows[0] ?? null,
   };
+}
+
+// ── Preço da fidelidade (cachê por show: recorrentes × únicos) ──────────────
+// Responde "meus clientes fiéis pagam mais ou menos por gig do que quem me
+// contrata uma vez só?" — o sinal de LOYALTY CREEP (desconto de fidelidade
+// silencioso) vs. prêmio de recorrência. Compara o cachê MÉDIO POR SHOW dos
+// dois segmentos da retenção; distinto do `recurringFeeShare` (que é fatia de
+// VOLUME, não preço unitário). Ver DECISIONS.md D344.
+
+/** Limiar RELATIVO (5%) abaixo do qual os preços dos dois segmentos empatam. */
+export const RETENTION_PRICING_EPSILON = 0.05;
+
+export type RetentionPricingDirection = "recurring-more" | "recurring-less" | "similar";
+
+export interface RetentionPricingSignal {
+  /** Cachê médio por show dos recorrentes (centavos). */
+  recurringAvgFee: number;
+  /** Cachê médio por show dos únicos (centavos). */
+  oneTimeAvgFee: number;
+  /** recurringAvgFee − oneTimeAvgFee (centavos, com sinal). */
+  delta: number;
+  /** delta / max(recurringAvgFee, oneTimeAvgFee); em [-1, 1]. */
+  relativeDelta: number;
+  direction: RetentionPricingDirection;
+}
+
+/**
+ * Compara o cachê médio POR SHOW entre contratantes recorrentes e de um show
+ * só, a partir de um `ClientRetention` já computado (zero recomputação). Só faz
+ * sentido quando existem os DOIS segmentos com faturamento mensurável (ambos os
+ * médios > 0); devolve `null` caso contrário. `direction` usa um limiar
+ * RELATIVO (`RETENTION_PRICING_EPSILON`): dentro dele os preços são
+ * equivalentes ("similar"), acima o recorrente paga mais/menos por gig.
+ * Pura/determinística.
+ */
+export function retentionPricingSignal<C extends ContactRankLike>(
+  retention: ClientRetention<C>,
+): RetentionPricingSignal | null {
+  const { recurringAvgFee, oneTimeAvgFee } = retention;
+  if (recurringAvgFee == null || oneTimeAvgFee == null) return null;
+  if (recurringAvgFee <= 0 || oneTimeAvgFee <= 0) return null;
+
+  const delta = recurringAvgFee - oneTimeAvgFee;
+  const denom = Math.max(recurringAvgFee, oneTimeAvgFee);
+  const relativeDelta = denom > 0 ? delta / denom : 0;
+
+  let direction: RetentionPricingDirection = "similar";
+  if (relativeDelta > RETENTION_PRICING_EPSILON) direction = "recurring-more";
+  else if (relativeDelta < -RETENTION_PRICING_EPSILON) direction = "recurring-less";
+
+  return { recurringAvgFee, oneTimeAvgFee, delta, relativeDelta, direction };
 }
 
 // ── Concentração de receita por contratante (risco de dependência) ──────────

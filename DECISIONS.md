@@ -12030,3 +12030,42 @@ contexto, decisão, justificativa e alternativas consideradas.
   `TaxRateForm.tsx` (nova) + testes.
 - **Nota de concorrência:** número **D337** escolhido como o próximo livre acima do maior D referenciado no
   PROGRESS/DECISIONS (D336). Se outra PR reivindicar D337, renumerar para o próximo livre no merge.
+
+## D344 — Preço da fidelidade: cachê médio POR SHOW de recorrentes × únicos (`retentionPricingSignal`) (Sessão 348)
+- **Contexto:** a tela `/contatos/retencao` (`clientRetention`) responde "quanto da agenda vem de quem volta a me
+  contratar" com dois eixos de VOLUME — taxa de recompra (quantos voltaram) e `recurringFeeShare` (que fatia do
+  faturamento vem dos recorrentes). Faltava o eixo de PREÇO: dentre quem volta e quem contrata uma vez só, quem paga
+  mais **por gig**? Um músico pode estar concedendo um desconto de fidelidade silencioso (loyalty creep) — cobrar menos
+  do cliente fiel a cada renovação — ou, ao contrário, a recorrência pode vir com prêmio. Nenhuma tela apontava isso.
+- **Decisão:** derivar o cachê médio POR SHOW de cada segmento e destilar a comparação num sinal direcional.
+  - `clientRetention` passa a expor quatro campos aditivos: `recurringShows` (nº de shows não cancelados dos recorrentes),
+    `oneTimeFee` (cachê dos contratantes de um show só = `totalFee − recurringFee`), `recurringAvgFee`
+    (`recurringFee / recurringShows`, **por show**, `null` sem shows recorrentes) e `oneTimeAvgFee`
+    (`oneTimeFee / oneTimeClients`, `null` sem contratante único). Contratantes de um show só têm exatamente 1 show cada,
+    então o denominador dos únicos é o próprio nº de clientes — a média por show casa com a média por cliente nesse grupo.
+  - Novo helper puro `retentionPricingSignal(retention): RetentionPricingSignal | null` + constante
+    `RETENTION_PRICING_EPSILON`(=0,05) + tipo `RetentionPricingDirection` (`recurring-more`/`recurring-less`/`similar`) em
+    `src/lib/contacts.ts`: recebe um `ClientRetention` já computado (zero recomputação/IO), devolve `null` quando falta um
+    dos dois segmentos com faturamento mensurável (algum médio `null` ou `≤ 0`), e classifica a direção por um limiar
+    **RELATIVO** (`delta / max(avgs)`): dentro de ±5% os preços empatam (`similar`), acima o recorrente paga mais/menos.
+  - Página: cartão "Cachê médio por show" (`PricingSignalCard`) exibido só quando o sinal existe, com manchete direcional
+    (🟢 fiéis pagam mais / 🟠 desconto de fidelidade / ⚪ parecido), os dois médios lado a lado e uma nota com o Δ%.
+- **Justificativa:** separa PREÇO de VOLUME. `recurringFeeShare` já dizia "quanto do dinheiro é fiel"; este sinal diz
+  "o dinheiro fiel é caro ou barato por gig", uma leitura de pricing acionável na hora de renovar com um cliente antigo.
+  Reaproveita o `clientRetention` já carregado pela página (zero I/O extra), não toca o CSV (que serializa `rows`/totais),
+  e o limiar RELATIVO evita falsos "empates/diferenças" com cachês de magnitudes diferentes — espelho dos `*_TREND_EPSILON`
+  do restante do código. Zero migração, zero rota, zero dependência nova.
+- **Alternativas consideradas:** (a) comparar por CLIENTE (cachê médio por contratante) em vez de por show — rejeitado:
+  recorrentes acumulam mais shows, então a média por cliente misturaria preço com frequência; por show isola o preço
+  unitário. (b) um limiar ABSOLUTO em reais — rejeitado: o que conta é a diferença proporcional, não R$ fixos. (c) um nudge
+  no Painel para loyalty creep — adiado: o sinal é de planejamento (renovação), não de urgência diária; cabe na página.
+  (d) recorte por `?ano=` — adiado: "recorrente" é um conceito de carteira (voltou algum dia); cortar por ano fragmentaria
+  o segmento (herda a deferência da retenção).
+- **Verificação:** DoD verde — `npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1884
+  testes**, +7: 2 em `clientRetention` — médios por segmento e nulos por segmento — e 5 em `retentionPricingSignal` —
+  null sem segmento / null com médio zero / recurring-more / recurring-less / similar); smoke → `/login` 200,
+  `/contatos/retencao` e `/dashboard` 307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories: 4
+  moderate/5 high/1 critical, zero dependência nova). Mudança em `src/lib/contacts.ts`, `src/lib/contacts.test.ts` e
+  `src/app/(app)/contatos/retencao/page.tsx`.
+- **Nota de concorrência:** número **D344** escolhido como o próximo livre acima do maior D mergeado na `main` (D341);
+  as PRs abertas #377/#378 reivindicam D342/D343. Se outra PR reivindicar D344, renumerar para o próximo livre no merge.

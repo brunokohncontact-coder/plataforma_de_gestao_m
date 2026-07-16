@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { clientRetention, type ContactRankLike } from "@/lib/contacts";
+import {
+  clientRetention,
+  retentionPricingSignal,
+  type ContactRankLike,
+  type RetentionPricingSignal,
+} from "@/lib/contacts";
 import { formatMoney } from "@/lib/money";
 import { formatDate } from "@/lib/format";
 import { CONTACT_ROLE_LABELS, type ContactRole } from "@/lib/domain";
@@ -40,6 +45,7 @@ export default async function ContatosRetencaoPage() {
   }));
 
   const retention = clientRetention(items);
+  const pricing = retentionPricingSignal(retention);
 
   return (
     <div className="space-y-6">
@@ -134,6 +140,8 @@ export default async function ContatosRetencaoPage() {
             </div>
           )}
 
+          {pricing && <PricingSignalCard pricing={pricing} />}
+
           <section className="card p-0">
             <div className="flex items-center justify-between px-4 py-3">
               <h2 className="font-semibold">
@@ -207,6 +215,59 @@ export default async function ContatosRetencaoPage() {
           </p>
         </>
       )}
+    </div>
+  );
+}
+
+function formatPct(value: number): string {
+  return `${Math.abs(value * 100).toFixed(0)}%`;
+}
+
+function PricingSignalCard({ pricing }: { pricing: RetentionPricingSignal }) {
+  const { recurringAvgFee, oneTimeAvgFee, direction, relativeDelta } = pricing;
+
+  const copy = {
+    "recurring-more": {
+      emoji: "🟢",
+      title: "Seus fiéis pagam mais por show",
+      tone: "text-emerald-600",
+      note: `A recorrência vem com prêmio de +${formatPct(relativeDelta)} no cachê por gig.`,
+    },
+    "recurring-less": {
+      emoji: "🟠",
+      title: "Seus fiéis pagam menos por show",
+      tone: "text-amber-600",
+      note: `Desconto de fidelidade de −${formatPct(relativeDelta)} por gig — vale revisar o preço na renovação.`,
+    },
+    similar: {
+      emoji: "⚪",
+      title: "Fiéis e únicos pagam parecido por show",
+      tone: "text-gray-700",
+      note: `Diferença de ${formatPct(relativeDelta)} no cachê por gig entre os dois grupos.`,
+    },
+  }[direction];
+
+  return (
+    <div className="card">
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+        Cachê médio por show
+      </p>
+      <p className={"mt-1 font-semibold " + copy.tone}>
+        {copy.emoji} {copy.title}
+      </p>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div>
+          <p className="text-xs text-gray-400">Recorrentes</p>
+          <p className="text-lg font-bold text-gray-900">{formatMoney(recurringAvgFee)}</p>
+          <p className="text-xs text-gray-400">por show</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-400">Um show só</p>
+          <p className="text-lg font-bold text-gray-900">{formatMoney(oneTimeAvgFee)}</p>
+          <p className="text-xs text-gray-400">por show</p>
+        </div>
+      </div>
+      <p className="mt-3 text-xs text-gray-500">{copy.note}</p>
     </div>
   );
 }
