@@ -114,6 +114,7 @@ import type {
   FunnelActivityYearComparison,
   FunnelActivitySeasonality,
   FunnelActivitySeasonalityComparison,
+  FunnelActivitySeasonalityStall,
   FunnelActivitySeasonMonthTrend,
 } from "./shows";
 import {
@@ -4266,6 +4267,59 @@ export function funnelActivitySeasonalityToCsv(
     String(season.byKind.reopen),
     "",
   ]);
+  return toCsv(out, delimiter);
+}
+
+// ── Funil parado numa temporada forte (o stall de `/shows/funil/atividade/sazonalidade`) ──
+
+export const FUNNEL_ACTIVITY_SEASONALITY_STALL_CSV_HEADERS = [
+  "Indicador",
+  "Valor",
+] as const;
+
+/**
+ * Serializa o **funil parado numa temporada forte** (`funnelActivitySeasonalityStall`)
+ * em CSV — a única leitura ACIONÁVEL e do PRESENTE de `/shows/funil/atividade/sazonalidade`
+ * (o `StallDetail`) que ainda não tinha export, ao contrário da tabela mensal
+ * (`funnelActivitySeasonalityToCsv`) e do comparativo ano a ano
+ * (`funnelActivitySeasonalityComparisonToCsv`), ambos retrospectivos. Espelho fiel
+ * de `gigSeasonalityStallToCsv` (D349) no eixo da atividade do funil: layout
+ * indicador/valor (uma linha por métrica, não tabela larga), porque é um único
+ * registro instantâneo e o empilhado reflete os cards do `StallDetail`.
+ *
+ * Traz o que a tela mostra: o mês corrente (historicamente forte de agendamento),
+ * quanto ele costuma concentrar acima do mês médio (`(lift−1)×100`, a manchete
+ * "costuma concentrar X% mais movimento"), as transições realizadas até agora
+ * (`actual`), as esperadas a esta altura do mês pelo ritmo típico (`expected`,
+ * proporcional aos dias decorridos) e o quanto se está abaixo desse ritmo
+ * (`shortfall`). Diferente do stall de shows, aqui não há recorte firme × tentativo
+ * (a atividade do funil é só contagem de transições, sem agenda futura a classificar).
+ * Sem stall ativo (`month == null`, i.e. o funil não está parado num mês forte), o
+ * CSV traz só o cabeçalho — mesma disciplina de `gigSeasonalityStallToCsv`/
+ * `underpricedLoyalClientsToCsv` quando não há alvo. Convenção pt-BR (delimitador
+ * ";", decimal com vírgula). Pura.
+ */
+export function funnelActivitySeasonalityStallToCsv(
+  stall: FunnelActivitySeasonalityStall,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [
+    Array.from(FUNNEL_ACTIVITY_SEASONALITY_STALL_CSV_HEADERS),
+  ];
+  const month = stall.month;
+  if (month) {
+    out.push(["Mês forte", month.label]);
+    out.push([
+      "Concentra acima do mês médio (%)",
+      `${Math.round((stall.lift - 1) * 100)}%`,
+    ]);
+    out.push(["Realizadas até agora", String(stall.actual)]);
+    out.push(["Esperadas a esta altura", csvCountAvg(stall.expected)]);
+    out.push([
+      "Abaixo do ritmo esperado (%)",
+      `${Math.round(stall.shortfall * 100)}%`,
+    ]);
+  }
   return toCsv(out, delimiter);
 }
 

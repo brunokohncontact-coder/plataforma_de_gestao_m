@@ -4,7 +4,32 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 354 — CSV DO "MÊS FORTE COM AGENDA RALA" em `/shows/sazonalidade` (`gigSeasonalityStallToCsv`, D349),
+**Sessão 355 — CSV DO "FUNIL PARADO NUMA TEMPORADA FORTE" em `/shows/funil/atividade/sazonalidade`
+(`funnelActivitySeasonalityStallToCsv`, D350), fechando a última lacuna de export da página e levando à
+paridade os dois `StallDetail` do app:** a Sessão 354 (D349) fechou o CSV do `StallDetail` de `/shows/sazonalidade`
+e apontou como "próximo possível" o `StallDetail` irmão do funil, que tinha a mesma lacuna — a página tinha três
+blocos e só dois exportavam (a tabela mensal `funnelActivitySeasonalityToCsv` e o comparativo ano a ano). O terceiro,
+o `StallDetail` ("😴 Funil parado numa temporada forte", D333/D335) — a única leitura ACIONÁVEL e do PRESENTE da
+página, que cruza o pico histórico de agendamento do mês corrente com o ritmo REAL do funil neste mês
+(realizado × esperado + shortfall) — não tinha export. Agora um serializador puro
+`funnelActivitySeasonalityStallToCsv(stall)` + `FUNNEL_ACTIVITY_SEASONALITY_STALL_CSV_HEADERS` (`Indicador`/`Valor`)
+em `src/lib/csv.ts`, espelho fiel de `gigSeasonalityStallToCsv` (D349) no eixo da atividade do funil, layout
+indicador/valor (registro instantâneo, empilhado como os cards): mês forte, "Concentra acima do mês médio (%)"
+(`(lift−1)×100`), "Realizadas até agora" (`actual`), "Esperadas a esta altura" (`expected`, proporcional aos dias
+decorridos) e "Abaixo do ritmo esperado (%)" (`shortfall`). Diferente do stall de shows, SEM recorte firme/tentativo
+(a atividade do funil é só contagem de transições, sem agenda futura a classificar). Sem stall ativo (`month == null`),
+CSV só com o cabeçalho (disciplina de `gigSeasonalityStallToCsv`/`underpricedLoyalClientsToCsv`). Rota
+`/shows/funil/atividade/sazonalidade/stall/export` (BOM UTF-8, `funil-mes-forte.csv`) que IGNORA o `?ano=` e sempre
+usa o acervo inteiro — o stall só faz sentido somando todas as temporadas, espelhando a condição `activeYear === null`
+da página — + botão "⬇ CSV" no cabeçalho do `StallDetail` (que só renderiza quando há stall real). Camada puramente de
+serialização (pura, testada); reusa `funnelActivitySeasonalityStall`/`countCurrentMonthFunnelActivity`; zero
+migração/dependência. **+2 testes** (`csv.test.ts`, `describe("funnelActivitySeasonalityStallToCsv")`). DoD verde:
+`npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1914 testes**); smoke → `/login` 200,
+`/shows/funil/atividade/sazonalidade` e `/shows/funil/atividade/sazonalidade/stall/export` 307→/login (auth-gated,
+sem 500); `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, zero dependência nova), ver D350.
+**Próximo possível** — comparar o desconto de fidelidade ano a ano (movers); ou o eixo de export tabular segue
+esgotado e próximas sessões podem evoluir feature maior.
+**Antes disso, Sessão 354 — CSV DO "MÊS FORTE COM AGENDA RALA" em `/shows/sazonalidade` (`gigSeasonalityStallToCsv`, D349),
 fechando a última lacuna de export da página:** a página tinha três blocos e só dois exportavam — a tabela mensal
 (`gigSeasonalityToCsv`) e o comparativo ano a ano (`gigSeasonalityComparisonToCsv`). O terceiro, o `StallDetail`
 ("📉 Mês forte com agenda rala", D336) — a única leitura ACIONÁVEL e PROSPECTIVA da página, que cruza o pico histórico

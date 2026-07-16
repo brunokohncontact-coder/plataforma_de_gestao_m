@@ -5,6 +5,37 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-16 — D350: CSV do "funil parado numa temporada forte" em `/shows/funil/atividade/sazonalidade` (`funnelActivitySeasonalityStallToCsv`)
+- **Contexto:** a página `/shows/funil/atividade/sazonalidade` tem três blocos e dois já exportavam CSV — a tabela mensal
+  (`funnelActivitySeasonalityToCsv`) e o comparativo ano a ano (`funnelActivitySeasonalityComparisonToCsv`). O terceiro, o
+  `StallDetail` ("😴 Funil parado numa temporada forte", D333/D335) — a **única leitura acionável e do PRESENTE** da
+  página, que cruza o pico histórico de agendamento do mês corrente com o ritmo REAL do funil neste mês (realizado ×
+  esperado, com o shortfall) — era o único sem export. Espelha exatamente a lacuna que a D349 fechou para o `StallDetail`
+  irmão de `/shows/sazonalidade`, apontada como "próximo possível" na Sessão 354.
+- **Decisão:** novo serializador puro `funnelActivitySeasonalityStallToCsv(stall)` + `FUNNEL_ACTIVITY_SEASONALITY_STALL_CSV_HEADERS`
+  (`Indicador`/`Valor`) em `src/lib/csv.ts`, espelho fiel de `gigSeasonalityStallToCsv` (D349) no eixo da atividade do
+  funil. Layout **indicador/valor** (uma linha por métrica): é um único registro instantâneo, empilhado como os cards do
+  `StallDetail`. Traz o mês forte, quanto ele concentra acima do mês médio (`(lift−1)×100`, a manchete "costuma concentrar
+  X% mais movimento"), as transições **realizadas até agora** (`actual`), as **esperadas a esta altura** do mês pelo
+  ritmo típico (`expected`, proporcional aos dias decorridos) e o quanto se está **abaixo do ritmo esperado**
+  (`shortfall`). Diferente do stall de shows, **não há recorte firme × tentativo** — a atividade do funil é só contagem
+  de transições, sem agenda futura a classificar. Sem stall ativo (`month == null`), o CSV traz **só o cabeçalho** (mesma
+  disciplina de `gigSeasonalityStallToCsv`/`underpricedLoyalClientsToCsv`). Rota `/shows/funil/atividade/sazonalidade/stall/export`
+  (BOM UTF-8, `funil-mes-forte.csv`) que **ignora o `?ano=`** e sempre usa o acervo inteiro — o stall só faz sentido
+  somando todas as temporadas (mede o mês corrente contra o padrão de fundo), espelhando a condição `activeYear === null`
+  da página. Botão "⬇ CSV" no cabeçalho do `StallDetail` (que só renderiza quando há stall real). **Camada puramente de
+  serialização** (pura, testada); reusa `funnelActivitySeasonalityStall`/`countCurrentMonthFunnelActivity`; zero
+  migração/dependência. **+2 testes** (`csv.test.ts`).
+- **Justificativa:** fecha a última lacuna de export da página com o padrão de CSV já consolidado (serializador puro +
+  rota irmã fina + botão que espelha a seção), e leva à paridade os dois `StallDetail` do app (shows e funil) que a D349
+  deixou meio a meio. O sinal "você costuma agendar agora e o funil está parado" é a leitura mais acionável da página, e
+  levá-lo à planilha permite registrá-lo/acompanhá-lo fora da tela.
+- **Alternativas consideradas:** (a) reusar o export mensal existente — rejeitado: a tabela mensal é retrospectiva e não
+  carrega o realizado × esperado do mês corrente, o valor do stall; (b) tabela larga em vez de indicador/valor — rejeitado
+  pela mesma razão da D349 (é um registro único, não uma distribuição); (c) recorte por `?ano=` na rota — rejeitado: o
+  stall é sobre o mês corrente do ano corrente medido contra o padrão de fundo somando todas as temporadas, então recortar
+  por ano descaracterizaria a leitura (a própria página anula o stall fora de "Todos os anos").
+
 ## 2026-07-16 — D349: CSV do "mês forte com agenda rala" em `/shows/sazonalidade` (`gigSeasonalityStallToCsv`)
 - **Contexto:** a página `/shows/sazonalidade` tem três blocos e dois deles já exportavam CSV — a tabela mensal
   (`gigSeasonalityToCsv`, D205) e o comparativo ano a ano (`gigSeasonalityComparisonToCsv`). O terceiro, o `StallDetail`
