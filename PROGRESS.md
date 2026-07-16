@@ -7,9 +7,28 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1890 testes**),
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1892 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 350 —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 351 —
+CSV DOS "FIÉIS COBRANDO ABAIXO DO BALCÃO" em `/contatos/retencao` (`underpricedLoyalClientsToCsv`, D347):**
+a D346 pôs na tela a seção "🟠 Fiéis cobrando abaixo do balcão" (`underpricedLoyalClients`) — a lista dos
+recorrentes cobrados abaixo do balcão dos únicos, os alvos de renegociação —, mas era a única lista acionável
+da carteira SEM CSV próprio (o export da carteira inteira/`clientRetentionToCsv` até deixa reconstruir o
+desconto, mas obriga a montar tabela dinâmica, o atrito que a D271 já rejeitou; e não traz a coluna "abaixo do
+balcão"). Novo serializador puro `underpricedLoyalClientsToCsv(list)` + `UNDERPRICED_LOYAL_CSV_HEADERS`
+(`Contratante`/`Papel`/`Shows`/`Cachê/show (R$)`/`Balcão (R$)`/`Abaixo do balcão (R$)`/`Abaixo do balcão (%)`)
+em `src/lib/csv.ts`: espelho fiel da seção (mesma ordem, maior desconto → menor), com o `benchmark` embutido em
+cada linha (a planilha reconstrói o desconto sozinha) e `shortfall`/`shortfallPct` já prontos. **Sem linha
+"Total"** (lista de alvos, não distribuição: somar descontos por-show de volumes diferentes não é acionável).
+Rota `/contatos/retencao/subprecificados/export` (irmã de `/contatos/retencao/export`, mesma query, BOM UTF-8,
+`fieis-abaixo-do-balcao.csv`; sem balcão mensurável → CSV só com o cabeçalho) + botão "⬇ CSV" no cabeçalho da
+seção. Camada puramente de serialização (pura, testada); reusa o `clientRetention` do export irmão; zero
+migração/dependência. **+2 testes** (`csv.test.ts`). DoD verde: `npm run build`, `npx tsc --noEmit`,
+`npm run lint` (0 warnings), `npm test` (**1892 testes**); smoke → `/login` 200, `/dashboard`,
+`/contatos/retencao`, `/contatos/retencao/export` e `/contatos/retencao/subprecificados/export` 307→/login
+(auth-gated, sem 500); `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, zero dependência
+nova), ver D347. **Próximo possível** — comparar o desconto de fidelidade ano a ano (movers), ou levar a mesma
+leitura por-show à concentração por papel. **Antes disso, Sessão 350 —
 FIÉIS COBRANDO ABAIXO DO BALCÃO em `/contatos/retencao` (`underpricedLoyalClients`, D346):**
 o `retentionPricingSignal` (D344) dá o veredito AGREGADO do preço da fidelidade, mas uma média de
 carteira esconde o caso individual — mesmo com o agregado dando "fiéis pagam mais", há recorrentes

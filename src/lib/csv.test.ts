@@ -68,6 +68,8 @@ import {
   feeTrendToCsv,
   FEE_TREND_CSV_HEADERS,
   clientRetentionToCsv,
+  underpricedLoyalClientsToCsv,
+  UNDERPRICED_LOYAL_CSV_HEADERS,
   clientConcentrationToCsv,
   CLIENT_CONCENTRATION_CSV_HEADERS,
   cancellationByContactToCsv,
@@ -231,6 +233,7 @@ import {
 } from "./finance";
 import {
   clientRetention,
+  underpricedLoyalClients,
   clientConcentration,
   cancellationByContact,
   pipelineByContact,
@@ -2680,6 +2683,61 @@ describe("clientRetentionToCsv", () => {
     const lines = clientRetentionToCsv(retention).split("\r\n");
     expect(lines[1]).toBe("Recorrente Ímpar;Casa de show;3;100,00;33,33;10/03/2026;Sim");
     expect(lines[2]).toBe("Total;;3;100,00;33,33;;1/1");
+  });
+});
+
+describe("underpricedLoyalClientsToCsv", () => {
+  const NOW = "2030-01-01T00:00:00.000Z";
+  interface C extends ContactRankLike {
+    role: string;
+  }
+  const item = (
+    contact: C,
+    shows: { status: string; date: string; fee: number }[],
+  ) => ({ contact, shows });
+
+  it("só cabeçalho quando não há balcão/alvos (lista vazia)", () => {
+    const csv = underpricedLoyalClientsToCsv<C>({ benchmark: 0, clients: [] });
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(UNDERPRICED_LOYAL_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(1);
+  });
+
+  it("uma linha por alvo (maior desconto primeiro) com balcão e desconto R$/%", () => {
+    const retention = clientRetention<C>(
+      [
+        // Balcão: contratante de um show só a 2000,00 → benchmark 2000,00/show.
+        item({ id: "u", name: "Único", role: "OTHER" }, [
+          { status: "PLAYED", date: "2026-01-10T00:00:00.000Z", fee: 200000 },
+        ]),
+        // Recorrente barato: 3 shows, 3000,00 → 1000,00/show (−1000,00 = 50%).
+        item({ id: "b", name: "Barato", role: "VENUE" }, [
+          { status: "PLAYED", date: "2026-02-10T00:00:00.000Z", fee: 100000 },
+          { status: "PLAYED", date: "2026-03-10T00:00:00.000Z", fee: 100000 },
+          { status: "PLAYED", date: "2026-04-10T00:00:00.000Z", fee: 100000 },
+        ]),
+        // Recorrente pouco abaixo: 2 shows, 3600,00 → 1800,00/show (−200,00 = 10%).
+        item({ id: "m", name: "Meio Barato", role: "PROMOTER" }, [
+          { status: "PLAYED", date: "2026-02-11T00:00:00.000Z", fee: 180000 },
+          { status: "PLAYED", date: "2026-03-11T00:00:00.000Z", fee: 180000 },
+        ]),
+        // Recorrente no preço: 2 shows, 5000,00 → 2500,00/show (acima do balcão, fora).
+        item({ id: "j", name: "Justo", role: "VENUE" }, [
+          { status: "PLAYED", date: "2026-02-12T00:00:00.000Z", fee: 250000 },
+          { status: "PLAYED", date: "2026-03-12T00:00:00.000Z", fee: 250000 },
+        ]),
+      ],
+      new Date(NOW),
+    );
+    const underpriced = underpricedLoyalClients(retention);
+    expect(underpriced).not.toBeNull();
+    const lines = underpricedLoyalClientsToCsv(underpriced!).split("\r\n");
+    // cabeçalho + 2 alvos (o "Justo" no preço fica de fora).
+    expect(lines).toHaveLength(3);
+    expect(lines[1]).toBe("Barato;Casa de show;3;1000,00;2000,00;1000,00;50%");
+    expect(lines[2]).toBe(
+      "Meio Barato;Produtor/Promoter;2;1800,00;2000,00;200,00;10%",
+    );
   });
 });
 
