@@ -602,6 +602,86 @@ export function retentionPricingSignal<C extends ContactRankLike>(
   return { recurringAvgFee, oneTimeAvgFee, delta, relativeDelta, direction };
 }
 
+// ── Fiéis cobrando abaixo do balcão (lista acionável do desconto de fidelidade) ──
+// O `retentionPricingSignal` (D344) dá o veredito AGREGADO ("seus fiéis pagam
+// menos por show"), mas uma média de carteira pode esconder o caso individual:
+// mesmo quando o agregado dá "recurring-more", há recorrentes específicos que
+// você cobra ABAIXO do que um estranho paga. Este helper transforma o sinal em
+// LISTA acionável — exatamente com quem renegociar o preço na renovação —
+// comparando o cachê médio POR SHOW de cada recorrente ao balcão dos únicos
+// (`oneTimeAvgFee`). Ver DECISIONS.md D346.
+
+export interface UnderpricedLoyalClient<C extends ContactRankLike> {
+  contact: C;
+  /** Shows não cancelados do recorrente. */
+  activeShows: number;
+  /** Cachê somado do recorrente (centavos). */
+  totalFee: number;
+  /** Cachê médio POR SHOW do recorrente (centavos, arredondado). */
+  avgFeePerShow: number;
+  /** Quanto abaixo do balcão dos únicos, em centavos (sempre > 0). */
+  shortfall: number;
+  /** shortfall / benchmark (0..1) — o tamanho relativo do desconto. */
+  shortfallPct: number;
+}
+
+export interface UnderpricedLoyalClients<C extends ContactRankLike> {
+  /** Balcão de referência: cachê médio por show dos contratantes de um show só (centavos). */
+  benchmark: number;
+  /** Recorrentes cobrando abaixo do balcão, do maior desconto ao menor. */
+  clients: UnderpricedLoyalClient<C>[];
+}
+
+/**
+ * A partir de um `ClientRetention` já computado, lista os contratantes
+ * RECORRENTES cujo cachê médio por show está MEANINGFULLY abaixo do balcão dos
+ * contratantes de um show só (`oneTimeAvgFee`) — os alvos concretos de
+ * renegociação do "desconto de fidelidade silencioso" (D344). "Abaixo" usa o
+ * mesmo limiar RELATIVO da D344 (`RETENTION_PRICING_EPSILON`, 5%): só entra quem
+ * cobra menos que `benchmark * (1 − epsilon)`, evitando ruído de centavos.
+ *
+ * Independe da DIREÇÃO agregada: mesmo com o agregado dando "recurring-more" um
+ * recorrente pontual pode estar barato, e ele deve aparecer. Devolve `null`
+ * quando não há balcão mensurável (sem contratante único com cachê). Ordena pelo
+ * maior desconto absoluto (centavos), depois nome (pt-BR) e id — determinística.
+ * Pura; zero recomputação (deriva de `retention.recurring`).
+ */
+export function underpricedLoyalClients<C extends ContactRankLike>(
+  retention: ClientRetention<C>,
+  epsilon: number = RETENTION_PRICING_EPSILON,
+): UnderpricedLoyalClients<C> | null {
+  const benchmark = retention.oneTimeAvgFee;
+  if (benchmark == null || benchmark <= 0) return null;
+
+  const threshold = benchmark * (1 - epsilon);
+  const clients: UnderpricedLoyalClient<C>[] = [];
+
+  for (const row of retention.recurring) {
+    if (row.activeShows <= 0) continue;
+    const avgFeePerShow = Math.round(row.totalFee / row.activeShows);
+    if (avgFeePerShow >= threshold) continue;
+
+    const shortfall = benchmark - avgFeePerShow;
+    clients.push({
+      contact: row.contact,
+      activeShows: row.activeShows,
+      totalFee: row.totalFee,
+      avgFeePerShow,
+      shortfall,
+      shortfallPct: shortfall / benchmark,
+    });
+  }
+
+  clients.sort(
+    (a, b) =>
+      b.shortfall - a.shortfall ||
+      a.contact.name.localeCompare(b.contact.name, "pt-BR") ||
+      a.contact.id.localeCompare(b.contact.id),
+  );
+
+  return { benchmark, clients };
+}
+
 // ── Concentração de receita por contratante (risco de dependência) ──────────
 // Responde "quão dependente a minha receita é de poucos contratantes?": uma
 // leitura de RISCO (não de volume como o ranking, nem de recompra como a

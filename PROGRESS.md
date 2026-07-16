@@ -7,9 +7,27 @@
 **Fase 1 (MVP) — núcleo funcional + ciclos de CRUD completos + agenda em calendário
 + testes de integração de posse por usuário + ESLint no CI + filtros nas Finanças
 (incl. categoria) + confirmação antes de excluir + página de Conta (perfil/e-mail/senha).**
-O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1884 testes**),
+O app builda (`npm run build`), roda e passa nos testes (`npm test`, **1890 testes**),
 no typecheck e no **lint** (`npm run lint` → 0 warnings/erros). As cinco funcionalidades
-do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 349 —
+do MVP (F1–F5 de `docs/mvp-scope.md`) estão implementadas e navegáveis. **Sessão 350 —
+FIÉIS COBRANDO ABAIXO DO BALCÃO em `/contatos/retencao` (`underpricedLoyalClients`, D346):**
+o `retentionPricingSignal` (D344) dá o veredito AGREGADO do preço da fidelidade, mas uma média de
+carteira esconde o caso individual — mesmo com o agregado dando "fiéis pagam mais", há recorrentes
+pontuais cobrados abaixo do que um estranho paga. Novo helper puro `underpricedLoyalClients(retention,
+epsilon?)` + tipos `UnderpricedLoyalClient`/`UnderpricedLoyalClients` em `src/lib/contacts.ts`: a partir de
+um `ClientRetention` já computado (zero recomputação/IO), lista os RECORRENTES cujo cachê médio por show
+(`round(totalFee/activeShows)`) está abaixo do balcão dos contratantes de um show só (`oneTimeAvgFee`) por
+mais que o limiar RELATIVO da D344 (`RETENTION_PRICING_EPSILON`=5%), com `avgFeePerShow`/`shortfall`/
+`shortfallPct` por linha, ordenados pelo maior desconto (desempate nome pt-BR + id); `null` sem balcão
+mensurável. **Independe da direção agregada** (pega o barato mesmo com agregado "recurring-more"). A página
+ganha a seção "🟠 Fiéis cobrando abaixo do balcão" (`UnderpricedLoyalSection`, só quando há >=1 alvo), logo
+abaixo do `PricingSignalCard`: os alvos concretos de renegociação na renovação. Lógica pura testada +
+apresentacional; não toca CSV/rota; zero migração/dependência. **+6 testes** (`contacts.test.ts`). DoD verde:
+`npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1890 testes**); smoke →
+`/login` 200, `/contatos/retencao`, `/contatos/retencao/export` e `/dashboard` 307->/login (auth-gated, sem
+500); `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, zero dependência nova), ver D346.
+**Próximo possível** — comparar o desconto de fidelidade ano a ano (movers), ou levar a mesma leitura por-show
+à concentração por papel. **Antes disso, Sessão 349 —
 CACHÊ MÉDIO POR SHOW no CSV da FIDELIZAÇÃO (`clientRetentionToCsv`, D345), fechando a
 lacuna que a Sessão 348 (D344) deixou:** a tela `/contatos/retencao` já mostra o cartão "Cachê
 médio por show" (`retentionPricingSignal`, D344 — preço por gig de recorrentes × únicos), mas o CSV

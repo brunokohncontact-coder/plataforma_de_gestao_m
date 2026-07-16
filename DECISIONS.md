@@ -12093,3 +12093,44 @@ contexto, decisão, justificativa e alternativas consideradas.
   `src/app/(app)/contatos/retencao/page.tsx`.
 - **Nota de concorrência:** número **D344** escolhido como o próximo livre acima do maior D mergeado na `main` (D341);
   as PRs abertas #377/#378 reivindicam D342/D343. Se outra PR reivindicar D344, renumerar para o próximo livre no merge.
+
+## D346 — Fiéis cobrando abaixo do balcão: lista acionável do desconto de fidelidade (`underpricedLoyalClients`) (Sessão 350)
+- **Contexto:** o `retentionPricingSignal` (D344) dá o veredito **agregado** do preço da fidelidade
+  ("seus fiéis pagam menos/mais por show que os únicos"), mas uma média de carteira **esconde o caso
+  individual**: mesmo quando o agregado dá `recurring-more`, há recorrentes pontuais que você cobra
+  **abaixo** do que um estranho te paga. A tela `/contatos/retencao` mostrava o cartão agregado, mas não
+  dizia **com quem** renegociar — o insight não virava ação.
+- **Decisão:**
+  - Novo helper puro `underpricedLoyalClients(retention, epsilon?)` + tipos `UnderpricedLoyalClient` /
+    `UnderpricedLoyalClients` em `src/lib/contacts.ts`: a partir de um `ClientRetention` já computado (zero
+    recomputação/IO), lista os contratantes **recorrentes** cujo cachê médio por show
+    (`round(totalFee / activeShows)`) está **meaningfully abaixo** do balcão dos contratantes de um show só
+    (`retention.oneTimeAvgFee`). "Abaixo" usa o mesmo limiar RELATIVO da D344 (`RETENTION_PRICING_EPSILON`=0,05):
+    só entra quem cobra menos que `benchmark * (1 − epsilon)`, evitando ruído de centavos. Devolve `null` sem
+    balcão mensurável (nenhum único com cachê). Cada linha traz `avgFeePerShow`, `shortfall` (centavos abaixo
+    do balcão) e `shortfallPct`; ordena pelo maior desconto absoluto, depois nome (pt-BR) e id — determinística.
+  - Página `/contatos/retencao`: nova seção "🟠 Fiéis cobrando abaixo do balcão" (`UnderpricedLoyalSection`),
+    renderizada só quando o helper devolve não-`null` **e** há ≥1 cliente — tabela com Contratante (+ papel),
+    Shows, Cachê/show e "Abaixo do balcão" (−R$ e %), logo abaixo do `PricingSignalCard`.
+- **Justificativa:** transforma o sinal AGREGADO da D344 numa **lista de renegociação concreta** — o próximo
+  passo natural de "seus fiéis pagam menos". Deliberadamente **independe da direção agregada**: uma média de
+  carteira pode dar `recurring-more` e ainda assim esconder recorrentes baratos, que devem aparecer. O balcão
+  dos únicos é o comparativo mais defensável ("você cobra de um cliente antigo menos do que um estranho paga").
+  Reaproveita `retention.recurring`/`oneTimeAvgFee` já carregados (zero I/O extra), não toca o CSV nem cria rota,
+  reusa o `RETENTION_PRICING_EPSILON` já existente. Zero migração, zero rota, zero dependência nova.
+- **Alternativas consideradas:** (a) comparar cada recorrente à média dos OUTROS recorrentes (`recurringAvgFee`)
+  em vez do balcão dos únicos — rejeitado: o desconto de fidelidade é justamente cobrar do fiel menos do que do
+  estranho, então o balcão dos únicos é a referência certa; comparar contra a própria média circularia o sinal.
+  (b) gate pela direção agregada (`recurring-less`) — rejeitado: perderia os casos individuais que o agregado
+  positivo esconde. (c) um nudge no Painel — adiado (herda a deferência da D344: é planejamento de renovação,
+  não urgência diária). (d) coluna extra "cachê/show" na tabela de recorrentes existente — preterida em favor de
+  uma seção dedicada só aos alvos acionáveis (menos ruído visual; a tabela geral segue por volume).
+- **Verificação:** DoD verde — `npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test`
+  (**1890 testes**, +6 em `underpricedLoyalClients`: null sem balcão / lista ordenada pelo desconto / limiar de
+  5% / independência da direção agregada / desempate por nome); smoke → `/login` 200, `/contatos/retencao`,
+  `/contatos/retencao/export` e `/dashboard` 307→/login (auth-gated, sem 500); `npm audit` inalterado (10
+  advisories: 4 moderate/5 high/1 critical, zero dependência nova). Mudança em `src/lib/contacts.ts`,
+  `src/lib/contacts.test.ts` e `src/app/(app)/contatos/retencao/page.tsx`.
+- **Nota de concorrência:** número **D346** escolhido como o próximo livre acima do maior D mergeado na `main`
+  (D345, PR #380); as PRs abertas #377/#378 reivindicam D342/D343. Se outra PR reivindicar D346 antes do merge,
+  renumerar para o próximo livre.

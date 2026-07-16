@@ -121,6 +121,7 @@ import {
   CLIENT_SHARE_TREND_EPSILON,
   clientRetention,
   retentionPricingSignal,
+  underpricedLoyalClients,
   RETENTION_PRICING_EPSILON,
   filterContacts,
   findContactsToReengage,
@@ -626,6 +627,103 @@ describe("retentionPricingSignal", () => {
     const sig = retentionPricingSignal(r)!;
     expect(sig.direction).toBe("similar");
     expect(Math.abs(sig.relativeDelta)).toBeLessThan(RETENTION_PRICING_EPSILON);
+  });
+});
+
+describe("underpricedLoyalClients", () => {
+  function s(over: Partial<ContactRankShowLike> = {}): ContactRankShowLike {
+    return { status: "CONFIRMED", date: "2026-05-01T20:00:00Z", fee: 100_00, ...over };
+  }
+  function item(
+    id: string,
+    name: string,
+    shows: ContactRankShowLike[],
+  ): ContactWithShows<ContactRankLike> {
+    return { contact: { id, name }, shows };
+  }
+
+  it("é null sem balcão mensurável (nenhum contratante único com cachê)", () => {
+    // vazio → sem únicos
+    expect(underpricedLoyalClients(clientRetention([], NOW))).toBeNull();
+    // só recorrentes → oneTimeAvgFee null
+    expect(
+      underpricedLoyalClients(clientRetention([item("r", "R", [s(), s()])], NOW)),
+    ).toBeNull();
+    // único com cachê zero → balcão 0
+    const zeroBench = clientRetention(
+      [item("rec", "Rec", [s(), s()]), item("uni", "Uni", [s({ fee: 0 })])],
+      NOW,
+    );
+    expect(underpricedLoyalClients(zeroBench)).toBeNull();
+  });
+
+  it("lista os recorrentes abaixo do balcão, do maior desconto ao menor", () => {
+    const r = clientRetention(
+      [
+        // balcão dos únicos: (500 + 500) / 2 = 500/show
+        item("u1", "Único 1", [s({ fee: 500_00 })]),
+        item("u2", "Único 2", [s({ fee: 500_00 })]),
+        // barato: 200/show → −300 vs balcão
+        item("bar", "Barato", [s({ fee: 200_00 }), s({ fee: 200_00 })]),
+        // muito barato: 100/show → −400 vs balcão (desconto maior → vem primeiro)
+        item("mb", "Muito Barato", [s({ fee: 100_00 }), s({ fee: 100_00 })]),
+        // no preço: 500/show → não entra
+        item("ok", "No Preço", [s({ fee: 500_00 }), s({ fee: 500_00 })]),
+      ],
+      NOW,
+    );
+    const result = underpricedLoyalClients(r)!;
+    expect(result.benchmark).toBe(500_00);
+    expect(result.clients.map((c) => c.contact.id)).toEqual(["mb", "bar"]);
+    const [first] = result.clients;
+    expect(first.avgFeePerShow).toBe(100_00);
+    expect(first.shortfall).toBe(400_00);
+    expect(first.shortfallPct).toBeCloseTo(0.8);
+    expect(first.activeShows).toBe(2);
+    expect(first.totalFee).toBe(200_00);
+  });
+
+  it("ignora quem está dentro do limiar relativo de 5% do balcão", () => {
+    const r = clientRetention(
+      [
+        item("uni", "Único", [s({ fee: 500_00 })]), // balcão 500
+        // 480/show → só 4% abaixo, dentro do epsilon → não entra
+        item("quase", "Quase", [s({ fee: 480_00 }), s({ fee: 480_00 })]),
+      ],
+      NOW,
+    );
+    const result = underpricedLoyalClients(r)!;
+    expect(result.clients).toEqual([]);
+  });
+
+  it("independe da direção agregada: pega o barato mesmo com agregado 'recurring-more'", () => {
+    const r = clientRetention(
+      [
+        item("uni", "Único", [s({ fee: 300_00 })]), // balcão 300
+        // caro puxa a média recorrente para cima (agregado recurring-more)…
+        item("caro", "Caro", [s({ fee: 900_00 }), s({ fee: 900_00 })]),
+        // …mas este recorrente pontual está barato vs balcão
+        item("bar", "Barato", [s({ fee: 100_00 }), s({ fee: 100_00 })]),
+      ],
+      NOW,
+    );
+    expect(retentionPricingSignal(r)!.direction).toBe("recurring-more");
+    const result = underpricedLoyalClients(r)!;
+    expect(result.clients.map((c) => c.contact.id)).toEqual(["bar"]);
+  });
+
+  it("desempata pelo nome (pt-BR) quando o desconto é igual", () => {
+    const r = clientRetention(
+      [
+        item("uni", "Único", [s({ fee: 500_00 })]), // balcão 500
+        item("z", "Ávila", [s({ fee: 200_00 }), s({ fee: 200_00 })]), // −300
+        item("a", "Zeca", [s({ fee: 200_00 }), s({ fee: 200_00 })]), // −300
+      ],
+      NOW,
+    );
+    const result = underpricedLoyalClients(r)!;
+    // mesmo shortfall → ordem alfabética pt-BR (Ávila antes de Zeca)
+    expect(result.clients.map((c) => c.contact.name)).toEqual(["Ávila", "Zeca"]);
   });
 });
 
