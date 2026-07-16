@@ -62,7 +62,16 @@ export default async function FeeTrendPage() {
               className="btn-secondary text-sm"
               download
             >
-              ⬇ CSV
+              ⬇ CSV mês
+            </a>
+          )}
+          {byYear.years.length >= 2 && (
+            <a
+              href="/shows/evolucao-cache/anos/export"
+              className="btn-secondary text-sm"
+              download
+            >
+              ⬇ CSV ano
             </a>
           )}
           <Link href="/shows" className="btn-secondary">

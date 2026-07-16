@@ -4,7 +4,24 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 352 — CONSOLIDAÇÃO DE TRABALHO PARALELO: landing das PRs abertas #377 (D342) e #378 (D343).**
+**Sessão 353 — CSV DO RECORTE ANUAL da evolução do cachê em `/shows/evolucao-cache` (`feeTrendByYearToCsv`, D348),
+fechando a lacuna que a D343 adiou de propósito:** a D343 (Sessão consolidadora) pôs na tela a seção "Cachê médio ano
+a ano" (`feeTrendByYear`) — o sinal de preço por ano civil, sem a sazonalidade que o mês a mês carrega — mas sua
+alternativa (c) adiou explicitamente tocar no CSV ("exportar o recorte anual é um 'próximo possível' barato"). O único
+export da página (`/shows/evolucao-cache/export`) só levava o eixo MENSAL à planilha. Agora um novo serializador puro
+`feeTrendByYearToCsv(byYear)` + `FEE_TREND_BY_YEAR_CSV_HEADERS` (`Ano`/`Cachê médio (R$)`/`Cachê mínimo (R$)`/`Cachê
+máximo (R$)`/`Shows`) em `src/lib/csv.ts` espelha fielmente a tabela anual (uma linha por ano civil ativo, ordem
+cronológica crescente; a "Faixa" da tela vira duas colunas mín/máx como no irmão mensal). **Sem linha "Total"** (a tela
+também não a mostra; a série anual é uma linha do tempo, não uma distribuição — média das médias anuais enganaria). Rota
+irmã `/shows/evolucao-cache/anos/export` (mesma query do export mensal, BOM UTF-8, `evolucao-cache-anual.csv`) + segundo
+botão no cabeçalho — os dois botões passam a rotular o eixo ("⬇ CSV mês" / "⬇ CSV ano"), o de ano só com ≥2 anos ativos
+(mesma condição de visibilidade da seção). Camada puramente de serialização (pura, testada); reusa
+`feeTrendByYear`/`ReceivableShowLike`; zero migração/dependência. **+3 testes** (`csv.test.ts`,
+`describe("feeTrendByYearToCsv")`). DoD verde: `npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings),
+`npm test` (**1909 testes**); smoke → `/login` 200, `/shows/evolucao-cache/export` e `/shows/evolucao-cache/anos/export`
+307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, zero dependência
+nova), ver D348. **Próximo possível** — levar firme/tentativo ao CSV da sazonalidade (`/shows/sazonalidade`); ou comparar
+o desconto de fidelidade ano a ano (movers). **Antes disso, Sessão 352 — CONSOLIDAÇÃO DE TRABALHO PARALELO: landing das PRs abertas #377 (D342) e #378 (D343).**
 Duas PRs de sessões paralelas estavam abertas, verdes no CI (`build-and-test`) porém sem merge (só a checagem
 de deploy do Vercel — não-bloqueante, sempre vermelha no histórico — reprovava), e conflitavam com a `main`
 apenas nos arquivos append-only `PROGRESS.md`/`DECISIONS.md` (o código mergeava limpo). Como a `main` já

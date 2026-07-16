@@ -67,6 +67,8 @@ import {
   GAP_DISTRIBUTION_CSV_HEADERS,
   feeTrendToCsv,
   FEE_TREND_CSV_HEADERS,
+  feeTrendByYearToCsv,
+  FEE_TREND_BY_YEAR_CSV_HEADERS,
   clientRetentionToCsv,
   underpricedLoyalClientsToCsv,
   UNDERPRICED_LOYAL_CSV_HEADERS,
@@ -190,6 +192,7 @@ import {
   compareGigSeasonality,
   gigCadence,
   feeTrend,
+  feeTrendByYear,
   cashFlowByMonth,
   projectCashflow,
   forecastBookedRevenue,
@@ -2599,6 +2602,61 @@ describe("feeTrendToCsv", () => {
     expect(lines).toHaveLength(3);
     expect(lines[1]).toBe("2026-02;1500,00;1500,00;1500,00;1");
     expect(lines[2]).toBe("Total;1500,00;1500,00;1500,00;1");
+  });
+});
+
+describe("feeTrendByYearToCsv", () => {
+  // `now` fixo no futuro para que os shows forjados contem como realizados.
+  const NOW = "2028-01-01T00:00:00.000Z";
+  const gig = (
+    over: Partial<ReceivableShowLike> = {},
+  ): ReceivableShowLike => ({
+    id: "s",
+    fee: 100000,
+    status: "PLAYED",
+    date: "2026-03-10T00:00:00.000Z",
+    ...over,
+  });
+
+  it("só cabeçalho quando não há shows com cachê (sem linha Total)", () => {
+    const csv = feeTrendByYearToCsv(feeTrendByYear([], { now: new Date(NOW) }));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(FEE_TREND_BY_YEAR_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(1);
+  });
+
+  it("uma linha por ano ativo (média/mín/máx) em ordem cronológica, sem Total", () => {
+    const byYear = feeTrendByYear(
+      [
+        gig({ id: "a", date: "2025-05-05T00:00:00.000Z", fee: 80000 }),
+        gig({ id: "b", date: "2025-11-20T00:00:00.000Z", fee: 120000 }),
+        gig({ id: "c", date: "2026-03-02T00:00:00.000Z", fee: 200000 }),
+      ],
+      { now: new Date(NOW) },
+    );
+    const lines = feeTrendByYearToCsv(byYear).split("\r\n");
+    // cabeçalho + 2 anos ativos (2025, 2026) — sem linha Total.
+    expect(lines).toHaveLength(3);
+    // 2025: média (80000+120000)/2 = 100000; faixa 80000–120000; 2 shows.
+    expect(lines[1]).toBe("2025;1000,00;800,00;1200,00;2");
+    // 2026: único show de 200000.
+    expect(lines[2]).toBe("2026;2000,00;2000,00;2000,00;1");
+  });
+
+  it("ignora propostos/cancelados/futuros/sem-cachê (só shows realizados com cachê)", () => {
+    const byYear = feeTrendByYear(
+      [
+        gig({ id: "ok", date: "2026-02-10T00:00:00.000Z", fee: 150000 }),
+        gig({ id: "prop", date: "2026-02-12T00:00:00.000Z", status: "PROPOSED" }),
+        gig({ id: "canc", date: "2026-02-14T00:00:00.000Z", status: "CANCELLED" }),
+        gig({ id: "fut", date: "2099-02-14T00:00:00.000Z", status: "CONFIRMED" }),
+        gig({ id: "zero", date: "2026-02-16T00:00:00.000Z", fee: 0 }),
+      ],
+      { now: new Date(NOW) },
+    );
+    const lines = feeTrendByYearToCsv(byYear).split("\r\n");
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toBe("2026;1500,00;1500,00;1500,00;1");
   });
 });
 
