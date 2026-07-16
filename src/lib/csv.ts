@@ -2293,9 +2293,21 @@ export const CLIENT_RETENTION_CSV_HEADERS = [
   "Papel",
   "Shows",
   "Cachê total (R$)",
+  "Cachê médio/show (R$)",
   "Último show",
   "Recorrente",
 ] as const;
+
+/**
+ * Cachê médio POR SHOW (em centavos, arredondado) a partir do total e do nº de
+ * shows não cancelados. Guarda contra divisão por zero (carteira vazia → 0). É o
+ * mesmo eixo por-show do cartão "Cachê médio por show" da página (D344); na
+ * planilha, cruzado com a coluna "Recorrente", deixa o leitor comparar o preço
+ * de quem volta × de quem contrata uma vez só.
+ */
+function retentionAvgFeePerShow(totalFee: number, shows: number): number {
+  return shows > 0 ? Math.round(totalFee / shows) : 0;
+}
 
 /**
  * Serializa a fidelização da carteira (`clientRetention`) em CSV, pronto para
@@ -2306,9 +2318,11 @@ export const CLIENT_RETENTION_CSV_HEADERS = [
  * "Recorrente" (Sim/Não). Assim a planilha abre tanto os fiéis quanto os de um
  * show só (candidatos a follow-up, que a tela só conta no card "Contratantes
  * únicos"). Colunas: contratante, papel, nº de shows não cancelados, cachê total
- * (por contato), data do último show (vazia quando não há) e o selo de recorrência.
- * Encerra numa linha "Total" com a soma de shows e cachê de toda a carteira; a
- * coluna "Recorrente" do Total traz "recorrentes/total" (ex.: "3/8"). Mesma
+ * (por contato), cachê médio POR SHOW (o eixo por-show do cartão de preço/D344,
+ * ~totalFee/shows), data do último show (vazia quando não há) e o selo de
+ * recorrência. Encerra numa linha "Total" com a soma de shows e cachê de toda a
+ * carteira e o cachê médio por show do conjunto; a coluna "Recorrente" do Total
+ * traz "recorrentes/total" (ex.: "3/8"). Mesma
  * convenção pt-BR dos irmãos (delimitador ";", decimal com vírgula). Pura.
  */
 export function clientRetentionToCsv<C extends ContactRankLike & { role: string }>(
@@ -2322,6 +2336,7 @@ export function clientRetentionToCsv<C extends ContactRankLike & { role: string 
       contactRoleLabel(row.contact.role),
       String(row.activeShows),
       centsToCsvAmount(row.totalFee),
+      centsToCsvAmount(retentionAvgFeePerShow(row.totalFee, row.activeShows)),
       row.lastShowDate ? csvDate(row.lastShowDate) : "",
       row.recurring ? "Sim" : "Não",
     ]);
@@ -2331,6 +2346,9 @@ export function clientRetentionToCsv<C extends ContactRankLike & { role: string 
     "",
     String(retention.totalShows),
     centsToCsvAmount(retention.totalFee),
+    centsToCsvAmount(
+      retentionAvgFeePerShow(retention.totalFee, retention.totalShows),
+    ),
     "",
     `${retention.recurringClients}/${retention.totalClients}`,
   ]);
