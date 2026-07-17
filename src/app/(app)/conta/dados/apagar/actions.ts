@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { matchesResetConfirmation } from "@/lib/accountReset";
+import { deleteAccountWallet } from "@/lib/accountWrite";
 
 // Apagar todos os dados da conta (esvaziar a carteira). Ação DESTRUTIVA e
 // irreversível: remove shows, transações, contatos e metas de faturamento do
@@ -44,27 +45,10 @@ export async function resetAccountDataAction(
   // Remove tudo atomicamente, na ordem das chaves estrangeiras (a junção N:N e
   // os eventos do funil dependem dos shows). Escopado por `userId` — nunca toca
   // dados de outra conta. O perfil (identidade + configurações) é preservado.
-  const deleted = await prisma.$transaction(async (tx) => {
-    // A junção N:N não tem `userId`; apagamos pelas linhas cujo show é do dono.
-    await tx.contactsOnShows.deleteMany({
-      where: { show: { userId: user.id } },
-    });
-    await tx.showStatusEvent.deleteMany({ where: { userId: user.id } });
-    const transactions = await tx.transaction.deleteMany({
-      where: { userId: user.id },
-    });
-    const contacts = await tx.contact.deleteMany({ where: { userId: user.id } });
-    const shows = await tx.show.deleteMany({ where: { userId: user.id } });
-    const revenueGoals = await tx.revenueGoal.deleteMany({
-      where: { userId: user.id },
-    });
-    return {
-      shows: shows.count,
-      transactions: transactions.count,
-      contacts: contacts.count,
-      revenueGoals: revenueGoals.count,
-    };
-  });
+  // A MESMA remoção é reusada pela substituição de backup (`/conta/dados/importar`).
+  const deleted = await prisma.$transaction((tx) =>
+    deleteAccountWallet(tx, user.id),
+  );
 
   // Esvaziar a conta mexe em toda a carteira — revalida as áreas afetadas.
   for (const path of [

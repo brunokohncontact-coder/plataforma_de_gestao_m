@@ -4,7 +4,36 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 363 — ESVAZIAR A CONTA ("apagar todos os meus dados") em `/conta/dados/apagar` (`accountReset` +
+**Sessão 364 — RESTAURAÇÃO POR SUBSTITUIÇÃO ("Substituir tudo pelo backup") em `/conta/dados/importar`
+(`accountWrite` + intent `substituir` em `importAccountAction`, D359), entregando a metade SEGURA da "restauração geral
+sobre conta com dados" que as Sessões 359–363 mantinham na fila (a estratégia de conflito novo×sobrescrever, ALTO risco):**
+até aqui a restauração de backup só gravava numa conta VAZIA (D356) — quem já tinha dados precisava ir a `/conta/dados/apagar`,
+digitar a frase, e só então voltar para restaurar. Esta sessão fecha esse loop com uma ÚNICA operação **SUBSTITUIR** — a
+estratégia de conflito determinística (apaga tudo e grava o backup no lugar, SEM merge), que dispensa a revisão humana que o
+MERGE (mesclar registro a registro, resolvendo ids em conflito) ainda exige. **(1)** módulo de escrita novo
+`src/lib/accountWrite.ts` (recebe o cliente transacional `tx` por parâmetro): `deleteAccountWallet(tx, userId)` (a remoção
+da carteira na ordem de FK, extraída da action do reset) + `writeAccountRestorePlan(tx, userId, plan)` (a gravação do plano
+de restauração, extraída da action de importação) — as DUAS escritas agora vivem num lugar só, então "apagar meus dados" e
+"substituir tudo" nunca divergem. **(2)** `importAccountAction` ganha o intent `substituir`: valida o arquivo → exige a frase
+forte (`matchesResetConfirmation`, a MESMA do reset "APAGAR MEUS DADOS", pois a operação apaga a carteira) NO SERVIDOR →
+`buildAccountRestorePlan` → num ÚNICO `prisma.$transaction` (timeout 30 s) chama `deleteAccountWallet` e então
+`writeAccountRestorePlan` (apagar + restaurar são atômicos: nunca uma conta meio-apagada se a gravação falhar); a validação do
+backup roda ANTES do apagar (backup inválido não destrói nada). Devolve `restored` (o que gravou) + `deletedBeforeRestore` (o
+que apagou). O intent `restaurar` segue exigindo conta vazia; `apagar/actions.ts` foi refatorado para reusar
+`deleteAccountWallet` (comportamento idêntico). **(3)** UI: numa conta COM dados, `ImportForm` agora mostra o bloco âmbar com
+input da frase de confirmação + botão `btn-danger` "Substituir tudo pelo backup" (desabilitado até a frase bater, validação
+client espelhando `matchesResetConfirmation`), preservando o link "Apague seus dados" como alternativa; sucesso da
+substituição informa o apagado E o gravado. **+6 testes** (`importar/actions.test.ts`, `describe("substituição")`: apaga a
+carteira e restaura na mesma operação reportando ambas as contagens; substitui numa conta vazia apagando zero; recusa sem a
+frase / com frase errada sem tocar nada; tolerância caixa/espaço; não vaza entre usuários; backup inválido não apaga a carteira).
+DoD verde: `npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**2001 testes**); smoke → `/login`
+200, `/conta/dados/importar` e `/conta/dados/apagar` 307→/login (auth-gated); **smoke autenticado** (token de sessão do usuário
+demo, conta COM dados) → `/conta/dados/importar` 200 renderizando o botão "Substituir tudo pelo backup", a frase de confirmação
+e o link "Apague seus dados"; `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, ZERO dependência nova), ver
+D359. **Próximo possível** — a restauração por MERGE (mesclar o backup sobre a carteira existente resolvendo conflitos de id
+registro a registro: ALTO risco, idealmente com revisão humana antes de mergear) fica como o único pendente do eixo de backup;
+ou próximas sessões podem evoluir outra feature maior.
+**Antes disso, Sessão 363 — ESVAZIAR A CONTA ("apagar todos os meus dados") em `/conta/dados/apagar` (`accountReset` +
 `resetAccountDataAction`, D358), fechando o pendente "um passo de esvaziar a conta guardado por confirmação forte" que
 as Sessões 361–362 deixaram explícito:** o eixo de backup fechou export→conferência→restauração (D354–D357), mas a
 restauração só grava numa conta VAZIA (para nunca sobrescrever/duplicar a carteira). Quem já tinha dados não conseguia

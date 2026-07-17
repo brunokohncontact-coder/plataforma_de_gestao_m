@@ -14,22 +14,34 @@ vi.mock("@/lib/session", () => ({
 }));
 
 import { prisma } from "@/lib/prisma";
-import { createUser, createShow, resetDb } from "@/test/db";
+import {
+  createUser,
+  createShow,
+  createContact,
+  createTransaction,
+  resetDb,
+} from "@/test/db";
 import { importAccountAction, type ImportState } from "./actions";
 import {
   buildAccountDataExport,
   accountDataExportToJson,
   type AccountDataExportInput,
 } from "@/lib/accountExport";
+import { RESET_CONFIRMATION_PHRASE } from "@/lib/accountReset";
 
-/** Monta um FormData com um backup JSON como arquivo + o intent. */
+/**
+ * Monta um FormData com um backup JSON como arquivo + o intent. Para a
+ * substituição, aceita a frase de confirmação (omissa/errada = não autoriza).
+ */
 function backupForm(
   json: string,
-  intent: "conferir" | "restaurar",
+  intent: "conferir" | "restaurar" | "substituir",
+  confirmacao?: string,
 ): FormData {
   const fd = new FormData();
   fd.set("arquivo", new File([json], "backup.json", { type: "application/json" }));
   fd.set("intent", intent);
+  if (confirmacao !== undefined) fd.set("confirmacao", confirmacao);
   return fd;
 }
 
@@ -248,5 +260,145 @@ describe("importAccountAction — restauração", () => {
     expect(result.restored).toBeUndefined();
     expect(result.errors?.[0]).toContain("status");
     expect(await prisma.show.count()).toBe(0);
+  });
+});
+
+describe("importAccountAction — substituição (substituir tudo pelo backup)", () => {
+  beforeEach(async () => {
+    await resetDb();
+    const u = await createUser("dono@example.com");
+    h.currentUser = { id: u.id };
+  });
+
+  it("apaga a carteira atual e restaura o backup na mesma operação", async () => {
+    const user = h.currentUser!;
+    // Carteira pré-existente que deve ser SUBSTITUÍDA por completo.
+    const oldShow = await createShow(user.id, { title: "Antigo a apagar" });
+    await createContact(user.id, { name: "Contato antigo" });
+    await createTransaction(user.id, { showId: oldShow.id });
+    await prisma.revenueGoal.create({
+      data: { userId: user.id, year: 2025, amount: 1000000 },
+    });
+
+    const result = await importAccountAction(
+      state,
+      backupForm(sampleExportJson(), "substituir", RESET_CONFIRMATION_PHRASE),
+    );
+
+    expect(result.errors).toBeUndefined();
+    // Reporta o que foi apagado antes de restaurar...
+    expect(result.deletedBeforeRestore).toEqual({
+      shows: 1,
+      transactions: 1,
+      contacts: 1,
+      revenueGoals: 1,
+    });
+    // ...e o que foi gravado a partir do backup.
+    expect(result.restored).toEqual({
+      shows: 1,
+      transactions: 1,
+      contacts: 1,
+      revenueGoals: 1,
+    });
+
+    // A carteira antiga sumiu: sobra só o conteúdo do backup.
+    expect(await prisma.show.count({ where: { userId: user.id } })).toBe(1);
+    const show = await prisma.show.findFirst({ where: { userId: user.id } });
+    expect(show!.title).toBe("Show no Bar");
+    expect(show!.id).not.toBe(oldShow.id);
+    const goal = await prisma.revenueGoal.findFirst({ where: { userId: user.id } });
+    expect(goal).toMatchObject({ year: 2026, amount: 5000000 });
+    // Perfil de dados do backup aplicado.
+    const dbUser = await prisma.user.findUnique({ where: { id: user.id } });
+    expect(dbUser?.artistName).toBe("Banda Restaurada");
+  });
+
+  it("substitui também numa conta vazia (apaga zero, grava o backup)", async () => {
+    const user = h.currentUser!;
+    const result = await importAccountAction(
+      state,
+      backupForm(sampleExportJson(), "substituir", RESET_CONFIRMATION_PHRASE),
+    );
+    expect(result.deletedBeforeRestore).toEqual({
+      shows: 0,
+      transactions: 0,
+      contacts: 0,
+      revenueGoals: 0,
+    });
+    expect(result.restored?.shows).toBe(1);
+    expect(await prisma.show.count({ where: { userId: user.id } })).toBe(1);
+  });
+
+  it("recusa substituir sem a frase de confirmação — nada é apagado nem gravado", async () => {
+    const user = h.currentUser!;
+    await createShow(user.id, { title: "Preservar" });
+
+    // Sem confirmação:
+    const semFrase = await importAccountAction(
+      state,
+      backupForm(sampleExportJson(), "substituir"),
+    );
+    expect(semFrase.restored).toBeUndefined();
+    expect(semFrase.deletedBeforeRestore).toBeUndefined();
+    expect(semFrase.errors?.[0]).toContain("confirmação");
+
+    // Com frase errada:
+    const fraseErrada = await importAccountAction(
+      state,
+      backupForm(sampleExportJson(), "substituir", "apagar tudo"),
+    );
+    expect(fraseErrada.restored).toBeUndefined();
+
+    // A carteira pré-existente segue intacta e o backup não foi aplicado.
+    expect(await prisma.show.count({ where: { userId: user.id } })).toBe(1);
+    const show = await prisma.show.findFirst({ where: { userId: user.id } });
+    expect(show!.title).toBe("Preservar");
+    expect(await prisma.contact.count({ where: { userId: user.id } })).toBe(0);
+  });
+
+  it("aceita a frase com caixa/espaços tolerados (mesma normalização do reset)", async () => {
+    const user = h.currentUser!;
+    await createShow(user.id, { title: "Antigo" });
+    const result = await importAccountAction(
+      state,
+      backupForm(sampleExportJson(), "substituir", "  apagar   meus dados "),
+    );
+    expect(result.errors).toBeUndefined();
+    expect(result.restored?.shows).toBe(1);
+    const show = await prisma.show.findFirst({ where: { userId: user.id } });
+    expect(show!.title).toBe("Show no Bar");
+  });
+
+  it("não vaza entre usuários: substituir só apaga a carteira do dono", async () => {
+    const user = h.currentUser!;
+    await createShow(user.id, { title: "Do dono" });
+    const other = await createUser("outro@example.com");
+    await createShow(other.id, { title: "Do outro" });
+
+    const result = await importAccountAction(
+      state,
+      backupForm(sampleExportJson(), "substituir", RESET_CONFIRMATION_PHRASE),
+    );
+    expect(result.restored?.shows).toBe(1);
+    // O outro usuário não foi tocado.
+    expect(await prisma.show.count({ where: { userId: other.id } })).toBe(1);
+    const otherShow = await prisma.show.findFirst({ where: { userId: other.id } });
+    expect(otherShow!.title).toBe("Do outro");
+  });
+
+  it("um backup inválido não apaga a carteira atual (valida antes de apagar)", async () => {
+    const user = h.currentUser!;
+    await createShow(user.id, { title: "Preservar" });
+    const tampered = sampleExportJson().replace('"CONFIRMED"', '"RESCHEDULED"');
+    const result = await importAccountAction(
+      state,
+      backupForm(tampered, "substituir", RESET_CONFIRMATION_PHRASE),
+    );
+    expect(result.restored).toBeUndefined();
+    expect(result.errors?.[0]).toContain("status");
+    // A carteira pré-existente continua lá — a validação barra antes do apagar.
+    expect(await prisma.show.count({ where: { userId: user.id } })).toBe(1);
+    const show = await prisma.show.findFirst({ where: { userId: user.id } });
+    expect(show!.title).toBe("Preservar");
   });
 });
