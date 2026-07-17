@@ -5,6 +5,62 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-17 — D356: Restauração de backup, mas SÓ numa conta vazia (`accountRestore` + `importAccountAction`)
+- **Contexto:** a D354 entregou o EXPORT completo da conta e a D355 a metade SEGURA da importação — a conferência
+  (dry-run) que valida o arquivo sem gravar nada —, deixando explícito como "próximo possível" a RESTAURAÇÃO de fato
+  (escrever shows/transações/contatos/metas no banco). A D355 alertou que a restauração é um passo de ALTO risco (um bug
+  pode duplicar/sobrescrever a carteira) rodando numa esteira que mergeia sozinha, idealmente com revisão humana. O que
+  torna a restauração perigosa é a estratégia de conflito de ids (novo × sobrescrever) sobre uma conta que já tem dados.
+- **Decisão:** entregar a restauração REMOVENDO essa fonte de risco: restaurar SÓ numa conta VAZIA (zero shows,
+  transações, contatos e metas). Numa conta vazia não há conflito a resolver — tudo nasce do zero, com ids gerados pelo
+  banco —, então não há como sobrescrever nem duplicar nada. Duas camadas:
+  1. Módulo PURO `src/lib/accountRestore.ts` — `buildAccountRestorePlan(data: AccountDataExport)` recebe um snapshot JÁ
+     validado (`parseAccountDataExport` → ok) e monta o plano de escrita: contatos/shows/transações/metas normalizados,
+     com o remapeamento de ids do arquivo por CHAVE estável (`key`) que a ação resolve em ids novos. BLOQUEIA (`ok:false`)
+     só no que não tem correção segura para uma escrita fiel: data não-parseável, `status` de show fora de `SHOW_STATUSES`,
+     `type` de transação fora de `TRANSACTION_TYPES` (gravá-los às cegas corromperia as análises). Ajustes com correção
+     natural entram como `notes` (não bloqueiam): papel de contato desconhecido → `OTHER`; ids duplicados → mantém o
+     primeiro; vínculo de contato órfão no show → removido; `showId` de transação órfão → `null`; ano de meta repetido →
+     mantém o primeiro (respeita `@@unique([userId, year])`). Sem Prisma / `new Date()` de relógio / I/O → testável.
+  2. Server action unificada `importAccountAction` (substitui `previewAccountImportAction`): um só formulário com dois
+     botões cujo `intent` ("conferir" | "restaurar") decide o passo, ambos revalidando o MESMO arquivo. Restaurar (a) faz
+     o gate de emptiness NO SERVIDOR (contagem das quatro entidades por `userId`, fechando a janela TOCTOU — a UI só
+     decide o affordance), recusando com mensagem clara se houver qualquer dado; (b) monta o plano; (c) grava tudo num
+     `prisma.$transaction` (timeout 30 s) — perfil (só `artistName`/`taxRatePercent`; nome/e-mail/senha são a identidade
+     da conta logada e NÃO vêm do backup), depois contatos (map key→id novo), shows (vínculos N:N remapeados + evento de
+     criação `fromStatus:null→status` na linha do tempo do funil, como no cadastro normal — o backup não guarda o
+     histórico de transições, ver D234), transações (showId remapeado), metas; (d) revalida `/dashboard`,`/shows`,
+     `/financas`,`/contatos`,`/conta`. Na tela `/conta/dados/importar`, a página conta as entidades e passa `canRestore`
+     (conta vazia) ao componente `ImportForm`: conta vazia → checkbox de confirmação + botão "Restaurar na conta"; conta
+     com dados → aviso âmbar explicando o bloqueio, com a conferência sempre disponível.
+- **Justificativa:** "restaurar numa conta vazia" é o caso comum e mais valioso (portabilidade/migração de conta, recuperar
+  o backup numa conta nova) e é SEGURO por construção — a restrição elimina exatamente o risco (sobrescrever/duplicar) que
+  motivou a cautela da D355, sem depender de revisão humana no laço. Separar o plano PURO (determinístico, 100% testável)
+  da escrita (efeito colateral, coberta por teste de integração no banco de teste) segue a disciplina de
+  export/import/accountImport. Bloquear só o que não tem default seguro (data/status/tipo) e coagir o resto mantém a
+  restauração robusta a backups levemente adulterados sem gravar lixo silencioso.
+- **Alternativas:** (a) restauração geral com estratégia de conflito (merge/upsert por id, ou "substituir tudo") —
+  descartada por ora: é o passo de alto risco que a D355 pediu para revisar com humano; a versão "conta vazia" entrega o
+  valor central sem esse risco e pode ser estendida depois. (b) Preservar os ids ORIGINAIS do arquivo em vez de gerar
+  novos — descartado: cuids do backup poderiam colidir com registros de outra conta e acoplam a restauração ao id de
+  origem; remapear é mais limpo e o vínculo por `key` preserva as relações. (c) Restaurar também nome/e-mail do perfil —
+  descartado: e-mail é único e é a identidade de LOGIN da conta atual; sobrescrevê-lo arriscaria colisão e confusão de
+  credenciais. (d) Fabricar a timeline do funil a partir do backup — impossível (o export não a carrega); criar só o
+  evento de criação mantém as análises de funil consistentes sem inventar histórico.
+- **+18 testes**: `accountRestore.test.ts` (12, puro) — plano de conta vazia, preservação dos vínculos N:N e
+  transação→show por chave, remoção de órfãos com nota, dedup de ids/anos, coerção de papel→OTHER, e bloqueio de
+  data/status/tipo inválidos; `importar/actions.test.ts` (6, integração no banco) — dry-run não grava, round-trip real de
+  restauração (ids novos + vínculos + evento de criação + perfil), recusa em conta não-vazia, emptiness por-conta (não
+  vaza entre usuários), e bloqueio de status inválido. DoD verde: `npm run build`, `npx tsc --noEmit`, `npm run lint`
+  (0 warnings), `npm test` (**1978 testes**); smoke → `/login` 200, `/conta` e `/conta/dados/importar` 307→/login
+  (auth-gated); **smoke autenticado** → conta demo (com dados) 200 com restauração DESABILITADA (só "Conferir arquivo"),
+  conta vazia 200 com checkbox + "Restaurar na conta"; `npm audit` inalterado (10 advisories: 4 moderate/5 high/1
+  critical, ZERO dependência nova).
+- **Próximo possível:** a restauração geral (mesclar num backup sobre uma conta com dados — estratégia de conflito
+  novo×sobrescrever, idealmente com revisão humana antes de mergear); incluir os `ShowStatusEvent` (timeline do funil) no
+  snapshot de export para restaurar o histórico real em vez de só o evento de criação; ou um passo de "esvaziar a conta"
+  guardado por confirmação forte, que destravaria a restauração para quem já tem dados.
+
 ## 2026-07-17 — D355: Conferência (dry-run) do backup antes de restaurar (`accountImport` + `/conta/dados/importar`)
 - **Contexto:** a D354 entregou o EXPORT completo da conta (backup JSON versionado) e apontou como "próximo possível" a
   importação/restore a partir desse arquivo. A restauração de fato (escrever shows/transações/contatos/metas no banco) é

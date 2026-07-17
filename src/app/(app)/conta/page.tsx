@@ -55,12 +55,12 @@ export default async function ContaPage() {
             href="/conta/dados/importar"
             className="btn-secondary inline-flex w-fit items-center gap-2"
           >
-            🔍 Conferir um backup
+            🔍 Conferir ou restaurar um backup
           </a>
         </div>
         <p className="text-xs text-gray-500">
-          Já tem um arquivo de backup? Confira se ele está íntegro e restaurável
-          antes de guardá-lo.
+          Já tem um arquivo de backup? Confira se ele está íntegro e, numa conta
+          vazia, restaure toda a carteira a partir dele.
         </p>
       </section>
     </div>
