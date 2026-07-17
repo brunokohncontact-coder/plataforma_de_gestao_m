@@ -4,7 +4,32 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 364 — RESTAURAÇÃO POR SUBSTITUIÇÃO ("Substituir tudo pelo backup") em `/conta/dados/importar`
+**Sessão 365 — COBERTURA DO HUB DE RELATÓRIOS: registrar as duas análises órfãs + trava anti-drift catálogo↔filesystem
+(`REPORT_GROUPS` em `src/lib/reports.ts` + guarda em `reports.test.ts`, D360), corrigindo uma DIVERGÊNCIA silenciosa entre o
+que o app serve e o que o índice `/relatorios` mostra:** o `src/lib/reports.ts` se declara a "fonte única de verdade" do acervo
+de análises ("registre aqui — e só aqui — para aparecer no hub"), mas duas páginas de relatório REAIS existiam no filesystem
+sem entrada no catálogo, some do índice `/relatorios` e da busca deep-linkável — **`/shows/funil/atividade/ritmo`** ("Ritmo da
+atividade do funil": quantas transições de status por mês, o pulso do funil) e **`/shows/funil/atividade/sazonalidade`**
+("Sazonalidade da atividade do funil": em que meses do ano você faz o trabalho de agendamento). Ambas eram alcançáveis só pelos
+botões da própria página-mãe `/shows/funil/atividade`, invisíveis para quem navega pelo hub. **(1)** as duas entradas foram
+registradas em `REPORT_GROUPS` no subtema "Agenda & pipeline", logo após "Atividade do funil" (a mãe), com título = `<h1>` da
+página, descrição de uma frase e ícones (`💓` ritmo / `🗓️` sazonalidade) — passam a aparecer no índice e na busca
+automaticamente (`reportCount` 54→56). **(2)** trava NOVA em `reports.test.ts` (`describe("cobertura do catálogo vs.
+filesystem")`) que varre `src/app/(app)` por `page.tsx`, deriva as rotas (descartando grupos `(...)` e rotas dinâmicas `[...]`)
+e cruza com os hrefs cadastrados nas DUAS direções: (a) toda rota de relatório no disco está no catálogo — com allowlist
+explícita `NON_REPORT_ROUTES` (`/shows`,`/financas`,`/contatos` = listas CRUD; `/shows/calendario`,`/shows/semana` = visões de
+agenda) + prefixos não-analíticos (`/conta`,`/dashboard`,`/relatorios`) + segmentos utilitários (`export`/`editar`/`nova`/`novo`)
++ rotas dinâmicas; (b) todo href do catálogo aponta para um `page.tsx` existente (sem link morto). A partir de agora, uma
+página de relatório nova que esqueça o registro QUEBRA o teste (listando os culpados), fechando o buraco por onde estas duas
+escaparam por várias sessões. **+3 testes** (sanidade da varredura; cobertura filesystem→catálogo; ausência de link morto
+catálogo→filesystem). Camada pura (só dados + teste; zero migração/dependência). DoD verde: `npm run build`, `npx tsc
+--noEmit`, `npm run lint` (0 warnings), `npm test` (**2004 testes**); smoke → `/login` 200, `/relatorios` e as duas rotas de
+relatório 307→/login (auth-gated); **smoke autenticado** (token de sessão do usuário demo) → `/relatorios` 200 exibindo as
+duas novas análises (título + href), e `/shows/funil/atividade/ritmo` e `/shows/funil/atividade/sazonalidade` 200; `npm audit`
+inalterado (10 advisories: 4 moderate/5 high/1 critical, ZERO dependência nova), ver D360. **Próximo possível** — a restauração
+por MERGE (mesclar o backup sobre a carteira existente resolvendo conflitos de id: ALTO risco, para revisão humana) segue o
+único pendente do eixo de backup; ou próximas sessões podem evoluir outra feature maior.
+**Antes disso, Sessão 364 — RESTAURAÇÃO POR SUBSTITUIÇÃO ("Substituir tudo pelo backup") em `/conta/dados/importar`
 (`accountWrite` + intent `substituir` em `importAccountAction`, D359), entregando a metade SEGURA da "restauração geral
 sobre conta com dados" que as Sessões 359–363 mantinham na fila (a estratégia de conflito novo×sobrescrever, ALTO risco):**
 até aqui a restauração de backup só gravava numa conta VAZIA (D356) — quem já tinha dados precisava ir a `/conta/dados/apagar`,

@@ -103,6 +103,22 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "🕒",
       },
       {
+        title: "Ritmo da atividade do funil",
+        href: "/shows/funil/atividade/ritmo",
+        description:
+          "Quantas transições de status você registrou por mês — o pulso do seu funil ao longo do tempo, meses de negociação intensa versus calmaria.",
+        subtopic: "Agenda & pipeline",
+        icon: "💓",
+      },
+      {
+        title: "Sazonalidade da atividade do funil",
+        href: "/shows/funil/atividade/sazonalidade",
+        description:
+          "Em que meses do ano você faz o trabalho de agendamento — os anos colapsam num único calendário, revelando quando prospectar.",
+        subtopic: "Agenda & pipeline",
+        icon: "🗓️",
+      },
+      {
         title: "Por dia da semana",
         href: "/shows/dias-semana",
         description: "Quais dias da semana rendem mais shows e mais dinheiro.",

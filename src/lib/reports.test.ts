@@ -1,3 +1,5 @@
+import { readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import {
   REPORT_GROUPS,
@@ -366,5 +368,98 @@ describe("activeSectionAnchor", () => {
 
   it("atBottom não regride quando não há seções", () => {
     expect(activeSectionAnchor([], 500, 120, true)).toBeNull();
+  });
+});
+
+// Guarda contra DRIFT entre o catálogo e o filesystem: o docstring de reports.ts
+// promete que toda análise é registrada "aqui (e só aqui)" para aparecer no hub.
+// Sem esta trava, uma página de relatório nova entra no app mas some do índice —
+// foi exatamente como "Ritmo/Sazonalidade da atividade do funil" ficaram fora do
+// acervo por várias sessões. O teste varre `src/app/(app)` e cruza as rotas reais
+// com os hrefs cadastrados.
+describe("cobertura do catálogo vs. filesystem", () => {
+  // Diretório das rotas do app, resolvido a partir deste arquivo (robusto ao cwd).
+  const appDir = fileURLToPath(new URL("../app/(app)", import.meta.url));
+
+  // Últimos segmentos que denotam uma rota utilitária, não um relatório.
+  const UTILITY_LAST_SEGMENTS = new Set(["export", "editar", "nova", "novo"]);
+  // Áreas inteiras que não são o acervo analítico do hub.
+  const NON_REPORT_PREFIXES = ["/conta", "/dashboard", "/relatorios"];
+  // Rotas que têm página própria mas NÃO são relatórios: as listas primárias
+  // (CRUD) e as visões de agenda. Excluí-las é uma decisão explícita — adicionar
+  // uma nova visão não-relatório exige registrá-la aqui de propósito.
+  const NON_REPORT_ROUTES = new Set([
+    "/shows",
+    "/financas",
+    "/contatos",
+    "/shows/calendario",
+    "/shows/semana",
+  ]);
+
+  // Converte o caminho de um `page.tsx` na rota absoluta que o Next serve,
+  // descartando grupos de rota `(...)`. Rotas com segmento dinâmico `[...]`
+  // devolvem null (não fazem parte do acervo estático de relatórios).
+  function routeForPage(relDir: string): string | null {
+    const segments = relDir.split("/").filter((s) => s.length > 0);
+    const kept: string[] = [];
+    for (const seg of segments) {
+      if (seg.startsWith("(") && seg.endsWith(")")) continue; // grupo de rota
+      if (seg.startsWith("[") && seg.endsWith("]")) return null; // rota dinâmica
+      kept.push(seg);
+    }
+    return "/" + kept.join("/");
+  }
+
+  // Todas as rotas com `page.tsx` sob (app), varrendo recursivamente.
+  function collectRoutes(dir: string, rel: string, out: Set<string>): void {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        collectRoutes(`${dir}/${entry.name}`, `${rel}/${entry.name}`, out);
+      } else if (entry.name === "page.tsx") {
+        const route = routeForPage(rel);
+        if (route) out.add(route);
+      }
+    }
+  }
+
+  const filesystemRoutes = (() => {
+    const out = new Set<string>();
+    collectRoutes(appDir, "", out);
+    return out;
+  })();
+
+  function isNonReportRoute(route: string): boolean {
+    if (route === "/") return true;
+    if (NON_REPORT_ROUTES.has(route)) return true;
+    const last = route.slice(route.lastIndexOf("/") + 1);
+    if (UTILITY_LAST_SEGMENTS.has(last)) return true;
+    return NON_REPORT_PREFIXES.some(
+      (p) => route === p || route.startsWith(`${p}/`),
+    );
+  }
+
+  it("a varredura enxerga o filesystem (sanidade)", () => {
+    // Se a varredura vier vazia, o resto do bloco passaria vacuamente.
+    expect(filesystemRoutes.size).toBeGreaterThan(20);
+    expect(filesystemRoutes.has("/shows/funil")).toBe(true);
+  });
+
+  it("toda rota de relatório no filesystem está no catálogo", () => {
+    const registered = new Set(allReports().map((e) => e.href));
+    const missing = [...filesystemRoutes]
+      .filter((r) => !isNonReportRoute(r))
+      .filter((r) => !registered.has(r))
+      .sort();
+    // Mensagem lista os culpados para facilitar o conserto (registrar em reports.ts,
+    // ou — se de fato não for relatório — declarar em NON_REPORT_ROUTES).
+    expect(missing, `rotas de relatório fora do catálogo: ${missing.join(", ")}`).toEqual([]);
+  });
+
+  it("todo href do catálogo aponta para uma página existente (sem link morto)", () => {
+    const dead = allReports()
+      .map((e) => e.href)
+      .filter((href) => !filesystemRoutes.has(href))
+      .sort();
+    expect(dead, `hrefs sem page.tsx: ${dead.join(", ")}`).toEqual([]);
   });
 });
