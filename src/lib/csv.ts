@@ -87,6 +87,7 @@ import type {
   ContactRankLike,
   ReengageList,
   UnderpricedLoyalClients,
+  RetentionPriceMovers,
 } from "./contacts";
 import {
   indexClientShareChanges,
@@ -2491,6 +2492,82 @@ export function underpricedLoyalClientsToCsv<
       centsToCsvAmount(row.shortfall),
       csvShare(row.shortfallPct),
     ]);
+  }
+  return toCsv(out, delimiter);
+}
+
+/**
+ * Cabeçalho dos "movers de preço" (`retentionPriceMoversToCsv`/D353). Os anos do
+ * par entram nos rótulos das colunas por-ano (como `clientConcentrationToCsv`
+ * embute `vs. {previousYear}`), para a planilha abrir auto-suficiente sem
+ * depender da tela. Quando não há par comparável (movers nulo), cai em rótulos
+ * genéricos "ano anterior"/"ano atual" — o CSV sai só com o cabeçalho, mesma
+ * disciplina de `underpricedLoyalClientsToCsv`.
+ */
+function retentionPriceMoversHeaders(
+  previousYear: number | null,
+  year: number | null,
+): string[] {
+  const prev = previousYear ?? "ano anterior";
+  const cur = year ?? "ano atual";
+  return [
+    "Contratante",
+    "Papel",
+    "Movimento",
+    `Cachê/show ${prev} (R$)`,
+    `Cachê/show ${cur} (R$)`,
+    "Variação (R$)",
+    "Variação (%)",
+    `Shows ${prev}`,
+    `Shows ${cur}`,
+  ];
+}
+
+/**
+ * Serializa os "movers de preço" ano a ano (`retentionPriceMovers`/D352) em CSV,
+ * pronto para download — a lista acionável de com quem você renegociou o cachê
+ * (para bem ou para mal) de um ano para o outro. Espelha fielmente a seção
+ * "Movers de preço · {ano−1} → {ano}" de `/contatos/retencao`: exporta apenas os
+ * movers ACIONÁVEIS (quem subiu ∪ quem baixou; os estáveis ficam de fora, como na
+ * tela, que só conta `flatCount`), na mesma leitura em dois grupos — primeiro
+ * "🟢 você subiu" (maior alta → menor), depois "🟠 você baixou" (maior queda →
+ * menor). Colunas: contratante, papel (a tela mostra como link; entra para a
+ * planilha abrir auto-suficiente), o movimento (`Subiu`/`Baixou`), o cachê médio
+ * por show de cada ano do par, a variação em R$ (`delta`, assinada via
+ * `centsToCsvAmount`) e em % (`relativeDelta`, pontos assinados via
+ * `csvSignedPoints`, ordenável) e o nº de shows não cancelados em cada ano. Sem
+ * linha "Total": é uma lista de alvos, não uma distribuição — somar variações de
+ * preço por-show de contratantes com volumes diferentes não teria significado
+ * (mesma disciplina de `underpricedLoyalClientsToCsv`). `null` (sem par YoY
+ * comparável) → CSV só com o cabeçalho. Mesma convenção pt-BR dos irmãos
+ * (delimitador ";", decimal com vírgula). Pura.
+ */
+export function retentionPriceMoversToCsv<
+  C extends ContactRankLike & { role: string },
+>(
+  movers: RetentionPriceMovers<C> | null,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [
+    retentionPriceMoversHeaders(
+      movers?.previousYear ?? null,
+      movers?.year ?? null,
+    ),
+  ];
+  if (movers) {
+    for (const m of [...movers.raised, ...movers.lowered]) {
+      out.push([
+        m.contact.name,
+        contactRoleLabel(m.contact.role),
+        m.direction === "up" ? "Subiu" : "Baixou",
+        centsToCsvAmount(m.previousAvgFee),
+        centsToCsvAmount(m.currentAvgFee),
+        centsToCsvAmount(m.delta),
+        csvSignedPoints(m.relativeDelta),
+        String(m.previousShows),
+        String(m.currentShows),
+      ]);
+    }
   }
   return toCsv(out, delimiter);
 }

@@ -4,7 +4,32 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 357 — MOVERS INDIVIDUAIS DO PREÇO ANO A ANO em `/contatos/retencao` (`retentionPriceMovers`, D352),
+**Sessão 358 — CSV DOS MOVERS DE PREÇO em `/contatos/retencao` (`retentionPriceMoversToCsv`, D353),
+fechando o "próximo possível" que a Sessão 357 (D352) deixou explícito ("levar os movers ao CSV"):** a D352 pôs na
+tela a seção "Movers de preço · {ano−1} → {ano}" (`retentionPriceMovers`) — a lista acionável de com quem você
+subiu/baixou o cachê de um ano para o outro —, mas era a única lista acionável da carteira SEM CSV próprio (o export
+da carteira inteira `clientRetentionToCsv` não traz o eixo por-ano nem separa subiu/baixou). Agora um serializador
+puro `retentionPriceMoversToCsv(movers)` em `src/lib/csv.ts` (aceita `RetentionPriceMovers | null`) espelha fielmente
+a seção: exporta só os movers ACIONÁVEIS (raised ∪ lowered; os estáveis ficam de fora, como na tela, que só conta
+`flatCount`), na mesma leitura em dois grupos — primeiro 🟢 você subiu (maior alta → menor), depois 🟠 você baixou
+(maior queda → menor). Colunas: Contratante, Papel, Movimento (`Subiu`/`Baixou`), Cachê/show de cada ano do par,
+Variação (R$) (`delta` assinado via `centsToCsvAmount`), Variação (%) (`relativeDelta` em pontos assinados via
+`csvSignedPoints`, ordenável) e Shows de cada ano. Os ANOS do par entram nos rótulos das colunas por-ano (como
+`clientConcentrationToCsv` embute `vs. {previousYear}`); sem par comparável (`null`) os rótulos caem em "ano
+anterior"/"ano atual" e o CSV sai só com o cabeçalho. **Sem linha "Total"** (lista de alvos, não distribuição —
+disciplina de `underpricedLoyalClientsToCsv`). Rota `/contatos/retencao/movers/export` (BOM UTF-8,
+`movers-de-preco.csv`) que espelha a derivação da página: par via `compareRetentionPricingYoY` → `retentionPriceMovers`
+(o MESMO par do card agregado), sem par → cabeçalho só. Botão "⬇ CSV" no cabeçalho da `PriceMoversSection` (que só
+renderiza quando há mover real). Camada puramente de serialização (pura, testada); reusa `retentionPriceMovers`; zero
+migração/dependência. **+3 testes** (`csv.test.ts`, `describe("retentionPriceMoversToCsv")`: par nulo → cabeçalho
+genérico; raised antes de lowered com flat e quem-só-tem-um-ano fora; par existente mas todos estáveis → cabeçalho com
+os anos). DoD verde: `npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1934 testes**);
+smoke → `/login` 200, `/contatos/retencao`, `/contatos/retencao/export` e `/contatos/retencao/movers/export` 307→/login
+(auth-gated, sem 500); `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, zero dependência nova),
+ver D353. **Próximo possível** — o eixo de preço/retenção está agora completo tela↔export (o `PricingSignalCard`/
+`PricingTrendCard` irmãos são cartões de veredito único, sem tabela a exportar); próximas sessões podem evoluir uma
+feature maior fora do eixo de preço/retenção.
+**Antes disso, Sessão 357 — MOVERS INDIVIDUAIS DO PREÇO ANO A ANO em `/contatos/retencao` (`retentionPriceMovers`, D352),
 fechando o "próximo possível" que a D351 deixou explícito ("movers por-CONTATO: quem você subiu/baixou o preço"):**
 a D351 (`compareRetentionPricingYoY`) entrega o movimento AGREGADO do desconto de fidelidade da carteira ("de {ano−1}
 para {ano} o preço da fidelidade melhorou/piorou"), mas uma média esconde o caso individual — dentro de um "melhorou" há
