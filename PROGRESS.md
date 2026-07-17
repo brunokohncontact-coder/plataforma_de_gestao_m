@@ -4,7 +4,32 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 359 — EXPORTAÇÃO COMPLETA DA CONTA / BACKUP em `/conta` (`accountExport` + `/conta/dados/export`, D354),
+**Sessão 360 — CONFERÊNCIA (DRY-RUN) DO BACKUP em `/conta/dados/importar` (`accountImport`, D355), fechando a metade
+SEGURA do "próximo possível" que a Sessão 359 (D354) deixou explícito ("importação/restore a partir deste arquivo"):**
+a D354 entregou o EXPORT completo da conta (backup JSON versionado), mas restaurar de fato (escrever no banco) é um passo
+de ALTO risco — um bug pode duplicar/sobrescrever a carteira — e roda numa esteira autônoma que mergeia sozinha na `main`.
+Então esta sessão entrega primeiro a leitura + validação, SEM gravar nada. Módulo puro `src/lib/accountImport.ts`:
+`parseAccountDataExport(raw: unknown)` valida defensivamente um valor JÁ parseado (entrada NÃO CONFIÁVEL) contra o formato
+do export e devolve `{ ok:true, data, summary, warnings }` ou `{ ok:false, errors }` (nunca lança); `parseAccountDataExportJson(text)`
+embrulha o `JSON.parse` (sintaxe inválida → erro amigável). ERROS bloqueiam (não-objeto, `meta` ausente, app ≠ `Palco`,
+`schemaVersion` fora de `SUPPORTED_ACCOUNT_IMPORT_SCHEMA_VERSIONS`=[1], lista de topo faltando, registro com campo
+obrigatório mal-tipado, perfil sem nome/e-mail); AVISOS não bloqueiam (integridade referencial — `contactIds`/`showId`
+órfãos —, ids duplicados, anos de meta repetidos, `meta.counts` que não bate). Opcionais ausentes → `null` (mesmo contrato
+do export). Camada PURA (sem Prisma/`new Date()`/I/O), testável. Tela `/conta/dados/importar` (server component auth-gated)
+com `<input type="file">` que posta na server action `previewAccountImportAction` (lê `file.text()`, teto de 8 MB, delega ao
+parser, devolve via `useFormState`): mostra counts por entidade, `exportedAt` formatado, avisos em âmbar, erros em vermelho,
+sempre reforçando "nada foi gravado". Link "🔍 Conferir um backup" na seção "Seus dados" de `/conta`. **+17 testes**
+(`accountImport.test.ts`: round-trip do export e do JSON serializado, rejeições estruturais, avisos referenciais/duplicados/
+counts, conta vazia, normalização opcionais→null, JSON malformado). DoD verde: `npm run build`, `npx tsc --noEmit`,
+`npm run lint` (0 warnings), `npm test` (**1960 testes**); smoke → `/login` 200, `/conta` e `/conta/dados/importar`
+307→/login (auth-gated); **smoke autenticado** (cookie do usuário demo) → `/conta/dados/importar` 200 com o formulário,
+`/conta` com os dois botões, e o EXPORT REAL da conta demo (3 shows / 5 transações / 3 contatos) passando por
+`parseAccountDataExportJson` → `ok`, `Palco` v1, counts batendo, 0 avisos (o exato fluxo da action); `npm audit` inalterado
+(10 advisories: 4 moderate/5 high/1 critical, ZERO dependência nova), ver D355. **Próximo possível** — a RESTAURAÇÃO de
+fato (escrever shows/transações/contatos/metas no banco a partir do arquivo validado) sobre esta base já testada: um passo
+de escrita com efeito colateral que exige estratégia de conflito de ids (novo vs. sobrescrever), idealmente com revisão
+humana antes de mergear; ou próximas sessões podem evoluir outra feature maior.
+**Antes disso, Sessão 359 — EXPORTAÇÃO COMPLETA DA CONTA / BACKUP em `/conta` (`accountExport` + `/conta/dados/export`, D354),
 abrindo um eixo NOVO fora do export tabular analítico (que as sessões recentes davam por esgotado):** o app tinha
 exports por-lista (`/shows/export`, `/financas/export`, `/contatos/export`, cada um em CSV) e dezenas de CSVs de VISÕES
 analíticas, mas nenhuma forma de o músico baixar TODA a sua carteira num único arquivo — um backup / portabilidade dos
