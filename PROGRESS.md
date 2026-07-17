@@ -4,7 +4,39 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 360 — CONFERÊNCIA (DRY-RUN) DO BACKUP em `/conta/dados/importar` (`accountImport`, D355), fechando a metade
+**Sessão 361 — RESTAURAÇÃO DE BACKUP (SÓ EM CONTA VAZIA) em `/conta/dados/importar` (`accountRestore` + `importAccountAction`,
+D356), fechando o "próximo possível" que a Sessão 360 (D355) deixou explícito ("a RESTAURAÇÃO de fato — escrever no banco a
+partir do arquivo validado"):** a D355 entregou a conferência (dry-run) que valida o backup sem gravar nada e alertou que a
+restauração de fato é de ALTO risco (pode duplicar/sobrescrever a carteira) numa esteira que mergeia sozinha. Esta sessão
+entrega a restauração REMOVENDO a fonte de risco: restaurar SÓ numa conta VAZIA (zero shows/transações/contatos/metas), onde
+não há conflito de ids a resolver — tudo nasce do zero com ids gerados pelo banco, sem como sobrescrever nem duplicar. Módulo
+PURO `src/lib/accountRestore.ts`: `buildAccountRestorePlan(data)` recebe um snapshot JÁ validado (`parseAccountDataExport` →
+ok) e monta o plano de escrita com remapeamento de ids do arquivo por CHAVE estável (`key`); BLOQUEIA (`ok:false`) só o que
+não tem correção segura para uma escrita fiel (data não-parseável, `status` de show fora de `SHOW_STATUSES`, `type` fora de
+`TRANSACTION_TYPES`) e registra como `notes` os ajustes com default natural (papel desconhecido→OTHER, ids duplicados→primeiro,
+vínculo de contato órfão removido, `showId` órfão→null, ano de meta repetido→primeiro). Server action unificada
+`importAccountAction` (substitui `previewAccountImportAction`): um formulário com dois botões cujo `intent`
+("conferir"|"restaurar") escolhe o passo, ambos revalidando o MESMO arquivo. Restaurar faz o gate de emptiness NO SERVIDOR
+(contagem por `userId`, fechando TOCTOU — a UI só decide o affordance), recusa com mensagem clara se houver dado, monta o plano
+e grava num `prisma.$transaction` (timeout 30 s): perfil (só `artistName`/`taxRatePercent`; nome/e-mail/senha intocados — são
+a identidade da conta logada), contatos (map key→id novo), shows (vínculos N:N remapeados + evento de criação
+`fromStatus:null→status` na linha do tempo do funil, como no cadastro normal, ver D234), transações (showId remapeado), metas;
+revalida `/dashboard`,`/shows`,`/financas`,`/contatos`,`/conta`. Tela `/conta/dados/importar` conta as entidades e passa
+`canRestore` ao componente `ImportForm` (`ImportPreviewForm.tsx` renomeado): conta vazia → checkbox de confirmação + botão
+"Restaurar na conta"; conta com dados → aviso âmbar do bloqueio, com a conferência sempre disponível. Link em `/conta`
+atualizado para "🔍 Conferir ou restaurar um backup". **+18 testes** (`accountRestore.test.ts`: 12 puros — plano vazio,
+preservação dos vínculos N:N e transação→show por chave, remoção de órfãos com nota, dedup de ids/anos, coerção de papel,
+bloqueio de data/status/tipo; `importar/actions.test.ts`: 6 de integração no banco — dry-run não grava, round-trip real de
+restauração com ids novos + vínculos + evento de criação + perfil, recusa em conta não-vazia, emptiness por-conta sem vazar
+entre usuários, bloqueio de status inválido). DoD verde: `npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings),
+`npm test` (**1978 testes**); smoke → `/login` 200, `/conta` e `/conta/dados/importar` 307→/login (auth-gated); **smoke
+autenticado** → conta demo (com dados) 200 com restauração DESABILITADA (só "Conferir arquivo"), conta vazia 200 com o
+checkbox + "Restaurar na conta"; `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, ZERO dependência nova),
+ver D356. **Próximo possível** — a restauração GERAL (mesclar sobre uma conta com dados — estratégia de conflito
+novo×sobrescrever, idealmente com revisão humana antes de mergear); incluir os `ShowStatusEvent` no snapshot de export para
+restaurar o histórico real do funil em vez de só o evento de criação; ou um passo de "esvaziar a conta" (guardado por
+confirmação forte) que destravaria a restauração para quem já tem dados.
+**Antes disso, Sessão 360 — CONFERÊNCIA (DRY-RUN) DO BACKUP em `/conta/dados/importar` (`accountImport`, D355), fechando a metade
 SEGURA do "próximo possível" que a Sessão 359 (D354) deixou explícito ("importação/restore a partir deste arquivo"):**
 a D354 entregou o EXPORT completo da conta (backup JSON versionado), mas restaurar de fato (escrever no banco) é um passo
 de ALTO risco — um bug pode duplicar/sobrescrever a carteira — e roda numa esteira autônoma que mergeia sozinha na `main`.
