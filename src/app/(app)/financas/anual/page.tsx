@@ -97,6 +97,15 @@ export default async function FinanceAnnualPage({
               ⬇ CSV
             </a>
           )}
+          {hasActivity && prevHasActivity && (
+            <a
+              href={`/financas/anual/comparativo/export?ano=${year}`}
+              className="btn-secondary text-sm"
+              download
+            >
+              ⬇ CSV vs {year - 1}
+            </a>
+          )}
           <Link href="/financas" className="text-sm text-gray-500 hover:underline">
             ← Finanças
           </Link>

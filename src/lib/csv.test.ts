@@ -8,6 +8,8 @@ import {
   transactionsToCsv,
   showsToCsv,
   annualSummaryToCsv,
+  annualComparisonToCsv,
+  annualComparisonCsvHeaders,
   quarterlySummaryToCsv,
   showProfitToCsv,
   venueProfitToCsv,
@@ -192,6 +194,7 @@ import {
 } from "./shows";
 import {
   annualSummary,
+  compareAnnualSummaries,
   monthlySeasonality,
   quarterlySummary,
   gigSeasonality,
@@ -640,6 +643,58 @@ describe("annualSummaryToCsv", () => {
     ];
     const csv = annualSummaryToCsv(annualSummary(txs, 2026));
     expect(csv.split("\r\n")[13]).toBe("Total do ano (2026);0,00;0,00;0,00");
+  });
+});
+
+describe("annualComparisonToCsv", () => {
+  // Helper: monta a comparação {ano} vs {ano-1} a partir das transações.
+  const compare = (txs: Parameters<typeof annualSummary>[0], year: number) =>
+    compareAnnualSummaries(annualSummary(txs, year), annualSummary(txs, year - 1));
+
+  it("emite cabeçalho (10 colunas com os dois anos) + 12 meses + total (14 linhas)", () => {
+    const comparison = compare([], 2026);
+    const csv = annualComparisonToCsv(comparison);
+    const lines = csv.split("\r\n");
+    expect(lines).toHaveLength(14);
+    expect(lines[0]).toBe(annualComparisonCsvHeaders(comparison).join(";"));
+    // Os anos concreto e anterior entram nos rótulos das colunas.
+    expect(lines[0]).toContain("Receitas 2025 (R$)");
+    expect(lines[0]).toContain("Receitas 2026 (R$)");
+    expect(lines[0]).toContain("Δ resultado (R$)");
+    // Sem transações: tudo zerado, meses jan→dez.
+    expect(lines[1]).toBe("Janeiro;0,00;0,00;0,00;0,00;0,00;0,00;0,00;0,00;0,00");
+    expect(lines[12]).toBe("Dezembro;0,00;0,00;0,00;0,00;0,00;0,00;0,00;0,00;0,00");
+    expect(lines[13]).toBe("Total do ano;0,00;0,00;0,00;0,00;0,00;0,00;0,00;0,00;0,00");
+  });
+
+  it("traz os dois anos por mês com o delta absoluto de cada métrica", () => {
+    const txs = [
+      // 2025 (ano anterior): março com 1000 de receita.
+      { type: "INCOME" as const, amount: 100000, category: "Cachê", date: "2025-03-10T12:00:00Z", received: true, showId: null },
+      // 2026 (ano corrente): março com 1500 de receita e 500 de despesa.
+      { type: "INCOME" as const, amount: 150000, category: "Cachê", date: "2026-03-10T12:00:00Z", received: true, showId: null },
+      { type: "EXPENSE" as const, amount: 50000, category: "Transporte", date: "2026-03-20T12:00:00Z", received: true, showId: null },
+    ];
+    const csv = annualComparisonToCsv(compare(txs, 2026));
+    const lines = csv.split("\r\n");
+    // Março (linha 3): receita 1000→1500 (Δ +500), despesa 0→500 (Δ 500),
+    // resultado 1000→1000 (Δ 0).
+    expect(lines[3]).toBe("Março;1000,00;1500,00;500,00;0,00;500,00;500,00;1000,00;1000,00;0,00");
+    // Total do ano espelha março (único mês com movimento).
+    expect(lines[13]).toBe("Total do ano;1000,00;1500,00;500,00;0,00;500,00;500,00;1000,00;1000,00;0,00");
+  });
+
+  it("emite delta negativo quando a métrica cai ano a ano", () => {
+    const txs = [
+      // 2025: janeiro com 2000 de receita; 2026: janeiro com 800.
+      { type: "INCOME" as const, amount: 200000, category: "Cachê", date: "2025-01-15T12:00:00Z", received: true, showId: null },
+      { type: "INCOME" as const, amount: 80000, category: "Cachê", date: "2026-01-15T12:00:00Z", received: true, showId: null },
+    ];
+    const csv = annualComparisonToCsv(compare(txs, 2026));
+    const lines = csv.split("\r\n");
+    // Janeiro: receita 2000→800 (Δ -1200); despesa 0→0 (Δ 0); resultado 2000→800 (Δ -1200).
+    expect(lines[1]).toBe("Janeiro;2000,00;800,00;-1200,00;0,00;0,00;0,00;2000,00;800,00;-1200,00");
+    expect(lines[13]).toBe("Total do ano;2000,00;800,00;-1200,00;0,00;0,00;0,00;2000,00;800,00;-1200,00");
   });
 });
 
