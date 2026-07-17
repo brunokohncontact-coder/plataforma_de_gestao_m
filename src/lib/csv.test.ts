@@ -12,6 +12,8 @@ import {
   annualComparisonCsvHeaders,
   quarterlySummaryToCsv,
   showProfitToCsv,
+  showsProfitabilityComparisonToCsv,
+  SHOW_PROFIT_COMPARISON_CSV_HEADERS,
   venueProfitToCsv,
   cityProfitComparisonToCsv,
   CITY_PROFIT_COMPARISON_CSV_HEADERS,
@@ -232,6 +234,8 @@ import {
   DEFAULT_TAX_RATE,
   yearEndScenarioView,
   computeBreakEven,
+  computeDelta,
+  type ShowsProfitabilityComparison,
   type YearEndShowLike,
   type BreakEvenShowLike,
   type TxLike,
@@ -803,6 +807,53 @@ describe("showProfitToCsv", () => {
 
   it("não acrescenta linha Total quando não há linhas", () => {
     expect(showProfitToCsv([])).toBe(SHOW_PROFIT_CSV_HEADERS.join(";"));
+  });
+});
+
+describe("showsProfitabilityComparisonToCsv", () => {
+  const cmp = (over: Partial<ShowsProfitabilityComparison> = {}): ShowsProfitabilityComparison => ({
+    avgNet: computeDelta(120000, 100000), // +200,00 -> +20%
+    totalNet: computeDelta(360000, 300000), // +600,00 -> +20%
+    count: computeDelta(3, 3), // sem variação
+    trend: "up",
+    ...over,
+  });
+
+  it("transpõe o comparativo em linhas por métrica + linha de veredito", () => {
+    const lines = showsProfitabilityComparisonToCsv(cmp()).split("\r\n");
+    expect(lines[0]).toBe("Métrica;Ano anterior;Ano corrente;Δ;Δ %");
+    expect(lines[0]).toBe(SHOW_PROFIT_COMPARISON_CSV_HEADERS.join(";"));
+    expect(lines[1]).toBe("Resultado médio por show (R$);1000,00;1200,00;200,00;+20%");
+    expect(lines[2]).toBe("Resultado total (R$);3000,00;3600,00;600,00;+20%");
+    expect(lines[3]).toBe("Shows analisados;3;3;0;0%");
+    expect(lines[4]).toBe("Veredito;Mais rentável por show;;;");
+  });
+
+  it("emite deltas e porcentagens negativos quando as métricas caem", () => {
+    const lines = showsProfitabilityComparisonToCsv(
+      cmp({
+        avgNet: computeDelta(80000, 100000), // -200,00 -> -20%
+        totalNet: computeDelta(160000, 400000), // -2400,00 -> -60%
+        count: computeDelta(2, 4), // -2 shows -> -50%
+        trend: "down",
+      }),
+    ).split("\r\n");
+    expect(lines[1]).toBe("Resultado médio por show (R$);1000,00;800,00;-200,00;-20%");
+    expect(lines[3]).toBe("Shows analisados;4;2;-2;-50%");
+    expect(lines[4]).toBe("Veredito;Menos rentável por show;;;");
+  });
+
+  it("deixa o Δ % vazio quando não há base no ano anterior (previous 0)", () => {
+    const lines = showsProfitabilityComparisonToCsv(
+      cmp({ avgNet: computeDelta(50000, 0), trend: "up" }),
+    ).split("\r\n");
+    // Δ % (última coluna) vazio; o Δ absoluto segue presente.
+    expect(lines[1]).toBe("Resultado médio por show (R$);0,00;500,00;500,00;");
+  });
+
+  it("rotula o veredito estável", () => {
+    const lines = showsProfitabilityComparisonToCsv(cmp({ trend: "stable" })).split("\r\n");
+    expect(lines[4]).toBe("Veredito;Estável;;;");
   });
 });
 

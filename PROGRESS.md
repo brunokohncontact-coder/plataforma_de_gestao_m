@@ -4,7 +4,35 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 366 — COMPARATIVO ANO A ANO DO RESUMO ANUAL NO CSV (`/financas/anual/comparativo/export` + `annualComparisonToCsv`,
+**Sessão 367 — COMPARATIVO ANO A ANO DA RENTABILIDADE POR SHOW NO CSV (`/shows/rentabilidade/comparativo/export` +
+`showsProfitabilityComparisonToCsv`, D362), levando para a planilha o card "Resultado por show {ano} vs. {ano-1}" que a página
+`/shows/rentabilidade` já mostra na tela mas o CSV do ranking descartava:** a página já compara o ano escolhido contra o anterior
+(a variação do resultado líquido MÉDIO por show — com % — do resultado TOTAL somado e da contagem de shows, mais um veredito de
+tendência, via `compareShowsProfitability`/`MetricDelta`), mas o único export do eixo (`/shows/rentabilidade/export`,
+`showProfitToCsv`) só serializava o ranking de um período (uma linha por show), sem traço do "vs ano anterior" — quem baixava a
+rentabilidade para o contador perdia o comparativo YoY que via na tela (o mesmo buraco que a Sessão 366/D361 fechou no resumo
+anual). **(1)** camada pura nova em `src/lib/csv.ts`: `showsProfitabilityComparisonToCsv` (+ `SHOW_PROFIT_COMPARISON_CSV_HEADERS`
+e o helper `csvSignedPercent`) — diferente dos comparativos por ITEM (uma linha por cidade/mês), aqui o comparativo é um RESUMO de
+três métricas, então a planilha é TRANSPOSTA: uma linha por métrica (resultado médio por show / resultado total / shows
+analisados) com o valor do ano anterior, o do corrente, o Δ absoluto e o Δ relativo (%), seguida de uma linha "Veredito" com a
+tendência (o mesmo selo ancorado no resultado médio por show da UI). Dinheiro via `centsToCsvAmount`, contagem via
+`csvSignedCount`, % via `csvSignedPercent` (vazio quando não há base no ano anterior). **(2)** rota nova
+`/shows/rentabilidade/comparativo/export?ano=YYYY` (irmã, sem tocar no export do ranking): recorta o ano e o anterior do mesmo
+acervo já carregado (`rankShowsByProfit` + `filterShowsByYear`) e aplica o MESMO gate da página — um ano específico E ambos os
+períodos com shows; sem isso, **404** (o resultado médio por show de um ano vazio seria 0 e a comparação enganosa). Os anos
+concretos vão no NOME DO ARQUIVO (`rentabilidade-shows-comparativo-{ano}-vs-{ano-1}.csv`), como o irmão de shows/D223. **(3)** UI:
+segundo link "⬇ CSV vs {ano-1}" na página `/shows/rentabilidade`, ao lado do "⬇ CSV" existente, visível só quando o card do
+comparativo aparece. **+4 testes** (`csv.test.ts`: layout transposto cabeçalho+3 métricas+veredito; deltas/% negativos quando as
+métricas caem; Δ % vazio sem base no ano anterior; rótulo do veredito estável). Camada pura (só dados + rota; zero
+migração/dependência). DoD verde: `npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**2011 testes**);
+smoke → `/login` 200, a rota nova 307→/login (auth-gated); **smoke autenticado** (token de usuário demo, shows realizados em 2025
+e 2026) → export com um ano só de dados **404** (gate) e sem `?ano` **404**; com shows nos dois anos **200** `text/csv`
+(filename `…-2026-vs-2025.csv`, cabeçalho `Métrica;Ano anterior;Ano corrente;Δ;Δ %`, linha `Veredito;Mais rentável por show;;;`)
+e a página exibindo o link "⬇ CSV vs 2025"; `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, ZERO dependência
+nova), ver D362. **Próximo possível** — o eixo de rentabilidade fica completo tela↔export (ranking + comparativo YoY); segue como
+único pendente do eixo de backup a restauração por MERGE (ALTO risco, revisão humana); ou próximas sessões podem evoluir outra
+feature maior.
+**Antes disso, Sessão 366 — COMPARATIVO ANO A ANO DO RESUMO ANUAL NO CSV (`/financas/anual/comparativo/export` + `annualComparisonToCsv`,
 D361), levando para a planilha o "vs {ano-1}" que a página `/financas/anual` já mostra na tela mas o CSV descartava:** o único
 export do resumo anual (`/financas/anual/export`, `annualSummaryToCsv`) exportava um ano isolado (12 meses + total), enquanto a
 tela já compara com o ano anterior (deltas dos três totais + variação de resultado mês a mês, via `compareAnnualSummaries`) —
