@@ -5,6 +5,38 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-17 — D358: Esvaziar a conta ("apagar todos os meus dados") — reset destrutivo guardado por frase de confirmação
+- **Contexto:** o eixo de backup fechou export → conferência → restauração (D354–D357), mas a restauração só grava numa
+  conta VAZIA (para nunca sobrescrever/duplicar a carteira). Quem já tem dados não conseguia restaurar um backup — e não
+  havia forma de "recomeçar do zero" / apagar os próprios dados (direito de erasure, LGPD). As três sessões anteriores
+  listavam "um passo de esvaziar a conta, guardado por confirmação forte" como o pendente que destrava a restauração
+  para quem já tem dados. É o mais SEGURO dos pendentes de escrita (não é a restauração-geral-sobre-conta-com-dados, que
+  exige estratégia de conflito de ids e revisão humana): apagar é uma operação sem ambiguidade de merge.
+- **Decisão:** entregar o reset da carteira em `/conta/dados/apagar`:
+  1. `src/lib/accountReset.ts` (PURO) — `RESET_CONFIRMATION_PHRASE = "APAGAR MEUS DADOS"` + `matchesResetConfirmation(input)`
+     que normaliza de forma tolerante (apara pontas, colapsa espaços, ignora caixa) mas exige a frase exata; valor
+     ausente/não-textual/parcial nunca autoriza.
+  2. Server action `resetAccountDataAction` — `requireUser`, valida a frase (sem ela, nada é apagado), e num
+     `prisma.$transaction` remove escopado por `userId` na ordem de FK: junção N:N (via `show.userId`), `ShowStatusEvent`,
+     transações, contatos, shows, metas. Devolve as contagens removidas e revalida `/dashboard`,`/shows`,`/financas`,
+     `/contatos`,`/conta`,`/conta/dados/importar`.
+  3. Preserva a IDENTIDADE (nome/e-mail/senha) e as configurações de perfil (nome artístico, alíquota) — apaga só a
+     carteira (as quatro entidades que o gate de emptiness da restauração conta), então esvaziar destrava a restauração.
+  4. UI: página auth-gated que conta a carteira e mostra `ResetForm` (input de texto exigindo a frase, botão `btn-danger`
+     desabilitado até bater; conta vazia → nota "nada a apagar"); link `🗑` na seção "Seus dados" de `/conta`; e um atalho
+     "Apague seus dados" no bloco âmbar de `/conta/dados/importar` quando a conta tem dados (fecha o loop do restore).
+- **Justificativa:** a frase digitada (não um clique) é a fricção à altura de uma ação irreversível — padrão consagrado
+  (GitHub "type the repo name"). Apagar só as quatro entidades (não o perfil) casa exatamente com o gate de emptiness da
+  restauração, mantendo o comportamento previsível e a conta utilizável. Tudo escopado por `userId` num `$transaction`
+  (all-or-nothing) — sem vazamento entre contas e sem estado meio-apagado. A checagem da frase é revalidada no SERVIDOR
+  (a UI só habilita o botão), fechando o mesmo padrão TOCTOU da D356.
+- **Alternativas consideradas:** (a) apagar também o perfil (nome artístico/alíquota) — rejeitado: o gate de restauração
+  os ignora e são config, não carteira; mantê-los evita re-configurar ao recomeçar; (b) checkbox só (como na restauração)
+  — rejeitado: apagar é destrutivo e irreversível, merece fricção maior que gravar num espaço vazio; (c) `onDelete: Cascade`
+  apagando o próprio `User` — rejeitado: destruiria a conta/login; o pedido é esvaziar, não encerrar a conta; (d) exigir
+  digitar o e-mail da conta — rejeitado: uma frase fixa é igualmente deliberada e não expõe/depende do e-mail no cliente.
+  **Pendência (revisão humana):** a restauração-geral sobre conta com dados (estratégia de conflito novo×sobrescrever).
+
 ## 2026-07-17 — D357: Histórico do funil (`ShowStatusEvent`) no backup — export schema v2 + restauração fiel da linha do tempo
 - **Contexto:** as D354–D356 fecharam o eixo de backup da conta (export completo → conferência dry-run → restauração em
   conta vazia), mas o snapshot não guardava a linha do tempo do funil (`ShowStatusEvent`: cada criação/transição de

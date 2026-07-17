@@ -130,6 +130,16 @@ export function ImportForm({
               contato(s) e {existingCounts.revenueGoals} meta(s)). A conferência
               abaixo continua disponível.
             </p>
+            <p className="mt-1 text-amber-700">
+              Quer restaurar mesmo assim?{" "}
+              <a
+                href="/conta/dados/apagar"
+                className="font-medium underline hover:no-underline"
+              >
+                Apague seus dados
+              </a>{" "}
+              para esvaziar a conta primeiro (a conta continua ativa).
+            </p>
           </div>
         )}
 
