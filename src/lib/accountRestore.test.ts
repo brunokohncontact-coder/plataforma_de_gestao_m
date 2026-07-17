@@ -36,6 +36,7 @@ const show = (over: Partial<AccountDataExport["shows"][number]> = {}) => ({
   notes: null,
   paymentPromisedAt: null,
   contactIds: [],
+  statusEvents: [],
   ...over,
 });
 
@@ -196,5 +197,51 @@ describe("buildAccountRestorePlan", () => {
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.errors[0]).toContain("date");
+  });
+
+  it("preserva no plano os eventos válidos do histórico do funil", () => {
+    const r = buildAccountRestorePlan(
+      makeExport({
+        shows: [
+          show({
+            id: "s1",
+            statusEvents: [
+              { fromStatus: null, toStatus: "PROPOSED", createdAt: "2026-04-01T10:00:00.000Z" },
+              { fromStatus: "PROPOSED", toStatus: "CONFIRMED", createdAt: "2026-04-10T10:00:00.000Z" },
+            ],
+          }),
+        ],
+      }),
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.plan.shows[0].statusEvents).toEqual([
+      { fromStatus: null, toStatus: "PROPOSED", createdAt: "2026-04-01T10:00:00.000Z" },
+      { fromStatus: "PROPOSED", toStatus: "CONFIRMED", createdAt: "2026-04-10T10:00:00.000Z" },
+    ]);
+    expect(r.plan.notes.some((n) => n.includes("histórico"))).toBe(false);
+  });
+
+  it("descarta eventos do funil com data ou status inválido com nota (sem bloquear)", () => {
+    const r = buildAccountRestorePlan(
+      makeExport({
+        shows: [
+          show({
+            id: "s1",
+            statusEvents: [
+              { fromStatus: null, toStatus: "CONFIRMED", createdAt: "data ruim" },
+              { fromStatus: null, toStatus: "INVENTADO", createdAt: "2026-04-10T10:00:00.000Z" },
+              { fromStatus: "CONFIRMED", toStatus: "PLAYED", createdAt: "2026-04-20T10:00:00.000Z" },
+            ],
+          }),
+        ],
+      }),
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.plan.shows[0].statusEvents).toEqual([
+      { fromStatus: "CONFIRMED", toStatus: "PLAYED", createdAt: "2026-04-20T10:00:00.000Z" },
+    ]);
+    expect(r.plan.notes.some((n) => n.includes("histórico do funil"))).toBe(true);
   });
 });

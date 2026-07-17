@@ -83,6 +83,23 @@ describe("buildAccountDataExport", () => {
     expect(data.shows[0].contactIds).toEqual(["contact_1", "contact_2"]);
   });
 
+  it("exporta o histórico do funil (statusEvents) normalizando datas e fromStatus null", () => {
+    const input = baseInput();
+    input.shows[0].statusEvents = [
+      { fromStatus: null, toStatus: "PROPOSED", createdAt: new Date("2026-04-01T10:00:00.000Z") },
+      {
+        fromStatus: "PROPOSED",
+        toStatus: "CONFIRMED",
+        createdAt: "2026-04-10T10:00:00.000Z",
+      },
+    ];
+    const data = buildAccountDataExport(input);
+    expect(data.shows[0].statusEvents).toEqual([
+      { fromStatus: null, toStatus: "PROPOSED", createdAt: "2026-04-01T10:00:00.000Z" },
+      { fromStatus: "PROPOSED", toStatus: "CONFIRMED", createdAt: "2026-04-10T10:00:00.000Z" },
+    ]);
+  });
+
   it("aceita string ISO já pronta como data", () => {
     const input = baseInput();
     input.exportedAt = "2026-01-01T00:00:00.000Z";
@@ -116,6 +133,7 @@ describe("buildAccountDataExport", () => {
     expect(data.shows[0].notes).toBeNull();
     expect(data.shows[0].paymentPromisedAt).toBeNull();
     expect(data.shows[0].contactIds).toEqual([]);
+    expect(data.shows[0].statusEvents).toEqual([]);
     // Sem `undefined` no JSON serializado.
     expect(accountDataExportToJson(data)).not.toContain("undefined");
   });

@@ -167,6 +167,56 @@ describe("importAccountAction — restauração", () => {
     expect(goal).toMatchObject({ year: 2026, amount: 5000000 });
   });
 
+  it("restaura o histórico REAL do funil (statusEvents) de um backup v2", async () => {
+    const user = h.currentUser!;
+    // Backup com um show que carrega a linha do tempo do funil (v2).
+    const input: AccountDataExportInput = {
+      profile: { name: "Antigo", email: "antigo@example.com" },
+      shows: [
+        {
+          id: "old-show-1",
+          title: "Turnê",
+          date: new Date("2026-09-10T22:00:00.000Z"),
+          status: "PLAYED",
+          fee: 80000,
+          statusEvents: [
+            { fromStatus: null, toStatus: "PROPOSED", createdAt: new Date("2026-06-01T10:00:00.000Z") },
+            { fromStatus: "PROPOSED", toStatus: "CONFIRMED", createdAt: new Date("2026-06-15T10:00:00.000Z") },
+            { fromStatus: "CONFIRMED", toStatus: "PLAYED", createdAt: new Date("2026-09-11T02:00:00.000Z") },
+          ],
+        },
+      ],
+      transactions: [],
+      contacts: [],
+      revenueGoals: [],
+      exportedAt: new Date("2026-07-17T12:00:00.000Z"),
+    };
+    const json = accountDataExportToJson(buildAccountDataExport(input));
+
+    const result = await importAccountAction(state, backupForm(json, "restaurar"));
+    expect(result.errors).toBeUndefined();
+    expect(result.restored?.shows).toBe(1);
+
+    const show = await prisma.show.findFirst({
+      where: { userId: user.id },
+      include: { statusEvents: { orderBy: { createdAt: "asc" } } },
+    });
+    // Os três eventos originais, não o único evento de criação sintético.
+    expect(show!.statusEvents).toHaveLength(3);
+    expect(show!.statusEvents.map((e) => e.toStatus)).toEqual([
+      "PROPOSED",
+      "CONFIRMED",
+      "PLAYED",
+    ]);
+    expect(show!.statusEvents[0].fromStatus).toBeNull();
+    expect(show!.statusEvents[1].fromStatus).toBe("PROPOSED");
+    // createdAt preservado do backup (a data real, não o "agora" da restauração).
+    expect(show!.statusEvents[0].createdAt.toISOString()).toBe("2026-06-01T10:00:00.000Z");
+    expect(show!.statusEvents[2].createdAt.toISOString()).toBe("2026-09-11T02:00:00.000Z");
+    // Os eventos pertencem ao usuário logado.
+    expect(show!.statusEvents.every((e) => e.userId === user.id)).toBe(true);
+  });
+
   it("recusa restaurar numa conta que já tem dados (não sobrescreve)", async () => {
     const user = h.currentUser!;
     await createShow(user.id, { title: "Já existente" });

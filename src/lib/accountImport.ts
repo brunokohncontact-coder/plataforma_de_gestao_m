@@ -11,8 +11,13 @@
 import type { AccountDataExport } from "./accountExport";
 import { ACCOUNT_EXPORT_APP, ACCOUNT_EXPORT_SCHEMA_VERSION } from "./accountExport";
 
-/** Versões do formato que esta leitura sabe interpretar. */
+/**
+ * Versões do formato que esta leitura sabe interpretar. Mantemos o suporte a
+ * versões anteriores para que backups antigos continuem restauráveis: v1 (sem
+ * `shows[].statusEvents`) e v2 (com o histórico do funil) são ambos aceitos.
+ */
 export const SUPPORTED_ACCOUNT_IMPORT_SCHEMA_VERSIONS: readonly number[] = [
+  1,
   ACCOUNT_EXPORT_SCHEMA_VERSION,
 ];
 
@@ -167,6 +172,32 @@ export function parseAccountDataExport(raw: unknown): AccountImportResult {
     } else if (Array.isArray(contactIds) && !contactIds.every((c) => isNonEmptyString(c))) {
       errors.push(`shows[${i}].contactIds tem entrada não textual.`);
     }
+    // statusEvents (schema v2): ausente/`null` num backup v1 → []. Cada evento
+    // precisa de `toStatus` textual e `createdAt` textual; `fromStatus` é
+    // opcional (null = criação do show, ver D234).
+    const rawEvents = item.statusEvents;
+    const statusEvents: AccountDataExport["shows"][number]["statusEvents"] = [];
+    if (rawEvents != null && !Array.isArray(rawEvents)) {
+      errors.push(`shows[${i}].statusEvents inválido.`);
+    } else if (Array.isArray(rawEvents)) {
+      rawEvents.forEach((ev, j) => {
+        if (!isRecord(ev)) {
+          errors.push(`shows[${i}].statusEvents[${j}] não é um objeto.`);
+          return;
+        }
+        if (!isNonEmptyString(ev.toStatus))
+          errors.push(`shows[${i}].statusEvents[${j}].toStatus é obrigatório.`);
+        if (!isNullableString(ev.fromStatus))
+          errors.push(`shows[${i}].statusEvents[${j}].fromStatus inválido.`);
+        if (!isNonEmptyString(ev.createdAt))
+          errors.push(`shows[${i}].statusEvents[${j}].createdAt é obrigatório.`);
+        statusEvents.push({
+          fromStatus: nullableStr(ev.fromStatus),
+          toStatus: isNonEmptyString(ev.toStatus) ? ev.toStatus : "",
+          createdAt: isNonEmptyString(ev.createdAt) ? ev.createdAt : "",
+        });
+      });
+    }
     shows.push({
       id: str(item.id),
       title: typeof item.title === "string" ? item.title : "",
@@ -178,6 +209,7 @@ export function parseAccountDataExport(raw: unknown): AccountImportResult {
       notes: nullableStr(item.notes),
       paymentPromisedAt: nullableStr(item.paymentPromisedAt),
       contactIds: Array.isArray(contactIds) ? (contactIds as string[]) : [],
+      statusEvents,
     });
   });
 

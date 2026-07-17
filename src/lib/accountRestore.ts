@@ -47,6 +47,16 @@ export interface AccountRestorePlanShow {
   paymentPromisedAt: string | null;
   /** chaves de contatos DO PLANO vinculados ao show (órfãos já removidos). */
   contactKeys: string[];
+  /**
+   * Histórico do funil a restaurar (eventos já saneados: `createdAt` parseável e
+   * `toStatus` conhecido). Vazio = restaurar só o evento de criação sintético
+   * (backup v1 ou show sem histórico). Ver D234.
+   */
+  statusEvents: Array<{
+    fromStatus: string | null;
+    toStatus: ShowStatus;
+    createdAt: string;
+  }>;
 }
 
 export interface AccountRestorePlanTransaction {
@@ -153,6 +163,7 @@ export function buildAccountRestorePlan(
   const showKeySet = new Set<string>();
   let dupShows = 0;
   let droppedContactRefs = 0;
+  let droppedStatusEvents = 0;
   data.shows.forEach((s, i) => {
     if (showKeySet.has(s.id)) {
       dupShows++;
@@ -180,6 +191,21 @@ export function buildAccountRestorePlan(
       if (contactKeySet.has(cid)) contactKeys.push(cid);
       else droppedContactRefs++;
     }
+    // Histórico do funil: só eventos gravar-fiéis (createdAt parseável e toStatus
+    // conhecido) entram; os demais são descartados com nota (não bloqueiam, pois
+    // a escrita cai no evento de criação sintético quando não sobra história).
+    const statusEvents: AccountRestorePlanShow["statusEvents"] = [];
+    for (const ev of s.statusEvents) {
+      if (!isParseableDate(ev.createdAt) || !SHOW_STATUS_SET.has(ev.toStatus)) {
+        droppedStatusEvents++;
+        continue;
+      }
+      statusEvents.push({
+        fromStatus: ev.fromStatus,
+        toStatus: ev.toStatus as ShowStatus,
+        createdAt: ev.createdAt,
+      });
+    }
     shows.push({
       key: s.id,
       title: s.title,
@@ -191,6 +217,7 @@ export function buildAccountRestorePlan(
       notes: s.notes,
       paymentPromisedAt: s.paymentPromisedAt,
       contactKeys,
+      statusEvents,
     });
   });
   if (dupShows > 0) {
@@ -199,6 +226,11 @@ export function buildAccountRestorePlan(
   if (droppedContactRefs > 0) {
     notes.push(
       `${droppedContactRefs} vínculo(s) de contato apontavam para contatos ausentes — ignorado(s).`,
+    );
+  }
+  if (droppedStatusEvents > 0) {
+    notes.push(
+      `${droppedStatusEvents} evento(s) do histórico do funil com data ou status inválido — ignorado(s).`,
     );
   }
 

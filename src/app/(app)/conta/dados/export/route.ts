@@ -32,6 +32,10 @@ export async function GET() {
         notes: true,
         paymentPromisedAt: true,
         contacts: { select: { contactId: true } },
+        statusEvents: {
+          select: { fromStatus: true, toStatus: true, createdAt: true },
+          orderBy: { createdAt: "asc" },
+        },
       },
     }),
     prisma.transaction.findMany({
@@ -79,6 +83,7 @@ export async function GET() {
     shows: shows.map((s) => ({
       ...s,
       contactIds: s.contacts.map((c) => c.contactId),
+      statusEvents: s.statusEvents,
     })),
     transactions,
     contacts,

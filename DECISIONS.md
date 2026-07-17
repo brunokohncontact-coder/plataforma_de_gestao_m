@@ -5,6 +5,39 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-17 — D357: Histórico do funil (`ShowStatusEvent`) no backup — export schema v2 + restauração fiel da linha do tempo
+- **Contexto:** as D354–D356 fecharam o eixo de backup da conta (export completo → conferência dry-run → restauração em
+  conta vazia), mas o snapshot não guardava a linha do tempo do funil (`ShowStatusEvent`: cada criação/transição de
+  status do show, base da leitura "quanto tempo em cada etapa" e da futura taxa de conversão, ver D234). Consequência: um
+  backup restaurado nascia com um ÚNICO evento de criação sintético (`from null → status atual`) por show — a história
+  real (PROPOSED→CONFIRMED→PLAYED em datas distintas) era perdida. As três sessões anteriores já apontavam "incluir os
+  `ShowStatusEvent` no snapshot" como o próximo passo natural, e é o mais SEGURO dos pendentes (aditivo, não é a
+  restauração-geral-sobre-conta-com-dados que exige revisão humana).
+- **Decisão:** carregar o histórico do funil no backup, de ponta a ponta, com bump de schema **v1 → v2**:
+  1. `src/lib/accountExport.ts` — cada show ganha `statusEvents: [{ fromStatus, toStatus, createdAt }]` (ordem
+     cronológica, datas em ISO, `fromStatus` null = criação). `ACCOUNT_EXPORT_SCHEMA_VERSION` sobe para `2`. A rota
+     `/conta/dados/export` passa a carregar `statusEvents` de cada show (`orderBy createdAt asc`).
+  2. `src/lib/accountImport.ts` — `SUPPORTED_ACCOUNT_IMPORT_SCHEMA_VERSIONS = [1, 2]` (backup v1 sem `statusEvents`
+     continua restaurável → funil vazio por show). Validação defensiva de cada evento: `toStatus`/`createdAt` textuais
+     obrigatórios, `fromStatus` nullable; `statusEvents` ausente → `[]`.
+  3. `src/lib/accountRestore.ts` — o plano leva os `statusEvents` saneados (só eventos com `createdAt` parseável e
+     `toStatus` conhecido; os demais são descartados com NOTA, não bloqueiam). A ação de restauração grava o histórico
+     REAL preservando `createdAt`/`fromStatus`/`toStatus`; **fallback** para o evento de criação sintético quando o show
+     não traz histórico (backup v1 ou show sem eventos) — o comportamento anterior.
+- **Justificativa:** o bump de versão é o uso previsto do campo (`schemaVersion` existe "p/ migração futura"); suportar
+  `[1, 2]` mantém TODO backup antigo importável (compatibilidade retroativa aditiva). Restaurar `createdAt` é o ponto:
+  sem a data original o histórico não sustenta "tempo em cada etapa". Sanear (descartar evento inválido + fallback) em
+  vez de bloquear mantém a restauração robusta a arquivos adulterados sem corromper as análises — mesma disciplina das
+  coerções de papel/órfãos da D356. O escopo evita deliberadamente a restauração-geral (merge sobre conta com dados), que
+  segue como pendência de ALTO risco para revisão humana.
+- **Alternativas consideradas:** (a) manter v1 e só adicionar `statusEvents` sem bump — rejeitado: o campo de versão
+  existe para sinalizar exatamente esta evolução de formato, e distinguir v1/v2 documenta a capacidade; (b) `ShowStatusEvent`
+  como lista de topo referenciando `showId` (normalizado como transações) — rejeitado: aninhar por show é mais simples de
+  restaurar (mapeia direto ao show criado) e casa com o modelo mental "histórico DESTE show"; (c) bloquear a restauração
+  se um evento tiver status/data inválidos — rejeitado: metadado histórico não deve derrubar o backup inteiro, o fallback
+  cobre o caso. **Pendências (revisão humana):** a restauração-geral sobre conta com dados (estratégia de conflito
+  novo×sobrescrever); um passo de "esvaziar a conta" guardado por confirmação forte.
+
 ## 2026-07-17 — D356: Restauração de backup, mas SÓ numa conta vazia (`accountRestore` + `importAccountAction`)
 - **Contexto:** a D354 entregou o EXPORT completo da conta e a D355 a metade SEGURA da importação — a conferência
   (dry-run) que valida o arquivo sem gravar nada —, deixando explícito como "próximo possível" a RESTAURAÇÃO de fato

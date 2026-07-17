@@ -11,8 +11,12 @@
 // objeto de export + o serializador JSON. O carregamento (Prisma) e o carimbo de
 // tempo (`new Date()`) ficam na rota, mantendo esta lógica testável e determinística.
 
-/** Versão do formato do arquivo de export — permite evolução/migração futura. */
-export const ACCOUNT_EXPORT_SCHEMA_VERSION = 1;
+/**
+ * Versão do formato do arquivo de export — permite evolução/migração futura.
+ * v2 acrescenta `shows[].statusEvents` (histórico do funil), aditivo em relação
+ * a v1: um arquivo v1 (sem `statusEvents`) continua restaurável. Ver DECISIONS.md.
+ */
+export const ACCOUNT_EXPORT_SCHEMA_VERSION = 2;
 
 /** Identificador do app gravado no cabeçalho do arquivo. */
 export const ACCOUNT_EXPORT_APP = "Palco";
@@ -24,6 +28,14 @@ export interface AccountExportProfileInput {
   email: string;
   artistName?: string | null;
   taxRatePercent?: number | null;
+}
+
+/** Um evento da linha do tempo do funil (criação / transição de status). */
+export interface AccountExportShowStatusEventInput {
+  /** `null`/ausente no evento de criação do show (ver D234). */
+  fromStatus?: string | null;
+  toStatus: string;
+  createdAt: Date | string;
 }
 
 export interface AccountExportShowInput {
@@ -38,6 +50,12 @@ export interface AccountExportShowInput {
   paymentPromisedAt?: Date | string | null;
   /** ids dos contatos vinculados ao show (preserva a relação N:N). */
   contactIds?: string[];
+  /**
+   * Histórico de mudanças de status do show (linha do tempo do funil), em ordem
+   * cronológica. Ausente = sem histórico registrado (backup restaura só o evento
+   * de criação). Adicionado no schema v2.
+   */
+  statusEvents?: AccountExportShowStatusEventInput[];
 }
 
 export interface AccountExportTransactionInput {
@@ -106,6 +124,11 @@ export interface AccountDataExport {
     notes: string | null;
     paymentPromisedAt: string | null;
     contactIds: string[];
+    statusEvents: Array<{
+      fromStatus: string | null;
+      toStatus: string;
+      createdAt: string; // ISO 8601 (UTC)
+    }>;
   }>;
   transactions: Array<{
     id: string;
@@ -167,6 +190,11 @@ export function buildAccountDataExport(
     notes: orNull(s.notes),
     paymentPromisedAt: toIsoOrNull(s.paymentPromisedAt),
     contactIds: s.contactIds ?? [],
+    statusEvents: (s.statusEvents ?? []).map((e) => ({
+      fromStatus: orNull(e.fromStatus),
+      toStatus: e.toStatus,
+      createdAt: toIso(e.createdAt),
+    })),
   }));
 
   const transactions = input.transactions.map((t) => ({
