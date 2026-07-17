@@ -35,6 +35,22 @@ export default async function ContaPage() {
         <h2 className="text-lg font-semibold">Reserva para impostos</h2>
         <TaxRateForm value={user.taxRatePercent ?? null} />
       </section>
+
+      <section className="card space-y-3">
+        <h2 className="text-lg font-semibold">Seus dados</h2>
+        <p className="text-sm text-gray-500">
+          Baixe uma cópia completa da sua carteira — shows, finanças, contatos e
+          metas — num único arquivo <code>.json</code>. São seus dados: guarde um
+          backup ou leve-os para onde quiser.
+        </p>
+        <a
+          href="/conta/dados/export"
+          className="btn-secondary inline-flex w-fit items-center gap-2"
+          download
+        >
+          ⬇ Baixar todos os meus dados (JSON)
+        </a>
+      </section>
     </div>
   );
 }
