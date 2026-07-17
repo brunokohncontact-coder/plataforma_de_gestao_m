@@ -68,7 +68,7 @@ describe("parseAccountDataExport", () => {
     expect(result.warnings).toEqual([]);
     expect(result.summary).toEqual({
       app: "Palco",
-      schemaVersion: 1,
+      schemaVersion: 2,
       exportedAt: "2026-07-17T12:34:56.000Z",
       counts: { shows: 1, transactions: 1, contacts: 1, revenueGoals: 1 },
     });
@@ -213,8 +213,59 @@ describe("parseAccountDataExport", () => {
     });
   });
 
-  it("expõe apenas a versão 1 como suportada", () => {
-    expect(SUPPORTED_ACCOUNT_IMPORT_SCHEMA_VERSIONS).toEqual([1]);
+  it("aceita v1 e v2 do formato como suportadas (compatibilidade retroativa)", () => {
+    expect(SUPPORTED_ACCOUNT_IMPORT_SCHEMA_VERSIONS).toEqual([1, 2]);
+  });
+
+  it("interpreta um backup v1 sem statusEvents (funil vazio por show)", () => {
+    const data = goodExport();
+    // Simula um arquivo v1: sem o campo statusEvents e com o cabeçalho v1.
+    const legacy = {
+      ...data,
+      meta: { ...data.meta, schemaVersion: 1 },
+      shows: data.shows.map(({ statusEvents: _drop, ...rest }) => rest),
+    };
+    const r = parseAccountDataExport(legacy);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.data.meta.schemaVersion).toBe(1);
+    expect(r.data.shows[0]?.statusEvents).toEqual([]);
+  });
+
+  it("valida e preserva o histórico do funil (statusEvents) de um backup v2", () => {
+    const data = goodExport();
+    data.shows[0]!.statusEvents = [
+      { fromStatus: null, toStatus: "PROPOSED", createdAt: "2026-04-01T10:00:00.000Z" },
+      { fromStatus: "PROPOSED", toStatus: "CONFIRMED", createdAt: "2026-04-10T10:00:00.000Z" },
+    ];
+    const r = parseAccountDataExport(data);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.data.shows[0]?.statusEvents).toEqual([
+      { fromStatus: null, toStatus: "PROPOSED", createdAt: "2026-04-01T10:00:00.000Z" },
+      { fromStatus: "PROPOSED", toStatus: "CONFIRMED", createdAt: "2026-04-10T10:00:00.000Z" },
+    ]);
+  });
+
+  it("rejeita um evento de statusEvents sem toStatus ou createdAt", () => {
+    const data = goodExport();
+    data.shows[0]!.statusEvents = [
+      { fromStatus: null, toStatus: "", createdAt: "" } as never,
+    ];
+    const r = parseAccountDataExport(data);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.errors.join(" ")).toMatch(/statusEvents\[0\]\.toStatus/);
+    expect(r.errors.join(" ")).toMatch(/statusEvents\[0\]\.createdAt/);
+  });
+
+  it("rejeita statusEvents que não é uma lista", () => {
+    const data = goodExport();
+    const broken = { ...data, shows: [{ ...data.shows[0], statusEvents: "nope" }] };
+    const r = parseAccountDataExport(broken);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.errors.join(" ")).toMatch(/shows\[0\]\.statusEvents/);
   });
 });
 

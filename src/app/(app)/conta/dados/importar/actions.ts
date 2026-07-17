@@ -131,11 +131,21 @@ export async function importAccountAction(
         contactIdByKey.set(c.key, created.id);
       }
 
-      // Shows — com os vínculos de contato já remapeados e o evento de criação
-      // na linha do tempo do funil (from null → status inicial, como no cadastro
-      // normal; o backup não guarda o histórico de transições). Ver D234.
+      // Shows — com os vínculos de contato já remapeados e a linha do tempo do
+      // funil restaurada: se o backup traz o histórico (schema v2), gravamos os
+      // eventos originais preservando `createdAt`/`fromStatus`/`toStatus`; senão
+      // (backup v1 ou show sem histórico) recriamos só o evento de criação
+      // sintético (from null → status inicial), como no cadastro normal. Ver D234.
       const showIdByKey = new Map<string, string>();
       for (const s of plan.shows) {
+        const statusEventsCreate = s.statusEvents.length
+          ? s.statusEvents.map((e) => ({
+              userId: user.id,
+              fromStatus: e.fromStatus,
+              toStatus: e.toStatus,
+              createdAt: new Date(e.createdAt),
+            }))
+          : [{ userId: user.id, fromStatus: null, toStatus: s.status }];
         const created = await tx.show.create({
           data: {
             userId: user.id,
@@ -156,9 +166,7 @@ export async function importAccountAction(
                   })),
                 }
               : undefined,
-            statusEvents: {
-              create: { userId: user.id, fromStatus: null, toStatus: s.status },
-            },
+            statusEvents: { create: statusEventsCreate },
           },
         });
         showIdByKey.set(s.key, created.id);

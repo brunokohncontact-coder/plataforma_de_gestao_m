@@ -4,7 +4,34 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 361 — RESTAURAÇÃO DE BACKUP (SÓ EM CONTA VAZIA) em `/conta/dados/importar` (`accountRestore` + `importAccountAction`,
+**Sessão 362 — HISTÓRICO DO FUNIL (`ShowStatusEvent`) NO BACKUP: export schema v2 + restauração fiel da linha do tempo (D357),
+fechando o "próximo possível" que as Sessões 359–361 apontaram ("incluir os `ShowStatusEvent` no snapshot para restaurar o
+histórico real do funil em vez de só o evento de criação"):** o eixo de backup (export→conferência→restauração em conta vazia,
+D354–D356) estava completo MENOS pela linha do tempo do funil — cada criação/transição de status do show (`ShowStatusEvent`,
+base de "quanto tempo em cada etapa" e da futura taxa de conversão, ver D234). Sem ela, um backup restaurado nascia com um
+ÚNICO evento de criação sintético (`from null → status atual`) por show; a história real (PROPOSED→CONFIRMED→PLAYED em datas
+distintas) se perdia. Esta sessão carrega esse histórico de ponta a ponta, com bump de schema **v1→v2** (aditivo, o pendente
+mais SEGURO — não é a restauração-geral-sobre-conta-com-dados, que exige revisão humana). **(1)** `src/lib/accountExport.ts`:
+cada show ganha `statusEvents: [{ fromStatus, toStatus, createdAt }]` (ordem cronológica, datas ISO, `fromStatus` null =
+criação); `ACCOUNT_EXPORT_SCHEMA_VERSION`→`2`; a rota `/conta/dados/export` passa a carregar `statusEvents` (`orderBy createdAt
+asc`). **(2)** `src/lib/accountImport.ts`: `SUPPORTED_...VERSIONS = [1, 2]` (backup v1 sem `statusEvents` segue restaurável →
+funil vazio por show); validação defensiva de cada evento (`toStatus`/`createdAt` textuais obrigatórios, `fromStatus`
+nullable; ausente→`[]`). **(3)** `src/lib/accountRestore.ts`: o plano leva os `statusEvents` saneados (só `createdAt` parseável
++ `toStatus` conhecido; os demais descartados com NOTA, não bloqueiam); a ação de restauração (`importar/actions.ts`) grava o
+histórico REAL preservando `createdAt`/`fromStatus`/`toStatus`, com **fallback** para o evento de criação sintético quando o
+show não traz histórico (backup v1 ou sem eventos) — o comportamento anterior. **+8 testes** (`accountExport.test.ts`: export
+dos eventos normalizando datas/`fromStatus` null, ausente→[]; `accountImport.test.ts`: v1 sem eventos→[], v2 valida/preserva,
+evento sem `toStatus`/`createdAt` bloqueia, `statusEvents` não-lista bloqueia; `accountRestore.test.ts`: preserva válidos,
+descarta data/status inválido com nota; `importar/actions.test.ts`: round-trip restaura os 3 eventos reais com `createdAt`
+preservado e `userId` do dono). DoD verde: `npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test`
+(**1986 testes**); smoke → `/login` 200, `/conta`,`/conta/dados/export`,`/conta/dados/importar` 307→/login (auth-gated);
+**smoke autenticado** (cookie do usuário demo) → export 200 `application/json`, `schemaVersion:2`, o show demo semeado com
+funil PROPOSED→CONFIRMED→PLAYED saindo com os 3 `statusEvents` (createdAt reais), `parseAccountDataExportJson`→ok 0 avisos e
+`buildAccountRestorePlan` preservando os 3 eventos; `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, ZERO
+dependência nova), ver D357. **Próximo possível** — a restauração GERAL (mesclar sobre conta com dados: estratégia de conflito
+novo×sobrescrever, ALTO risco, idealmente com revisão humana antes de mergear); ou um passo de "esvaziar a conta" (guardado por
+confirmação forte) que destravaria a restauração para quem já tem dados; ou próximas sessões podem evoluir outra feature maior.
+**Antes disso, Sessão 361 — RESTAURAÇÃO DE BACKUP (SÓ EM CONTA VAZIA) em `/conta/dados/importar` (`accountRestore` + `importAccountAction`,
 D356), fechando o "próximo possível" que a Sessão 360 (D355) deixou explícito ("a RESTAURAÇÃO de fato — escrever no banco a
 partir do arquivo validado"):** a D355 entregou a conferência (dry-run) que valida o backup sem gravar nada e alertou que a
 restauração de fato é de ALTO risco (pode duplicar/sobrescrever a carteira) numa esteira que mergeia sozinha. Esta sessão
