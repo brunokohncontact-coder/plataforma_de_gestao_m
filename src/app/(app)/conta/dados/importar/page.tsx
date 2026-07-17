@@ -26,9 +26,10 @@ export default async function ImportarDadosPage() {
         <h1 className="text-2xl font-bold">Conferir e restaurar backup</h1>
         <p className="mt-1 text-sm text-gray-500">
           Envie um arquivo <code>.json</code> exportado do Palco para verificar se
-          está íntegro. Se a sua conta estiver vazia, você também pode restaurá-lo —
-          para nunca sobrescrever dados, a restauração é bloqueada quando já há
-          conteúdo na conta.
+          está íntegro. Se a sua conta estiver vazia, você pode restaurá-lo direto;
+          se já houver dados, a restauração exige substituir a carteira atual
+          (apaga o que existe e grava o backup no lugar — sem merge), guardada por
+          uma frase de confirmação.
         </p>
       </div>
 

@@ -5,6 +5,46 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-17 — D359: Restauração por SUBSTITUIÇÃO ("substituir tudo pelo backup") — a metade determinística da restauração-geral
+- **Contexto:** as D354–D358 fecharam o eixo de backup (export → conferência → restauração em conta vazia → reset), mas a
+  restauração só grava numa conta VAZIA. Quem já tem dados precisava de dois passos manuais em telas diferentes: ir a
+  `/conta/dados/apagar`, digitar a frase, e só então voltar a `/conta/dados/importar` para restaurar. O pendente recorrente
+  das últimas cinco sessões era a "restauração-geral sobre conta com dados", sempre marcada como ALTO risco por exigir
+  estratégia de conflito de ids. Mas há DUAS estratégias distintas embutidas nesse pendente: **SUBSTITUIR** (apagar tudo e
+  gravar o backup no lugar — determinística, sem ambiguidade) e **MERGE** (mesclar registro a registro resolvendo ids em
+  conflito — a parte que realmente exige revisão humana). A substituição é a mesma composição de duas operações JÁ testadas
+  (o reset da D358 + a restauração-em-conta-vazia da D356), então pode ser entregue com segurança agora.
+- **Decisão:** entregar a restauração por SUBSTITUIÇÃO como um terceiro intent (`substituir`) do formulário de importação:
+  1. Módulo de escrita `src/lib/accountWrite.ts` (recebe o `tx` transacional por parâmetro): `deleteAccountWallet` (a remoção
+     da carteira na ordem de FK, extraída de `apagar/actions.ts`) e `writeAccountRestorePlan` (a gravação do plano, extraída de
+     `importar/actions.ts`). As duas escritas passam a viver num lugar só; `apagar/actions.ts` e `importar/actions.ts` reusam.
+  2. `importAccountAction` com `intent = "substituir"`: valida o arquivo, exige a frase forte NO SERVIDOR (a MESMA do reset,
+     `RESET_CONFIRMATION_PHRASE`), monta o plano e, num ÚNICO `prisma.$transaction`, chama `deleteAccountWallet` e então
+     `writeAccountRestorePlan`. Devolve `restored` + `deletedBeforeRestore`. O intent `restaurar` (conta vazia) segue existindo.
+  3. UI: numa conta com dados, `ImportForm` mostra o input da frase + botão `btn-danger` "Substituir tudo pelo backup"
+     (desabilitado até a frase bater), com o link "Apague seus dados" preservado como alternativa.
+- **Justificativa:** apagar+restaurar na MESMA transação é atômico — nunca sobra uma conta meio-apagada se a gravação falhar —
+  e a validação do backup roda ANTES do apagar, então um arquivo inválido não destrói nada. Reusar a frase forte do reset casa
+  a fricção ao risco (a operação apaga a carteira). Extrair as escritas para um módulo único garante que reset e substituição
+  não divirjam. Fica de fora, deliberadamente, só o MERGE (a estratégia que exige resolver conflitos de id — o pedaço que ainda
+  pede revisão humana antes de rodar numa esteira que mergeia sozinha).
+- **Alternativas consideradas:** (a) exigir o fluxo manual em dois passos (apagar, depois restaurar) — rejeitado: é o loop que
+  esta sessão fecha, e "restaurar" nunca funcionava para quem já tinha dados; (b) entregar o MERGE agora — rejeitado: é o
+  pendente de ALTO risco (conflito de ids novo×sobrescrever) reservado para revisão humana; (c) apagar numa transação e
+  restaurar em outra — rejeitado: uma falha entre elas deixaria a conta vazia (pior que o estado anterior); (d) uma frase de
+  confirmação própria para a substituição — rejeitado: reusar a do reset mantém uma só convenção de fricção destrutiva.
+  **Pendência (revisão humana):** a restauração por MERGE sobre conta com dados.
+- **Verificação:** DoD verde — `npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**2001 testes**,
+  +6 em `importar/actions.test.ts`: substitui apagando+gravando com ambas as contagens, substitui em conta vazia apagando zero,
+  recusa sem frase/frase errada sem tocar nada, tolerância caixa/espaço, não vaza entre usuários, backup inválido não apaga a
+  carteira); smoke → `/login` 200, `/conta/dados/importar` e `/conta/dados/apagar` 307→/login (auth-gated); smoke autenticado
+  (token do usuário demo, conta com dados) → `/conta/dados/importar` 200 renderizando o botão de substituição, a frase de
+  confirmação e o link de apagar; `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, zero dependência nova).
+  Arquivos: novo `src/lib/accountWrite.ts`; `src/app/(app)/conta/dados/importar/{actions.ts,actions.test.ts,ImportForm.tsx,page.tsx}`;
+  `src/app/(app)/conta/dados/apagar/actions.ts` (refatorado para reusar `deleteAccountWallet`).
+- **Nota de concorrência:** número **D359** escolhido como o próximo livre acima do maior D mergeado na `main` (D358, PR #394).
+  Sem PRs abertas no momento. Se outra PR reivindicar D359 antes do merge, renumerar para o próximo livre.
+
 ## 2026-07-17 — D358: Esvaziar a conta ("apagar todos os meus dados") — reset destrutivo guardado por frase de confirmação
 - **Contexto:** o eixo de backup fechou export → conferência → restauração (D354–D357), mas a restauração só grava numa
   conta VAZIA (para nunca sobrescrever/duplicar a carteira). Quem já tem dados não conseguia restaurar um backup — e não
