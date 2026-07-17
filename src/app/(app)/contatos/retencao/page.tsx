@@ -462,9 +462,17 @@ function PriceMoversSection({
   return (
     <section className="card p-0">
       <div className="border-b border-gray-100 px-4 py-3">
-        <h2 className="font-semibold">
-          Movers de preço · {previousYear} → {year}
-        </h2>
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="font-semibold">
+            Movers de preço · {previousYear} → {year}
+          </h2>
+          <a
+            href="/contatos/retencao/movers/export"
+            className="shrink-0 text-xs font-medium text-brand-700 hover:underline"
+          >
+            ⬇ CSV
+          </a>
+        </div>
         <p className="mt-0.5 text-xs text-gray-500">
           Abre o movimento da carteira em quem VOCÊ subiu e baixou o cachê médio por show
           de um ano para o outro. Só contratantes com shows pagos nos dois anos.

@@ -5,6 +5,43 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-17 — D353: Exportação CSV dos movers de preço em `/contatos/retencao` (`retentionPriceMoversToCsv`)
+- **Contexto:** a D352 pôs na tela a seção "Movers de preço · {ano−1} → {ano}" (`retentionPriceMovers`) — a lista acionável
+  de com quem você subiu/baixou o cachê de um ano para o outro —, mas era a única lista acionável da carteira SEM CSV
+  próprio, e a própria D352 apontou "levar já ao CSV" como o "próximo possível" que adiou. O export da carteira inteira
+  (`clientRetentionToCsv`) não traz o eixo por-ano nem separa subiu/baixou; para levar os movers à planilha o músico teria
+  de reconstruí-los à mão. Fechar essa lacuna leva a feature de movers à paridade tela↔export dos irmãos.
+- **Decisão:** serializador puro `retentionPriceMoversToCsv(movers)` em `src/lib/csv.ts` (aceita `RetentionPriceMovers | null`).
+  Espelha fielmente a seção: exporta só os movers ACIONÁVEIS (raised ∪ lowered; os estáveis ficam de fora, como na tela, que
+  só conta `flatCount`), na mesma leitura em dois grupos — primeiro "🟢 você subiu" (maior alta → menor), depois "🟠 você
+  baixou" (maior queda → menor). Colunas: Contratante, Papel, Movimento (`Subiu`/`Baixou`), Cachê/show de cada ano do par,
+  Variação (R$) (`delta` assinado via `centsToCsvAmount`), Variação (%) (`relativeDelta` em pontos assinados via
+  `csvSignedPoints`, ordenável) e Shows de cada ano. Os ANOS do par entram nos rótulos das colunas por-ano (como
+  `clientConcentrationToCsv` embute `vs. {previousYear}`), para a planilha abrir auto-suficiente; sem par comparável
+  (`null`) os rótulos caem em "ano anterior"/"ano atual" e o CSV sai só com o cabeçalho. **Sem linha "Total"**: é lista de
+  alvos, não distribuição (somar variações por-show de volumes diferentes não é acionável) — mesma disciplina de
+  `underpricedLoyalClientsToCsv`. Rota `/contatos/retencao/movers/export` (BOM UTF-8, `movers-de-preco.csv`) que espelha a
+  derivação da página: par via `compareRetentionPricingYoY` → `retentionPriceMovers` (o MESMO par do card agregado) — sem par
+  comparável → movers nulo → cabeçalho só. Botão "⬇ CSV" no cabeçalho da `PriceMoversSection` (que só renderiza quando há
+  mover real). Camada puramente de serialização (pura, testada); reusa `retentionPriceMovers`; zero migração/dependência.
+  **+3 testes** (`csv.test.ts`).
+- **Justificativa:** completa/poliu o existente (D352) em vez de abrir eixo novo, como o protocolo pede ("prefira completar a
+  iniciar"). Espelhar a derivação de anos da página (reusar o par do `compareRetentionPricingYoY`) garante que planilha e tela
+  contem a MESMA história — nunca períodos diferentes. Assinar a variação em % via `csvSignedPoints` (inteiro com sinal, sem
+  "%") deixa a coluna ordenável na planilha; a variação em R$ usa `centsToCsvAmount`, que já carrega o sinal — combinada com a
+  coluna "Movimento" o sentido fica inequívoco. Excluir estáveis (só `flatCount` na tela) mantém a planilha como lista de
+  alvos, coerente com a leitura acionável.
+- **Alternativas consideradas:** (a) incluir os estáveis com Movimento "Estável" — rejeitado: a tela não os lista (só conta),
+  e uma lista de alvos não se beneficia de linhas "sem ação"; quebraria o espelhamento. (b) ordenar por maior movimento
+  absoluto (a ordem do array `movers`) misturando altas e quedas numa coluna só — rejeitado: perde a leitura em dois grupos
+  que a tela usa e que é a mais útil para agir ("renegociar para cima" vs "recuperar margem" são decisões distintas). (c)
+  cabeçalho estático sem os anos, pondo os anos em colunas de dados — rejeitado: mais colunas e menos legível; embutir o ano
+  no rótulo segue o precedente de `clientConcentrationToCsv`. (d) linha "Total"/média das variações — rejeitado: somar/mediar
+  variações por-show de volumes diferentes não tem significado acionável (mesma razão do `underpricedLoyalClientsToCsv`). (e)
+  usar `csvShare` (com "%", sem sinal) para a variação — rejeitado: perderia o sinal, essencial num mover.
+- **Nota de concorrência:** número **D353** escolhido como o próximo livre acima do maior D mergeado na `main` (D352,
+  PR #388); não há PRs abertas. Se outra PR reivindicar D353 antes do merge, renumerar para o próximo livre.
+
 ## 2026-07-17 — D352: Movers individuais do preço ano a ano em `/contatos/retencao` (`retentionPriceMovers`)
 - **Contexto:** a D351 (`compareRetentionPricingYoY`) entrega o movimento AGREGADO do desconto de fidelidade da carteira
   ("de {ano−1} para {ano} o preço da fidelidade melhorou/piorou"), e ela mesma listou como "próximo possível" e adiou os

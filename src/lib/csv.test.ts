@@ -74,6 +74,7 @@ import {
   clientRetentionToCsv,
   underpricedLoyalClientsToCsv,
   UNDERPRICED_LOYAL_CSV_HEADERS,
+  retentionPriceMoversToCsv,
   clientConcentrationToCsv,
   CLIENT_CONCENTRATION_CSV_HEADERS,
   cancellationByContactToCsv,
@@ -243,6 +244,7 @@ import {
 import {
   clientRetention,
   underpricedLoyalClients,
+  retentionPriceMovers,
   clientConcentration,
   cancellationByContact,
   pipelineByContact,
@@ -2879,6 +2881,82 @@ describe("underpricedLoyalClientsToCsv", () => {
     expect(lines[2]).toBe(
       "Meio Barato;Produtor/Promoter;2;1800,00;2000,00;200,00;10%",
     );
+  });
+});
+
+describe("retentionPriceMoversToCsv", () => {
+  interface C extends ContactRankLike {
+    role: string;
+  }
+  const item = (
+    contact: C,
+    shows: { status: string; date: string; fee: number }[],
+  ) => ({ contact, shows });
+
+  const YEARS_HEADER =
+    "Contratante;Papel;Movimento;Cachê/show 2025 (R$);Cachê/show 2026 (R$);" +
+    "Variação (R$);Variação (%);Shows 2025;Shows 2026";
+
+  it("só cabeçalho (rótulos genéricos) quando não há par YoY (null)", () => {
+    const csv = retentionPriceMoversToCsv<C>(null);
+    const lines = csv.split("\r\n");
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toBe(
+      "Contratante;Papel;Movimento;Cachê/show ano anterior (R$);" +
+        "Cachê/show ano atual (R$);Variação (R$);Variação (%);" +
+        "Shows ano anterior;Shows ano atual",
+    );
+  });
+
+  it("raised primeiro (maior alta) depois lowered; exclui flat e quem só tem um ano", () => {
+    const items = [
+      // Subiu +800,00 (+80%): entra em raised, à frente do +500,00.
+      item({ id: "sm", name: "SobeMais", role: "VENUE" }, [
+        { status: "PLAYED", date: "2025-03-10T00:00:00.000Z", fee: 100000 },
+        { status: "PLAYED", date: "2026-03-10T00:00:00.000Z", fee: 180000 },
+      ]),
+      // Subiu +500,00 (+50%).
+      item({ id: "s", name: "Sobe", role: "OTHER" }, [
+        { status: "PLAYED", date: "2025-04-10T00:00:00.000Z", fee: 100000 },
+        { status: "PLAYED", date: "2026-04-10T00:00:00.000Z", fee: 150000 },
+      ]),
+      // Baixou −1000,00 (−50%): entra em lowered.
+      item({ id: "d", name: "Desce", role: "PROMOTER" }, [
+        { status: "PLAYED", date: "2025-05-10T00:00:00.000Z", fee: 200000 },
+        { status: "PLAYED", date: "2026-05-10T00:00:00.000Z", fee: 100000 },
+      ]),
+      // Estável (+3% < 5% do limiar): fora.
+      item({ id: "e", name: "Estavel", role: "VENUE" }, [
+        { status: "PLAYED", date: "2025-06-10T00:00:00.000Z", fee: 100000 },
+        { status: "PLAYED", date: "2026-06-10T00:00:00.000Z", fee: 103000 },
+      ]),
+      // Só 2026 (aquisição, não mover): fora.
+      item({ id: "n", name: "Novo", role: "OTHER" }, [
+        { status: "PLAYED", date: "2026-07-10T00:00:00.000Z", fee: 100000 },
+      ]),
+    ];
+    const movers = retentionPriceMovers<C>(items, 2026, 2025);
+    const lines = retentionPriceMoversToCsv(movers).split("\r\n");
+    expect(lines).toHaveLength(4);
+    expect(lines[0]).toBe(YEARS_HEADER);
+    expect(lines[1]).toBe("SobeMais;Casa de show;Subiu;1000,00;1800,00;800,00;+80;1;1");
+    expect(lines[2]).toBe("Sobe;Outro;Subiu;1000,00;1500,00;500,00;+50;1;1");
+    expect(lines[3]).toBe(
+      "Desce;Produtor/Promoter;Baixou;2000,00;1000,00;-1000,00;-50;1;1",
+    );
+  });
+
+  it("só cabeçalho (com os anos) quando o par existe mas todos ficaram estáveis", () => {
+    const items = [
+      item({ id: "e", name: "Estavel", role: "VENUE" }, [
+        { status: "PLAYED", date: "2025-06-10T00:00:00.000Z", fee: 100000 },
+        { status: "PLAYED", date: "2026-06-10T00:00:00.000Z", fee: 103000 },
+      ]),
+    ];
+    const movers = retentionPriceMovers<C>(items, 2026, 2025);
+    const lines = retentionPriceMoversToCsv(movers).split("\r\n");
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toBe(YEARS_HEADER);
   });
 });
 
