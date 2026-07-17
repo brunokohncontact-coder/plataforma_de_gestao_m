@@ -57,10 +57,18 @@ export default async function ContaPage() {
           >
             🔍 Conferir ou restaurar um backup
           </a>
+          <a
+            href="/conta/dados/apagar"
+            className="btn-danger inline-flex w-fit items-center gap-2"
+          >
+            🗑 Apagar todos os meus dados
+          </a>
         </div>
         <p className="text-xs text-gray-500">
           Já tem um arquivo de backup? Confira se ele está íntegro e, numa conta
-          vazia, restaure toda a carteira a partir dele.
+          vazia, restaure toda a carteira a partir dele. Apagar seus dados
+          esvazia a carteira (a conta continua ativa) — útil para recomeçar do
+          zero ou destravar a restauração.
         </p>
       </section>
     </div>

@@ -4,7 +4,34 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 362 — HISTÓRICO DO FUNIL (`ShowStatusEvent`) NO BACKUP: export schema v2 + restauração fiel da linha do tempo (D357),
+**Sessão 363 — ESVAZIAR A CONTA ("apagar todos os meus dados") em `/conta/dados/apagar` (`accountReset` +
+`resetAccountDataAction`, D358), fechando o pendente "um passo de esvaziar a conta guardado por confirmação forte" que
+as Sessões 361–362 deixaram explícito:** o eixo de backup fechou export→conferência→restauração (D354–D357), mas a
+restauração só grava numa conta VAZIA (para nunca sobrescrever/duplicar a carteira). Quem já tinha dados não conseguia
+restaurar um backup, e não havia forma de "recomeçar do zero" / apagar os próprios dados (LGPD). Esta sessão entrega o
+reset destrutivo — o mais SEGURO dos pendentes de escrita (apagar não tem ambiguidade de merge; a restauração-geral
+sobre conta com dados segue como pendência de ALTO risco p/ revisão humana). **(1)** módulo PURO
+`src/lib/accountReset.ts`: `RESET_CONFIRMATION_PHRASE = "APAGAR MEUS DADOS"` + `matchesResetConfirmation(input)` que
+normaliza tolerante (apara pontas, colapsa espaços, ignora caixa) mas exige a frase exata — ausente/não-textual/parcial
+nunca autoriza. **(2)** server action `resetAccountDataAction` (`/conta/dados/apagar/actions.ts`): `requireUser`, valida
+a frase NO SERVIDOR (sem ela nada é apagado — fecha TOCTOU, a UI só habilita o botão), e num `prisma.$transaction` remove
+escopado por `userId` na ordem de FK (junção N:N via `show.userId`, `ShowStatusEvent`, transações, contatos, shows,
+metas), devolvendo as contagens; revalida `/dashboard`,`/shows`,`/financas`,`/contatos`,`/conta`,`/conta/dados/importar`.
+Preserva a IDENTIDADE (nome/e-mail/senha) e o perfil (nome artístico, alíquota) — apaga só as quatro entidades que o gate
+de emptiness da restauração conta, então esvaziar DESTRAVA a restauração. **(3)** UI: página auth-gated que conta a
+carteira e mostra `ResetForm` (input exigindo a frase, botão `btn-danger` desabilitado até bater; conta vazia → "nada a
+apagar"; sucesso → contagens removidas); link `🗑` na seção "Seus dados" de `/conta`; atalho "Apague seus dados" no bloco
+âmbar de `/conta/dados/importar` quando a conta tem dados (fecha o loop do restore). **+9 testes**
+(`accountReset.test.ts`: 4 puros — frase exata, tolerância caixa/espaço, recusa parcial/vazio/não-texto;
+`apagar/actions.test.ts`: 5 de integração no banco — recusa sem frase (nada removido), apaga toda a carteira preservando
+a identidade + junção/eventos, tolerância caixa/espaço, não vaza entre usuários, conta vazia apaga zero sem falhar). DoD
+verde: `npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1995 testes**); smoke → `/login`
+200, `/conta/dados/apagar` 307→/login (auth-gated); **smoke autenticado** (cookie do usuário demo) → `/conta/dados/apagar`
+200 com o formulário, a frase de confirmação, o aviso "irreversível" e as contagens da carteira demo; `npm audit`
+inalterado (10 advisories: 4 moderate/5 high/1 critical, ZERO dependência nova), ver D358. **Próximo possível** — a
+restauração GERAL (mesclar sobre conta com dados: estratégia de conflito novo×sobrescrever, ALTO risco, idealmente com
+revisão humana antes de mergear); ou próximas sessões podem evoluir outra feature maior.
+**Antes disso, Sessão 362 — HISTÓRICO DO FUNIL (`ShowStatusEvent`) NO BACKUP: export schema v2 + restauração fiel da linha do tempo (D357),
 fechando o "próximo possível" que as Sessões 359–361 apontaram ("incluir os `ShowStatusEvent` no snapshot para restaurar o
 histórico real do funil em vez de só o evento de criação"):** o eixo de backup (export→conferência→restauração em conta vazia,
 D354–D356) estava completo MENOS pela linha do tempo do funil — cada criação/transição de status do show (`ShowStatusEvent`,
