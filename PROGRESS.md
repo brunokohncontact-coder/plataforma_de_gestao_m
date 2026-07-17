@@ -4,7 +4,28 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 365 — COBERTURA DO HUB DE RELATÓRIOS: registrar as duas análises órfãs + trava anti-drift catálogo↔filesystem
+**Sessão 366 — COMPARATIVO ANO A ANO DO RESUMO ANUAL NO CSV (`/financas/anual/comparativo/export` + `annualComparisonToCsv`,
+D361), levando para a planilha o "vs {ano-1}" que a página `/financas/anual` já mostra na tela mas o CSV descartava:** o único
+export do resumo anual (`/financas/anual/export`, `annualSummaryToCsv`) exportava um ano isolado (12 meses + total), enquanto a
+tela já compara com o ano anterior (deltas dos três totais + variação de resultado mês a mês, via `compareAnnualSummaries`) —
+quem baixava o CSV para o contador perdia o contexto YoY. **(1)** camada pura nova em `src/lib/csv.ts`: `annualComparisonToCsv`
+(+ `annualComparisonCsvHeaders`) serializa os DOIS anos por inteiro — por mês (sempre os 12, jan→dez) e no total, a
+receita/despesa/resultado de cada ano mais o Δ absoluto de cada métrica (10 colunas); os anos concretos entram nos rótulos das
+colunas (`Receitas 2025 (R$)`/`Receitas 2026 (R$)`/…), pois há dois conjuntos de valores a distinguir. **(2)** rota nova
+`/financas/anual/comparativo/export?ano=YYYY` (irmã, sem tocar no export simples): constrói `compareAnnualSummaries(ano, ano-1)`
+com o MESMO gate da página (`prevHasActivity` — o ano anterior teve movimento?); sem isso, **404** (não há comparativo; o export
+simples cobre um ano só). **(3)** UI: segundo link "⬇ CSV vs {ano-1}" na página `/financas/anual`, ao lado do "⬇ CSV" existente,
+visível só quando o gate passa. **+3 testes** (`csv.test.ts`: cabeçalho com os dois anos + 14 linhas zeradas; os dois anos por
+mês com Δ de cada métrica; Δ negativo quando a métrica cai). Camada pura (só dados + rota; zero migração/dependência). DoD verde:
+`npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**2007 testes**); smoke → `/login` 200,
+`/financas/anual` e a rota nova 307→/login (auth-gated); **smoke autenticado** (token do usuário demo) → `/financas/anual` 200,
+o comparativo com um só ano de dados **404** (gate), com movimento nos dois anos **200** `text/csv` (cabeçalho
+`Receitas 2025 (R$);Receitas 2026 (R$);…`, linha Total com os Δ YoY) e a página exibindo o link "⬇ CSV vs 2025"; `npm audit`
+inalterado (10 advisories: 4 moderate/5 high/1 critical, ZERO dependência nova), ver D361. **Próximo possível** — o mesmo
+comparativo tabular como PÁGINA (adiado: `/financas/anual` já mostra os deltas na tela, uma página duplicaria); ou a restauração
+por MERGE do backup (ALTO risco, revisão humana) segue o único pendente do eixo de backup; ou próximas sessões podem evoluir
+outra feature maior.
+**Antes disso, Sessão 365 — COBERTURA DO HUB DE RELATÓRIOS: registrar as duas análises órfãs + trava anti-drift catálogo↔filesystem
 (`REPORT_GROUPS` em `src/lib/reports.ts` + guarda em `reports.test.ts`, D360), corrigindo uma DIVERGÊNCIA silenciosa entre o
 que o app serve e o que o índice `/relatorios` mostra:** o `src/lib/reports.ts` se declara a "fonte única de verdade" do acervo
 de análises ("registre aqui — e só aqui — para aparecer no hub"), mas duas páginas de relatório REAIS existiam no filesystem

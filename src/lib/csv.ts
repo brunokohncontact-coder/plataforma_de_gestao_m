@@ -20,6 +20,7 @@ import {
   PAYMENT_SPEED_BUCKET_LABELS,
   classifyGigSeasonalityMonthChange,
   type AnnualSummary,
+  type AnnualComparison,
   type MonthlySeasonality,
   type QuarterlySummary,
   type SeasonalMonth,
@@ -458,6 +459,82 @@ export function annualSummaryToCsv(
     centsToCsvAmount(summary.totalIncome),
     centsToCsvAmount(summary.totalExpense),
     centsToCsvAmount(summary.net),
+  ]);
+  return toCsv(rows, delimiter);
+}
+
+/**
+ * Cabeçalhos do comparativo anual — os anos concreto (corrente) e anterior entram
+ * NOS rótulos das colunas (diferente de `gigSeasonalityComparisonToCsv`, que os
+ * joga só no nome do arquivo): aqui há dois conjuntos completos de valores
+ * (receita/despesa/resultado de cada ano), então o ano precisa estar visível na
+ * planilha para não virar "coluna X vs. coluna Y" ambígua. Construídos a partir
+ * da comparação para casar `previousYear`/`year`. Ordem: por métrica, o ano
+ * anterior, depois o corrente, depois o Δ — espelhando a leitura "de onde vim →
+ * onde cheguei → quanto mudei" dos cards de `/financas/anual`.
+ */
+export function annualComparisonCsvHeaders(comparison: AnnualComparison): string[] {
+  const prev = comparison.previousYear;
+  const cur = comparison.year;
+  return [
+    "Mês",
+    `Receitas ${prev} (R$)`,
+    `Receitas ${cur} (R$)`,
+    "Δ receitas (R$)",
+    `Despesas ${prev} (R$)`,
+    `Despesas ${cur} (R$)`,
+    "Δ despesas (R$)",
+    `Resultado ${prev} (R$)`,
+    `Resultado ${cur} (R$)`,
+    "Δ resultado (R$)",
+  ];
+}
+
+/**
+ * Serializa o comparativo ano a ano do resumo anual (`compareAnnualSummaries`) em
+ * CSV, pronto para download — espelha o "vs {ano-1}" que a página `/financas/anual`
+ * já mostra na tela (os deltas dos três totais + a variação de resultado mês a mês),
+ * mas leva os DOIS anos por inteiro para a planilha: receita, despesa e resultado de
+ * cada mês nos dois anos, com a variação absoluta (Δ) de cada métrica. Uma linha por
+ * mês do calendário (sempre as 12, jan→dez, inclusive meses vazios nos dois anos — o
+ * CSV registra 0,00, diferente do "—" da tela, para ficar legível por máquina),
+ * seguida de uma linha "Total do ano".
+ *
+ * Cada Δ sai via `centsToCsvAmount` (que já emite o "-" nos negativos), consistente
+ * com o resto do arquivo. Os anos concretos vão nos cabeçalhos das colunas
+ * (`annualComparisonCsvHeaders`) porque há dois conjuntos de valores a distinguir.
+ * Mesma convenção pt-BR dos irmãos (";" e decimal com vírgula). Pura.
+ */
+export function annualComparisonToCsv(
+  comparison: AnnualComparison,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const rows: string[][] = [annualComparisonCsvHeaders(comparison)];
+  for (const m of comparison.months) {
+    rows.push([
+      MONTH_NAMES_LONG[m.monthIndex - 1],
+      centsToCsvAmount(m.income.previous),
+      centsToCsvAmount(m.income.current),
+      centsToCsvAmount(m.income.delta),
+      centsToCsvAmount(m.expense.previous),
+      centsToCsvAmount(m.expense.current),
+      centsToCsvAmount(m.expense.delta),
+      centsToCsvAmount(m.net.previous),
+      centsToCsvAmount(m.net.current),
+      centsToCsvAmount(m.net.delta),
+    ]);
+  }
+  rows.push([
+    "Total do ano",
+    centsToCsvAmount(comparison.totalIncome.previous),
+    centsToCsvAmount(comparison.totalIncome.current),
+    centsToCsvAmount(comparison.totalIncome.delta),
+    centsToCsvAmount(comparison.totalExpense.previous),
+    centsToCsvAmount(comparison.totalExpense.current),
+    centsToCsvAmount(comparison.totalExpense.delta),
+    centsToCsvAmount(comparison.net.previous),
+    centsToCsvAmount(comparison.net.current),
+    centsToCsvAmount(comparison.net.delta),
   ]);
   return toCsv(rows, delimiter);
 }

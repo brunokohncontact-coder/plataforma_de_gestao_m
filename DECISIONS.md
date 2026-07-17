@@ -5,6 +5,40 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-17 — D361: Comparativo ano a ano do resumo anual no CSV (`/financas/anual/comparativo/export`)
+- **Contexto:** a página `/financas/anual` já compara o ano na tela contra o anterior — os deltas dos três totais
+  (receitas/despesas/saldo) e a variação de resultado mês a mês, via `compareAnnualSummaries`/`MetricDelta` — mas o único CSV
+  do eixo (`/financas/anual/export`, `annualSummaryToCsv`) exporta só um ano isolado (12 meses + total), sem nenhum traço do "vs
+  ano anterior". Quem baixa o resumo para reconciliar com o contador ou montar a própria planilha perde exatamente o contexto de
+  variação que vê na tela.
+- **Decisão:** adicionar um export IRMÃO `/financas/anual/comparativo/export?ano=YYYY` (rota nova, sem tocar no export simples)
+  que leva os DOIS anos por inteiro para a planilha: por mês (sempre os 12, jan→dez) e no total, a receita/despesa/resultado de
+  cada ano mais o Δ absoluto de cada métrica (10 colunas). Camada pura nova em `@/lib/csv`: `annualComparisonToCsv` +
+  `annualComparisonCsvHeaders` (os anos concretos entram nos RÓTULOS das colunas — diferente de `gigSeasonalityComparisonToCsv`,
+  que os joga só no nome do arquivo — porque há dois conjuntos de valores a distinguir). O gate é o MESMO da página
+  (`prevHasActivity`: o ano anterior teve movimento?): sem isso, 404 (não há comparativo, o export simples cobre um ano só). Um
+  segundo link "⬇ CSV vs {ano-1}" aparece na página só quando o gate passa, ao lado do "⬇ CSV" existente.
+- **Justificativa:** espelha o padrão já validado do eixo de shows (`/shows/sazonalidade/comparativo/export`, D214/gate por ano
+  + 404) sem duplicar o que `/financas/anual` já entrega na tela — leva a leitura YoY para onde ela some hoje (a planilha). Rota
+  separada em vez de mudar a forma do CSV existente: consumidores automáticos do export simples não quebram, e a coluna condicional
+  não vira "shape que muda conforme os dados". Camada pura + testada, zero migração/dependência.
+- **Alternativas consideradas:** (a) enriquecer o próprio `/financas/anual/export` com as colunas do ano anterior quando houver
+  histórico — rejeitado: mudaria a forma de um CSV já publicado conforme os dados, hostil a quem o consome por máquina. (b) uma
+  PÁGINA `/financas/anual/comparativo` com a tabela dos 12 meses lado a lado — rejeitado: a página `/financas/anual` já mostra os
+  deltas na tela; uma página nova duplicaria isso (viola "não duplicar"). O buraco real era só o CSV. (c) pôr os anos no nome do
+  arquivo e deixar os cabeçalhos genéricos (como o irmão de shows) — rejeitado aqui: shows tem um valor por ano (nº de shows);
+  o anual tem seis (receita/despesa/resultado × dois anos), então o ano precisa estar visível na coluna para não ficar ambíguo.
+- **Verificação:** DoD verde — `npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**2007 testes**, +3
+  em `csv.test.ts`: cabeçalho com os dois anos + 14 linhas zeradas; os dois anos por mês com Δ de cada métrica; Δ negativo quando
+  a métrica cai); smoke → `/login` 200, `/financas/anual` e `/financas/anual/comparativo/export` 307→/login (auth-gated); smoke
+  autenticado (token do usuário demo) → `/financas/anual` 200; export com um só ano de dados → 404 (gate); com movimento nos dois
+  anos → 200 `text/csv` com cabeçalho `Receitas 2025 (R$);Receitas 2026 (R$);…` e a linha Total trazendo os Δ YoY, e a página
+  exibindo o link "⬇ CSV vs 2025"; `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, zero dependência nova).
+  Arquivos: `src/lib/csv.ts` (+`annualComparisonToCsv`/`annualComparisonCsvHeaders`), `src/lib/csv.test.ts` (+bloco),
+  `src/app/(app)/financas/anual/comparativo/export/route.ts` (novo), `src/app/(app)/financas/anual/page.tsx` (+link).
+- **Nota de concorrência:** número **D361** escolhido como o próximo livre acima do maior D mergeado na `main` (D360, PR #396).
+  Sem PRs abertas no momento. Se outra PR reivindicar D361 antes do merge, renumerar para o próximo livre.
+
 ## 2026-07-17 — D360: Cobertura do hub de relatórios — registrar as duas análises órfãs + trava anti-drift catálogo↔filesystem
 - **Contexto:** `src/lib/reports.ts` é a "fonte única de verdade" do acervo de análises (o índice navegável `/relatorios` e a
   busca deep-linkável derivam dele; o docstring pede "registre aqui — e só aqui — para aparecer no hub"). Uma auditoria cruzando
