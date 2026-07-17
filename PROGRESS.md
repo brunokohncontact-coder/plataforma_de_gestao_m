@@ -4,7 +4,36 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 367 — COMPARATIVO ANO A ANO DA RENTABILIDADE POR SHOW NO CSV (`/shows/rentabilidade/comparativo/export` +
+**Sessão 368 — COMPARATIVO ANO A ANO DA ANTECEDÊNCIA DE AGENDAMENTO NO CSV (`/shows/antecedencia/comparativo/export` +
+`bookingLeadTimeComparisonToCsv`, D363), levando para a planilha o card "Antecedência {ano} vs. {ano-1}" que a página
+`/shows/antecedencia` já mostra na tela mas o CSV da distribuição descartava:** a página já compara o ano escolhido contra o
+anterior (a variação da antecedência MEDIANA e da MÉDIA de agendamento, em dias, mais um veredito de tendência — mais folga ×
+em cima da hora — via `compareBookingLeadTime`/`BookingLeadTimeComparison`), mas o único export do eixo
+(`/shows/antecedencia/export`, `bookingLeadTimeToCsv`) só serializava a distribuição por faixa de um período — quem baixava a
+antecedência perdia o comparativo YoY que via na tela (o mesmo buraco que as Sessões 366/367 fecharam no resumo anual e na
+rentabilidade por show). **(1)** camada pura nova em `src/lib/csv.ts`: `bookingLeadTimeComparisonToCsv`
+(+ `BOOKING_LEAD_TIME_COMPARISON_CSV_HEADERS` e o helper `leadTimeYoyPct`) — como a rentabilidade por show (D362), o comparativo
+é um RESUMO de poucas métricas, então a planilha é TRANSPOSTA: uma linha por métrica (antecedência mediana / antecedência média /
+shows na amostra) com o valor do ano anterior, o do corrente, o Δ absoluto e o Δ relativo (%), seguida de uma linha "Veredito"
+com a tendência (o mesmo selo ancorado na mediana da UI). As três métricas são contagens (dias/shows): Δ via `csvSignedCount`,
+Δ % via `csvSignedPercent` sobre a base do ano anterior (vazio quando o ano anterior não teve amostra). **(2)** rota nova
+`/shows/antecedencia/comparativo/export?ano=YYYY` (irmã, sem tocar no export da distribuição): recorta o ano e o anterior do mesmo
+acervo já carregado (`bookingLeadTime` + `filterShowsByYear`) e aplica o MESMO gate da página — um ano específico E ambos os
+períodos com amostra mensurável; sem isso, **404** (a mediana de um ano vazio seria 0 e a comparação enganosa). Preserva o
+`?escopo=` (todos × só firmes, D190). Os anos concretos vão no NOME DO ARQUIVO
+(`antecedencia-comparativo-{ano}-vs-{ano-1}.csv`, `-firmes` quando escopo=firm). **(3)** UI: segundo link "⬇ CSV vs {ano-1}" na
+página `/shows/antecedencia`, ao lado do "⬇ CSV" existente, visível só quando o card do comparativo aparece. **+4 testes**
+(`csv.test.ts`: layout transposto cabeçalho+3 métricas+veredito; deltas/% negativos quando a antecedência cai; Δ % vazio sem
+base no ano anterior; rótulo do veredito estável dentro do limiar). Camada pura (só dados + rota; zero migração/dependência).
+DoD verde: `npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**2015 testes**); smoke → `/login` 200,
+a rota nova 307→/login (auth-gated); **smoke autenticado** (token de usuário demo, shows em 2025 e 2026) → export sem `?ano`
+**404** (gate) e com um ano só de dados **404**; com shows nos dois anos **200** `text/csv` (filename
+`…-2026-vs-2025.csv`, cabeçalho `Métrica;Ano anterior;Ano corrente;Δ;Δ %`, linha `Antecedência mediana (dias);20;45;+25;+125%`,
+`Veredito;Agendando com mais folga;;;`) e a página exibindo o link "⬇ CSV vs 2025" + o card "Antecedência 2026 vs. 2025";
+`npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, ZERO dependência nova), ver D363. **Próximo possível** — o
+eixo de antecedência fica completo tela↔export (distribuição + comparativo YoY); segue como único pendente do eixo de backup a
+restauração por MERGE (ALTO risco, revisão humana); ou próximas sessões podem evoluir outra feature maior.
+**Antes disso, Sessão 367 — COMPARATIVO ANO A ANO DA RENTABILIDADE POR SHOW NO CSV (`/shows/rentabilidade/comparativo/export` +
 `showsProfitabilityComparisonToCsv`, D362), levando para a planilha o card "Resultado por show {ano} vs. {ano-1}" que a página
 `/shows/rentabilidade` já mostra na tela mas o CSV do ranking descartava:** a página já compara o ano escolhido contra o anterior
 (a variação do resultado líquido MÉDIO por show — com % — do resultado TOTAL somado e da contagem de shows, mais um veredito de

@@ -99,6 +99,7 @@ import {
 import { MONTH_NAMES_LONG } from "./calendar";
 import type {
   BookingLeadTime,
+  BookingLeadTimeComparison,
   OpenWeekendsReport,
   ScheduleConflicts,
   FunnelStageDurations,
@@ -873,6 +874,82 @@ export function showsProfitabilityComparisonToCsv(
     csvSignedPercent(count.pct),
   ]);
   out.push(["Veredito", SHOW_PROFIT_TREND_LABELS[comparison.trend], "", "", ""]);
+  return toCsv(out, delimiter);
+}
+
+export const BOOKING_LEAD_TIME_COMPARISON_CSV_HEADERS = [
+  "Métrica",
+  "Ano anterior",
+  "Ano corrente",
+  "Δ",
+  "Δ %",
+] as const;
+
+/** Rótulo pt-BR do veredito do comparativo de antecedência, espelhando o selo da UI. */
+const BOOKING_LEAD_TIME_TREND_LABELS: Record<BookingLeadTimeComparison["trend"], string> = {
+  improved: "Agendando com mais folga",
+  worsened: "Agendando em cima da hora",
+  stable: "Estável",
+};
+
+/**
+ * Δ % de uma métrica de dias/contagem sobre a base do ano anterior: `(atual −
+ * anterior) / anterior`, entregue como fração para `csvSignedPercent` (que
+ * arredonda e assina). Vazio (via `null`) quando não há base — o ano anterior
+ * não teve amostra —, pois uma porcentagem sobre 0 seria enganosa.
+ */
+function leadTimeYoyPct(current: number, previous: number): number | null {
+  if (previous === 0) return null;
+  return (current - previous) / previous;
+}
+
+/**
+ * Serializa o comparativo ano a ano da antecedência de agendamento
+ * (`compareBookingLeadTime`) em CSV, pronto para download — espelha o card
+ * "Antecedência {ano} vs. {ano-1}" de `/shows/antecedencia`, que hoje só vive
+ * na tela (os deltas da mediana e da média, mais o veredito de tendência), sem
+ * chegar à planilha. Como a rentabilidade por show (`showsProfitabilityComparisonToCsv`),
+ * o comparativo é um RESUMO de poucas métricas, então a planilha é transposta:
+ * uma linha por métrica (antecedência mediana, antecedência média, shows na
+ * amostra) com o valor do ano anterior, o do corrente, o Δ absoluto e o Δ
+ * relativo, seguida de uma linha "Veredito" com a tendência (o mesmo selo
+ * ancorado na MEDIANA que a UI mostra).
+ *
+ * As três métricas são contagens (dias/shows), então o Δ sai de `csvSignedCount`
+ * ("+12"/"-1"/"0"). O Δ % sai de `csvSignedPercent` sobre a base do ano anterior
+ * (`leadTimeYoyPct`), vazio quando o ano anterior não teve amostra. Os anos
+ * concretos entram no NOME DO ARQUIVO (como o irmão de rentabilidade/D362) — a
+ * planilha tem só um par de colunas ano-anterior/ano-corrente, sem ambiguidade a
+ * desfazer. Convenção pt-BR (";" e decimal com vírgula). Pura.
+ */
+export function bookingLeadTimeComparisonToCsv(
+  comparison: BookingLeadTimeComparison,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const { current, previous, medianDaysDelta, avgDaysDelta } = comparison;
+  const out: string[][] = [Array.from(BOOKING_LEAD_TIME_COMPARISON_CSV_HEADERS)];
+  out.push([
+    "Antecedência mediana (dias)",
+    String(previous.medianDays),
+    String(current.medianDays),
+    csvSignedCount(medianDaysDelta),
+    csvSignedPercent(leadTimeYoyPct(current.medianDays, previous.medianDays)),
+  ]);
+  out.push([
+    "Antecedência média (dias)",
+    String(previous.avgDays),
+    String(current.avgDays),
+    csvSignedCount(avgDaysDelta),
+    csvSignedPercent(leadTimeYoyPct(current.avgDays, previous.avgDays)),
+  ]);
+  out.push([
+    "Shows na amostra",
+    String(previous.sample),
+    String(current.sample),
+    csvSignedCount(current.sample - previous.sample),
+    csvSignedPercent(leadTimeYoyPct(current.sample, previous.sample)),
+  ]);
+  out.push(["Veredito", BOOKING_LEAD_TIME_TREND_LABELS[comparison.trend], "", "", ""]);
   return toCsv(out, delimiter);
 }
 
