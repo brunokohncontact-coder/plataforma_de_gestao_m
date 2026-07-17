@@ -5,6 +5,45 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-17 — D362: Comparativo ano a ano da rentabilidade por show no CSV (`/shows/rentabilidade/comparativo/export`)
+- **Contexto:** a página `/shows/rentabilidade` já mostra na tela, quando se escolhe um ano, o card "Resultado por show {ano} vs.
+  {ano-1}" — a variação do resultado líquido MÉDIO por show (com %), do resultado TOTAL somado e da contagem de shows, mais um
+  veredito de tendência, via `compareShowsProfitability`/`MetricDelta`. Mas o único CSV do eixo (`/shows/rentabilidade/export`,
+  `showProfitToCsv`) exporta só o ranking de um período isolado (uma linha por show), sem nenhum traço do "vs ano anterior". Quem
+  baixa a rentabilidade para levar ao contador ou montar a própria planilha perde exatamente o comparativo YoY que vê na tela —
+  o mesmo buraco que a D361 fechou no eixo do resumo anual.
+- **Decisão:** adicionar um export IRMÃO `/shows/rentabilidade/comparativo/export?ano=YYYY` (rota nova, sem tocar no export do
+  ranking) que leva o comparativo para a planilha. Camada pura nova em `@/lib/csv`: `showsProfitabilityComparisonToCsv` +
+  `SHOW_PROFIT_COMPARISON_CSV_HEADERS`. Diferente dos comparativos por ITEM (uma linha por cidade/mês), aqui o comparativo é um
+  RESUMO de três métricas, então a planilha é TRANSPOSTA: uma linha por métrica (resultado médio por show / resultado total /
+  shows analisados) com o valor do ano anterior, o do corrente, o Δ absoluto e o Δ relativo (%), seguida de uma linha "Veredito"
+  com a tendência (o mesmo selo ancorado no resultado médio por show da UI). O gate é o MESMO da página (um ano específico E
+  ambos os períodos com shows): sem isso, 404 (o resultado médio por show de um ano vazio seria 0 e a comparação, enganosa). Um
+  segundo link "⬇ CSV vs {ano-1}" aparece na página só quando o card do comparativo aparece.
+- **Justificativa:** espelha o padrão já validado (`/shows/sazonalidade/comparativo/export` D214, `/financas/anual/comparativo/export`
+  D361 — gate por ano + 404) sem duplicar o que a página já entrega na tela — leva a leitura YoY para onde ela some hoje (a
+  planilha). Rota separada em vez de mudar a forma do CSV do ranking: consumidores automáticos do export existente não quebram.
+  Layout transposto (métrica-por-linha) porque um resumo de três deltas não tem "itens" a listar — pôr tudo numa única linha
+  larga seria menos legível/filtrável no Excel. Camada pura + testada, zero migração/dependência.
+- **Alternativas consideradas:** (a) enriquecer o próprio `/shows/rentabilidade/export` com colunas do ano anterior — rejeitado:
+  mudaria a forma de um CSV já publicado conforme os dados, e o ranking é por show (não há "resultado médio por show do ano
+  anterior" por linha de show); os dois recortes não casam. (b) uma PÁGINA `/shows/rentabilidade/comparativo` — rejeitado: a
+  página já mostra o card na tela; uma página nova duplicaria (viola "não duplicar"). O buraco real era só o CSV. (c) pôr os anos
+  nos rótulos das colunas (como o anual/D361) — rejeitado: aqui há só UM par de colunas ano-anterior/ano-corrente (não seis
+  valores a distinguir), então os anos vão no nome do arquivo (como o irmão de shows/D223), sem ambiguidade a desfazer.
+- **Verificação:** DoD verde — `npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**2011 testes**, +4
+  em `csv.test.ts`: layout transposto (cabeçalho + 3 métricas + veredito); deltas/% negativos quando as métricas caem; Δ % vazio
+  sem base no ano anterior; rótulo do veredito estável); smoke → `/login` 200, a rota nova 307→/login (auth-gated); smoke
+  autenticado (token de usuário demo, shows realizados em 2025 e 2026) → export com um ano só de dados → 404 (gate) e sem `?ano`
+  → 404; com shows nos dois anos → 200 `text/csv`, filename `rentabilidade-shows-comparativo-2026-vs-2025.csv`, corpo com o
+  cabeçalho `Métrica;Ano anterior;Ano corrente;Δ;Δ %` e a linha "Veredito;Mais rentável por show;;;", e a página exibindo o link
+  "⬇ CSV vs 2025"; `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, zero dependência nova). Arquivos:
+  `src/lib/csv.ts` (+`showsProfitabilityComparisonToCsv`/`SHOW_PROFIT_COMPARISON_CSV_HEADERS`/`csvSignedPercent`),
+  `src/lib/csv.test.ts` (+bloco), `src/app/(app)/shows/rentabilidade/comparativo/export/route.ts` (novo),
+  `src/app/(app)/shows/rentabilidade/page.tsx` (+link).
+- **Nota de concorrência:** número **D362** escolhido como o próximo livre acima do maior D mergeado na `main` (D361, PR #397).
+  Sem PRs abertas no momento. Se outra PR reivindicar D362 antes do merge, renumerar para o próximo livre.
+
 ## 2026-07-17 — D361: Comparativo ano a ano do resumo anual no CSV (`/financas/anual/comparativo/export`)
 - **Contexto:** a página `/financas/anual` já compara o ano na tela contra o anterior — os deltas dos três totais
   (receitas/despesas/saldo) e a variação de resultado mês a mês, via `compareAnnualSummaries`/`MetricDelta` — mas o único CSV

@@ -26,6 +26,7 @@ import {
   type SeasonalMonth,
   type ShowLike,
   type ShowProfitRow,
+  type ShowsProfitabilityComparison,
   type VenueProfitRow,
   type CityProfitChange,
   type CityProfitTrend,
@@ -793,6 +794,85 @@ export function showProfitToCsv(
       csvMargin(totalGross, totalMargin),
     ]);
   }
+  return toCsv(out, delimiter);
+}
+
+// ── Comparativo ano a ano da rentabilidade por show (ano X vs. X-1) ──────────
+
+export const SHOW_PROFIT_COMPARISON_CSV_HEADERS = [
+  "Métrica",
+  "Ano anterior",
+  "Ano corrente",
+  "Δ",
+  "Δ %",
+] as const;
+
+/** Rótulo pt-BR do veredito do comparativo, espelhando o selo da UI. */
+const SHOW_PROFIT_TREND_LABELS: Record<ShowsProfitabilityComparison["trend"], string> = {
+  up: "Mais rentável por show",
+  down: "Menos rentável por show",
+  stable: "Estável",
+};
+
+/**
+ * Variação relativa (`MetricDelta.pct`, 0..1) -> porcentagem inteira COM sinal
+ * para planilha: 0,18 → "+18%", -0,05 → "-5%", 0 → "0%". `null` (sem base no ano
+ * anterior) → vazio, espelhando o "—"/"novo" da tela. Espelha `pctDelta` da
+ * página `/shows/rentabilidade`, mas mantém o "%" pois a coluna mistura métricas.
+ */
+function csvSignedPercent(pct: number | null): string {
+  if (pct == null) return "";
+  const rounded = Math.round(pct * 100);
+  return `${rounded > 0 ? "+" : ""}${rounded}%`;
+}
+
+/**
+ * Serializa o comparativo ano a ano da rentabilidade por show
+ * (`compareShowsProfitability`) em CSV, pronto para download — espelha o card
+ * "Resultado por show {ano} vs. {ano-1}" de `/shows/rentabilidade`, que hoje só
+ * vive na tela (os deltas do resultado médio/somado + a contagem de shows), sem
+ * chegar à planilha do contador. Diferente dos irmãos por ITEM (uma linha por
+ * cidade/mês), aqui o comparativo é um RESUMO de três métricas, então a planilha
+ * é transposta: uma linha por métrica (resultado médio por show, resultado total,
+ * shows analisados) com o valor do ano anterior, o do corrente, o Δ absoluto e o
+ * Δ relativo, seguida de uma linha "Veredito" com a tendência (o mesmo selo
+ * ancorado no resultado MÉDIO por show que a UI mostra).
+ *
+ * As duas primeiras métricas são dinheiro (`centsToCsvAmount`, que já emite o "-"
+ * nos negativos); "Shows analisados" é contagem (`csvSignedCount` no Δ). O Δ %
+ * sai de `csvSignedPercent` (vazio quando não há base no ano anterior). Os anos
+ * concretos entram no NOME DO ARQUIVO (como `gigSeasonalityComparisonToCsv`/D223)
+ * — a planilha tem só um par de colunas ano-anterior/ano-corrente, sem ambiguidade
+ * a desfazer. Convenção pt-BR (";" e decimal com vírgula). Pura.
+ */
+export function showsProfitabilityComparisonToCsv(
+  comparison: ShowsProfitabilityComparison,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const { avgNet, totalNet, count } = comparison;
+  const out: string[][] = [Array.from(SHOW_PROFIT_COMPARISON_CSV_HEADERS)];
+  out.push([
+    "Resultado médio por show (R$)",
+    centsToCsvAmount(avgNet.previous),
+    centsToCsvAmount(avgNet.current),
+    centsToCsvAmount(avgNet.delta),
+    csvSignedPercent(avgNet.pct),
+  ]);
+  out.push([
+    "Resultado total (R$)",
+    centsToCsvAmount(totalNet.previous),
+    centsToCsvAmount(totalNet.current),
+    centsToCsvAmount(totalNet.delta),
+    csvSignedPercent(totalNet.pct),
+  ]);
+  out.push([
+    "Shows analisados",
+    String(count.previous),
+    String(count.current),
+    csvSignedCount(count.delta),
+    csvSignedPercent(count.pct),
+  ]);
+  out.push(["Veredito", SHOW_PROFIT_TREND_LABELS[comparison.trend], "", "", ""]);
   return toCsv(out, delimiter);
 }
 

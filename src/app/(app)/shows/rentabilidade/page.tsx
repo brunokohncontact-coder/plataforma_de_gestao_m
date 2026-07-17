@@ -103,6 +103,15 @@ export default async function ShowProfitabilityPage({
               ⬇ CSV
             </a>
           )}
+          {comparison && (
+            <a
+              href={`/shows/rentabilidade/comparativo/export?ano=${yearFilter}`}
+              className="btn-secondary text-sm"
+              download
+            >
+              ⬇ CSV vs {previousYear}
+            </a>
+          )}
           <Link href="/shows" className="btn-secondary">
             ← Shows
           </Link>
