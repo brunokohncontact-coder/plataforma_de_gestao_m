@@ -5,6 +5,43 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-17 — D360: Cobertura do hub de relatórios — registrar as duas análises órfãs + trava anti-drift catálogo↔filesystem
+- **Contexto:** `src/lib/reports.ts` é a "fonte única de verdade" do acervo de análises (o índice navegável `/relatorios` e a
+  busca deep-linkável derivam dele; o docstring pede "registre aqui — e só aqui — para aparecer no hub"). Uma auditoria cruzando
+  as rotas com `page.tsx` sob `src/app/(app)` contra os hrefs cadastrados revelou DUAS páginas de relatório reais fora do
+  catálogo: `/shows/funil/atividade/ritmo` ("Ritmo da atividade do funil") e `/shows/funil/atividade/sazonalidade`
+  ("Sazonalidade da atividade do funil"). Ambas existiam no app e eram alcançáveis pelos botões da página-mãe
+  `/shows/funil/atividade`, mas sumiam do hub e da busca — invisíveis para quem navega por `/relatorios`. Nenhuma trava impedia
+  esse drift, então elas escaparam por várias sessões.
+- **Decisão:** (1) registrar as duas entradas em `REPORT_GROUPS`, no subtema "Agenda & pipeline", logo após "Atividade do funil"
+  (a página-mãe), com título = `<h1>` da página, descrição de uma frase e ícones (`💓`/`🗓️`). (2) adicionar uma trava em
+  `reports.test.ts` que varre `src/app/(app)` por `page.tsx`, deriva a rota (descartando grupos de rota `(...)` e rotas
+  dinâmicas `[...]`) e cruza com o catálogo nas duas direções: toda rota de relatório no disco tem entrada; todo href do
+  catálogo tem página. As rotas que têm página mas NÃO são relatório ficam numa allowlist explícita `NON_REPORT_ROUTES`
+  (as listas CRUD `/shows`,`/financas`,`/contatos` e as visões de agenda `/shows/calendario`,`/shows/semana`), somada a
+  prefixos não-analíticos (`/conta`,`/dashboard`,`/relatorios`) e segmentos utilitários (`export`/`editar`/`nova`/`novo`).
+- **Justificativa:** o valor do hub como "todas as análises num só lugar" depende de o catálogo espelhar o app; uma análise que
+  existe mas não aparece é uma promessa quebrada e um recurso enterrado. A trava filesystem→catálogo transforma o convite do
+  docstring ("registre aqui") em invariante executável: esquecer o registro passa a quebrar o CI (listando os culpados), em vez
+  de degradar em silêncio. A direção inversa (catálogo→filesystem) pega link morto por rename/typo. A allowlist explícita torna
+  "isto não é um relatório" uma decisão deliberada e revisável, não um acidente de heurística.
+- **Alternativas consideradas:** (a) só registrar as duas entradas sem a trava — rejeitado: consertaria o sintoma mas deixaria
+  a mesma armadilha para a próxima página; a trava é o que fecha a classe do bug. (b) heurística para classificar
+  relatório×não-relatório (ex.: "tem `/export` irmão") em vez da allowlist — rejeitado: frágil e implícita; a lista explícita é
+  curta, óbvia e falha ruidosamente quando uma visão nova precisa de decisão. (c) mover `/shows/calendario` e `/shows/semana`
+  para o catálogo também — rejeitado: são visões da agenda (o `<h1>` de ambas é "Shows"), não análises; pertencem às barras de
+  `/shows`, não ao acervo de relatórios. (d) gerar o catálogo automaticamente a partir do filesystem — rejeitado: título,
+  descrição, subtema e ícone são curadoria humana que uma varredura não infere; o catálogo curado + a trava de cobertura é o
+  equilíbrio certo.
+- **Verificação:** DoD verde — `npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**2004 testes**,
+  +3 em `reports.test.ts`: sanidade da varredura, cobertura filesystem→catálogo, ausência de link morto catálogo→filesystem);
+  smoke → `/login` 200, `/relatorios` e as duas rotas 307→/login (auth-gated); smoke autenticado (token do usuário demo) →
+  `/relatorios` 200 exibindo as duas novas análises (título + href), `/shows/funil/atividade/ritmo` e
+  `/shows/funil/atividade/sazonalidade` 200; `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, zero
+  dependência nova). Arquivos: `src/lib/reports.ts` (+2 entradas), `src/lib/reports.test.ts` (+bloco de cobertura).
+- **Nota de concorrência:** número **D360** escolhido como o próximo livre acima do maior D mergeado na `main` (D359, PR #395).
+  Sem PRs abertas no momento. Se outra PR reivindicar D360 antes do merge, renumerar para o próximo livre.
+
 ## 2026-07-17 — D359: Restauração por SUBSTITUIÇÃO ("substituir tudo pelo backup") — a metade determinística da restauração-geral
 - **Contexto:** as D354–D358 fecharam o eixo de backup (export → conferência → restauração em conta vazia → reset), mas a
   restauração só grava numa conta VAZIA. Quem já tem dados precisava de dois passos manuais em telas diferentes: ir a
