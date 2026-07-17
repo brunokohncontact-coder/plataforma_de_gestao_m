@@ -43,13 +43,25 @@ export default async function ContaPage() {
           metas — num único arquivo <code>.json</code>. São seus dados: guarde um
           backup ou leve-os para onde quiser.
         </p>
-        <a
-          href="/conta/dados/export"
-          className="btn-secondary inline-flex w-fit items-center gap-2"
-          download
-        >
-          ⬇ Baixar todos os meus dados (JSON)
-        </a>
+        <div className="flex flex-wrap gap-2">
+          <a
+            href="/conta/dados/export"
+            className="btn-secondary inline-flex w-fit items-center gap-2"
+            download
+          >
+            ⬇ Baixar todos os meus dados (JSON)
+          </a>
+          <a
+            href="/conta/dados/importar"
+            className="btn-secondary inline-flex w-fit items-center gap-2"
+          >
+            🔍 Conferir um backup
+          </a>
+        </div>
+        <p className="text-xs text-gray-500">
+          Já tem um arquivo de backup? Confira se ele está íntegro e restaurável
+          antes de guardá-lo.
+        </p>
       </section>
     </div>
   );
