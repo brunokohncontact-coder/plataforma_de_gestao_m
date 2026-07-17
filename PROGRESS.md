@@ -4,7 +4,31 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 356 — MOVIMENTO DO DESCONTO DE FIDELIDADE ANO A ANO em `/contatos/retencao`
+**Sessão 357 — MOVERS INDIVIDUAIS DO PREÇO ANO A ANO em `/contatos/retencao` (`retentionPriceMovers`, D352),
+fechando o "próximo possível" que a D351 deixou explícito ("movers por-CONTATO: quem você subiu/baixou o preço"):**
+a D351 (`compareRetentionPricingYoY`) entrega o movimento AGREGADO do desconto de fidelidade da carteira ("de {ano−1}
+para {ano} o preço da fidelidade melhorou/piorou"), mas uma média esconde o caso individual — dentro de um "melhorou" há
+contratantes cujo preço você BAIXOU, e dentro de um "piorou" há quem você SUBIU. Agora o helper puro
+`retentionPriceMovers(items, year, previousYear, epsilon?)` em `src/lib/contacts.ts` abre o MESMO par de anos por
+CONTATO: compara o cachê MÉDIO POR SHOW (não o total — isola preço de volume) de cada contratante em `previousYear` ×
+`year` (só shows não cancelados, recorte por ano civil UTC) e classifica em `up`/`down`/`flat` contra o mesmo limiar
+relativo `RETENTION_PRICING_EPSILON` (5% sobre `previousAvgFee`). Devolve `movers` (ordenado pelo maior movimento
+absoluto) + `raised`/`lowered` (subconjuntos pela maior alta/queda) + `flatCount`. Só entram contatos com cachê
+mensurável nos DOIS anos (≥1 show não cancelado e soma > 0 em cada) — sem os dois lados não há variação a medir; quem
+entrou/saiu no intervalo é churn/aquisição, outro eixo. A função recebe o par de anos por PARÂMETRO (não o escolhe): a
+página passa exatamente o par do `compareRetentionPricingYoY`, então o cartão agregado (`PricingTrendCard`) e os movers
+contam a MESMA história, nunca períodos diferentes. A página ganha a seção "Movers de preço · {ano−1} → {ano}"
+(`PriceMoversSection`, logo abaixo do `PricingTrendCard`, só quando há ≥1 mover em alta OU queda): duas colunas
+(🟢 você subiu × 🟠 você baixou), cada linha com o contato (link), o Δ em R$ e %, e a transição `média_ant → média_atual`/show.
+Lógica pura testada + apresentacional; auto-deriva os anos (sem picker), não toca CSV/rota; zero migração/dependência.
+**+8 testes** (`contacts.test.ts`, `describe("retentionPriceMovers")`: lista vazia, up/down/flat, média por show ≠ total,
+exige os dois anos, ignora cancelados, ordenação pelo maior movimento, preço-zero fora, epsilon customizado). DoD verde:
+`npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**1931 testes**); smoke → `/login` 200,
+`/contatos/retencao` e `/contatos/retencao/export` 307→/login (auth-gated, sem 500); `npm audit` inalterado (10 advisories:
+4 moderate/5 high/1 critical, zero dependência nova), ver D352. **Próximo possível** — levar os movers ao CSV (o
+`PricingTrendCard`/`PricingSignalCard` irmãos também não exportam, eixo tabular esgotado, sem urgência); ou próximas sessões
+podem evoluir feature maior fora do eixo de preço/retenção.
+**Antes disso, Sessão 356 — MOVIMENTO DO DESCONTO DE FIDELIDADE ANO A ANO em `/contatos/retencao`
 (`compareRetentionPricingYoY`/`retentionPricingSignalForYear`, D351), fechando o "próximo possível" recorrente
 que atravessava as sessões 348–355 ("comparar o desconto de fidelidade ano a ano — movers"):** o
 `retentionPricingSignal` (D344) e sua lista acionável `underpricedLoyalClients` (D346) davam o retrato ESTÁTICO

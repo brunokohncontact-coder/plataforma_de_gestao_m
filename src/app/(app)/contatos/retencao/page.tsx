@@ -5,10 +5,12 @@ import {
   clientRetention,
   retentionPricingSignal,
   compareRetentionPricingYoY,
+  retentionPriceMovers,
   underpricedLoyalClients,
   type ContactRankLike,
   type RetentionPricingSignal,
   type RetentionPricingComparison,
+  type RetentionPriceMover,
   type UnderpricedLoyalClient,
 } from "@/lib/contacts";
 import { formatMoney } from "@/lib/money";
@@ -51,6 +53,11 @@ export default async function ContatosRetencaoPage() {
   const retention = clientRetention(items);
   const pricing = retentionPricingSignal(retention);
   const pricingYoY = compareRetentionPricingYoY(items);
+  // Movers individuais no MESMO par de anos do comparativo agregado (D352): abre
+  // o "melhorou/piorou" da carteira em quem você subiu × baixou o preço.
+  const priceMovers = pricingYoY
+    ? retentionPriceMovers(items, pricingYoY.year, pricingYoY.previousYear)
+    : null;
   const underpriced = underpricedLoyalClients(retention);
 
   return (
@@ -149,6 +156,16 @@ export default async function ContatosRetencaoPage() {
           {pricing && <PricingSignalCard pricing={pricing} />}
 
           {pricingYoY && <PricingTrendCard comparison={pricingYoY} />}
+
+          {priceMovers &&
+            (priceMovers.raised.length > 0 || priceMovers.lowered.length > 0) && (
+              <PriceMoversSection
+                year={priceMovers.year}
+                previousYear={priceMovers.previousYear}
+                raised={priceMovers.raised}
+                lowered={priceMovers.lowered}
+              />
+            )}
 
           {underpriced && underpriced.clients.length > 0 && (
             <UnderpricedLoyalSection
@@ -427,6 +444,99 @@ function PricingTrendCard({ comparison }: { comparison: RetentionPricingComparis
         Aqui &ldquo;recorrente&rdquo; é medido dentro de cada ano (≥2 shows no ano), diferente do
         cartão acima, que olha a carteira inteira.
       </p>
+    </div>
+  );
+}
+
+function PriceMoversSection({
+  year,
+  previousYear,
+  raised,
+  lowered,
+}: {
+  year: number;
+  previousYear: number;
+  raised: RetentionPriceMover<RetentionContact>[];
+  lowered: RetentionPriceMover<RetentionContact>[];
+}) {
+  return (
+    <section className="card p-0">
+      <div className="border-b border-gray-100 px-4 py-3">
+        <h2 className="font-semibold">
+          Movers de preço · {previousYear} → {year}
+        </h2>
+        <p className="mt-0.5 text-xs text-gray-500">
+          Abre o movimento da carteira em quem VOCÊ subiu e baixou o cachê médio por show
+          de um ano para o outro. Só contratantes com shows pagos nos dois anos.
+        </p>
+      </div>
+      <div className="grid gap-px bg-gray-100 sm:grid-cols-2">
+        <MoversColumn
+          emoji="🟢"
+          title="Você subiu o preço"
+          tone="text-emerald-700"
+          movers={raised}
+          sign="+"
+        />
+        <MoversColumn
+          emoji="🟠"
+          title="Você baixou o preço"
+          tone="text-amber-700"
+          movers={lowered}
+          sign="−"
+        />
+      </div>
+    </section>
+  );
+}
+
+function MoversColumn({
+  emoji,
+  title,
+  tone,
+  movers,
+  sign,
+}: {
+  emoji: string;
+  title: string;
+  tone: string;
+  movers: RetentionPriceMover<RetentionContact>[];
+  sign: "+" | "−";
+}) {
+  return (
+    <div className="bg-white">
+      <p className={"px-4 pt-3 text-sm font-semibold " + tone}>
+        {emoji} {title}
+        <span className="ml-2 text-xs font-normal text-gray-400">{movers.length}</span>
+      </p>
+      {movers.length === 0 ? (
+        <p className="px-4 py-3 text-xs text-gray-400">Ninguém neste grupo.</p>
+      ) : (
+        <ul className="divide-y divide-gray-50 py-1">
+          {movers.map((m) => (
+            <li key={m.contact.id} className="px-4 py-2">
+              <div className="flex items-baseline justify-between gap-2">
+                <Link
+                  href={`/contatos/${m.contact.id}`}
+                  className="truncate font-medium text-brand-700 hover:underline"
+                >
+                  {m.contact.name}
+                </Link>
+                <span className={"shrink-0 text-sm font-semibold " + tone}>
+                  {sign}
+                  {formatMoney(Math.abs(m.delta))}
+                  <span className="ml-1 text-xs font-normal opacity-70">
+                    ({formatPct(m.relativeDelta)})
+                  </span>
+                </span>
+              </div>
+              <p className="mt-0.5 text-xs text-gray-400">
+                {formatMoney(m.previousAvgFee)} → {formatMoney(m.currentAvgFee)}/show
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
