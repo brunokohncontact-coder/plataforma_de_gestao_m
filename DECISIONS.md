@@ -5,6 +5,42 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-17 — D352: Movers individuais do preço ano a ano em `/contatos/retencao` (`retentionPriceMovers`)
+- **Contexto:** a D351 (`compareRetentionPricingYoY`) entrega o movimento AGREGADO do desconto de fidelidade da carteira
+  ("de {ano−1} para {ano} o preço da fidelidade melhorou/piorou"), e ela mesma listou como "próximo possível" e adiou os
+  "movers por-CONTATO" — quem você subiu/baixou o preço ano a ano — por ser "uma tabela maior que merece sessão própria".
+  Uma média de carteira esconde o caso individual: dentro de um "melhorou" há contratantes cujo preço você BAIXOU, e dentro
+  de um "piorou" há quem você SUBIU. Sem abrir o agregado por contato, o músico vê a direção mas não sabe COM QUEM agir.
+- **Decisão:** helper puro `retentionPriceMovers(items, year, previousYear, epsilon?)` em `src/lib/contacts.ts`. Para cada
+  contato compara o cachê MÉDIO POR SHOW (não o total) em `previousYear` × `year` — só shows não cancelados, recorte por ano
+  civil UTC — e classifica em `up`/`down`/`flat` contra o mesmo limiar RELATIVO `RETENTION_PRICING_EPSILON` (5%, sobre
+  `previousAvgFee`). Devolve `movers` (ordenado pelo maior movimento absoluto), mais `raised`/`lowered` (subconjuntos
+  ordenados pela maior alta/queda) e `flatCount`. Só entram contatos com cachê MENSURÁVEL nos DOIS anos (≥1 show não
+  cancelado e soma > 0 em cada) — sem os dois lados não há variação a medir. A função recebe o par de anos por PARÂMETRO
+  (não o escolhe), e a página passa exatamente o par do `compareRetentionPricingYoY` (D351), de modo que o cartão agregado e
+  os movers contam a MESMA história. A página `/contatos/retencao` ganha a seção "Movers de preço · {ano−1} → {ano}"
+  (`PriceMoversSection`, logo abaixo do `PricingTrendCard`, só quando há ≥1 mover em alta OU queda): duas colunas
+  (🟢 você subiu × 🟠 você baixou), cada linha com o contato (link), o Δ em R$ e %, e a transição `média_ant → média_atual`/show.
+  Pura + apresentacional; não toca CSV/rota; zero migração/dependência. **+8 testes** (`contacts.test.ts`).
+- **Justificativa:** fecha o "próximo possível" que a D351 explicitamente deixou, transformando o veredito direcional da
+  carteira na LISTA acionável ("renegocie com fulano, que você baixou 30%"). Reusar o par de anos do agregado (em vez de o
+  helper varrer os anos por conta própria) garante coerência entre os dois cartões — nunca mostram períodos diferentes — e
+  concentra a escolha de anos num só lugar (D351). Medir por MÉDIA por show (não total) isola o preço do volume: um contato
+  que fez mais shows no ano não conta como "subiu o preço". Exigir cachê nos dois anos separa o eixo de PREÇO do de
+  churn/aquisição (quem entrou/saiu é outro recorte); `direction` independe do agregado, então quedas individuais dentro de
+  um "melhorou" de carteira aparecem — que é justamente o ponto.
+- **Alternativas consideradas:** (a) o helper varrer e escolher o próprio par de anos (como o `compareRetentionPricingYoY`)
+  — rejeitado: os dois cartões poderiam exibir pares diferentes, quebrando a narrativa; passar o par por parâmetro mantém a
+  fonte única de verdade no D351. (b) incluir contatos presentes num só ano como "novo"/"perdido" — rejeitado: isso é
+  churn/aquisição, um eixo distinto do de PREÇO; misturar os dois na mesma tabela confunde a leitura ("subiu o preço" ≠
+  "voltou a contratar"). (c) usar o cachê TOTAL do ano em vez da média por show — rejeitado: confunde preço com volume
+  (quem fez 3 shows a 200 "subiu" contra quem fez 1 a 300, o que é falso). (d) tratar preço-zero num dos anos como variação
+  de ∞% — rejeitado: sem base (`previousAvgFee > 0`) a % é indefinida; excluir mantém o ratio limpo (o caso "virou grátis"
+  é raro e melhor lido no histórico do contato). (e) levar já ao CSV — adiado: o `PricingTrendCard` irmão também não exporta
+  e o eixo tabular segue esgotado; sem urgência.
+- **Nota de concorrência:** número **D352** escolhido como o próximo livre acima do maior D mergeado na `main` (D351,
+  PR #387); não há PRs abertas. Se outra PR reivindicar D352 antes do merge, renumerar para o próximo livre.
+
 ## 2026-07-16 — D351: Movimento do desconto de fidelidade ano a ano em `/contatos/retencao` (`compareRetentionPricingYoY`/`retentionPricingSignalForYear`)
 - **Contexto:** o `retentionPricingSignal` (D344) e a lista `underpricedLoyalClients` (D346) medem o preço da fidelidade
   num retrato ESTÁTICO da carteira inteira ("hoje seus fiéis pagam menos por gig"), mas nada dizia se esse desconto está

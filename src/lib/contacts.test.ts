@@ -123,6 +123,7 @@ import {
   retentionPricingSignal,
   retentionPricingSignalForYear,
   compareRetentionPricingYoY,
+  retentionPriceMovers,
   underpricedLoyalClients,
   RETENTION_PRICING_EPSILON,
   filterContacts,
@@ -914,6 +915,162 @@ describe("retentionPricingSignalForYear / compareRetentionPricingYoY", () => {
       expect(cmp.year).toBe(2026);
       expect(cmp.previousYear).toBe(2025);
     });
+  });
+});
+
+describe("retentionPriceMovers", () => {
+  function s(
+    date: string,
+    fee: number,
+    status: string = "CONFIRMED",
+  ): ContactRankShowLike {
+    return { status, date, fee };
+  }
+  function item(
+    id: string,
+    name: string,
+    shows: ContactRankShowLike[],
+  ): ContactWithShows<ContactRankLike> {
+    return { contact: { id, name }, shows };
+  }
+
+  it("trata lista vazia", () => {
+    const r = retentionPriceMovers([], 2026, 2025);
+    expect(r.year).toBe(2026);
+    expect(r.previousYear).toBe(2025);
+    expect(r.movers).toEqual([]);
+    expect(r.raised).toEqual([]);
+    expect(r.lowered).toEqual([]);
+    expect(r.flatCount).toBe(0);
+  });
+
+  it("separa quem subiu, baixou e ficou estável entre os dois anos", () => {
+    const items = [
+      // Subiu: 200 → 300 (+50%).
+      item("up", "Up", [
+        s("2025-03-01T20:00:00Z", 200_00),
+        s("2026-03-01T20:00:00Z", 300_00),
+      ]),
+      // Baixou: 400 → 300 (−25%).
+      item("dn", "Down", [
+        s("2025-04-01T20:00:00Z", 400_00),
+        s("2026-04-01T20:00:00Z", 300_00),
+      ]),
+      // Estável: 500 → 505 (+1% < 5%).
+      item("fl", "Flat", [
+        s("2025-05-01T20:00:00Z", 500_00),
+        s("2026-05-01T20:00:00Z", 505_00),
+      ]),
+    ];
+    const r = retentionPriceMovers(items, 2026, 2025);
+    expect(r.movers).toHaveLength(3);
+    expect(r.raised.map((m) => m.contact.id)).toEqual(["up"]);
+    expect(r.lowered.map((m) => m.contact.id)).toEqual(["dn"]);
+    expect(r.flatCount).toBe(1);
+
+    const up = r.raised[0];
+    expect(up.previousAvgFee).toBe(200_00);
+    expect(up.currentAvgFee).toBe(300_00);
+    expect(up.delta).toBe(100_00);
+    expect(up.relativeDelta).toBeCloseTo(0.5, 5);
+    expect(up.direction).toBe("up");
+
+    const dn = r.lowered[0];
+    expect(dn.delta).toBe(-100_00);
+    expect(dn.relativeDelta).toBeCloseTo(-0.25, 5);
+    expect(dn.direction).toBe("down");
+  });
+
+  it("usa o cachê MÉDIO por show (não o total) em cada ano", () => {
+    const items = [
+      // 2025: dois shows a 100 (média 100); 2026: um show a 150 (média 150 → subiu).
+      item("a", "A", [
+        s("2025-02-01T20:00:00Z", 100_00),
+        s("2025-08-01T20:00:00Z", 100_00),
+        s("2026-02-01T20:00:00Z", 150_00),
+      ]),
+    ];
+    const r = retentionPriceMovers(items, 2026, 2025);
+    expect(r.movers).toHaveLength(1);
+    expect(r.movers[0].previousAvgFee).toBe(100_00);
+    expect(r.movers[0].currentAvgFee).toBe(150_00);
+    expect(r.movers[0].previousShows).toBe(2);
+    expect(r.movers[0].currentShows).toBe(1);
+    expect(r.movers[0].direction).toBe("up");
+  });
+
+  it("exige cachê mensurável nos DOIS anos (ignora quem só aparece num)", () => {
+    const items = [
+      // Só em 2026 (entrou) → fora.
+      item("new", "New", [s("2026-03-01T20:00:00Z", 300_00)]),
+      // Só em 2025 (saiu) → fora.
+      item("gone", "Gone", [s("2025-03-01T20:00:00Z", 300_00)]),
+      // Nos dois → dentro.
+      item("both", "Both", [
+        s("2025-03-01T20:00:00Z", 200_00),
+        s("2026-03-01T20:00:00Z", 400_00),
+      ]),
+    ];
+    const r = retentionPriceMovers(items, 2026, 2025);
+    expect(r.movers.map((m) => m.contact.id)).toEqual(["both"]);
+  });
+
+  it("ignora shows cancelados nos dois anos", () => {
+    const items = [
+      item("a", "A", [
+        s("2025-03-01T20:00:00Z", 200_00),
+        s("2025-09-01T20:00:00Z", 900_00, "CANCELLED"), // não conta
+        s("2026-03-01T20:00:00Z", 300_00),
+        s("2026-09-01T20:00:00Z", 900_00, "CANCELLED"), // não conta
+      ]),
+    ];
+    const r = retentionPriceMovers(items, 2026, 2025);
+    expect(r.movers[0].previousAvgFee).toBe(200_00);
+    expect(r.movers[0].currentAvgFee).toBe(300_00);
+    expect(r.movers[0].previousShows).toBe(1);
+    expect(r.movers[0].currentShows).toBe(1);
+  });
+
+  it("ordena movers pelo maior movimento absoluto, com desempate por nome/id", () => {
+    const items = [
+      // Movimento pequeno (+50).
+      item("s", "Small", [
+        s("2025-01-01T20:00:00Z", 300_00),
+        s("2026-01-01T20:00:00Z", 350_00),
+      ]),
+      // Movimento grande (−200).
+      item("b", "Big", [
+        s("2025-01-01T20:00:00Z", 400_00),
+        s("2026-01-01T20:00:00Z", 200_00),
+      ]),
+    ];
+    const r = retentionPriceMovers(items, 2026, 2025);
+    expect(r.movers.map((m) => m.contact.id)).toEqual(["b", "s"]);
+  });
+
+  it("um contato com preço zerado num ano não entra (sem base de comparação)", () => {
+    const items = [
+      // 2025 grátis (fee 0) → sem base; 2026 pago.
+      item("free25", "Free25", [
+        s("2025-03-01T20:00:00Z", 0),
+        s("2026-03-01T20:00:00Z", 300_00),
+      ]),
+    ];
+    const r = retentionPriceMovers(items, 2026, 2025);
+    expect(r.movers).toEqual([]);
+  });
+
+  it("respeita um epsilon customizado para a classificação", () => {
+    const items = [
+      // +10%: 'up' com epsilon 5%, mas 'flat' com epsilon 20%.
+      item("a", "A", [
+        s("2025-03-01T20:00:00Z", 100_00),
+        s("2026-03-01T20:00:00Z", 110_00),
+      ]),
+    ];
+    expect(retentionPriceMovers(items, 2026, 2025).raised).toHaveLength(1);
+    expect(retentionPriceMovers(items, 2026, 2025, 0.2).raised).toHaveLength(0);
+    expect(retentionPriceMovers(items, 2026, 2025, 0.2).flatCount).toBe(1);
   });
 });
 

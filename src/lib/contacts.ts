@@ -779,6 +779,142 @@ export function compareRetentionPricingYoY<C extends ContactRankLike>(
   return null;
 }
 
+// ── Movers individuais do preço ano a ano (quem você subiu/baixou) ──────────
+// O `compareRetentionPricingYoY` (D351) dá o movimento AGREGADO do desconto de
+// fidelidade ("a carteira melhorou/piorou"), mas uma média esconde o caso
+// individual: dentro de um "melhorou" há contratantes que você BAIXOU o preço, e
+// dentro de um "piorou" há quem você SUBIU. Este helper abre o mesmo par de anos
+// por CONTATO — o cachê médio por show de cada contratante em `year` × `previousYear`
+// — e separa quem subiu de quem baixou, com o tamanho da variação. É a lista
+// acionável do movimento de preço: exatamente com quem você renegociou (para bem
+// ou para mal) de um ano para o outro. Ver DECISIONS.md D352.
+
+export type RetentionPriceMoveDirection = "up" | "down" | "flat";
+
+export interface RetentionPriceMover<C extends ContactRankLike> {
+  contact: C;
+  /** Cachê médio por show no ano anterior (centavos, arredondado). */
+  previousAvgFee: number;
+  /** Cachê médio por show no ano atual (centavos, arredondado). */
+  currentAvgFee: number;
+  /** Shows não cancelados no ano anterior. */
+  previousShows: number;
+  /** Shows não cancelados no ano atual. */
+  currentShows: number;
+  /** currentAvgFee − previousAvgFee (centavos, com sinal). */
+  delta: number;
+  /** delta / previousAvgFee — variação percentual do preço ano a ano. */
+  relativeDelta: number;
+  direction: RetentionPriceMoveDirection;
+}
+
+export interface RetentionPriceMovers<C extends ContactRankLike> {
+  /** Ano atual do comparativo. */
+  year: number;
+  /** Ano anterior (`year - 1`). */
+  previousYear: number;
+  /** Contatos presentes com cachê nos DOIS anos, do maior movimento ao menor. */
+  movers: RetentionPriceMover<C>[];
+  /** Subconjunto que você SUBIU o preço (`direction === "up"`), maior alta primeiro. */
+  raised: RetentionPriceMover<C>[];
+  /** Subconjunto que você BAIXOU o preço (`direction === "down"`), maior queda primeiro. */
+  lowered: RetentionPriceMover<C>[];
+  /** Quantos ficaram estáveis (variação dentro do limiar). */
+  flatCount: number;
+}
+
+/** Cachê médio por show (arredondado) de um contato num ano civil UTC; null sem cachê. */
+function contactYearAvgFee<C extends ContactRankLike>(
+  { shows }: ContactWithShows<C>,
+  year: number,
+): { avgFee: number; shows: number } | null {
+  let count = 0;
+  let fee = 0;
+  for (const s of shows) {
+    if (s.status === "CANCELLED") continue;
+    if (new Date(s.date).getUTCFullYear() !== year) continue;
+    count += 1;
+    fee += s.fee;
+  }
+  if (count === 0 || fee <= 0) return null;
+  return { avgFee: Math.round(fee / count), shows: count };
+}
+
+/**
+ * Abre o movimento de preço ano a ano por CONTATO, para um par de anos já
+ * escolhido (tipicamente o mesmo par do `compareRetentionPricingYoY`/D351, para
+ * que o agregado e os movers contem a mesma história). Para cada contato compara
+ * o cachê médio por show em `previousYear` com o de `year` e classifica em
+ * subiu/baixou/estável contra o limiar RELATIVO (`RETENTION_PRICING_EPSILON`, 5%
+ * sobre `previousAvgFee`).
+ *
+ * Só entram contatos com cachê MENSURÁVEL nos DOIS anos (≥1 show não cancelado e
+ * soma > 0 em cada), pois sem os dois lados não há variação a medir — quem entrou
+ * ou saiu da carteira no intervalo é churn/aquisição, outro eixo. `direction`
+ * independe do movimento AGREGADO: um "melhorou" de carteira pode conter quedas
+ * individuais, e elas aparecem em `lowered`. Pura e determinística; recorte por
+ * ano civil UTC da `date`, sem `now`.
+ */
+export function retentionPriceMovers<C extends ContactRankLike>(
+  items: ContactWithShows<C>[],
+  year: number,
+  previousYear: number,
+  epsilon: number = RETENTION_PRICING_EPSILON,
+): RetentionPriceMovers<C> {
+  const movers: RetentionPriceMover<C>[] = [];
+
+  for (const item of items) {
+    const prev = contactYearAvgFee(item, previousYear);
+    if (!prev) continue;
+    const curr = contactYearAvgFee(item, year);
+    if (!curr) continue;
+
+    const delta = curr.avgFee - prev.avgFee;
+    const relativeDelta = delta / prev.avgFee;
+    const direction: RetentionPriceMoveDirection =
+      relativeDelta > epsilon ? "up" : relativeDelta < -epsilon ? "down" : "flat";
+
+    movers.push({
+      contact: item.contact,
+      previousAvgFee: prev.avgFee,
+      currentAvgFee: curr.avgFee,
+      previousShows: prev.shows,
+      currentShows: curr.shows,
+      delta,
+      relativeDelta,
+      direction,
+    });
+  }
+
+  // Ordena pelo maior movimento absoluto (centavos), depois nome (pt-BR) e id.
+  movers.sort(
+    (a, b) =>
+      Math.abs(b.delta) - Math.abs(a.delta) ||
+      a.contact.name.localeCompare(b.contact.name, "pt-BR") ||
+      a.contact.id.localeCompare(b.contact.id),
+  );
+
+  const raised = movers
+    .filter((m) => m.direction === "up")
+    .sort(
+      (a, b) =>
+        b.delta - a.delta ||
+        a.contact.name.localeCompare(b.contact.name, "pt-BR") ||
+        a.contact.id.localeCompare(b.contact.id),
+    );
+  const lowered = movers
+    .filter((m) => m.direction === "down")
+    .sort(
+      (a, b) =>
+        a.delta - b.delta ||
+        a.contact.name.localeCompare(b.contact.name, "pt-BR") ||
+        a.contact.id.localeCompare(b.contact.id),
+    );
+  const flatCount = movers.length - raised.length - lowered.length;
+
+  return { year, previousYear, movers, raised, lowered, flatCount };
+}
+
 // ── Concentração de receita por contratante (risco de dependência) ──────────
 // Responde "quão dependente a minha receita é de poucos contratantes?": uma
 // leitura de RISCO (não de volume como o ranking, nem de recompra como a
