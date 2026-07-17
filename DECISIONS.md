@@ -5,6 +5,38 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-17 — D354: Exportação completa da conta / backup (`accountExport` + `/conta/dados/export`)
+- **Contexto:** o app tinha exports por-lista (`/shows/export`, `/financas/export`, `/contatos/export`, cada um em CSV) e
+  dezenas de CSVs de VISÕES analíticas, mas nenhuma forma de o músico baixar TODA a sua carteira num único arquivo — um
+  backup / portabilidade dos próprios dados ("são seus dados", alinhado a F1/ownership e à portabilidade da LGPD). Reunir
+  três CSVs de colunas diferentes não é um backup: perde a relação show↔contato↔transação, o perfil (nome artístico,
+  alíquota) e as metas, e não é restaurável em princípio. As sessões recentes vinham sinalizando "eixo de export tabular
+  esgotado, próximas sessões podem evoluir feature maior fora do eixo de preço/retenção" — este é um eixo NOVO (backup
+  estruturado), não mais uma fatia analítica.
+- **Decisão:** módulo puro `src/lib/accountExport.ts` — `buildAccountDataExport(input)` monta um snapshot ÚNICO, versionado
+  e legível por máquina (JSON, não CSV) com todos os dados do usuário: perfil (nome, e-mail, nome artístico, alíquota),
+  shows (com `contactIds` para preservar a relação N:N), transações (com `showId`), contatos e metas de faturamento. Um
+  bloco `meta` grava app (`Palco`), `schemaVersion` (=1, permite migração futura do formato), `exportedAt` (ISO) e
+  `counts` por entidade. Datas viram ISO 8601; campos opcionais ausentes viram `null` (nunca `undefined`, para JSON
+  limpo); valores monetários ficam em CENTAVOS crus (backup fiel ao banco, sem formatação). `accountDataExportToJson`
+  serializa indentado; `accountDataExportFilename(dateKey)` ancora o nome (`palco-meus-dados-YYYY-MM-DD.json`). A camada é
+  PURA (recebe registros já carregados, sem Prisma e sem `new Date()`) — testável e determinística; a rota
+  `/conta/dados/export` (GET) carrega os quatro conjuntos do usuário (`Promise.all`, escopados por `userId`), carimba
+  `new Date()` e devolve o JSON como download (`Content-Type: application/json`, `Content-Disposition: attachment`,
+  `Cache-Control: no-store`). Seção "Seus dados" em `/conta` com o botão de download.
+- **Justificativa:** JSON (não CSV) porque um backup precisa preservar ESTRUTURA e RELAÇÕES entre entidades heterogêneas —
+  um único CSV não comporta shows+transações+contatos de colunas diferentes, e três CSVs perdem os vínculos. Ids reais
+  incluídos para o arquivo ser um snapshot fiel e cruzável (show→contactIds, transação→showId). Centavos crus (não R$
+  formatado) porque é backup de dados, não relatório de leitura — precisão e round-trip acima de estética. `schemaVersion`
+  desde já para não pintar o formato num canto (migração futura barata). Separação pura/rota espelha a disciplina de todo
+  o eixo de export (lógica testada em `@/lib/*`, rota fina) e de `passwordReset.ts`.
+- **Alternativas consideradas:** (a) um CSV gigante multi-seção — descartado: ilegível por máquina, relações se perdem,
+  não restaurável; (b) um ZIP dos três CSVs existentes — mais infra (dependência de zip), ainda sem perfil/metas/relações;
+  (c) incluir hashes de senha/tokens no export — descartado por segurança (backup de DADOS do músico, não de credenciais);
+  (d) endpoint de RESTORE/importação — fora de escopo desta sessão (exige validação/merge/conflitos; o export sozinho já
+  entrega o valor de portabilidade e é o pré-requisito). Próximo possível: importação/restore a partir deste arquivo; ou
+  incluir os `ShowStatusEvent` (timeline do funil) no snapshot se houver demanda por backup do histórico.
+
 ## 2026-07-17 — D353: Exportação CSV dos movers de preço em `/contatos/retencao` (`retentionPriceMoversToCsv`)
 - **Contexto:** a D352 pôs na tela a seção "Movers de preço · {ano−1} → {ano}" (`retentionPriceMovers`) — a lista acionável
   de com quem você subiu/baixou o cachê de um ano para o outro —, mas era a única lista acionável da carteira SEM CSV
