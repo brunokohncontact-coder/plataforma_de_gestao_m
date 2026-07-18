@@ -52,6 +52,8 @@ import {
   lossShareRiseHeadline,
   portfolioMarginDropHeadline,
   rankContactsByProfit,
+  compareContactMargins,
+  contactMarginSqueezeHeadline,
   clientConcentration,
   clientConcentrationHeadline,
   rankCitiesByProfit,
@@ -438,6 +440,34 @@ export default async function DashboardPage() {
         .rows,
     ),
   );
+
+  // Uma casa apertando a margem (D374): "algum contratante recorrente está
+  // achatando meu cachê / empurrando mais despesa?". Enquanto os nudges agregados
+  // (lossShareRiseHead/D367, marginDropHead/D368) falam da carteira INTEIRA, este
+  // nomeia a PESSOA — um contratante importante que voltou pode estar apertando a
+  // margem mesmo com a carteira saudável no agregado (a média dilui o caso). É o eco
+  // no Painel do comparativo de margem por contratante (compareContactMargins/D372,
+  // tela /contatos/rentabilidade): cruza os contratantes do ano corrente × anterior
+  // (por ano UTC/D108) e o headline dispara só quando o pior aperto é material
+  // (≥10 p.p.) e recorrente (≥2 shows em cada ano) — a decisão acionável "renegocie
+  // com essa casa". Como granularidade é diferente (casa × carteira), NÃO cede a vez
+  // aos nudges agregados: os três podem coexistir. Espelha a tela: como o card de
+  // /contatos/rentabilidade, compara TODOS os shows do ano (sem recorte por natureza)
+  // para os números baterem no drill-down (ver D374). Reaproveita os shows/txs já
+  // carregados — sem consulta nova.
+  const contactMarginComparison = compareContactMargins(
+    rankContactsByProfit(
+      filterShowsByYear(shows, currentYear) as ShowLike[],
+      txs,
+      getPayer as (s: ShowLike) => ContactProfitContact | null,
+    ),
+    rankContactsByProfit(
+      filterShowsByYear(shows, currentYear - 1) as ShowLike[],
+      txs,
+      getPayer as (s: ShowLike) => ContactProfitContact | null,
+    ),
+  );
+  const contactSqueezeHead = contactMarginSqueezeHeadline(contactMarginComparison);
 
   // Concentração geográfica (D113): "quanto da minha receita depende de poucas
   // cidades?". Análogo geográfico do nudge de clientes acima — reaproveita os
@@ -1366,6 +1396,42 @@ export default async function DashboardPage() {
             menos depois dos custos — vale rever cachês e despesas.
           </span>
           <span className={marginDropHead.critical ? "text-red-600" : "text-amber-600"}>
+            Ver →
+          </span>
+        </Link>
+      )}
+
+      {contactSqueezeHead.show && (
+        <Link
+          href={`/contatos/rentabilidade?ano=${currentYear}`}
+          className={
+            "flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3 text-sm transition " +
+            (contactSqueezeHead.critical
+              ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100")
+          }
+        >
+          <span className="font-semibold">
+            {contactSqueezeHead.critical ? "🔴" : "🔻"} Uma casa apertando a margem
+          </span>
+          <span>
+            Sua margem com{" "}
+            <strong>{contactSqueezeHead.contactName}</strong> caiu de{" "}
+            <strong>{Math.round(contactSqueezeHead.previousMargin * 100)}%</strong> para{" "}
+            <strong>{Math.round(contactSqueezeHead.currentMargin * 100)}%</strong> (
+            {contactSqueezeHead.currentShowCount} shows,{" "}
+            {formatMoney(contactSqueezeHead.netDelta)} no resultado) de {currentYear - 1}{" "}
+            para {currentYear}
+            {contactSqueezeHead.squeezedCount > 1
+              ? ` — e outras ${contactSqueezeHead.squeezedCount - 1} casa${
+                  contactSqueezeHead.squeezedCount - 1 > 1 ? "s" : ""
+                } também apertaram`
+              : ""}
+            . Vale renegociar cachê e despesas com essa casa.
+          </span>
+          <span
+            className={contactSqueezeHead.critical ? "text-red-600" : "text-amber-600"}
+          >
             Ver →
           </span>
         </Link>

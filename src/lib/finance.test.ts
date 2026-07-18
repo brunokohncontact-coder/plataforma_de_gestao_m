@@ -29,6 +29,7 @@ import {
   compareClientConcentration,
   compareContactMargins,
   CONTACT_MARGIN_DROP_EPSILON,
+  contactMarginSqueezeHeadline,
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
@@ -2154,6 +2155,154 @@ describe("compareContactMargins", () => {
     expect(cmp.worstDrop).toBeNull();
     // A ordenação e o cruzamento seguem: Zé continua primeiro.
     expect(cmp.changes[0].contact.id).toBe("ze");
+  });
+});
+
+describe("contactMarginSqueezeHeadline", () => {
+  const ZE = { id: "ze", name: "Zé Produções", role: "PROMOTER" };
+  const ANA = { id: "ana", name: "Ana Booking", role: "BOOKER" };
+
+  const reportFor = (
+    shows: ShowLike[],
+    payers: Record<string, { id: string; name: string; role: string } | null>,
+    txs: TxLike[] = [],
+  ) => rankContactsByProfit(shows, txs, (s: ShowLike) => payers[s.id] ?? null);
+
+  // Zé apertou 100% → 40% (−60 p.p.) com 2 shows em cada ano (relação recorrente);
+  // Ana melhorou 60% → 80%. Só Zé deve virar manchete.
+  const current = () =>
+    reportFor(
+      [
+        { id: "cz1", fee: 100_00, status: "PLAYED" },
+        { id: "cz2", fee: 100_00, status: "PLAYED" },
+        { id: "ca1", fee: 100_00, status: "PLAYED" },
+        { id: "ca2", fee: 100_00, status: "PLAYED" },
+      ],
+      { cz1: ZE, cz2: ZE, ca1: ANA, ca2: ANA },
+      [
+        tx({ type: "EXPENSE", amount: 60_00, showId: "cz1" }),
+        tx({ type: "EXPENSE", amount: 60_00, showId: "cz2" }),
+        tx({ type: "EXPENSE", amount: 20_00, showId: "ca1" }),
+        tx({ type: "EXPENSE", amount: 20_00, showId: "ca2" }),
+      ],
+    );
+  const previous = () =>
+    reportFor(
+      [
+        { id: "pz1", fee: 100_00, status: "PLAYED" },
+        { id: "pz2", fee: 100_00, status: "PLAYED" },
+        { id: "pa1", fee: 100_00, status: "PLAYED" },
+        { id: "pa2", fee: 100_00, status: "PLAYED" },
+      ],
+      { pz1: ZE, pz2: ZE, pa1: ANA, pa2: ANA },
+      [
+        tx({ type: "EXPENSE", amount: 40_00, showId: "pa1" }),
+        tx({ type: "EXPENSE", amount: 40_00, showId: "pa2" }),
+      ],
+    );
+
+  it("nomeia a casa que mais apertou, com margens/resultado/contagens da moldura", () => {
+    const head = contactMarginSqueezeHeadline(
+      compareContactMargins(current(), previous()),
+    );
+    expect(head.show).toBe(true);
+    expect(head.critical).toBe(true); // −60 p.p. ≥ 20 p.p.
+    expect(head.contactName).toBe("Zé Produções");
+    expect(head.contactRole).toBe("PROMOTER");
+    expect(head.previousMargin).toBeCloseTo(1.0);
+    expect(head.currentMargin).toBeCloseTo(0.4);
+    expect(head.marginDelta).toBeCloseTo(-0.6);
+    expect(head.currentNet).toBe(80_00); // 40 + 40
+    expect(head.netDelta).toBe(-120_00); // 80 − 200
+    expect(head.currentShowCount).toBe(2);
+    expect(head.previousShowCount).toBe(2);
+    expect(head.squeezedCount).toBe(1); // só Zé apertou material
+  });
+
+  it("não dispara sem contratante em comum (comparação vazia)", () => {
+    const cur = reportFor([{ id: "cz1", fee: 100_00, status: "PLAYED" }], { cz1: ZE });
+    const prev = reportFor([{ id: "pa1", fee: 100_00, status: "PLAYED" }], { pa1: ANA });
+    const head = contactMarginSqueezeHeadline(compareContactMargins(cur, prev));
+    expect(head.show).toBe(false);
+    expect(head.contactName).toBe("");
+  });
+
+  it("não dispara quando o aperto está abaixo do piso do Painel (5 < 10 p.p.)", () => {
+    // Zé: 100% → 95% (−5 p.p.), material no card (ε=0,05) mas não no Painel.
+    const cur = reportFor(
+      [
+        { id: "cz1", fee: 100_00, status: "PLAYED" },
+        { id: "cz2", fee: 100_00, status: "PLAYED" },
+      ],
+      { cz1: ZE, cz2: ZE },
+      [
+        tx({ type: "EXPENSE", amount: 5_00, showId: "cz1" }),
+        tx({ type: "EXPENSE", amount: 5_00, showId: "cz2" }),
+      ],
+    );
+    const prev = reportFor(
+      [
+        { id: "pz1", fee: 100_00, status: "PLAYED" },
+        { id: "pz2", fee: 100_00, status: "PLAYED" },
+      ],
+      { pz1: ZE, pz2: ZE },
+    );
+    const head = contactMarginSqueezeHeadline(compareContactMargins(cur, prev));
+    expect(head.show).toBe(false);
+  });
+
+  it("suprime a casa recorrente-fina: aperto grande mas só 1 show num dos anos", () => {
+    // Zé apertou 100% → 30% (−70 p.p.), mas só tem 1 show no ano atual.
+    const cur = reportFor(
+      [{ id: "cz1", fee: 100_00, status: "PLAYED" }],
+      { cz1: ZE },
+      [tx({ type: "EXPENSE", amount: 70_00, showId: "cz1" })],
+    );
+    const prev = reportFor(
+      [
+        { id: "pz1", fee: 100_00, status: "PLAYED" },
+        { id: "pz2", fee: 100_00, status: "PLAYED" },
+      ],
+      { pz1: ZE, pz2: ZE },
+    );
+    const head = contactMarginSqueezeHeadline(compareContactMargins(cur, prev));
+    expect(head.show).toBe(false); // 1 show < minShows=2 no ano atual
+  });
+
+  it("faixa âmbar (não crítica) entre o piso e o limiar crítico (10 ≤ q < 20 p.p.)", () => {
+    // Zé: 100% → 85% (−15 p.p.), material e recorrente mas abaixo de 20 p.p.
+    const cur = reportFor(
+      [
+        { id: "cz1", fee: 100_00, status: "PLAYED" },
+        { id: "cz2", fee: 100_00, status: "PLAYED" },
+      ],
+      { cz1: ZE, cz2: ZE },
+      [
+        tx({ type: "EXPENSE", amount: 15_00, showId: "cz1" }),
+        tx({ type: "EXPENSE", amount: 15_00, showId: "cz2" }),
+      ],
+    );
+    const prev = reportFor(
+      [
+        { id: "pz1", fee: 100_00, status: "PLAYED" },
+        { id: "pz2", fee: 100_00, status: "PLAYED" },
+      ],
+      { pz1: ZE, pz2: ZE },
+    );
+    const head = contactMarginSqueezeHeadline(compareContactMargins(cur, prev));
+    expect(head.show).toBe(true);
+    expect(head.critical).toBe(false);
+    expect(head.marginDelta).toBeCloseTo(-0.15);
+  });
+
+  it("respeita limiares customizados (parametrizável)", () => {
+    // Zé apertou −60 p.p.; com minPoints=0,7 deixa de ser material.
+    const head = contactMarginSqueezeHeadline(
+      compareContactMargins(current(), previous()),
+      2,
+      0.7,
+    );
+    expect(head.show).toBe(false);
   });
 });
 
