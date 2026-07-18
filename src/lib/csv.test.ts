@@ -59,6 +59,8 @@ import {
   SHOW_RESULT_DISTRIBUTION_CSV_HEADERS,
   feeDistributionComparisonToCsv,
   FEE_DISTRIBUTION_COMPARISON_CSV_HEADERS,
+  contactMarginComparisonToCsv,
+  CONTACT_MARGIN_COMPARISON_CSV_HEADERS,
   incomeMixToCsv,
   INCOME_MIX_CSV_HEADERS,
   incomeMixComparisonToCsv,
@@ -224,6 +226,8 @@ import {
   feeDistribution,
   compareFeeDistribution,
   rankShowsByProfit,
+  rankContactsByProfit,
+  compareContactMargins,
   showResultDistribution,
   compareShowResultDistribution,
   showPipeline,
@@ -2344,6 +2348,107 @@ describe("showResultDistributionComparisonToCsv", () => {
     expect(lines[2].split(";")).toEqual(["Resultado somado (R$)", "200,00", "400,00", "200,00"]);
     // Prejuízo somado: -100 → 0, Δ +100.
     expect(lines[5].split(";")).toEqual(["Prejuízo somado (R$)", "-100,00", "0,00", "100,00"]);
+  });
+});
+
+describe("contactMarginComparisonToCsv", () => {
+  const ZE = { id: "ze", name: "Zé Produções", role: "PROMOTER" };
+  const ANA = { id: "ana", name: "Ana Booking", role: "BOOKER" };
+  const LIA = { id: "lia", name: "Lia Casa", role: "VENUE" };
+
+  const reportFor = (
+    shows: ShowLike[],
+    payers: Record<string, { id: string; name: string; role: string } | null>,
+    txs: TxLike[] = [],
+  ) => rankContactsByProfit(shows, txs, (s: ShowLike) => payers[s.id] ?? null);
+
+  const expense = (showId: string, amount: number): TxLike => ({
+    type: "EXPENSE",
+    amount,
+    category: "geral",
+    date: "2026-03-10T00:00:00.000Z",
+    received: true,
+    showId,
+  });
+
+  // Atual: Zé apertou (1,0 → 0,5), Ana melhorou (0,6 → 0,8); Lia só no atual.
+  const current = () =>
+    reportFor(
+      [
+        { id: "cz", fee: 100_00, status: "PLAYED" },
+        { id: "ca", fee: 100_00, status: "PLAYED" },
+        { id: "cl", fee: 100_00, status: "PLAYED" },
+        { id: "cs", fee: 30_00, status: "PLAYED" }, // sem contratante
+      ],
+      { cz: ZE, ca: ANA, cl: LIA, cs: null },
+      [expense("cz", 50_00), expense("ca", 20_00)],
+    );
+  // Anterior: Zé margem 1,0; Ana margem 0,6.
+  const previous = () =>
+    reportFor(
+      [
+        { id: "pz", fee: 100_00, status: "PLAYED" },
+        { id: "pa", fee: 100_00, status: "PLAYED" },
+        { id: "ps", fee: 30_00, status: "PLAYED" }, // sem contratante
+      ],
+      { pz: ZE, pa: ANA, ps: null },
+      [expense("pa", 40_00)],
+    );
+
+  it("uma linha por contratante em comum, o maior aperto primeiro, com Δ assinado", () => {
+    const cmp = compareContactMargins(current(), previous());
+    const lines = contactMarginComparisonToCsv(cmp).split("\r\n");
+    // Cabeçalho + Zé + Ana = 3 linhas (Lia é nova; "sem contratante" ignorado).
+    expect(lines[0]).toBe(CONTACT_MARGIN_COMPARISON_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(3);
+    // Zé apertou (margem 100% → 50%, −50 p.p.; resultado 100 → 50, Δ -50).
+    expect(lines[1].split(";")).toEqual([
+      "Zé Produções",
+      "Produtor/Promoter",
+      "100%",
+      "50%",
+      "-50",
+      "100,00",
+      "50,00",
+      "-50,00",
+      "1",
+      "1",
+      "Apertou a margem",
+    ]);
+    // Ana ganhou (60% → 80%, +20 p.p.).
+    const ana = lines[2].split(";");
+    expect(ana[0]).toBe("Ana Booking");
+    expect(ana[2]).toBe("60%");
+    expect(ana[3]).toBe("80%");
+    expect(ana[4]).toBe("+20");
+    expect(ana[10]).toBe("Ganhou margem");
+  });
+
+  it("classifica 'Estável' quando a margem não se move além do limiar", () => {
+    // Ambos os anos com margem idêntica para Zé.
+    const same = () =>
+      reportFor(
+        [{ id: "z", fee: 100_00, status: "PLAYED" }],
+        { z: ZE },
+        [expense("z", 10_00)],
+      );
+    const cmp = compareContactMargins(same(), same());
+    const lines = contactMarginComparisonToCsv(cmp).split("\r\n");
+    expect(lines[1].split(";")[4]).toBe("0");
+    expect(lines[1].split(";")[10]).toBe("Estável");
+  });
+
+  it("sem contratante em comum, só o cabeçalho (sem linhas)", () => {
+    const cmp = compareContactMargins(current(), current());
+    // current × current tem os mesmos contratantes → tem linhas; forjo o vazio:
+    const empty = compareContactMargins(
+      reportFor([{ id: "x", fee: 100_00, status: "PLAYED" }], { x: LIA }),
+      reportFor([{ id: "y", fee: 100_00, status: "PLAYED" }], { y: ZE }),
+    );
+    expect(cmp.comparedCount).toBeGreaterThan(0);
+    const lines = contactMarginComparisonToCsv(empty).split("\r\n");
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toBe(CONTACT_MARGIN_COMPARISON_CSV_HEADERS.join(";"));
   });
 });
 

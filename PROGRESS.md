@@ -4,7 +4,31 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 377 — COMPARATIVO DE MARGEM POR CONTRATANTE ANO A ANO: "quais casas apertam a margem" (`compareContactMargins`, D372):**
+**Sessão 378 — EXPORT CSV DO COMPARATIVO DE MARGEM POR CONTRATANTE ("quais casas apertam a margem", `contactMarginComparisonToCsv`, D373):**
+a Sessão 377/D372 entregou o comparativo ano a ano da MARGEM por contratante (`compareContactMargins` + card `<MarginComparisonCard>`
+em `/contatos/rentabilidade`) e registrou como próximo passo (alt. a) o export CSV irmão. Esta sessão o fecha, completando o par
+tela↔export desse eixo (como cachê/D292, distribuição/D366, cidade/D120 já tinham). **(1)** camada pura `contactMarginComparisonToCsv(comparison)`
+em `src/lib/csv.ts`: planilha orientada a ITEM (molde de `cityProfitComparisonToCsv`), uma linha por contratante presente nos DOIS anos,
+preservando a ordem da comparação (maior aperto primeiro); colunas Contratante, Papel, Margem ano anterior/corrente (%), Δ margem (p.p.),
+Resultado ano anterior/corrente (R$), Δ resultado (R$), Shows ano anterior/corrente, e "Situação" (Apertou a margem / Ganhou margem /
+Estável) classificada com o mesmo `CONTACT_MARGIN_DROP_EPSILON`=0,05. Sem linha "Total" (margem é razão, não soma). **(2)** rota
+`src/app/(app)/contatos/rentabilidade/comparativo-margem/export/route.ts`: espelha o gate do card — exige `?ano=YYYY` concreto (senão
+404) E ≥1 contratante em comum nos dois anos (`comparedCount===0` → 404); reusa `pickPayerContact`/`rankContactsByProfit`/`compareContactMargins`,
+anos no nome do arquivo (`margem-contratantes-comparativo-{ano}-vs-{ano-1}.csv`), BOM UTF-8. **(3)** link "⬇ CSV" no cabeçalho do
+`<MarginComparisonCard>` (`page.tsx`), aparecendo só quando o card aparece. **+3 testes** de CSV (`csv.test.ts`: layout item + Δ assinado
++ maior aperto primeiro; "Estável" no limiar; só cabeçalho sem contratante em comum). Camada pura + wiring; zero migração/dependência.
+DoD verde: `npm run build` (rota nova registrada, 0 B), `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**2072 testes**);
+smoke → `/login` 200, a rota nova 307→/login (auth-gated); **smoke autenticado diferencial** (usuário smoke, Zé margem 100%→50% por
+despesas, Ana 60%→80%, Bob só em 2024) → `?ano=2025` **200** `text/csv` (filename `…-2025-vs-2024.csv`) com linhas
+"Zé Produções;Produtor/Promoter;100%;50%;-50;100,00;50,00;-50,00;1;1;Apertou a margem" e "Ana Booking;Contratante;60%;80%;+20;…;Ganhou
+margem", **Bob AUSENTE** (só voltou quem contratou nos dois anos); sem `?ano` **404** e `?ano=2024` (2023 vazio) **404** (gate
+preservado); a página `?ano=2025` renderiza o link `comparativo-margem/export?ano=2025`; `npm audit` inalterado (10 advisories: 4
+moderate/5 high/1 critical, ZERO dependência nova), ver D373. **Próximo possível** — (a) ecoar o "quais casas apertam" como nudge no
+Painel (a pessoa específica, não só a carteira agregada dos D367/D368); (b) o mesmo cruzamento no eixo de PAPEL do contratante
+(`rankRolesByProfit`, que tipo de comprador aperta); (c) adicionar a CONTAGEM de shows no vermelho por contratante (o outro lado do par
+contagem↔margem, exigiria novos campos em `ContactProfitRow`). O limiar `CONTACT_MARGIN_DROP_EPSILON`(D372) é **hipótese** (ver
+Bloqueios). Fora deste eixo, segue como único pendente do backup a restauração por MERGE (ALTO risco, revisão humana).
+**Antes disso, Sessão 377 — COMPARATIVO DE MARGEM POR CONTRATANTE ANO A ANO: "quais casas apertam a margem" (`compareContactMargins`, D372):**
 a rentabilidade por contratante (`/contatos/rentabilidade`, `rankContactsByProfit`/D105) já compara os dois anos, mas só a
 CONCENTRAÇÃO de clientes (de quem eu dependo, risco sobre a receita bruta — `compareClientConcentration`). Faltava a outra metade da
 pergunta de rentabilidade, o par contagem↔margem dos nudges do Painel (`lossShareRiseHeadline`/D367, `portfolioMarginDropHeadline`/D368)

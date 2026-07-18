@@ -50,6 +50,9 @@ import {
   type FeeDistributionComparison,
   type ShowResultDistribution,
   type ShowResultDistributionComparison,
+  type ContactMarginComparison,
+  type ContactMarginChange,
+  CONTACT_MARGIN_DROP_EPSILON,
   indexFeeBandShareChanges,
   type FeeTrend,
   type FeeTrendByYear,
@@ -2317,6 +2320,75 @@ export function showResultDistributionComparisonToCsv(
     ]),
     ["Tendência", "", "", SHOW_RESULT_DISTRIBUTION_TREND_LABELS[comparison.trend]],
   ];
+  return toCsv(out, delimiter);
+}
+
+export const CONTACT_MARGIN_COMPARISON_CSV_HEADERS = [
+  "Contratante",
+  "Papel",
+  "Margem (ano anterior)",
+  "Margem (ano corrente)",
+  "Δ margem (p.p.)",
+  "Resultado (ano anterior) (R$)",
+  "Resultado (ano corrente) (R$)",
+  "Δ resultado (R$)",
+  "Shows (ano anterior)",
+  "Shows (ano corrente)",
+  "Situação",
+] as const;
+
+/**
+ * Rótulo pt-BR da situação de margem de um contratante no comparativo, com a
+ * mesma materialidade do card/da lógica pura (`CONTACT_MARGIN_DROP_EPSILON`, D372):
+ * uma queda além do limiar é "Apertou a margem" (a leitura acionável), um ganho
+ * além do limiar é "Ganhou margem", e o meio-termo é "Estável" (ruído, não sinal).
+ */
+function contactMarginSituation(change: ContactMarginChange): string {
+  if (change.marginDelta <= -CONTACT_MARGIN_DROP_EPSILON) return "Apertou a margem";
+  if (change.marginDelta >= CONTACT_MARGIN_DROP_EPSILON) return "Ganhou margem";
+  return "Estável";
+}
+
+/**
+ * Serializa o comparativo ano a ano da **margem por contratante**
+ * (`compareContactMargins`, D372) em CSV, pronto para download — espelha o card
+ * "Margem por contratante {ano} vs. {ano-1}" de `/contatos/rentabilidade`, cujos
+ * números (margem dos dois anos, Δ em pontos, resultado somado e sua variação) só
+ * viviam na tela: o export do ano (`contactProfitToCsv`) traz só a foto do ano
+ * corrente, sem a margem do ano anterior nem quem apertou.
+ *
+ * Irmão de `cityProfitComparisonToCsv` (mesmo eixo item-a-item + Δ): uma linha por
+ * contratante presente nos DOIS anos (o grupo "sem contratante" já é ignorado pela
+ * camada pura), preservando a ordem da comparação — o **maior aperto primeiro**
+ * (`marginDelta` crescente), que é a leitura acionável "renegocie cachê/despesas
+ * com essas casas". Sem linha "Total": margem é uma razão e não soma; a planilha é
+ * o ranking de quem apertou/ganhou. As margens saem como % (`csvShare`), a variação
+ * em pontos percentuais assinados (`csvSignedPoints`); os valores em R$ via
+ * `centsToCsvAmount` (que já emite o "-" nos negativos). A coluna "Situação"
+ * classifica com a mesma materialidade da lógica (`CONTACT_MARGIN_DROP_EPSILON`).
+ * Os anos concretos vão no nome do arquivo, não nos cabeçalhos (mesma convenção
+ * dos irmãos). Mesma convenção pt-BR (";" e decimal com vírgula). Pura.
+ */
+export function contactMarginComparisonToCsv(
+  comparison: ContactMarginComparison,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(CONTACT_MARGIN_COMPARISON_CSV_HEADERS)];
+  for (const c of comparison.changes) {
+    out.push([
+      c.contact.name,
+      contactRoleLabel(c.contact.role),
+      csvShare(c.previousMargin),
+      csvShare(c.currentMargin),
+      csvSignedPoints(c.marginDelta),
+      centsToCsvAmount(c.previousNet),
+      centsToCsvAmount(c.currentNet),
+      centsToCsvAmount(c.netDelta),
+      String(c.previousShowCount),
+      String(c.currentShowCount),
+      contactMarginSituation(c),
+    ]);
+  }
   return toCsv(out, delimiter);
 }
 
