@@ -5,6 +5,45 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-18 — D365: Distribuição de resultado por show — histograma de saúde da carteira de gigs (`/shows/rentabilidade/distribuicao`)
+- **Contexto:** o app tinha o eixo de rentabilidade por show maduro (`rankShowsByProfit` + página `/shows/rentabilidade`), mas ele
+  responde "QUAIS shows deram dinheiro" — uma LISTA ordenada do mais ao menos rentável, com totais agregados (receita, despesa,
+  resultado, margem). Faltava a leitura de PORTFÓLIO: de todos os shows realizados, QUANTOS rodam no vermelho, quantos com margem
+  magra e quantos com margem saudável — e quanto de R$ está em cada balde. É a pergunta de saúde da carteira ("6 dos meus 20 shows
+  dão prejuízo, somando −R$ 2.400"), que o ranking não destila num relance. Já existia o análogo pelo CACHÊ BRUTO (`feeDistribution`
+  / `/shows/faixas-de-cache`, faixas de preço), mas nada pelo RESULTADO LÍQUIDO. O eixo tabular de export estava esgotado e os
+  comparativos YoY também (D361–D364); esta é a "feature maior" seguinte no eixo de rentabilidade, usando só dados já existentes
+  (sem migração de schema, sem dependência nova).
+- **Decisão:** nova análise "Distribuição de resultado por show". Camada pura em `@/lib/finance`: `showResultDistribution(report)`
+  recebe uma `rankShowsByProfit` já computada (mesma fonte de verdade do P&L e da exclusão de CANCELLED; o chamador filtra por
+  período antes, como na página-mãe) e destila 5 faixas — Prejuízo (`net<0`), Empatou (`net=0`), Margem magra (0 < margem ≤ 15%),
+  Margem saudável (15% < margem ≤ 40%), Margem alta (> 40%) — cada uma com contagem, participação no total e resultado somado, mais
+  o recorte "no vermelho" já destacado (`lossCount`/`lossShare`/`lossNet`, a decisão acionável). Sempre as 5 faixas na ordem
+  canônica, inclusive as vazias (histograma não pula degraus). `showResultBandKeyFor` classifica pelo sinal do `net` e pela margem
+  (`net>0` implica `grossIncome>0`, então a margem é sempre definida quando entra nas faixas "thin"/"healthy"/"high"). Página nova
+  `/shows/rentabilidade/distribuicao` (histograma de barras + stats + callout do vermelho, respeitando o `?ano=` da página-mãe via
+  os mesmos `showProfitYears`/`parseProfitYear`/`filterShowsByYear`) + export CSV irmão `.../distribuicao/export`
+  (`showResultDistributionToCsv`, uma linha por faixa + Total, espelhando `feeDistributionToCsv`) + entrada no hub `/relatorios`
+  (subtema "Rentabilidade & preço") + link "📉 Distribuição" na página-mãe. **+10 testes de lógica** (`finance.test.ts`: classificação
+  por faixa, limites inclusivos 15%/40%, distribuição/soma por balde, participações somando 1, recorte no vermelho, herança da
+  exclusão de CANCELLED) **+3 de CSV** (`csv.test.ts`: 5 faixas + Total sem shows; contagem/participação/resultado por faixa; linha
+  Total com participação em branco).
+- **Justificativa:** distinto do ranking (lista) e das faixas de cachê (bruto), responde a saúde do portfólio por resultado
+  líquido num relance. Reusa 100% do P&L existente (`computeShowPnL` via `rankShowsByProfit`) — uma só fonte de verdade, zero
+  divergência de cálculo. Camada pura + rota, sem migração de schema nem dependência nova (`npm audit` inalterado: 10 advisories,
+  4 moderate/5 high/1 critical). Espelha o padrão consolidado das outras distribuições (linhas por balde + Total, faixas sempre
+  presentes, CSV pt-BR com BOM), então é imediatamente familiar na tela e na planilha.
+- **Alternativas consideradas:** (a) faixas por R$ absoluto de resultado (ex.: "lucro > R$ 1.000") — rejeitado: um lucro fixo pesa
+  diferente num cachê de R$ 300 vs R$ 5.000; a MARGEM relativa é a leitura honesta de "quão saudável foi o show". (b) só 3 faixas
+  (prejuízo/empate/lucro) — rejeitado: "margem magra" (lucro nominal mas ≤15% depois dos custos) é justamente o sinal acionável
+  que se perde num balde único de "lucro". (c) um card na própria página de rentabilidade em vez de página dedicada — rejeitado: o
+  padrão do app é uma página por análise, registrada no catálogo (a trava anti-drift de D360 exigiria o registro de qualquer forma);
+  uma página dedicada ganha recorte por ano e export próprios sem inflar a tela-mãe. (d) comparativo YoY da distribuição — adiado
+  (próximo passo): fecha o escopo desta sessão na leitura de um período; o YoY segue o mesmo molde de `compareFeeDistribution`.
+- **Hipóteses a validar (limiares):** `THIN_MARGIN_MAX`=0,15 e `HEALTHY_MARGIN_MAX`=0,40 (os cortes entre magra/saudável/alta) são
+  **hipóteses** — o que conta como "margem confortável" varia por circuito e custo fixo do músico. Validar com músicos reais antes
+  de virar premissa fixa (registrado também nos Bloqueios do PROGRESS).
+
 ## 2026-07-18 — D364: Comparativo ano a ano do prazo de recebimento (DSO) no CSV (`/shows/prazo-recebimento/comparativo/export`)
 - **Contexto:** a página `/shows/prazo-recebimento` já mostra na tela, quando se escolhe um ano, o card "Prazo de recebimento
   {ano} vs. {ano-1}" — a variação do prazo MEDIANO e do MÉDIO de recebimento (DSO, em dias), mais um veredito de tendência

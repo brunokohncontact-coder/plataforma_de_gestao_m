@@ -48,6 +48,7 @@ import {
   classifyWeekdayPerformanceDayChange,
   type FeeDistribution,
   type FeeDistributionComparison,
+  type ShowResultDistribution,
   indexFeeBandShareChanges,
   type FeeTrend,
   type FeeTrendByYear,
@@ -2118,6 +2119,39 @@ export function feeDistributionToCsv(
   ];
   if (withTrend) total.push("");
   out.push(total);
+  return toCsv(out, delimiter);
+}
+
+// ── Distribuição de resultado por show (Prejuízo → Margem alta) ──────────────
+
+export const SHOW_RESULT_DISTRIBUTION_CSV_HEADERS = [
+  "Faixa",
+  "Shows",
+  "% dos shows",
+  "Resultado (R$)",
+] as const;
+
+/**
+ * Serializa a distribuição de resultado por show (`showResultDistribution`) em
+ * CSV, pronto para download. Espelha a tabela de
+ * `/shows/rentabilidade/distribuicao`: uma linha por faixa (sempre as 5 de
+ * `SHOW_RESULT_BANDS`, do prejuízo à margem alta, inclusive faixas zeradas,
+ * para o histograma não pular degraus) com nº de shows, participação no total e
+ * resultado líquido somado, seguida de uma linha "Total". Diferente da UI (que
+ * mostra "—" nas faixas vazias), o CSV registra 0, 0% e 0,00 para ficar legível
+ * por máquina. Mesma convenção pt-BR de `feeDistributionToCsv` (delimitador
+ * ";", decimal com vírgula). A participação do Total fica em branco (é sempre
+ * 100% por construção). Pura. Ver DECISIONS.md D365.
+ */
+export function showResultDistributionToCsv(
+  dist: ShowResultDistribution,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(SHOW_RESULT_DISTRIBUTION_CSV_HEADERS)];
+  for (const b of dist.bands) {
+    out.push([b.label, String(b.count), csvShare(b.share), centsToCsvAmount(b.totalNet)]);
+  }
+  out.push(["Total", String(dist.count), "", centsToCsvAmount(dist.totalNet)]);
   return toCsv(out, delimiter);
 }
 

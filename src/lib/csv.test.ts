@@ -53,6 +53,8 @@ import {
   WEEKDAY_PERFORMANCE_COMPARISON_CSV_HEADERS,
   feeDistributionToCsv,
   FEE_DISTRIBUTION_CSV_HEADERS,
+  showResultDistributionToCsv,
+  SHOW_RESULT_DISTRIBUTION_CSV_HEADERS,
   feeDistributionComparisonToCsv,
   FEE_DISTRIBUTION_COMPARISON_CSV_HEADERS,
   incomeMixToCsv,
@@ -219,6 +221,8 @@ import {
   compareWeekdayPerformance,
   feeDistribution,
   compareFeeDistribution,
+  rankShowsByProfit,
+  showResultDistribution,
   showPipeline,
   incomeMix,
   compareIncomeMix,
@@ -2196,6 +2200,66 @@ describe("feeDistributionToCsv", () => {
     // previousYear ausente (null) ⇒ mesmo com comparativo, sem coluna extra.
     const lines = feeDistributionToCsv(dist, undefined, cmp, null).split("\r\n");
     expect(lines[0].split(";")).toHaveLength(FEE_DISTRIBUTION_CSV_HEADERS.length);
+  });
+});
+
+describe("showResultDistributionToCsv", () => {
+  const played = (id: string, fee: number): ShowLike & { status: string } => ({
+    id,
+    fee,
+    status: "PLAYED",
+  });
+  const expense = (showId: string, amount: number): TxLike => ({
+    type: "EXPENSE",
+    amount,
+    category: "geral",
+    date: "2026-03-10T00:00:00.000Z",
+    received: true,
+    showId,
+  });
+  const dist = (shows: (ShowLike & { status: string })[], txs: TxLike[] = []) =>
+    showResultDistribution(rankShowsByProfit(shows, txs));
+
+  it("sempre emite as 5 faixas + a linha Total mesmo sem shows", () => {
+    const csv = showResultDistributionToCsv(dist([]));
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toBe(SHOW_RESULT_DISTRIBUTION_CSV_HEADERS.join(";"));
+    // cabeçalho + 5 faixas + Total
+    expect(lines).toHaveLength(7);
+    expect(lines[1]).toBe("Prejuízo;0;0%;0,00");
+    expect(lines[5]).toBe("Margem alta;0;0%;0,00");
+    expect(lines[6]).toBe("Total;0;;0,00");
+  });
+
+  it("serializa contagem, participação e resultado por faixa", () => {
+    // a: fee 100, despesa 150 -> loss -50 ; b/c: fee 100 sem despesa -> high 100 cada
+    const d = dist(
+      [played("a", 100_00), played("b", 100_00), played("c", 100_00)],
+      [expense("a", 150_00)],
+    );
+    const lines = showResultDistributionToCsv(d).split("\r\n");
+    const loss = lines[1].split(";");
+    expect(loss[0]).toBe("Prejuízo");
+    expect(loss[1]).toBe("1");
+    expect(loss[2]).toBe("33%"); // 1 de 3
+    expect(loss[3]).toBe("-50,00");
+    const high = lines[5].split(";");
+    expect(high[0]).toBe("Margem alta");
+    expect(high[1]).toBe("2");
+    expect(high[2]).toBe("67%"); // 2 de 3
+    expect(high[3]).toBe("200,00");
+  });
+
+  it("linha Total: contagem + resultado somado, participação em branco", () => {
+    const d = dist(
+      [played("a", 100_00), played("b", 100_00)],
+      [expense("a", 150_00)],
+    );
+    const total = showResultDistributionToCsv(d).split("\r\n")[6].split(";");
+    expect(total[0]).toBe("Total");
+    expect(total[1]).toBe("2");
+    expect(total[2]).toBe(""); // 100% por construção
+    expect(total[3]).toBe("50,00"); // -50 + 100
   });
 });
 

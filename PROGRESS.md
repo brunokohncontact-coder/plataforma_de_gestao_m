@@ -4,7 +4,35 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 369 — COMPARATIVO ANO A ANO DO PRAZO DE RECEBIMENTO (DSO) NO CSV (`/shows/prazo-recebimento/comparativo/export` +
+**Sessão 370 — DISTRIBUIÇÃO DE RESULTADO POR SHOW: histograma de saúde da carteira de gigs (`/shows/rentabilidade/distribuicao` +
+`showResultDistribution`/`showResultDistributionToCsv`, D365):** com o eixo tabular de export e os comparativos YoY esgotados
+(D361–D364), esta é a "feature maior" seguinte no eixo de rentabilidade, usando só dados já existentes (zero migração/dependência).
+O ranking `rankShowsByProfit` (`/shows/rentabilidade`) responde "QUAIS shows deram dinheiro" — uma lista ordenada; faltava a
+leitura de PORTFÓLIO: de todos os shows realizados, QUANTOS rodam no vermelho, com margem magra ou saudável — e quanto de R$ em
+cada balde ("6 dos meus 20 shows dão prejuízo, somando −R$ 2.400"). Já havia o análogo pelo CACHÊ BRUTO (`feeDistribution` /
+`/shows/faixas-de-cache`), mas nada pelo RESULTADO LÍQUIDO. **(1)** camada pura em `src/lib/finance.ts`:
+`showResultDistribution(report)` recebe uma `rankShowsByProfit` já computada (mesma fonte de verdade do P&L via `computeShowPnL` e
+da exclusão de CANCELLED; o chamador filtra por período antes) e destila 5 faixas — Prejuízo (`net<0`) / Empatou (`net=0`) /
+Margem magra (0<margem≤15%) / Margem saudável (15%<margem≤40%) / Margem alta (>40%) — cada uma com contagem, participação e
+resultado somado, mais o recorte "no vermelho" já destacado (`lossCount`/`lossShare`/`lossNet`, a decisão acionável). Sempre as 5
+faixas na ordem canônica (inclusive vazias). `showResultBandKeyFor` + `SHOW_RESULT_BANDS` + limiares `THIN_MARGIN_MAX`(0,15)/
+`HEALTHY_MARGIN_MAX`(0,40). **(2)** página `/shows/rentabilidade/distribuicao` (histograma de barras + stats + callout do vermelho,
+respeitando o `?ano=` da página-mãe via `showProfitYears`/`parseProfitYear`/`filterShowsByYear`). **(3)** export CSV irmão
+`.../distribuicao/export` (`showResultDistributionToCsv` em `src/lib/csv.ts`, uma linha por faixa + Total, espelhando
+`feeDistributionToCsv`). **(4)** entrada no hub `/relatorios` (subtema "Rentabilidade & preço", `reportCount` 56→57) + link
+"📉 Distribuição" na página-mãe `/shows/rentabilidade`. **+13 testes** (10 de lógica em `finance.test.ts`: classificação por faixa,
+limites inclusivos 15%/40%, distribuição/soma por balde, participações somando 1, recorte no vermelho, herança da exclusão de
+CANCELLED; 3 de CSV em `csv.test.ts`). Camada pura (dados + rota; zero migração/dependência). DoD verde: `npm run build`,
+`npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**2029 testes**); smoke → `/login` 200, as rotas novas 307→/login
+(auth-gated); **smoke autenticado** (token de usuário demo, 5 shows realizados um em cada faixa) → página 200 (exibe as 5 faixas +
+o callout "1 de 5 shows deu prejuízo") e export 200 `text/csv` (filename `distribuicao-resultado-shows-2026.csv`, cabeçalho
+`Faixa;Shows;% dos shows;Resultado (R$)`, linhas `Prejuízo;1;20%;-50,00` … `Margem alta;1;20%;100,00`, `Total;5;;90,00`);
+`npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, ZERO dependência nova), ver D365. **Próximo possível** —
+(a) comparativo ano a ano da distribuição (adiado, molde de `compareFeeDistribution`); (b) um nudge no Painel quando a fatia de
+shows no vermelho passa de um limiar (a decisão "revise cachês/despesas dessas casas"); (c) recorte por natureza (só shows
+firmes × todos). Os limiares 15%/40% das faixas são **hipóteses** (ver Bloqueios). Fora deste eixo, segue como único pendente do
+backup a restauração por MERGE (ALTO risco, revisão humana); ou próximas sessões podem evoluir outra feature maior.
+**Antes disso, Sessão 369 — COMPARATIVO ANO A ANO DO PRAZO DE RECEBIMENTO (DSO) NO CSV (`/shows/prazo-recebimento/comparativo/export` +
 `paymentLagComparisonToCsv`, D364), levando para a planilha o card "Prazo de recebimento {ano} vs. {ano-1}" que a página
 `/shows/prazo-recebimento` já mostra na tela mas o CSV do ranking descartava:** a página já compara o ano escolhido contra o
 anterior (a variação do prazo MEDIANO e do MÉDIO de recebimento — DSO, em dias — mais um veredito de tendência, recebendo mais
@@ -6711,5 +6739,9 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   mês-pico está vazia o bastante para acionar o músico varia por circuito e por antecedência de fechamento.
   Herda o espírito dos limiares de sazonalidade (D134), ainda não medidos com uso real. Validar antes de virar
   premissa fixa.
+- **Faixas de margem por show (D365)**: os limiares `THIN_MARGIN_MAX`=0,15 (teto da "margem magra") e
+  `HEALTHY_MARGIN_MAX`=0,40 (teto da "margem saudável", acima disso é "margem alta") em `src/lib/finance.ts`
+  são **hipóteses** — o que conta como margem líquida "confortável" varia por circuito e custo fixo do músico.
+  Validar com músicos reais antes de virar premissa fixa.
 - **Segurança em produção**: definir `AUTH_SECRET` forte e migrar para PostgreSQL antes
   de qualquer deploy real. Revisar advisories do Next (D6) e planejar upgrade p/ Next 15+.

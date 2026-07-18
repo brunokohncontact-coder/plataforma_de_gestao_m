@@ -208,6 +208,13 @@ export const REPORT_GROUPS: readonly ReportGroup[] = [
         icon: "💸",
       },
       {
+        title: "Distribuição de resultado",
+        href: "/shows/rentabilidade/distribuicao",
+        description: "Quantos shows rodam no vermelho, com margem magra ou saudável — a saúde da carteira de gigs.",
+        subtopic: "Rentabilidade & preço",
+        icon: "📉",
+      },
+      {
         title: "Rentabilidade por local",
         href: "/shows/locais",
         description: "Quais casas/venues valem a pena, somando o P&L dos shows por local.",
