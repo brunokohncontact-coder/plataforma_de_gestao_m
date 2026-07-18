@@ -4,6 +4,7 @@ import {
   rankShowsByProfit,
   compareShowsProfitability,
   showResultDistribution,
+  compareShowResultDistribution,
   showResultBandKeyFor,
   SHOW_RESULT_BANDS,
   rankVenuesByProfit,
@@ -539,6 +540,86 @@ describe("showResultDistribution", () => {
     expect(d.count).toBe(1);
     const byKey = Object.fromEntries(d.bands.map((b) => [b.key, b]));
     expect(byKey.high.count).toBe(1);
+  });
+});
+
+describe("compareShowResultDistribution", () => {
+  const report = (shows: ShowLike[], txs: TxLike[] = []) => rankShowsByProfit(shows, txs);
+  const dist = (shows: ShowLike[], txs: TxLike[] = []) =>
+    showResultDistribution(report(shows, txs));
+
+  // 4 shows de fee 100; a despesa vinculada decide a faixa.
+  const four = (a: number, b: number, c: number, d: number) => {
+    const shows: ShowLike[] = [
+      { id: "a", fee: 100_00, status: "PLAYED" },
+      { id: "b", fee: 100_00, status: "PLAYED" },
+      { id: "c", fee: 100_00, status: "PLAYED" },
+      { id: "d", fee: 100_00, status: "PLAYED" },
+    ];
+    const txs: TxLike[] = [
+      tx({ type: "EXPENSE", amount: a, showId: "a" }),
+      tx({ type: "EXPENSE", amount: b, showId: "b" }),
+      tx({ type: "EXPENSE", amount: c, showId: "c" }),
+      tx({ type: "EXPENSE", amount: d, showId: "d" }),
+    ];
+    return dist(shows, txs);
+  };
+
+  it("menos shows no vermelho: veredito 'improved' e lossShareDelta negativo", () => {
+    // anterior: 2 de 4 no vermelho (50%); atual: 1 de 4 (25%) -> -25 p.p.
+    const previous = four(200_00, 200_00, 0, 0); // a,b loss; c,d high
+    const current = four(200_00, 0, 0, 0); // a loss; b,c,d high
+    const cmp = compareShowResultDistribution(current, previous);
+    expect(cmp.previous.lossCount).toBe(2);
+    expect(cmp.current.lossCount).toBe(1);
+    expect(cmp.lossCountDelta).toBe(-1);
+    expect(cmp.lossShareDelta).toBeCloseTo(-0.25);
+    expect(cmp.trend).toBe("improved");
+  });
+
+  it("mais shows no vermelho: veredito 'worsened' e lossShareDelta positivo", () => {
+    const previous = four(0, 0, 0, 0); // nenhum no vermelho
+    const current = four(200_00, 200_00, 0, 0); // 2 de 4 no vermelho (50%)
+    const cmp = compareShowResultDistribution(current, previous);
+    expect(cmp.lossShareDelta).toBeCloseTo(0.5);
+    expect(cmp.trend).toBe("worsened");
+  });
+
+  it("variação da fração no vermelho dentro do limiar: 'stable'", () => {
+    // Ambos 25% no vermelho -> delta 0, dentro do limiar.
+    const previous = four(200_00, 0, 0, 0);
+    const current = four(200_00, 0, 0, 0);
+    const cmp = compareShowResultDistribution(current, previous);
+    expect(cmp.lossShareDelta).toBe(0);
+    expect(cmp.trend).toBe("stable");
+  });
+
+  it("bandChanges traz sempre as 5 faixas na ordem canônica com o Δ de participação", () => {
+    const previous = four(200_00, 200_00, 0, 0); // 50% loss, 50% high
+    const current = four(0, 0, 0, 0); // 100% high
+    const cmp = compareShowResultDistribution(current, previous);
+    expect(cmp.bandChanges.map((b) => b.key)).toEqual([
+      "loss",
+      "even",
+      "thin",
+      "healthy",
+      "high",
+    ]);
+    const byKey = Object.fromEntries(cmp.bandChanges.map((b) => [b.key, b]));
+    expect(byKey.loss.previousShare).toBeCloseTo(0.5);
+    expect(byKey.loss.currentShare).toBe(0);
+    expect(byKey.loss.shareDelta).toBeCloseTo(-0.5);
+    expect(byKey.high.shareDelta).toBeCloseTo(0.5);
+  });
+
+  it("agrega deltas de resultado somado e prejuízo entre os períodos", () => {
+    const previous = four(130_00, 0, 0, 0); // a: net -30 (loss); b,c,d: +100 -> total 270
+    const current = four(0, 0, 0, 0); // todos +100 -> total 400, sem prejuízo
+    const cmp = compareShowResultDistribution(current, previous);
+    expect(cmp.previous.lossNet).toBe(-30_00);
+    expect(cmp.current.lossNet).toBe(0);
+    expect(cmp.lossNetDelta).toBe(30_00); // 0 - (-30) = +30
+    expect(cmp.totalNetDelta).toBe(current.totalNet - previous.totalNet);
   });
 });
 

@@ -5,6 +5,42 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-18 — D366: Comparativo ano a ano da distribuição de resultado por show (`/shows/rentabilidade/distribuicao/comparativo/export` + card)
+- **Contexto:** a D365 entregou a distribuição de resultado por show (a saúde da carteira de gigs num período: quantos shows no
+  vermelho, com margem magra ou saudável), mas deixou explícito como "adiado, próximo passo" o comparativo ANO A ANO — a leitura de
+  TENDÊNCIA ("a fatia de shows no vermelho melhorou ou piorou de um ano para o outro?"). A própria D365 antecipou o molde:
+  `compareFeeDistribution` (D187) no eixo do cachê. Era o degrau natural seguinte, e o único eixo de distribuição sem o par
+  tela↔YoY (o de cachê já tinha `compareFeeDistribution` + `feeDistributionComparisonToCsv`/D292).
+- **Decisão:** comparativo YoY da distribuição de resultado. **(1)** camada pura em `@/lib/finance`:
+  `compareShowResultDistribution(current, previous)` recebe duas `showResultDistribution` já computadas (cada uma sobre os shows do
+  seu período) e devolve a variação da fração no vermelho (`lossShareDelta`, em pontos), do nº de shows no vermelho, do prejuízo
+  somado e do resultado somado, mais o deslocamento por faixa (`bandChanges`, sempre as 5 de `SHOW_RESULT_BANDS`) e um veredito de
+  tendência. O veredito ancora na fração NO VERMELHO (`lossShare`) — a mesma métrica acionável que o callout da página destaca —,
+  não numa média que um outlier distorce: `improved` (a fatia no vermelho caiu além do limiar), `worsened` (subiu), `stable`
+  (dentro do limiar). Limiar `LOSS_SHARE_TREND_EPSILON`=0,05 (5 p.p.). **(2)** card "Distribuição {ano} vs. {ano-1}" na própria
+  página `/shows/rentabilidade/distribuicao` (aparece só com um ano específico e ambos os períodos tendo shows), com o rótulo do
+  veredito e a linha "shows no vermelho: X% → Y%". **(3)** export CSV irmão `.../distribuicao/comparativo/export?ano=YYYY`
+  (`showResultDistributionComparisonToCsv`): planilha orientada a MÉTRICA (molde de `feeDistributionComparisonToCsv`/D292) — shows
+  analisados, resultado somado, recorte no vermelho (nº/%/prejuízo), participação de cada faixa nos dois anos, e o veredito na
+  coluna de variação. Mesmo gate da página (ano concreto E shows nos dois anos; senão 404). **+5 testes de lógica**
+  (`finance.test.ts`: improved/worsened/stable pelo limiar, bandChanges nas 5 faixas, deltas de resultado/prejuízo) **+4 de CSV**
+  (`csv.test.ts`: layout métrica+faixas+tendência, veredito nas três direções, dinheiro assinado).
+- **Justificativa:** fecha o par tela↔export do eixo de distribuição de resultado (leitura de um período D365 + tendência YoY),
+  como já existia no eixo de cachê. Reusa 100% de `showResultDistribution`/`rankShowsByProfit` (uma só fonte de verdade). Camada
+  pura + rota, zero migração de schema, zero dependência nova (`npm audit` inalterado: 10 advisories, 4 moderate/5 high/1 critical).
+  Espelha o padrão consolidado dos comparativos YoY (D361–D364): gate idêntico ao card, anos no nome do arquivo, CSV pt-BR com BOM.
+- **Alternativas consideradas:** (a) ancorar o veredito no resultado líquido MÉDIO por show em vez da fração no vermelho —
+  rejeitado: um único show excepcional (bom ou ruim) move a média e travestiria de "melhora/piora" o que é ruído; a fração no
+  vermelho é a leitura robusta e é o que a página já destaca. (b) limiar duplo (relativo + piso absoluto) como
+  `compareFeeDistribution` — desnecessário: `lossShare` já é uma fração normalizada (0..1), um limiar único em pontos percentuais
+  basta e é mais legível. (c) só o CSV, sem card na tela — rejeitado: os irmãos (D361–D364) exportam um card que a tela JÁ mostrava;
+  aqui a distribuição ainda não tinha o card YoY, então um "⬇ CSV vs {ano-1}" sem contraparte visível seria órfão. (d) nudge no
+  Painel quando a fatia no vermelho cresce — adiado (próximo passo), no espírito dos nudges de "piora" (D245/D272).
+- **Hipóteses a validar:** `LOSS_SHARE_TREND_EPSILON`=0,05 (o que conta como variação "material" da fração no vermelho) é
+  **hipótese**, pelo mesmo motivo dos limiares de faixa da D365; validar com músicos reais (registrado nos Bloqueios do PROGRESS).
+- **Nota de concorrência:** número **D366** escolhido como o próximo livre acima do maior D mergeado na `main` (D365, PR #401); sem
+  PRs abertas no momento. Se outra PR reivindicar D366 antes do merge, renumerar para o próximo livre.
+
 ## 2026-07-18 — D365: Distribuição de resultado por show — histograma de saúde da carteira de gigs (`/shows/rentabilidade/distribuicao`)
 - **Contexto:** o app tinha o eixo de rentabilidade por show maduro (`rankShowsByProfit` + página `/shows/rentabilidade`), mas ele
   responde "QUAIS shows deram dinheiro" — uma LISTA ordenada do mais ao menos rentável, com totais agregados (receita, despesa,

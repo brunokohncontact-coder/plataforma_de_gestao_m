@@ -4,7 +4,37 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 370 — DISTRIBUIÇÃO DE RESULTADO POR SHOW: histograma de saúde da carteira de gigs (`/shows/rentabilidade/distribuicao` +
+**Sessão 371 — COMPARATIVO ANO A ANO DA DISTRIBUIÇÃO DE RESULTADO POR SHOW (`/shows/rentabilidade/distribuicao/comparativo/export` +
+card na página + `compareShowResultDistribution`/`showResultDistributionComparisonToCsv`, D366):** a Sessão 370/D365 entregou a
+distribuição de resultado por show (a saúde da carteira num período), mas deixou explícito como "adiado, próximo passo" o comparativo
+ANO A ANO — a leitura de TENDÊNCIA ("a fatia de shows no vermelho melhorou ou piorou de um ano para o outro?"), no molde de
+`compareFeeDistribution` (D187) que a própria D365 antecipou. Era o único eixo de distribuição sem o par tela↔YoY (o de cachê já
+tinha `compareFeeDistribution` + `feeDistributionComparisonToCsv`/D292). **(1)** camada pura em `src/lib/finance.ts`:
+`compareShowResultDistribution(current, previous)` recebe duas `showResultDistribution` já computadas e destila a variação da fração
+no vermelho (`lossShareDelta`, em pontos), do nº de shows no vermelho (`lossCountDelta`), do prejuízo somado (`lossNetDelta`) e do
+resultado somado (`totalNetDelta`), mais o deslocamento por faixa (`bandChanges`, sempre as 5 de `SHOW_RESULT_BANDS`) e um veredito
+de tendência ancorado na fração NO VERMELHO (a métrica acionável, robusta a outlier): `improved` (a fatia no vermelho caiu além do
+limiar) / `worsened` (subiu) / `stable` (dentro do limiar), com `LOSS_SHARE_TREND_EPSILON`(0,05 = 5 p.p.). **(2)** card
+"Distribuição {ano} vs. {ano-1}" na própria página `/shows/rentabilidade/distribuicao` (só com um ano específico e ambos os períodos
+tendo shows — mesmo gate dos irmãos), com o rótulo do veredito (Carteira mais saudável / Mais shows no vermelho / Estável) e a linha
+"shows no vermelho: X% → Y%". **(3)** export CSV irmão `.../distribuicao/comparativo/export?ano=YYYY`
+(`showResultDistributionComparisonToCsv` em `src/lib/csv.ts`): planilha orientada a MÉTRICA (molde de `feeDistributionComparisonToCsv`/
+D292) — shows analisados, resultado somado, recorte no vermelho (nº/%/prejuízo), participação de cada faixa nos dois anos + o veredito
+na coluna de variação; mesmo gate da página (ano concreto E shows nos dois anos; senão **404**), anos no NOME DO ARQUIVO
+(`distribuicao-resultado-comparativo-{ano}-vs-{ano-1}.csv`). **+9 testes** (5 de lógica em `finance.test.ts`: improved/worsened/stable
+pelo limiar, bandChanges nas 5 faixas na ordem canônica, deltas de resultado/prejuízo somados; 4 de CSV em `csv.test.ts`: layout
+métrica+faixas+tendência, veredito nas três direções, dinheiro assinado). Camada pura (dados + rota + card; zero migração/dependência).
+DoD verde: `npm run build` (rota nova registrada, 0 B), `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**2038 testes**);
+smoke → `/login` 200, as rotas novas 307→/login (auth-gated); **smoke autenticado** (token de usuário demo, 4 shows em 2025 com 2 no
+vermelho + 4 em 2026 com 1 no vermelho) → export sem `?ano` **404** (gate), `?ano=2025` **404** (2024 vazio), `?ano=2026` **200**
+`text/csv` (filename `…-2026-vs-2025.csv`, linha `No vermelho (%);50%;25%;-25`, `Tendência;;;Carteira mais saudável`) e a página 200
+exibindo o card "Carteira mais saudável"; `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, ZERO dependência nova),
+ver D366. **Próximo possível** — (a) um nudge no Painel quando a fatia de shows no vermelho CRESCE de um ano para o outro (a decisão
+"revise cachês/despesas dessas casas"), no espírito dos nudges de "piora" (D245/D272); (b) recorte por natureza (só shows firmes ×
+todos) na distribuição. Os limiares 15%/40% das faixas (D365) e `LOSS_SHARE_TREND_EPSILON`(D366) são **hipóteses** (ver Bloqueios).
+Fora deste eixo, segue como único pendente do backup a restauração por MERGE (ALTO risco, revisão humana); ou próximas sessões podem
+evoluir outra feature maior.
+**Antes disso, Sessão 370 — DISTRIBUIÇÃO DE RESULTADO POR SHOW: histograma de saúde da carteira de gigs (`/shows/rentabilidade/distribuicao` +
 `showResultDistribution`/`showResultDistributionToCsv`, D365):** com o eixo tabular de export e os comparativos YoY esgotados
 (D361–D364), esta é a "feature maior" seguinte no eixo de rentabilidade, usando só dados já existentes (zero migração/dependência).
 O ranking `rankShowsByProfit` (`/shows/rentabilidade`) responde "QUAIS shows deram dinheiro" — uma lista ordenada; faltava a
@@ -6743,5 +6773,9 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   `HEALTHY_MARGIN_MAX`=0,40 (teto da "margem saudável", acima disso é "margem alta") em `src/lib/finance.ts`
   são **hipóteses** — o que conta como margem líquida "confortável" varia por circuito e custo fixo do músico.
   Validar com músicos reais antes de virar premissa fixa.
+- **Limiar de tendência da distribuição de resultado (D366)**: `LOSS_SHARE_TREND_EPSILON`=0,05 (5 p.p. — a
+  variação mínima da fração de shows no vermelho para o comparativo ano a ano virar veredito "melhorou/piorou"
+  em vez de "estável") em `src/lib/finance.ts` é **hipótese** — quanto de oscilação da fatia no vermelho conta
+  como tendência vs. ruído de amostra não foi medido com uso real. Validar com músicos antes de virar premissa fixa.
 - **Segurança em produção**: definir `AUTH_SECRET` forte e migrar para PostgreSQL antes
   de qualquer deploy real. Revisar advisories do Next (D6) e planejar upgrade p/ Next 15+.

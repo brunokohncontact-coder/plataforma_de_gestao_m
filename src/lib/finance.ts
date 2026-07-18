@@ -317,6 +317,126 @@ export function showResultDistribution<S extends ShowLike>(
   };
 }
 
+// ── Comparativo ano a ano da distribuição de resultado (a carteira melhorou?) ─
+//
+// `showResultDistribution` (D365) fotografa a saúde da carteira de um período —
+// quantos shows no vermelho, com margem magra ou saudável. A pergunta seguinte é
+// de TENDÊNCIA: essa saúde melhorou ou piorou de um ano para o outro? O molde é o
+// de `compareFeeDistribution` (D187) no eixo do CACHÊ, mas aqui o veredito ancora
+// na fração de shows NO VERMELHO (`lossShare`), a métrica acionável da página (o
+// callout "X de N shows deram prejuízo"): menos shows no prejuízo = carteira mais
+// saudável. Ver DECISIONS.md D366.
+
+/**
+ * Variação mínima (em pontos 0..1) da fração no vermelho para o comparativo virar
+ * veredito de tendência: 5 pontos percentuais. Abaixo disso a mudança é ruído de
+ * amostra (um show a mais/menos no vermelho numa agenda pequena move a fração sem
+ * significar tendência). Espelha a disciplina de limiar de `compareFeeDistribution`.
+ * **Hipótese** pelo mesmo motivo dos limiares de faixa (`THIN_MARGIN_MAX`); validar
+ * com músicos. Ver DECISIONS.md D366.
+ */
+export const LOSS_SHARE_TREND_EPSILON = 0.05;
+
+/** Deslocamento de uma faixa de resultado entre dois períodos (nº de shows + participação). */
+export interface ShowResultBandCountChange {
+  key: ShowResultBandKey;
+  /** Rótulo pt-BR da faixa (igual ao da tabela/histograma). */
+  label: string;
+  /** Nº de shows na faixa no período atual. */
+  currentCount: number;
+  /** Nº de shows na faixa no período anterior. */
+  previousCount: number;
+  /** Participação da faixa no total de shows do período atual (0..1). */
+  currentShare: number;
+  /** Participação no período anterior (0..1). */
+  previousShare: number;
+  /** Variação da participação (atual − anterior, em pontos 0..1). */
+  shareDelta: number;
+}
+
+export interface ShowResultDistributionComparison {
+  /** Distribuição do período atual (tipicamente o ano selecionado). */
+  current: ShowResultDistribution;
+  /** Distribuição do período de comparação (tipicamente o ano anterior). */
+  previous: ShowResultDistribution;
+  /**
+   * Variação da fração no vermelho (atual − anterior, em pontos 0..1). **Negativo
+   * = melhora** (uma fatia menor da carteira deu prejuízo); positivo = piora.
+   */
+  lossShareDelta: number;
+  /** Variação do nº de shows no vermelho (atual − anterior). */
+  lossCountDelta: number;
+  /** Variação do prejuízo somado dos shows no vermelho (centavos; sinal livre). */
+  lossNetDelta: number;
+  /** Variação do resultado líquido somado de toda a carteira (centavos). */
+  totalNetDelta: number;
+  /**
+   * Direção da saúde da carteira entre os dois períodos, ancorada na fração NO
+   * VERMELHO (a decisão acionável), contra `LOSS_SHARE_TREND_EPSILON`:
+   * - "improved": a fatia no vermelho CAIU além do limiar (menos shows no prejuízo);
+   * - "worsened": SUBIU além do limiar (mais shows no prejuízo — atenção);
+   * - "stable": variação dentro do limiar (ruído, sem leitura de tendência).
+   */
+  trend: "improved" | "worsened" | "stable";
+  /**
+   * Deslocamento faixa a faixa (sempre as 5 de `SHOW_RESULT_BANDS`, do prejuízo à
+   * margem alta, inclusive as zeradas) — o detalhe por degrau que o CSV consome,
+   * mostrando para ONDE a carteira migrou, complementando o resumo (fração no
+   * vermelho / resultado somado).
+   */
+  bandChanges: ShowResultBandCountChange[];
+}
+
+/**
+ * Compara a **distribuição de resultado por show** entre dois períodos (atual ×
+ * anterior), espelhando `compareFeeDistribution` (D187) no eixo do RESULTADO
+ * LÍQUIDO. Pura, sem I/O: recebe duas `showResultDistribution` já computadas (cada
+ * uma sobre os shows do seu período) e devolve a variação da fração no vermelho /
+ * do resultado somado + um veredito de tendência da saúde da carteira. Ancora o
+ * veredito na fração NO VERMELHO (a mesma métrica que a página destaca no callout),
+ * não numa média que um outlier distorce. O chamador decide quando exibir
+ * (tipicamente só com um ano específico e ambos os períodos tendo shows — caso
+ * contrário a fração de amostra vazia seria 0 e a comparação enganosa).
+ */
+export function compareShowResultDistribution(
+  current: ShowResultDistribution,
+  previous: ShowResultDistribution,
+): ShowResultDistributionComparison {
+  const lossShareDelta = current.lossShare - previous.lossShare;
+  const material = Math.abs(lossShareDelta) >= LOSS_SHARE_TREND_EPSILON;
+
+  // Deslocamento faixa a faixa: ambas as distribuições sempre trazem as 5 faixas
+  // canônicas, então casa por chave (robusto à ordem) preservando a ordem de
+  // `current.bands` (= ordem de SHOW_RESULT_BANDS). Faixa ausente conta como 0.
+  const previousByKey = new Map(previous.bands.map((b) => [b.key, b]));
+  const bandChanges: ShowResultBandCountChange[] = current.bands.map((cb) => {
+    const pb = previousByKey.get(cb.key);
+    const previousCount = pb ? pb.count : 0;
+    const previousShare = pb ? pb.share : 0;
+    return {
+      key: cb.key,
+      label: cb.label,
+      currentCount: cb.count,
+      previousCount,
+      currentShare: cb.share,
+      previousShare,
+      shareDelta: cb.share - previousShare,
+    };
+  });
+
+  return {
+    current,
+    previous,
+    lossShareDelta,
+    lossCountDelta: current.lossCount - previous.lossCount,
+    lossNetDelta: current.lossNet - previous.lossNet,
+    totalNetDelta: current.totalNet - previous.totalNet,
+    // Aqui **descer** a fração no vermelho é a melhora.
+    trend: !material ? "stable" : lossShareDelta < 0 ? "improved" : "worsened",
+    bandChanges,
+  };
+}
+
 // ── Rentabilidade por local (agrega P&L por casa/venue) ─────────────────────
 
 /** Forma mínima de show para agrupar por local. */

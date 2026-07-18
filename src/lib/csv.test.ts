@@ -54,6 +54,8 @@ import {
   feeDistributionToCsv,
   FEE_DISTRIBUTION_CSV_HEADERS,
   showResultDistributionToCsv,
+  showResultDistributionComparisonToCsv,
+  SHOW_RESULT_DISTRIBUTION_COMPARISON_CSV_HEADERS,
   SHOW_RESULT_DISTRIBUTION_CSV_HEADERS,
   feeDistributionComparisonToCsv,
   FEE_DISTRIBUTION_COMPARISON_CSV_HEADERS,
@@ -223,6 +225,7 @@ import {
   compareFeeDistribution,
   rankShowsByProfit,
   showResultDistribution,
+  compareShowResultDistribution,
   showPipeline,
   incomeMix,
   compareIncomeMix,
@@ -2260,6 +2263,87 @@ describe("showResultDistributionToCsv", () => {
     expect(total[1]).toBe("2");
     expect(total[2]).toBe(""); // 100% por construção
     expect(total[3]).toBe("50,00"); // -50 + 100
+  });
+});
+
+describe("showResultDistributionComparisonToCsv", () => {
+  const played = (id: string): ShowLike & { status: string } => ({
+    id,
+    fee: 100_00,
+    status: "PLAYED",
+  });
+  const expense = (showId: string, amount: number): TxLike => ({
+    type: "EXPENSE",
+    amount,
+    category: "geral",
+    date: "2026-03-10T00:00:00.000Z",
+    received: true,
+    showId,
+  });
+  const dist = (shows: (ShowLike & { status: string })[], txs: TxLike[] = []) =>
+    showResultDistribution(rankShowsByProfit(shows, txs));
+
+  // Anterior: 2 de 4 no vermelho (a,b) + 2 high (c,d). Atual: 1 de 4 no vermelho
+  // (a) + 3 high. A carteira melhorou (fração no vermelho caiu de 50% para 25%).
+  const previous = () =>
+    dist(
+      [played("a"), played("b"), played("c"), played("d")],
+      [expense("a", 200_00), expense("b", 200_00)],
+    );
+  const current = () =>
+    dist(
+      [played("a"), played("b"), played("c"), played("d")],
+      [expense("a", 200_00)],
+    );
+
+  it("resume o comparativo em linhas de métrica + faixas + tendência", () => {
+    const cmp = compareShowResultDistribution(current(), previous());
+    const lines = showResultDistributionComparisonToCsv(cmp).split("\r\n");
+    // Cabeçalho + shows + resultado + shows no vermelho + % vermelho + prejuízo +
+    // 5 faixas + tendência = 12 linhas.
+    expect(lines[0]).toBe(SHOW_RESULT_DISTRIBUTION_COMPARISON_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(12);
+    expect(lines[1].split(";")).toEqual(["Shows analisados", "4", "4", "0"]);
+    // Shows no vermelho: 2 → 1, Δ -1.
+    expect(lines[3].split(";")).toEqual(["Shows no vermelho", "2", "1", "-1"]);
+    // No vermelho (%): 50% → 25%, Δ -25 p.p.
+    expect(lines[4].split(";")).toEqual(["No vermelho (%)", "50%", "25%", "-25"]);
+    // Faixa "Prejuízo" (1ª faixa, linha 6): 50% → 25% = -25 p.p.
+    expect(lines[6].split(";")).toEqual(["Participação — Prejuízo (%)", "50%", "25%", "-25"]);
+    // Última linha: veredito na coluna de variação.
+    expect(lines[11].split(";")).toEqual(["Tendência", "", "", "Carteira mais saudável"]);
+  });
+
+  it("veredito 'Mais shows no vermelho' quando a fração sobe além do limiar", () => {
+    // Inverte os papéis: o atual é o de mais prejuízo.
+    const cmp = compareShowResultDistribution(previous(), current());
+    const lines = showResultDistributionComparisonToCsv(cmp).split("\r\n");
+    expect(lines[4].split(";")).toEqual(["No vermelho (%)", "25%", "50%", "+25"]);
+    expect(lines[11].split(";")).toEqual(["Tendência", "", "", "Mais shows no vermelho"]);
+  });
+
+  it("veredito 'Estável' quando a fração no vermelho não se move além do limiar", () => {
+    const cmp = compareShowResultDistribution(current(), current());
+    const lines = showResultDistributionComparisonToCsv(cmp).split("\r\n");
+    expect(lines[4].split(";")).toEqual(["No vermelho (%)", "25%", "25%", "0"]);
+    expect(lines[11].split(";")).toEqual(["Tendência", "", "", "Estável"]);
+  });
+
+  it("dinheiro assinado nas linhas de resultado e prejuízo somados", () => {
+    // Anterior: a -100 (loss), b/c/d +100 -> total 200, prejuízo -100.
+    // Atual: todos +100 -> total 400, sem prejuízo.
+    const prev = dist(
+      [played("a"), played("b"), played("c"), played("d")],
+      [expense("a", 200_00)],
+    );
+    const cur = dist([played("a"), played("b"), played("c"), played("d")]);
+    const lines = showResultDistributionComparisonToCsv(
+      compareShowResultDistribution(cur, prev),
+    ).split("\r\n");
+    // Resultado somado: 200 → 400, Δ +200.
+    expect(lines[2].split(";")).toEqual(["Resultado somado (R$)", "200,00", "400,00", "200,00"]);
+    // Prejuízo somado: -100 → 0, Δ +100.
+    expect(lines[5].split(";")).toEqual(["Prejuízo somado (R$)", "-100,00", "0,00", "100,00"]);
   });
 });
 
