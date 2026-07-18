@@ -49,6 +49,7 @@ import {
   type FeeDistribution,
   type FeeDistributionComparison,
   type ShowResultDistribution,
+  type ShowResultDistributionComparison,
   indexFeeBandShareChanges,
   type FeeTrend,
   type FeeTrendByYear,
@@ -2228,6 +2229,93 @@ export function feeDistributionComparisonToCsv(
       csvSignedPoints(b.countShareDelta),
     ]),
     ["Tendência", "", "", FEE_DISTRIBUTION_TREND_LABELS[comparison.trend]],
+  ];
+  return toCsv(out, delimiter);
+}
+
+export const SHOW_RESULT_DISTRIBUTION_COMPARISON_CSV_HEADERS = [
+  "Métrica",
+  "Ano anterior",
+  "Ano corrente",
+  "Variação",
+] as const;
+
+/** Rótulo pt-BR do veredito de saúde da carteira, espelhando o card da tela. */
+const SHOW_RESULT_DISTRIBUTION_TREND_LABELS: Record<
+  ShowResultDistributionComparison["trend"],
+  string
+> = {
+  improved: "Carteira mais saudável",
+  worsened: "Mais shows no vermelho",
+  stable: "Estável",
+};
+
+/**
+ * Serializa o comparativo ano a ano da distribuição de resultado por show
+ * (`compareShowResultDistribution`) em CSV, pronto para download — espelha o card
+ * "Distribuição {ano} vs. {ano-1}" de `/shows/rentabilidade/distribuicao`, cujos
+ * números (fração no vermelho, resultado somado e migração de participação faixa a
+ * faixa) só viviam na tela: o export do ano (`showResultDistributionToCsv`/D365)
+ * traz só as faixas do ano corrente, sem os valores do ano anterior nem o veredito.
+ *
+ * Irmão de `feeDistributionComparisonToCsv` (D292): o comparativo é um punhado de
+ * métricas escalares + o deslocamento por faixa, então a planilha é orientada a
+ * MÉTRICA (uma linha por indicador, não uma por item) — shows analisados, o
+ * resultado líquido somado (com Δ em R$), o recorte no vermelho (nº de shows,
+ * participação % e prejuízo somado) e a participação (nº de shows) de CADA faixa
+ * nos dois anos (as 5 de `SHOW_RESULT_BANDS`, do prejuízo à margem alta, inclusive
+ * as zeradas — "para ONDE a carteira migrou"), fechando com o veredito de tendência
+ * (Carteira mais saudável / Mais shows no vermelho / Estável) na coluna de variação.
+ * As participações saem como % (`csvShare`), com a variação em pontos percentuais
+ * assinados (`csvSignedPoints`); os valores em R$ via `centsToCsvAmount` (que já
+ * emite o "-" nos negativos); contagens via `csvSignedCount`. Os anos concretos vão
+ * no nome do arquivo, não nos cabeçalhos (mesma convenção dos irmãos). Mesma
+ * convenção pt-BR (";" e decimal com vírgula). Pura. Ver DECISIONS.md D366.
+ */
+export function showResultDistributionComparisonToCsv(
+  comparison: ShowResultDistributionComparison,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const { current, previous } = comparison;
+  const out: string[][] = [
+    Array.from(SHOW_RESULT_DISTRIBUTION_COMPARISON_CSV_HEADERS),
+    [
+      "Shows analisados",
+      String(previous.count),
+      String(current.count),
+      csvSignedCount(current.count - previous.count),
+    ],
+    [
+      "Resultado somado (R$)",
+      centsToCsvAmount(previous.totalNet),
+      centsToCsvAmount(current.totalNet),
+      centsToCsvAmount(comparison.totalNetDelta),
+    ],
+    [
+      "Shows no vermelho",
+      String(previous.lossCount),
+      String(current.lossCount),
+      csvSignedCount(comparison.lossCountDelta),
+    ],
+    [
+      "No vermelho (%)",
+      csvShare(previous.lossShare),
+      csvShare(current.lossShare),
+      csvSignedPoints(comparison.lossShareDelta),
+    ],
+    [
+      "Prejuízo somado (R$)",
+      centsToCsvAmount(previous.lossNet),
+      centsToCsvAmount(current.lossNet),
+      centsToCsvAmount(comparison.lossNetDelta),
+    ],
+    ...comparison.bandChanges.map((b) => [
+      `Participação — ${b.label} (%)`,
+      csvShare(b.previousShare),
+      csvShare(b.currentShare),
+      csvSignedPoints(b.shareDelta),
+    ]),
+    ["Tendência", "", "", SHOW_RESULT_DISTRIBUTION_TREND_LABELS[comparison.trend]],
   ];
   return toCsv(out, delimiter);
 }

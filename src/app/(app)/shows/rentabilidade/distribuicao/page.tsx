@@ -4,11 +4,13 @@ import { prisma } from "@/lib/prisma";
 import {
   rankShowsByProfit,
   showResultDistribution,
+  compareShowResultDistribution,
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
   type ShowResultBandKey,
   type ShowResultBandStat,
+  type ShowResultDistributionComparison,
   type TxLike,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
@@ -72,6 +74,23 @@ export default async function ShowResultDistributionPage({
   const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
   const maxCount = Math.max(1, ...dist.bands.map((b) => b.count));
 
+  // Comparativo ano a ano da saúde da carteira (só com um ano específico e ambos
+  // os períodos tendo shows — senão a fração no vermelho do ano vazio seria 0 e a
+  // comparação enganosa). Reaproveita o mesmo recorte por ano (D108) sobre os
+  // registros já carregados, sem nova consulta.
+  let comparison: ShowResultDistributionComparison | null = null;
+  let previousYear = 0;
+  if (yearFilter !== "all") {
+    previousYear = yearFilter - 1;
+    const previousReport = rankShowsByProfit(filterShowsByYear(shows, previousYear), txs);
+    if (report.count > 0 && previousReport.count > 0) {
+      comparison = compareShowResultDistribution(
+        dist,
+        showResultDistribution(previousReport),
+      );
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -93,6 +112,15 @@ export default async function ShowResultDistributionPage({
               download
             >
               ⬇ CSV
+            </a>
+          )}
+          {comparison && (
+            <a
+              href={`/shows/rentabilidade/distribuicao/comparativo/export?ano=${yearFilter}`}
+              className="btn-secondary text-sm"
+              download
+            >
+              ⬇ CSV vs {previousYear}
             </a>
           )}
           <Link href="/shows/rentabilidade" className="btn-secondary">
@@ -176,6 +204,14 @@ export default async function ShowResultDistributionPage({
             />
           </div>
 
+          {comparison && (
+            <ComparisonCard
+              comparison={comparison}
+              currentYear={yearFilter as number}
+              previousYear={previousYear}
+            />
+          )}
+
           <div className="card space-y-4">
             {dist.bands.map((band) => (
               <BandBar key={band.key} band={band} maxCount={maxCount} total={dist.count} />
@@ -183,6 +219,65 @@ export default async function ShowResultDistributionPage({
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/** Veredito ano a ano da saúde da carteira, ancorado na fração no vermelho. */
+const TREND_TONE: Record<
+  ShowResultDistributionComparison["trend"],
+  { border: string; bg: string; head: string; body: string; label: string }
+> = {
+  improved: {
+    border: "border-emerald-200",
+    bg: "bg-emerald-50",
+    head: "text-emerald-800",
+    body: "text-emerald-700",
+    label: "Carteira mais saudável",
+  },
+  worsened: {
+    border: "border-red-200",
+    bg: "bg-red-50",
+    head: "text-red-800",
+    body: "text-red-700",
+    label: "Mais shows no vermelho",
+  },
+  stable: {
+    border: "border-gray-200",
+    bg: "bg-gray-50",
+    head: "text-gray-800",
+    body: "text-gray-600",
+    label: "Estável",
+  },
+};
+
+function ComparisonCard({
+  comparison,
+  currentYear,
+  previousYear,
+}: {
+  comparison: ShowResultDistributionComparison;
+  currentYear: number;
+  previousYear: number;
+}) {
+  const tone = TREND_TONE[comparison.trend];
+  const prevPct = Math.round(comparison.previous.lossShare * 100);
+  const curPct = Math.round(comparison.current.lossShare * 100);
+  return (
+    <div className={`card border ${tone.border} ${tone.bg}`}>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className={`text-sm font-semibold ${tone.head}`}>
+          Distribuição {currentYear} vs. {previousYear}
+        </p>
+        <span className={`text-xs font-semibold uppercase tracking-wide ${tone.head}`}>
+          {tone.label}
+        </span>
+      </div>
+      <p className={`mt-1 text-sm ${tone.body}`}>
+        Shows no vermelho: {prevPct}% em {previousYear} → {curPct}% em {currentYear} (
+        {comparison.previous.lossCount} → {comparison.current.lossCount} de{" "}
+        {comparison.previous.count} → {comparison.current.count} shows).
+      </p>
     </div>
   );
 }
