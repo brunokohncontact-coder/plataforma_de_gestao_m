@@ -1885,6 +1885,132 @@ export function compareRoleConcentration(
   };
 }
 
+// ── Comparativo de margem por PAPEL do contratante (D375) ────────────────────
+// O rollup por papel de `compareContactMargins` (D372, por PESSOA): dos TIPOS de
+// comprador que voltaram de um ano para o outro (casa de show, produtor,
+// contratante…), quais estão apertando a margem líquida — a decisão acionável
+// "que tipo de canal está achatando o cachê / puxando mais despesas". Enquanto o
+// comparativo por contratante nomeia a CASA específica, este agrega por papel:
+// útil quando o aperto não é de uma casa isolada mas de um canal inteiro (todas
+// as casas de show pagando pior, todos os produtores exigindo mais custo). Pura,
+// sem I/O: recebe duas `rankRolesByProfit` já computadas (um ano e o anterior).
+
+/**
+ * Limiar de materialidade (pontos de margem, 0..1) para um PAPEL contar como
+ * "apertando" a margem de um ano para o outro. Mesmo valor de
+ * `CONTACT_MARGIN_DROP_EPSILON` (D372, 0,05 = 5 p.p.) e dos demais epsilons de
+ * tendência (`GEO_TREND_EPSILON`); replicado como literal (não referência) porque
+ * aquela constante é declarada mais adiante no módulo (evita o temporal dead zone).
+ * **Hipótese** de produto (ver Bloqueios), parametrizável para teste/ajuste.
+ */
+export const ROLE_MARGIN_DROP_EPSILON = 0.05;
+
+/** Variação da margem (e do resultado) de um papel de comprador entre dois períodos. */
+export interface RoleMarginChange {
+  /** Papel do comprador — presente nos DOIS períodos, logo nunca "sem contratante". */
+  role: string;
+  /** Margem agregada no período atual (net / receita bruta, 0..1). */
+  currentMargin: number;
+  /** Margem agregada no período de comparação (0..1). */
+  previousMargin: number;
+  /**
+   * Variação da margem (atual − anterior, em pontos -1..1). Negativo = o canal
+   * ficou **menos** rentável agora (aperto de margem, a leitura acionável).
+   */
+  marginDelta: number;
+  /** Resultado líquido somado no período atual (centavos). */
+  currentNet: number;
+  /** Resultado líquido somado no período de comparação (centavos). */
+  previousNet: number;
+  /** Variação do resultado líquido (atual − anterior, centavos, assinado). */
+  netDelta: number;
+  /** Nº de shows do papel no período atual. */
+  currentShowCount: number;
+  /** Nº de shows do papel no período de comparação. */
+  previousShowCount: number;
+}
+
+export interface RoleMarginComparison {
+  /**
+   * Papéis presentes nos DOIS períodos, por `marginDelta` CRESCENTE — os maiores
+   * apertos (delta mais negativo) primeiro, que é a leitura acionável. Empate por
+   * resultado atual desc e chave do papel (determinístico).
+   */
+  changes: RoleMarginChange[];
+  /** Nº de papéis comparados (presentes nos dois períodos). */
+  comparedCount: number;
+  /** Maior aperto de margem (`marginDelta` mais negativo, além do limiar) ou null. */
+  worstDrop: RoleMarginChange | null;
+  /** Maior ganho de margem (`marginDelta` mais positivo, além do limiar) ou null. */
+  bestGain: RoleMarginChange | null;
+  /** Quantos papéis tiveram a margem cair além de `ROLE_MARGIN_DROP_EPSILON`. */
+  squeezedCount: number;
+}
+
+/**
+ * Compara a **margem por papel de comprador** entre dois períodos (atual ×
+ * anterior), destilando quais TIPOS de canal apertaram a margem líquida. Pura,
+ * sem I/O: recebe duas `rankRolesByProfit` já computadas (cada uma sobre os shows
+ * do seu período) e cruza os papéis presentes nos DOIS anos por `role` — só quem
+ * voltou tem variação de margem interpretável (um canal novo ou que sumiu não
+ * "apertou", só entrou/saiu da carteira). O grupo "sem contratante" (`role:
+ * null`) é ignorado: não é um canal renegociável.
+ *
+ * Ordena por `marginDelta` crescente (o maior aperto primeiro), com desempate
+ * determinístico. `worstDrop`/`bestGain` só apontam variações materiais (além de
+ * `ROLE_MARGIN_DROP_EPSILON`); `squeezedCount` conta as quedas materiais. O
+ * chamador decide quando exibir (tipicamente só com um ano específico e ao menos
+ * um papel em comum — senão a leitura é vazia/enganosa). É o rollup por papel de
+ * `compareContactMargins` (D372, por pessoa).
+ */
+export function compareRoleMargins(
+  current: RolesProfitability,
+  previous: RolesProfitability,
+  epsilon: number = ROLE_MARGIN_DROP_EPSILON,
+): RoleMarginComparison {
+  const previousByRole = new Map<string, RoleProfitRow>();
+  for (const row of previous.rows) {
+    if (row.role != null) previousByRole.set(row.role, row);
+  }
+
+  const changes: RoleMarginChange[] = [];
+  for (const row of current.rows) {
+    if (row.role == null) continue;
+    const prev = previousByRole.get(row.role);
+    if (!prev) continue;
+    changes.push({
+      role: row.role,
+      currentMargin: row.margin,
+      previousMargin: prev.margin,
+      marginDelta: row.margin - prev.margin,
+      currentNet: row.totalNet,
+      previousNet: prev.totalNet,
+      netDelta: row.totalNet - prev.totalNet,
+      currentShowCount: row.showCount,
+      previousShowCount: prev.showCount,
+    });
+  }
+
+  // Maior aperto primeiro (delta mais negativo); empate determinístico.
+  changes.sort(
+    (a, b) =>
+      a.marginDelta - b.marginDelta ||
+      b.currentNet - a.currentNet ||
+      a.role.localeCompare(b.role),
+  );
+
+  const drops = changes.filter((c) => c.marginDelta <= -epsilon);
+  const gains = changes.filter((c) => c.marginDelta >= epsilon);
+
+  return {
+    changes,
+    comparedCount: changes.length,
+    worstDrop: drops[0] ?? null,
+    bestGain: gains.length > 0 ? gains[gains.length - 1] : null,
+    squeezedCount: drops.length,
+  };
+}
+
 // ── Concentração de clientes (risco de dependência de contratante) ──────────
 // Mede o quanto a receita se concentra em poucos contratantes — o risco de
 // carreira de depender de um único cliente ("e se o contratante que paga metade

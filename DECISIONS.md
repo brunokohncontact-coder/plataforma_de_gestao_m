@@ -5,6 +5,42 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-18 — D375: Comparativo de margem por PAPEL do contratante ano a ano — "que tipo de canal aperta a margem" (`compareRoleMargins`)
+- **Contexto:** a D372/D373/D374 fecharam o eixo por PESSOA da margem ano a ano (`compareContactMargins` + card + export + nudge no
+  Painel): quais CASAS específicas apertam a margem. A D374 registrou como próximo passo (alt. a) "o mesmo cruzamento no eixo de PAPEL
+  do contratante (`rankRolesByProfit`, que TIPO de comprador aperta)". A tela `/contatos/rentabilidade/por-papel` já rolla a
+  rentabilidade por papel e já compara a CONCENTRAÇÃO por papel ano a ano (`compareRoleConcentration`/D-role), mas não a MARGEM — a
+  outra metade da pergunta. Faltava destilar: dos TIPOS de canal que voltaram de um ano para o outro (casa de show, produtor,
+  contratante…), quais estão achatando a margem líquida — útil quando o aperto não é de uma casa isolada mas de um canal inteiro
+  (todas as casas pagando pior, todos os produtores puxando mais custo).
+- **Decisão:** `compareRoleMargins(current, previous, epsilon=ROLE_MARGIN_DROP_EPSILON)` em `src/lib/finance.ts`: rollup por papel de
+  `compareContactMargins` (D372). Pura, sem I/O — recebe duas `rankRolesByProfit` já computadas (ano corrente e anterior) e cruza os
+  papéis presentes nos DOIS anos por `role` (um canal novo ou que sumiu não "apertou", só entrou/saiu; grupo "sem contratante" com
+  `role: null` é ignorado — não é canal renegociável). Devolve, por papel, `marginDelta` (pontos) e `netDelta` (centavos) + contagens
+  dos dois anos; ordena por `marginDelta` crescente (maior aperto primeiro, empate determinístico por resultado atual desc e chave do
+  papel); `worstDrop`/`bestGain` só apontam variações materiais (além de `ROLE_MARGIN_DROP_EPSILON`=0,05 = 5 p.p.) e `squeezedCount`
+  conta as quedas materiais. Wiring puro na página `por-papel/page.tsx`: reusa a `previousReport` (`rankRolesByProfit` do ano anterior)
+  que já era carregada para a comparação de concentração — **zero consulta nova** — e renderiza o card `<RoleMarginComparisonCard>` (só
+  com ano específico E ≥1 papel em comum) abaixo do card de concentração, listando os canais que apertaram (rótulo do papel → margem
+  ano-1 → ano, Δ p.p., Δ resultado assinado), o "Maior avanço" e a nota de escopo.
+- **`ROLE_MARGIN_DROP_EPSILON`=0,05 como literal, não referência:** replicado como literal (mesmo valor de `CONTACT_MARGIN_DROP_EPSILON`/
+  D372 e dos epsilons de tendência `GEO_TREND_EPSILON`/`LOSS_SHARE_TREND_EPSILON`) porque aquela constante é declarada **mais adiante**
+  no módulo `finance.ts` — referenciá-la aqui cairia no temporal dead zone (ReferenceError no import). É **hipótese** de produto
+  (o que é uma piora relevante de margem num canal varia por circuito), parametrizável (arg da função).
+- **Justificativa:** fecha o próximo passo (alt. a) da D374, completando o eixo de PAPEL da margem ano a ano ao lado da concentração
+  por papel já existente. Camada pura + wiring; reusa `rankRolesByProfit` (D-role) já testado; zero migração/dependência (`npm audit`
+  inalterado: 10 advisories, 4 moderate/5 high/1 critical, ZERO dependência nova). +10 testes de lógica (`finance.test.ts`: cruza só
+  papéis nos dois anos, agrega por papel e não por contratante, ignora "sem contratante", deltas assinados, ordenação por aperto,
+  worstDrop/bestGain/squeezedCount materiais, fronteira do limiar, ruído abaixo do limiar, vazio sem comum, limiar customizado). DoD
+  verde: `npm run build` (a página compila; sem rota nova), `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**2088
+  testes**); smoke → `/login` 200, `/contatos/rentabilidade/por-papel?ano=2025` 307→/login (auth-gated).
+- **Alternativas consideradas:** (a) export CSV irmão do comparativo de margem por papel (molde de `contactMarginComparisonToCsv`/D373)
+  — adiado como próximo passo; o card já entrega a leitura acionável, o CSV é o polimento; (b) um nudge no Painel para o canal que mais
+  aperta (eco de `contactMarginSqueezeHeadline`/D374 no eixo de papel) — adiado: o nudge por CASA já cobre o alarme acionável do Painel,
+  um por canal seria redundante com granularidade menos específica; (c) não firm-filtrar por natureza — mantido consistente com o card
+  por contratante (D374 opera sobre TODOS os shows do ano); levar o recorte por natureza ao eixo de papel (tela + este card em conjunto)
+  segue como a consistência futura registrada na D374.
+
 ## 2026-07-18 — D374: Nudge no Painel "uma casa está apertando a margem" (`contactMarginSqueezeHeadline`)
 - **Contexto:** os nudges de rentabilidade do Painel falam da carteira INTEIRA — `lossShareRiseHeadline` (D367, CONTAGEM: uma fatia
   maior deu prejuízo) e `portfolioMarginDropHeadline` (D368, margem AGREGADA: cada real bruto sobra menos). A D372/D373 destilaram o
