@@ -27,6 +27,8 @@ import {
   geoConcentrationHeadline,
   compareGeoConcentration,
   compareClientConcentration,
+  compareContactMargins,
+  CONTACT_MARGIN_DROP_EPSILON,
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
@@ -2018,6 +2020,140 @@ describe("compareClientConcentration", () => {
     // Preserva os objetos de origem tipados como o argumento (não o de finance).
     expect(cmp.current).toBe(cur);
     expect(cmp.previous).toBe(prev);
+  });
+});
+
+describe("compareContactMargins", () => {
+  const ZE = { id: "ze", name: "Zé Produções", role: "PROMOTER" };
+  const ANA = { id: "ana", name: "Ana Booking", role: "BOOKER" };
+  const LIA = { id: "lia", name: "Lia Casa", role: "VENUE" };
+  const BOB = { id: "bob", name: "Bob Bar", role: "VENUE" };
+
+  // Constrói uma `rankContactsByProfit` a partir de shows brutos + despesas,
+  // como a UI por período. Margem de cada grupo = net / cachê bruto.
+  const reportFor = (
+    shows: ShowLike[],
+    payers: Record<string, { id: string; name: string; role: string } | null>,
+    txs: TxLike[] = [],
+  ) => rankContactsByProfit(shows, txs, (s: ShowLike) => payers[s.id] ?? null);
+
+  // Ano ATUAL: Zé apertou (margem 1,0 → 0,5), Ana melhorou (0,6 → 0,8);
+  // Lia só aparece agora (nova casa); "sem contratante" em ambos.
+  const current = () =>
+    reportFor(
+      [
+        { id: "cz", fee: 100_00, status: "PLAYED" }, // Zé: −50 → net 50, margem 0,5
+        { id: "ca", fee: 100_00, status: "PLAYED" }, // Ana: −20 → net 80, margem 0,8
+        { id: "cl", fee: 100_00, status: "PLAYED" }, // Lia (só ano atual)
+        { id: "cs", fee: 30_00, status: "PLAYED" }, // sem contratante
+      ],
+      { cz: ZE, ca: ANA, cl: LIA, cs: null },
+      [
+        tx({ type: "EXPENSE", amount: 50_00, showId: "cz" }),
+        tx({ type: "EXPENSE", amount: 20_00, showId: "ca" }),
+      ],
+    );
+
+  // Ano ANTERIOR: Zé margem 1,0; Ana margem 0,6; Bob só aparecia antes (sumiu).
+  const previous = () =>
+    reportFor(
+      [
+        { id: "pz", fee: 100_00, status: "PLAYED" }, // Zé: net 100, margem 1,0
+        { id: "pa", fee: 100_00, status: "PLAYED" }, // Ana: −40 → net 60, margem 0,6
+        { id: "pb", fee: 100_00, status: "PLAYED" }, // Bob (só ano anterior)
+        { id: "ps", fee: 30_00, status: "PLAYED" }, // sem contratante
+      ],
+      { pz: ZE, pa: ANA, pb: BOB, ps: null },
+      [tx({ type: "EXPENSE", amount: 40_00, showId: "pa" })],
+    );
+
+  it("cruza só os contratantes presentes nos dois anos (ignora novos e sumidos)", () => {
+    const cmp = compareContactMargins(current(), previous());
+    const ids = cmp.changes.map((c) => c.contact.id);
+    expect(ids).toEqual(["ze", "ana"]); // Lia (nova) e Bob (sumiu) fora
+    expect(cmp.comparedCount).toBe(2);
+  });
+
+  it("ignora o grupo 'sem contratante' (não é relação renegociável)", () => {
+    const cmp = compareContactMargins(current(), previous());
+    expect(cmp.changes.every((c) => c.contact != null)).toBe(true);
+    expect(cmp.changes.some((c) => c.contact.id === "ze")).toBe(true);
+  });
+
+  it("calcula a variação de margem e de resultado com sinal", () => {
+    const cmp = compareContactMargins(current(), previous());
+    const ze = cmp.changes.find((c) => c.contact.id === "ze")!;
+    expect(ze.previousMargin).toBeCloseTo(1.0);
+    expect(ze.currentMargin).toBeCloseTo(0.5);
+    expect(ze.marginDelta).toBeCloseTo(-0.5); // apertou
+    expect(ze.netDelta).toBe(-50_00); // 50 − 100
+    expect(ze.currentShowCount).toBe(1);
+    expect(ze.previousShowCount).toBe(1);
+    const ana = cmp.changes.find((c) => c.contact.id === "ana")!;
+    expect(ana.marginDelta).toBeCloseTo(0.2); // melhorou
+    expect(ana.netDelta).toBe(20_00); // 80 − 60
+  });
+
+  it("ordena por aperto (marginDelta crescente): a maior queda primeiro", () => {
+    const cmp = compareContactMargins(current(), previous());
+    expect(cmp.changes[0].contact.id).toBe("ze"); // −0,5
+    expect(cmp.changes[1].contact.id).toBe("ana"); // +0,2
+  });
+
+  it("aponta worstDrop/bestGain e conta squeezedCount só nas variações materiais", () => {
+    const cmp = compareContactMargins(current(), previous());
+    expect(cmp.worstDrop!.contact.id).toBe("ze");
+    expect(cmp.bestGain!.contact.id).toBe("ana");
+    expect(cmp.squeezedCount).toBe(1); // só Zé caiu além do limiar
+  });
+
+  it("usa exatamente o limiar como fronteira do aperto (−ε conta)", () => {
+    // Zé: margem 1,0 (net 100) → 0,95 (net 95) = −0,05 == −ε.
+    const cur = reportFor(
+      [{ id: "cz", fee: 100_00, status: "PLAYED" }],
+      { cz: ZE },
+      [tx({ type: "EXPENSE", amount: 5_00, showId: "cz" })],
+    );
+    const prev = reportFor([{ id: "pz", fee: 100_00, status: "PLAYED" }], { pz: ZE });
+    const cmp = compareContactMargins(cur, prev);
+    expect(cmp.changes[0].marginDelta).toBeCloseTo(-CONTACT_MARGIN_DROP_EPSILON);
+    expect(cmp.squeezedCount).toBe(1);
+    expect(cmp.worstDrop!.contact.id).toBe("ze");
+  });
+
+  it("variação abaixo do limiar não vira aperto nem ganho (ruído)", () => {
+    // Zé: margem 1,0 → 0,98 (−0,02, dentro do limiar).
+    const cur = reportFor(
+      [{ id: "cz", fee: 100_00, status: "PLAYED" }],
+      { cz: ZE },
+      [tx({ type: "EXPENSE", amount: 2_00, showId: "cz" })],
+    );
+    const prev = reportFor([{ id: "pz", fee: 100_00, status: "PLAYED" }], { pz: ZE });
+    const cmp = compareContactMargins(cur, prev);
+    expect(cmp.comparedCount).toBe(1);
+    expect(cmp.squeezedCount).toBe(0);
+    expect(cmp.worstDrop).toBeNull();
+    expect(cmp.bestGain).toBeNull();
+  });
+
+  it("devolve vazio quando não há contratante em comum", () => {
+    const cur = reportFor([{ id: "cl", fee: 100_00, status: "PLAYED" }], { cl: LIA });
+    const prev = reportFor([{ id: "pb", fee: 100_00, status: "PLAYED" }], { pb: BOB });
+    const cmp = compareContactMargins(cur, prev);
+    expect(cmp.changes).toEqual([]);
+    expect(cmp.comparedCount).toBe(0);
+    expect(cmp.worstDrop).toBeNull();
+    expect(cmp.bestGain).toBeNull();
+    expect(cmp.squeezedCount).toBe(0);
+  });
+
+  it("respeita um limiar customizado (parametrizável para teste/ajuste)", () => {
+    const cmp = compareContactMargins(current(), previous(), 0.6);
+    // Zé caiu 0,5 < 0,6 ⇒ não conta mais como aperto material.
+    expect(cmp.squeezedCount).toBe(0);
+    expect(cmp.worstDrop).toBeNull();
+    // A ordenação e o cruzamento seguem: Zé continua primeiro.
+    expect(cmp.changes[0].contact.id).toBe("ze");
   });
 });
 

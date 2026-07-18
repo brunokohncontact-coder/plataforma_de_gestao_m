@@ -2092,6 +2092,133 @@ export function compareClientConcentration<T extends ClientConcentrationLike>(
   };
 }
 
+// ── Comparativo de margem por contratante ano a ano (quais casas apertam) ────
+//
+// A concentração de clientes (D109/D139) responde "de quem eu dependo?" — um
+// risco de carteira sobre a RECEITA BRUTA. Este eixo responde à outra metade da
+// pergunta de rentabilidade: dos contratantes que voltaram de um ano para o
+// outro, QUAIS estão apertando a margem líquida (cachês achatados, despesas
+// maiores) — a decisão acionável "renegocie cachê/despesas com essas casas".
+// Espelha o par contagem↔margem dos nudges do Painel (`lossShareRiseHeadline`/
+// D367, `portfolioMarginDropHeadline`/D368), aqui destilado por PESSOA em vez de
+// pela carteira inteira, sobre duas `rankContactsByProfit` já computadas (um ano
+// e o anterior). Ver DECISIONS.md D372.
+
+/**
+ * Limiar de materialidade (em pontos de margem, 0..1) para um contratante contar
+ * como "apertando" a margem de um ano para o outro. Abaixo dele a variação é
+ * ruído (um extra pontual, um custo de deslocamento a mais) e não vira sinal.
+ * Espelha `GEO_TREND_EPSILON`/`LOSS_SHARE_TREND_EPSILON` (0,05 = 5 p.p.). É
+ * **hipótese** de produto (ver Bloqueios), parametrizável para teste/ajuste.
+ */
+export const CONTACT_MARGIN_DROP_EPSILON = 0.05;
+
+/** Variação da margem (e do resultado) de um contratante entre dois períodos. */
+export interface ContactMarginChange {
+  /** Contratante — presente nos DOIS períodos, logo nunca "sem contratante". */
+  contact: ContactProfitContact;
+  /** Margem agregada no período atual (net / receita bruta, 0..1). */
+  currentMargin: number;
+  /** Margem agregada no período de comparação (0..1). */
+  previousMargin: number;
+  /**
+   * Variação da margem (atual − anterior, em pontos -1..1). Negativo = a casa
+   * ficou **menos** rentável agora (aperto de margem, a leitura acionável).
+   */
+  marginDelta: number;
+  /** Resultado líquido somado no período atual (centavos). */
+  currentNet: number;
+  /** Resultado líquido somado no período de comparação (centavos). */
+  previousNet: number;
+  /** Variação do resultado líquido (atual − anterior, centavos, assinado). */
+  netDelta: number;
+  /** Nº de shows do contratante no período atual. */
+  currentShowCount: number;
+  /** Nº de shows do contratante no período de comparação. */
+  previousShowCount: number;
+}
+
+export interface ContactMarginComparison {
+  /**
+   * Contratantes presentes nos DOIS períodos, por `marginDelta` CRESCENTE — os
+   * maiores apertos (delta mais negativo) primeiro, que é a leitura acionável.
+   * Empate por resultado atual desc, nome (pt-BR) e id (determinístico).
+   */
+  changes: ContactMarginChange[];
+  /** Nº de contratantes comparados (presentes nos dois períodos). */
+  comparedCount: number;
+  /** Maior aperto de margem (`marginDelta` mais negativo, além do limiar) ou null. */
+  worstDrop: ContactMarginChange | null;
+  /** Maior ganho de margem (`marginDelta` mais positivo, além do limiar) ou null. */
+  bestGain: ContactMarginChange | null;
+  /** Quantos contratantes tiveram a margem cair além de `CONTACT_MARGIN_DROP_EPSILON`. */
+  squeezedCount: number;
+}
+
+/**
+ * Compara a **margem por contratante** entre dois períodos (atual × anterior),
+ * destilando quais casas apertaram a margem líquida. Pura, sem I/O: recebe duas
+ * `rankContactsByProfit` já computadas (cada uma sobre os shows do seu período) e
+ * cruza os contratantes que aparecem nos DOIS anos por `contact.id` — só quem
+ * voltou tem uma variação de margem interpretável (uma casa nova ou que sumiu não
+ * "apertou", só entrou/saiu da carteira). O grupo "sem contratante" (`contact:
+ * null`) é ignorado: não é uma relação renegociável.
+ *
+ * Ordena por `marginDelta` crescente (o maior aperto primeiro), com desempate
+ * determinístico. `worstDrop`/`bestGain` só apontam variações materiais (além de
+ * `CONTACT_MARGIN_DROP_EPSILON`); `squeezedCount` conta as quedas materiais. O
+ * chamador decide quando exibir (tipicamente só com um ano específico e ao menos
+ * um contratante em comum — senão a leitura é vazia/enganosa).
+ */
+export function compareContactMargins(
+  current: ContactsProfitability,
+  previous: ContactsProfitability,
+  epsilon: number = CONTACT_MARGIN_DROP_EPSILON,
+): ContactMarginComparison {
+  const previousById = new Map<string, ContactProfitRow>();
+  for (const row of previous.rows) {
+    if (row.contact) previousById.set(row.contact.id, row);
+  }
+
+  const changes: ContactMarginChange[] = [];
+  for (const row of current.rows) {
+    if (!row.contact) continue;
+    const prev = previousById.get(row.contact.id);
+    if (!prev) continue;
+    changes.push({
+      contact: row.contact,
+      currentMargin: row.margin,
+      previousMargin: prev.margin,
+      marginDelta: row.margin - prev.margin,
+      currentNet: row.totalNet,
+      previousNet: prev.totalNet,
+      netDelta: row.totalNet - prev.totalNet,
+      currentShowCount: row.showCount,
+      previousShowCount: prev.showCount,
+    });
+  }
+
+  // Maior aperto primeiro (delta mais negativo); empate determinístico.
+  changes.sort(
+    (a, b) =>
+      a.marginDelta - b.marginDelta ||
+      b.currentNet - a.currentNet ||
+      a.contact.name.localeCompare(b.contact.name, "pt-BR") ||
+      a.contact.id.localeCompare(b.contact.id),
+  );
+
+  const drops = changes.filter((c) => c.marginDelta <= -epsilon);
+  const gains = changes.filter((c) => c.marginDelta >= epsilon);
+
+  return {
+    changes,
+    comparedCount: changes.length,
+    worstDrop: drops[0] ?? null,
+    bestGain: gains.length > 0 ? gains[gains.length - 1] : null,
+    squeezedCount: drops.length,
+  };
+}
+
 // ── Recorte por período (ano) da rentabilidade por contratante ──────────────
 
 /** Valor do seletor de período: um ano específico ou "all" (sem recorte). */

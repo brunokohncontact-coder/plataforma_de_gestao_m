@@ -5,6 +5,7 @@ import {
   rankContactsByProfit,
   clientConcentration,
   compareClientConcentration,
+  compareContactMargins,
   MIN_MEDIAN_FEE_SAMPLE,
   showProfitYears,
   parseProfitYear,
@@ -14,6 +15,7 @@ import {
   type ContactProfitContact,
   type ClientConcentration,
   type ClientConcentrationComparison,
+  type ContactMarginComparison,
 } from "@/lib/finance";
 import { pickPayerContact } from "@/lib/billing";
 import { formatMoney } from "@/lib/money";
@@ -97,6 +99,7 @@ export default async function ContactProfitabilityPage({
   // "melhorou/piorou" seria enganosa. Reaproveita o mesmo recorte por ano UTC
   // (D108) sobre os shows já carregados (sem nova consulta).
   let clientComparison: ClientConcentrationComparison | null = null;
+  let marginComparison: ContactMarginComparison | null = null;
   let previousYear = 0;
   if (yearFilter !== "all") {
     previousYear = yearFilter - 1;
@@ -113,6 +116,10 @@ export default async function ContactProfitabilityPage({
         previousConcentration,
       );
     }
+    // Quais casas apertaram a margem (D372): cruza os contratantes presentes nos
+    // dois anos. Só exibe se houver ao menos um em comum — senão a leitura é vazia.
+    const margins = compareContactMargins(report, previousReport);
+    if (margins.comparedCount > 0) marginComparison = margins;
   }
 
   const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
@@ -226,6 +233,14 @@ export default async function ContactProfitabilityPage({
           {clientComparison && (
             <ClientComparisonCard
               comparison={clientComparison}
+              currentYear={yearFilter as number}
+              previousYear={previousYear}
+            />
+          )}
+
+          {marginComparison && (
+            <MarginComparisonCard
+              comparison={marginComparison}
               currentYear={yearFilter as number}
               previousYear={previousYear}
             />
@@ -499,6 +514,94 @@ function ClientComparisonCard({
         </div>
       </div>
       <p className="mt-3 text-xs opacity-90">{trend.note}</p>
+    </div>
+  );
+}
+
+/**
+ * Card "Margem por contratante {ano} vs. {ano-1}": dos contratantes que voltaram
+ * de um ano para o outro, quais apertaram a margem líquida (cachês achatados,
+ * despesas maiores) — a decisão acionável "renegocie cachê/despesas com essas
+ * casas". Espelha por PESSOA os nudges de piora de margem do Painel (D367/D368),
+ * usando `compareContactMargins` (D372). Só quem aparece nos dois anos entra.
+ */
+function MarginComparisonCard({
+  comparison,
+  currentYear,
+  previousYear,
+}: {
+  comparison: ContactMarginComparison;
+  currentYear: number;
+  previousYear: number;
+}) {
+  const { squeezedCount, comparedCount, changes, bestGain } = comparison;
+  const squeezed = changes.filter((c) => c.marginDelta < 0).slice(0, 5);
+  const anySqueeze = squeezedCount > 0;
+  const classes = anySqueeze
+    ? "border-red-200 bg-red-50 text-red-800"
+    : "border-emerald-200 bg-emerald-50 text-emerald-800";
+  return (
+    <div className={"card border " + classes}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide opacity-80">
+          Margem por contratante {currentYear} vs. {previousYear}
+        </p>
+        <span className="badge bg-white/70 font-semibold">
+          {anySqueeze
+            ? `🔴 ${squeezedCount} ${squeezedCount === 1 ? "casa apertando" : "casas apertando"} a margem`
+            : "🟢 Ninguém apertou a margem"}
+        </span>
+      </div>
+
+      {squeezed.length > 0 ? (
+        <ul className="mt-3 space-y-2">
+          {squeezed.map((c) => (
+            <li
+              key={c.contact.id}
+              className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5"
+            >
+              <Link
+                href={`/contatos/${c.contact.id}`}
+                className="font-medium underline"
+              >
+                {c.contact.name}
+              </Link>
+              <span className="text-sm">
+                margem {pct(c.previousMargin)} → {pct(c.currentMargin)}{" "}
+                <strong>({deltaPp(c.marginDelta)})</strong>
+                <span className="opacity-70">
+                  {" · "}
+                  resultado {c.netDelta >= 0 ? "+" : "−"}
+                  {formatMoney(Math.abs(c.netDelta))}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-3 text-sm opacity-90">
+          Nenhum dos {comparedCount}{" "}
+          {comparedCount === 1 ? "contratante comparado" : "contratantes comparados"}{" "}
+          teve a margem cair de forma relevante em relação ao ano anterior.
+        </p>
+      )}
+
+      {bestGain && (
+        <p className="mt-3 text-xs opacity-90">
+          Maior avanço:{" "}
+          <Link href={`/contatos/${bestGain.contact.id}`} className="underline">
+            {bestGain.contact.name}
+          </Link>{" "}
+          ganhou {deltaPp(bestGain.marginDelta)} de margem ({pct(bestGain.previousMargin)}{" "}
+          → {pct(bestGain.currentMargin)}).
+        </p>
+      )}
+
+      <p className="mt-3 text-xs opacity-80">
+        Compara só quem contratou nos dois anos ({comparedCount}{" "}
+        {comparedCount === 1 ? "contratante" : "contratantes"}). Margem = resultado
+        líquido ÷ receita bruta; uma queda pode vir de cachê menor ou de mais despesas.
+      </p>
     </div>
   );
 }
