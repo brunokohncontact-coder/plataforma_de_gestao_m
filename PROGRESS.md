@@ -4,7 +4,38 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 368 — COMPARATIVO ANO A ANO DA ANTECEDÊNCIA DE AGENDAMENTO NO CSV (`/shows/antecedencia/comparativo/export` +
+**Sessão 369 — COMPARATIVO ANO A ANO DO PRAZO DE RECEBIMENTO (DSO) NO CSV (`/shows/prazo-recebimento/comparativo/export` +
+`paymentLagComparisonToCsv`, D364), levando para a planilha o card "Prazo de recebimento {ano} vs. {ano-1}" que a página
+`/shows/prazo-recebimento` já mostra na tela mas o CSV do ranking descartava:** a página já compara o ano escolhido contra o
+anterior (a variação do prazo MEDIANO e do MÉDIO de recebimento — DSO, em dias — mais um veredito de tendência, recebendo mais
+rápido × mais devagar, via `comparePaymentLag`/`PaymentLagComparison`), mas o único export do eixo
+(`/shows/prazo-recebimento/export`, `paymentLagToCsv`) só serializava o ranking por show de um período — quem baixava o prazo de
+recebimento para o contador perdia o comparativo YoY que via na tela (o mesmo buraco que as Sessões 366/367/368 fecharam no
+resumo anual, na rentabilidade por show e na antecedência). Era o ÚLTIMO eixo com card de comparativo na tela sem o CSV irmão.
+**(1)** camada pura nova em `src/lib/csv.ts`: `paymentLagComparisonToCsv` (+ `PAYMENT_LAG_COMPARISON_CSV_HEADERS`) — como os
+irmãos de rentabilidade/antecedência, o comparativo é um RESUMO de poucas métricas, então a planilha é TRANSPOSTA: uma linha por
+métrica (prazo mediano / prazo médio / shows analisados) com o valor do ano anterior, o do corrente, o Δ absoluto e o Δ relativo
+(%), seguida de uma linha "Veredito" com a tendência (o mesmo selo ancorado na MEDIANA da UI — aqui **descer** o prazo é a
+melhora, então "improved" → "Recebendo mais rápido"). As três métricas são contagens (dias/shows): Δ via `csvSignedCount`, Δ %
+via `csvSignedPercent` sobre a base do ano anterior (reúsa o helper genérico `leadTimeYoyPct`), vazio quando o ano anterior tem
+base 0. **(2)** rota nova `/shows/prazo-recebimento/comparativo/export?ano=YYYY` (irmã, sem tocar no export do ranking): recorta o
+ano e o anterior do mesmo acervo já carregado (`paymentLag` + `filterShowsByYear`) e aplica o MESMO gate da página — um ano
+específico E ambos os períodos com cachê recebido (`showCount > 0`); sem isso, **404** (a mediana de um ano vazio seria 0 e a
+comparação enganosa). Os anos concretos vão no NOME DO ARQUIVO (`prazo-recebimento-comparativo-{ano}-vs-{ano-1}.csv`). **(3)** UI:
+segundo link "⬇ CSV vs {ano-1}" na página `/shows/prazo-recebimento`, ao lado do "⬇ CSV" existente, visível só quando o card do
+comparativo aparece (mesmo gate `comparison`). **+4 testes** (`csv.test.ts`: layout transposto cabeçalho+3 métricas+veredito;
+deltas/% negativos quando o prazo cai → recebendo mais rápido; Δ % vazio sem base no ano anterior; rótulo do veredito estável
+dentro do limiar). Camada pura (só dados + rota; zero migração/dependência). DoD verde: `npm run build`, `npx tsc --noEmit`,
+`npm run lint` (0 warnings), `npm test` (**2019 testes**); smoke → `/login` 200, a rota nova 307→/login (auth-gated);
+**smoke autenticado** (token de usuário demo, shows recebidos em 2025 e 2026) → export sem `?ano` **404** (gate) e com um ano só
+de dados **404**; com shows nos dois anos **200** `text/csv` (filename `…-2026-vs-2025.csv`, cabeçalho
+`Métrica;Ano anterior;Ano corrente;Δ;Δ %`, linha `Prazo mediano (dias);40;10;-30;-75%`, `Veredito;Recebendo mais rápido;;;`) e a
+página exibindo o link "⬇ CSV vs 2025" + o card "Prazo de recebimento 2026 vs. 2025"; `npm audit` inalterado (10 advisories: 4
+moderate/5 high/1 critical, ZERO dependência nova), ver D364. **Próximo possível** — o eixo de prazo de recebimento fica completo
+tela↔export (ranking + comparativo YoY); com este, TODOS os eixos com card de comparativo na tela têm o CSV irmão. Segue como
+único pendente do eixo de backup a restauração por MERGE (ALTO risco, revisão humana); ou próximas sessões podem evoluir outra
+feature maior.
+**Antes disso, Sessão 368 — COMPARATIVO ANO A ANO DA ANTECEDÊNCIA DE AGENDAMENTO NO CSV (`/shows/antecedencia/comparativo/export` +
 `bookingLeadTimeComparisonToCsv`, D363), levando para a planilha o card "Antecedência {ano} vs. {ano-1}" que a página
 `/shows/antecedencia` já mostra na tela mas o CSV da distribuição descartava:** a página já compara o ano escolhido contra o
 anterior (a variação da antecedência MEDIANA e da MÉDIA de agendamento, em dias, mais um veredito de tendência — mais folga ×

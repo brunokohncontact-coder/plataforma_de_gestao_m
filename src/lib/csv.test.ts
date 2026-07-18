@@ -157,6 +157,8 @@ import {
   type BookingLeadTimeByContactCsvRow,
   bookingLeadTimeComparisonToCsv,
   BOOKING_LEAD_TIME_COMPARISON_CSV_HEADERS,
+  paymentLagComparisonToCsv,
+  PAYMENT_LAG_COMPARISON_CSV_HEADERS,
   staleProposalsToCsv,
   STALE_PROPOSALS_CSV_HEADERS,
   funnelActivityFeedToCsv,
@@ -238,6 +240,8 @@ import {
   yearEndScenarioView,
   computeBreakEven,
   computeDelta,
+  paymentLag,
+  comparePaymentLag,
   type ShowsProfitabilityComparison,
   type YearEndShowLike,
   type BreakEvenShowLike,
@@ -5534,6 +5538,70 @@ describe("bookingLeadTimeComparisonToCsv", () => {
       leadOf("2025-01-01T00:00:00.000Z", [10, 20, 30]),
     );
     const lines = bookingLeadTimeComparisonToCsv(cmp).split("\r\n");
+    expect(lines[4]).toBe("Veredito;Estável;;;");
+  });
+});
+
+describe("paymentLagComparisonToCsv", () => {
+  // Constrói um `paymentLag` a partir de uma lista de prazos (dias) — um show por
+  // prazo, todos com o mesmo cachê pago à vista, de modo que a mediana/média
+  // ponderadas pelo valor coincidem com a mediana/média simples dos prazos e o
+  // `showCount` é o tamanho da lista. Espelha o `lagOfDays` de finance.test.ts,
+  // generalizado para vários shows.
+  const lagOf = (days: number[]) => {
+    const shows: ReceivableShowLike[] = days.map((_d, i) => ({
+      id: `g${i}`,
+      fee: 100_00,
+      status: "PLAYED",
+      date: "2026-03-01T00:00:00.000Z",
+    }));
+    const txs: TxLike[] = days.map((d, i) => ({
+      type: "INCOME",
+      amount: 100_00,
+      category: "cachê",
+      date: new Date(Date.UTC(2026, 2, 1 + d)).toISOString(),
+      received: true,
+      showId: `g${i}`,
+    }));
+    return paymentLag(shows, txs);
+  };
+
+  it("transpõe o comparativo em linhas por métrica + linha de veredito", () => {
+    // prev [10,20,30] → mediana/média 20; cur [30,40,50] → 40. Sobe 20 d (>7) →
+    // recebendo mais DEVAGAR (piora, pois aqui descer é a melhora).
+    const cmp = comparePaymentLag(lagOf([30, 40, 50]), lagOf([10, 20, 30]));
+    const lines = paymentLagComparisonToCsv(cmp).split("\r\n");
+    expect(lines[0]).toBe("Métrica;Ano anterior;Ano corrente;Δ;Δ %");
+    expect(lines[0]).toBe(PAYMENT_LAG_COMPARISON_CSV_HEADERS.join(";"));
+    expect(lines[1]).toBe("Prazo mediano (dias);20;40;+20;+100%");
+    expect(lines[2]).toBe("Prazo médio (dias);20;40;+20;+100%");
+    expect(lines[3]).toBe("Shows analisados;3;3;0;0%");
+    expect(lines[4]).toBe("Veredito;Recebendo mais devagar;;;");
+  });
+
+  it("emite deltas e porcentagens negativos quando o prazo cai (recebendo mais rápido)", () => {
+    // prev mediana 45; cur mediana 10 → cai 35 d (>7) → recebendo mais RÁPIDO
+    // (melhora). Amostra 4 → 2.
+    const cmp = comparePaymentLag(lagOf([5, 15]), lagOf([30, 40, 50, 60]));
+    const lines = paymentLagComparisonToCsv(cmp).split("\r\n");
+    expect(lines[1]).toBe("Prazo mediano (dias);45;10;-35;-78%");
+    expect(lines[3]).toBe("Shows analisados;4;2;-2;-50%");
+    expect(lines[4]).toBe("Veredito;Recebendo mais rápido;;;");
+  });
+
+  it("deixa o Δ % vazio quando o ano anterior não tem base (prazo 0)", () => {
+    // prev sem shows recebidos → medianDays/avgDays/showCount = 0; cur com amostra.
+    const cmp = comparePaymentLag(lagOf([30, 40, 50]), lagOf([]));
+    const lines = paymentLagComparisonToCsv(cmp).split("\r\n");
+    // Δ absoluto presente; Δ % (última coluna) vazio.
+    expect(lines[1]).toBe("Prazo mediano (dias);0;40;+40;");
+    expect(lines[3]).toBe("Shows analisados;0;3;+3;");
+  });
+
+  it("rotula o veredito estável quando a variação fica dentro do limiar", () => {
+    // prev mediana 20; cur mediana 22 → +2 dias (< 7) → estável.
+    const cmp = comparePaymentLag(lagOf([12, 22, 32]), lagOf([10, 20, 30]));
+    const lines = paymentLagComparisonToCsv(cmp).split("\r\n");
     expect(lines[4]).toBe("Veredito;Estável;;;");
   });
 });
