@@ -190,6 +190,133 @@ export function compareShowsProfitability<S extends ShowLike>(
   };
 }
 
+// ── Distribuição de resultado por show (saúde da carteira de gigs) ───────────
+//
+// O ranking (`rankShowsByProfit`) responde "quais shows deram dinheiro"; esta
+// leitura responde à pergunta de PORTFÓLIO: de todos os shows, quantos rodam no
+// vermelho, quantos com margem magra e quantos com margem saudável — e quanto de
+// R$ está em cada balde. É o histograma de saúde por gig, espelho de
+// `feeDistribution` (que distribui pelo CACHÊ bruto), mas no eixo do RESULTADO
+// LÍQUIDO (margem sobre a receita bruta). Ver DECISIONS.md D365.
+
+/** Chave de cada faixa de resultado por show (do pior ao melhor). */
+export type ShowResultBandKey = "loss" | "even" | "thin" | "healthy" | "high";
+
+export interface ShowResultBandDef {
+  key: ShowResultBandKey;
+  /** Rótulo pt-BR curto (igual ao da tabela da tela). */
+  label: string;
+  /** Uma frase explicando o critério da faixa. */
+  hint: string;
+}
+
+/**
+ * Teto de margem líquida (15%) da faixa "magra": um show acima do zero mas com
+ * ≤15% de margem rendeu quase nada depois dos custos. **Hipótese** — o piso do
+ * que é "margem confortável" varia por circuito/custo fixo; validar com músicos
+ * antes de virar premissa. Ver DECISIONS.md D365.
+ */
+export const THIN_MARGIN_MAX = 0.15;
+/**
+ * Teto de margem líquida (40%) da faixa "saudável"; acima disso é "margem alta".
+ * **Hipótese** pelo mesmo motivo de `THIN_MARGIN_MAX`. Ver DECISIONS.md D365.
+ */
+export const HEALTHY_MARGIN_MAX = 0.4;
+
+/** As faixas de resultado, do pior (prejuízo) ao melhor (margem alta). */
+export const SHOW_RESULT_BANDS: readonly ShowResultBandDef[] = [
+  { key: "loss", label: "Prejuízo", hint: "Resultado negativo — o show custou mais do que rendeu." },
+  { key: "even", label: "Empatou", hint: "Resultado zerado — o cachê só cobriu as despesas." },
+  {
+    key: "thin",
+    label: "Margem magra",
+    hint: "Até 15% de margem líquida — sobrou pouco depois dos custos.",
+  },
+  {
+    key: "healthy",
+    label: "Margem saudável",
+    hint: "De 15% a 40% de margem líquida.",
+  },
+  {
+    key: "high",
+    label: "Margem alta",
+    hint: "Acima de 40% de margem líquida.",
+  },
+];
+
+/**
+ * Classifica um P&L de show na sua faixa de resultado. Só o sinal do `net` e a
+ * `margin` importam; `net > 0` implica `grossIncome > 0` (então a margem é
+ * sempre definida quando entra nas faixas "thin"/"healthy"/"high").
+ */
+export function showResultBandKeyFor(pnl: { net: number; margin: number }): ShowResultBandKey {
+  if (pnl.net < 0) return "loss";
+  if (pnl.net === 0) return "even";
+  if (pnl.margin <= THIN_MARGIN_MAX) return "thin";
+  if (pnl.margin <= HEALTHY_MARGIN_MAX) return "healthy";
+  return "high";
+}
+
+export interface ShowResultBandStat extends ShowResultBandDef {
+  /** Nº de shows nesta faixa. */
+  count: number;
+  /** Participação no total de shows (0..1); 0 sem shows. */
+  share: number;
+  /** Resultado líquido somado da faixa (centavos; ≤0 na faixa "loss"). */
+  totalNet: number;
+}
+
+export interface ShowResultDistribution {
+  /** Sempre as 5 faixas de `SHOW_RESULT_BANDS`, do pior ao melhor (inclui zeradas). */
+  bands: ShowResultBandStat[];
+  /** Total de shows analisados. */
+  count: number;
+  /** Resultado líquido somado de todos os shows (centavos). */
+  totalNet: number;
+  /** Nº de shows no vermelho (faixa "loss"). */
+  lossCount: number;
+  /** Fração no vermelho (0..1); 0 sem shows. */
+  lossShare: number;
+  /** Prejuízo somado dos shows no vermelho (centavos, ≤0). */
+  lossNet: number;
+}
+
+/**
+ * Destila a distribuição de resultado por show a partir de uma
+ * `rankShowsByProfit` já computada (mesma fonte de verdade do P&L e da exclusão
+ * de CANCELLED; o chamador filtra por período antes, como na página). Pura, sem
+ * I/O. Devolve sempre as 5 faixas na ordem canônica (mesmo vazias, para o
+ * histograma não pular degraus) + o recorte "no vermelho" já destacado (a
+ * decisão acionável: quantos shows e quanto R$ estão dando prejuízo).
+ */
+export function showResultDistribution<S extends ShowLike>(
+  report: ShowsProfitability<S>,
+): ShowResultDistribution {
+  const count = report.count;
+
+  const bands: ShowResultBandStat[] = SHOW_RESULT_BANDS.map((def) => {
+    const rows = report.rows.filter((r) => showResultBandKeyFor(r.pnl) === def.key);
+    const bandCount = rows.length;
+    return {
+      ...def,
+      count: bandCount,
+      share: count === 0 ? 0 : bandCount / count,
+      totalNet: sum(rows.map((r) => r.pnl.net)),
+    };
+  });
+
+  const loss = bands.find((b) => b.key === "loss")!;
+
+  return {
+    bands,
+    count,
+    totalNet: report.totalNet,
+    lossCount: loss.count,
+    lossShare: loss.share,
+    lossNet: loss.totalNet,
+  };
+}
+
 // ── Rentabilidade por local (agrega P&L por casa/venue) ─────────────────────
 
 /** Forma mínima de show para agrupar por local. */

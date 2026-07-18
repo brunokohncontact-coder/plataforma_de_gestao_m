@@ -112,6 +112,12 @@ export default async function ShowProfitabilityPage({
               ⬇ CSV vs {previousYear}
             </a>
           )}
+          <Link
+            href={`/shows/rentabilidade/distribuicao${yearFilter === "all" ? "" : `?ano=${yearFilter}`}`}
+            className="btn-secondary"
+          >
+            📉 Distribuição
+          </Link>
           <Link href="/shows" className="btn-secondary">
             ← Shows
           </Link>

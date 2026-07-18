@@ -3,6 +3,9 @@ import {
   computeShowPnL,
   rankShowsByProfit,
   compareShowsProfitability,
+  showResultDistribution,
+  showResultBandKeyFor,
+  SHOW_RESULT_BANDS,
   rankVenuesByProfit,
   compareVenuesByProfit,
   venueProfitMovers,
@@ -422,6 +425,120 @@ describe("compareShowsProfitability", () => {
     const cmp = compareShowsProfitability(cur, prev);
     expect(cmp.avgNet.pct).toBeNull(); // base 0 -> pct indefinido
     expect(cmp.trend).toBe("up");
+  });
+});
+
+describe("showResultBandKeyFor", () => {
+  it("classifica pelo sinal do net e pela margem", () => {
+    expect(showResultBandKeyFor({ net: -100, margin: -0.5 })).toBe("loss");
+    expect(showResultBandKeyFor({ net: 0, margin: 0 })).toBe("even");
+    expect(showResultBandKeyFor({ net: 10, margin: 0.1 })).toBe("thin");
+    expect(showResultBandKeyFor({ net: 10, margin: 0.15 })).toBe("thin"); // limite inclusivo
+    expect(showResultBandKeyFor({ net: 10, margin: 0.3 })).toBe("healthy");
+    expect(showResultBandKeyFor({ net: 10, margin: 0.4 })).toBe("healthy"); // limite inclusivo
+    expect(showResultBandKeyFor({ net: 10, margin: 0.6 })).toBe("high");
+  });
+});
+
+describe("showResultDistribution", () => {
+  const report = (shows: ShowLike[], txs: TxLike[] = []) => rankShowsByProfit(shows, txs);
+
+  it("carteira vazia: todas as faixas zeradas e recorte no vermelho zerado", () => {
+    const d = showResultDistribution(report([]));
+    expect(d.count).toBe(0);
+    expect(d.totalNet).toBe(0);
+    expect(d.lossCount).toBe(0);
+    expect(d.lossShare).toBe(0);
+    expect(d.lossNet).toBe(0);
+    expect(d.bands).toHaveLength(SHOW_RESULT_BANDS.length);
+    expect(d.bands.every((b) => b.count === 0 && b.share === 0 && b.totalNet === 0)).toBe(true);
+  });
+
+  it("sempre traz as 5 faixas na ordem canônica, mesmo as vazias", () => {
+    const d = showResultDistribution(report([{ id: "a", fee: 100_00, status: "PLAYED" }]));
+    expect(d.bands.map((b) => b.key)).toEqual(["loss", "even", "thin", "healthy", "high"]);
+  });
+
+  it("distribui os shows por faixa e soma o resultado de cada balde", () => {
+    // - a: fee 100, despesa 150 -> net -50 (loss)
+    // - b: fee 100, despesa 100 -> net 0 (even)
+    // - c: fee 100, despesa 90  -> net 10, margem 10% (thin)
+    // - d: fee 100, despesa 70  -> net 30, margem 30% (healthy)
+    // - e: fee 100, despesa 0   -> net 100, margem 100% (high)
+    const shows: ShowLike[] = [
+      { id: "a", fee: 100_00, status: "PLAYED" },
+      { id: "b", fee: 100_00, status: "PLAYED" },
+      { id: "c", fee: 100_00, status: "PLAYED" },
+      { id: "d", fee: 100_00, status: "PLAYED" },
+      { id: "e", fee: 100_00, status: "PLAYED" },
+    ];
+    const txs: TxLike[] = [
+      tx({ type: "EXPENSE", amount: 150_00, showId: "a" }),
+      tx({ type: "EXPENSE", amount: 100_00, showId: "b" }),
+      tx({ type: "EXPENSE", amount: 90_00, showId: "c" }),
+      tx({ type: "EXPENSE", amount: 70_00, showId: "d" }),
+    ];
+    const d = showResultDistribution(report(shows, txs));
+    const byKey = Object.fromEntries(d.bands.map((b) => [b.key, b]));
+    expect(byKey.loss.count).toBe(1);
+    expect(byKey.loss.totalNet).toBe(-50_00);
+    expect(byKey.even.count).toBe(1);
+    expect(byKey.even.totalNet).toBe(0);
+    expect(byKey.thin.count).toBe(1);
+    expect(byKey.thin.totalNet).toBe(10_00);
+    expect(byKey.healthy.count).toBe(1);
+    expect(byKey.healthy.totalNet).toBe(30_00);
+    expect(byKey.high.count).toBe(1);
+    expect(byKey.high.totalNet).toBe(100_00);
+    expect(d.count).toBe(5);
+    expect(d.totalNet).toBe(90_00); // -50 + 0 + 10 + 30 + 100
+  });
+
+  it("participação de cada faixa soma 1 (a menos de arredondamento) e reflete a fração", () => {
+    const shows: ShowLike[] = [
+      { id: "a", fee: 100_00, status: "PLAYED" }, // high
+      { id: "b", fee: 100_00, status: "PLAYED" }, // high
+      { id: "c", fee: 100_00, status: "PLAYED" }, // loss
+      { id: "d", fee: 100_00, status: "PLAYED" }, // loss
+    ];
+    const txs: TxLike[] = [
+      tx({ type: "EXPENSE", amount: 200_00, showId: "c" }),
+      tx({ type: "EXPENSE", amount: 200_00, showId: "d" }),
+    ];
+    const d = showResultDistribution(report(shows, txs));
+    const byKey = Object.fromEntries(d.bands.map((b) => [b.key, b]));
+    expect(byKey.high.share).toBeCloseTo(0.5);
+    expect(byKey.loss.share).toBeCloseTo(0.5);
+    const total = d.bands.reduce((acc, b) => acc + b.share, 0);
+    expect(total).toBeCloseTo(1);
+  });
+
+  it("destaca o recorte no vermelho (contagem, fração e prejuízo somado)", () => {
+    const shows: ShowLike[] = [
+      { id: "a", fee: 100_00, status: "PLAYED" }, // loss -30
+      { id: "b", fee: 100_00, status: "PLAYED" }, // loss -20
+      { id: "c", fee: 100_00, status: "PLAYED" }, // high (sem despesa)
+      { id: "d", fee: 100_00, status: "PLAYED" }, // high (sem despesa)
+    ];
+    const txs: TxLike[] = [
+      tx({ type: "EXPENSE", amount: 130_00, showId: "a" }),
+      tx({ type: "EXPENSE", amount: 120_00, showId: "b" }),
+    ];
+    const d = showResultDistribution(report(shows, txs));
+    expect(d.lossCount).toBe(2);
+    expect(d.lossShare).toBeCloseTo(0.5);
+    expect(d.lossNet).toBe(-50_00); // -30 + -20
+  });
+
+  it("herda a exclusão de CANCELLED de rankShowsByProfit", () => {
+    const shows: ShowLike[] = [
+      { id: "a", fee: 100_00, status: "PLAYED" }, // high
+      { id: "x", fee: 100_00, status: "CANCELLED" }, // ignorado
+    ];
+    const d = showResultDistribution(report(shows));
+    expect(d.count).toBe(1);
+    const byKey = Object.fromEntries(d.bands.map((b) => [b.key, b]));
+    expect(byKey.high.count).toBe(1);
   });
 });
 
