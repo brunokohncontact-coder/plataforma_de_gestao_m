@@ -29,6 +29,7 @@ import {
   recurringExpenses,
   pendingFixedCosts,
   filterShowsByYear,
+  filterShowsByNature,
   computeBreakEven,
   breakEvenHeadline,
   computeGoalProgress,
@@ -380,12 +381,26 @@ export default async function DashboardPage() {
   // → trend "worsened" + ≥ minSample shows cada) — a decisão acionável "revise cachês
   // e despesas dessas casas"; menos shows no vermelho é boa notícia e não precisa de
   // banner. O detalhe está em /shows/rentabilidade/distribuicao.
+  //
+  // Recorte por natureza (D371): tanto este nudge de CONTAGEM quanto o de MARGEM
+  // agregada abaixo alarmam sobre RESULTADO REALIZADO — a fatia da carteira que deu
+  // prejuízo, quanto cada gig lucrativo sobrou depois dos custos. Uma PROPOSTA em
+  // aberto tem P&L de expectativa, não resultado; contá-la sujaria o sinal (uma
+  // proposta no vermelho ainda pode não acontecer). Espelhando a decisão que
+  // D369/D370 já aplicaram à tela de distribuição e à tela-mãe de rentabilidade,
+  // recortamos os dois anos a compromissos FIRMES (CONFIRMED+PLAYED) via
+  // `filterShowsByNature(..., "firm")` ANTES de agregar. O Painel não é
+  // parametrizável por `?natureza=` (dashboards não carregam seletor de recorte);
+  // a natureza firme é fixa aqui por ser a única leitura acionável de um alarme.
   const currentProfit = rankShowsByProfit(
-    filterShowsByYear(shows, currentYear) as ShowLike[],
+    filterShowsByNature(filterShowsByYear(shows, currentYear) as ShowLike[], "firm"),
     txs,
   );
   const previousProfit = rankShowsByProfit(
-    filterShowsByYear(shows, currentYear - 1) as ShowLike[],
+    filterShowsByNature(
+      filterShowsByYear(shows, currentYear - 1) as ShowLike[],
+      "firm",
+    ),
     txs,
   );
   const showResultComparison = compareShowResultDistribution(

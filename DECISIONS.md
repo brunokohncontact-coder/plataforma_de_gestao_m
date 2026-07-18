@@ -5,6 +5,38 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-18 — D371: Nudges de rentabilidade do Painel contam só shows firmes (`lossShareRiseHeadline`/`portfolioMarginDropHeadline`)
+- **Contexto:** a D369 introduziu o recorte por natureza (`parseShowNature`/`filterShowsByNature`: "Todos os shows" não cancelados ×
+  "Só confirmados/realizados", CONFIRMED+PLAYED) e as D369/D370 o aplicaram à distribuição de resultado e à tela-mãe de rentabilidade.
+  A própria D370 registrou como próximo passo (alternativa a) "ecoar também no Painel". O Painel tem dois nudges de rentabilidade que
+  alarmam sobre a saúde da carteira ano a ano: "Mais shows no vermelho" (`lossShareRiseHeadline`/D367, a CONTAGEM da fatia no vermelho
+  subindo) e "Margem da carteira encolhendo" (`portfolioMarginDropHeadline`/D368, a MARGEM líquida agregada caindo). Ambos partiam de
+  `rankShowsByProfit(filterShowsByYear(shows, ano))`, que conta TODOS os shows não cancelados — inclusive PROPOSTAS em aberto, cujo P&L
+  é expectativa e não resultado realizado.
+- **Decisão:** wiring **puro** no `src/app/(app)/dashboard/page.tsx` — nenhuma lógica nova em `@/lib/finance` (reusa a camada testada
+  da D369). As duas `rankShowsByProfit` intermediárias (`currentProfit`/`previousProfit`, que alimentam AMBOS os nudges) passam a
+  recortar por `filterShowsByNature(..., "firm")` antes de agregar, nos dois anos. A natureza firme é FIXA (não parametrizável por
+  `?natureza=`): o Painel não carrega seletor de recorte — é uma leitura de alarme, não uma tela exploratória. Import de
+  `filterShowsByNature` adicionado ao bloco de `@/lib/finance`.
+- **Justificativa:** os dois nudges são alarmes de RESULTADO REALIZADO — a decisão acionável "revise cachês/despesas dessas casas".
+  Uma proposta em aberto no vermelho ainda pode não acontecer; contá-la faz o Painel gritar por um prejuízo que talvez nunca ocorra,
+  poluindo o sinal. Espelha exatamente a decisão que D369/D370 tomaram para as telas do mesmo eixo, mantendo uma leitura de "firme"
+  única e coerente da distribuição → tela-mãe → Painel. É recorte FACTUAL (status do show), não heurística — não entra em Bloqueios.
+  Zero migração, zero dependência nova (`npm audit` inalterado: 10 advisories, 4 moderate/5 high/1 critical). Nenhum teste novo: a
+  camada pura (`filterShowsByNature` +7 testes D369; `lossShareRiseHeadline`/`portfolioMarginDropHeadline` já testadas D367/D368) e
+  esta sessão é só fiação. Validado por **smoke autenticado diferencial** (usuário demo, 2026 = 3 CONFIRMED azuis + 3 PROPOSED no
+  vermelho, 2025 = 3 CONFIRMED azuis + 1 PROPOSED azul): pelas funções puras, `natureza=all` DISPARA o nudge (fatia no vermelho
+  0%→50%, 6 shows) enquanto `natureza=firm` NÃO dispara (0%→0%, 3 shows firmes cada ano); no HTML do `/dashboard` renderizado, o banner
+  "Mais shows no vermelho" fica corretamente AUSENTE — o recorte separa a proposta incerta do alarme realizado.
+- **Alternativas consideradas:** (a) adicionar um `NaturePicker`/`?natureza=` ao Painel como nas telas — descartado: dashboards não
+  carregam seletor de recorte; o nudge é um alarme binário (aparece/não aparece), e "firme" é a única leitura acionável dele. (b)
+  manter contando todos (status quo) — descartado: contradizia a decisão já tomada para as telas do mesmo eixo e deixava o Painel
+  alarmando por propostas que podem não acontecer. (c) recortar só a CONTAGEM (`lossShareRiseHeadline`) e não a MARGEM
+  (`portfolioMarginDropHeadline`) — descartado: os dois compartilham as mesmas `rankShowsByProfit` e a mesma natureza de alarme
+  realizado; recortar um só criaria incoerência entre banners irmãos.
+- **Nota de concorrência:** número **D371** escolhido como o próximo livre acima do maior D mergeado na `main` (D370, PR #406); sem
+  PRs abertas no momento. Se outra PR reivindicar D371 antes do merge, renumerar para o próximo livre.
+
 ## 2026-07-18 — D370: Recorte por natureza (todos × só firmes) na tela-mãe de rentabilidade (`/shows/rentabilidade`)
 - **Contexto:** a D369 introduziu o recorte por natureza (`parseShowNature`/`filterShowsByNature`: "Todos os shows" não cancelados ×
   "Só confirmados/realizados", CONFIRMED+PLAYED) e o aplicou à distribuição de resultado (`/shows/rentabilidade/distribuicao`). A
