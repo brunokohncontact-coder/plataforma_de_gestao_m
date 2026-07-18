@@ -4,7 +4,36 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 376 — NUDGES DE RENTABILIDADE DO PAINEL CONTAM SÓ SHOWS FIRMES (`lossShareRiseHeadline`/`portfolioMarginDropHeadline`, D371):**
+**Sessão 377 — COMPARATIVO DE MARGEM POR CONTRATANTE ANO A ANO: "quais casas apertam a margem" (`compareContactMargins`, D372):**
+a rentabilidade por contratante (`/contatos/rentabilidade`, `rankContactsByProfit`/D105) já compara os dois anos, mas só a
+CONCENTRAÇÃO de clientes (de quem eu dependo, risco sobre a receita bruta — `compareClientConcentration`). Faltava a outra metade da
+pergunta de rentabilidade, o par contagem↔margem dos nudges do Painel (`lossShareRiseHeadline`/D367, `portfolioMarginDropHeadline`/D368)
+destilado por PESSOA: dos contratantes que VOLTARAM de um ano para o outro, quais estão apertando a margem líquida (cachês achatados,
+despesas maiores) — a decisão acionável "renegocie cachê/despesas com essas casas". Este era o próximo passo (alt. a) da D371.
+**(1)** camada pura em `src/lib/finance.ts`: `compareContactMargins(current, previous, epsilon=CONTACT_MARGIN_DROP_EPSILON)` recebe
+duas `ContactsProfitability` já computadas (o ano corrente e o anterior), cruza os contratantes presentes nos DOIS anos por
+`contact.id` (uma casa nova ou que sumiu não "apertou" — só entrou/saiu da carteira; o grupo "sem contratante" é ignorado, não é
+relação renegociável) e devolve, por contratante, a variação de margem (`marginDelta`, pontos) e de resultado (`netDelta`, centavos)
++ contagens dos dois anos. Ordena por `marginDelta` CRESCENTE (o maior aperto primeiro, empate determinístico); `worstDrop`/`bestGain`
+só apontam variações materiais (além de `CONTACT_MARGIN_DROP_EPSILON`=0,05 = 5 p.p., espelha `GEO_TREND_EPSILON`/`LOSS_SHARE_TREND_EPSILON`)
+e `squeezedCount` conta as quedas materiais. **(2)** wiring puro na página `src/app/(app)/contatos/rentabilidade/page.tsx`: reusa a
+`previousReport` (`rankContactsByProfit` do ano anterior) que já era carregada para a concentração — zero consulta nova — e renderiza
+o card `<MarginComparisonCard>` (só com um ano específico E ≥1 contratante em comum) logo abaixo do card de concentração, listando as
+casas que apertaram (nome → margem ano-1 → ano, Δ p.p., Δ resultado assinado), o "Maior avanço" e a nota de escopo. **+9 testes** de
+lógica (`finance.test.ts`: cruza só quem está nos dois anos, ignora "sem contratante", deltas assinados, ordenação por aperto,
+worstDrop/bestGain/squeezedCount materiais, fronteira do limiar, ruído abaixo do limiar, vazio sem comum, limiar customizado). Camada
+pura + wiring; zero migração/dependência. DoD verde: `npm run build` (a página compila; sem rota nova), `npx tsc --noEmit`,
+`npm run lint` (0 warnings), `npm test` (**2069 testes**); smoke → `/login` 200, `/contatos/rentabilidade` 307→/login (auth-gated);
+**smoke autenticado diferencial** (usuário smoke, Zé margem 100%→50% por despesas, Ana 60%→80%, Bob só em 2024) → `?ano=2025` renderiza
+"Margem por contratante 2025 vs. 2024 · 🔴 1 casa apertando a margem · Casa do Zé margem 100% → 50% (−50 p.p.) · resultado −R$ 500,00 ·
+Maior avanço: Ana Prod ganhou +20 p.p. (60% → 80%)" com **Bob AUSENTE** (só voltou quem contratou nos dois anos) e a visão "todos os
+anos" **sem** o card (gate por ano); `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, ZERO dependência nova), ver
+D372. **Próximo possível** — (a) export CSV irmão do comparativo de margem por contratante (`…/rentabilidade/comparativo-margem/export`,
+molde de `feeDistributionComparisonToCsv`); (b) ecoar o "quais casas apertam" como nudge no Painel (a pessoa específica, não só a
+carteira agregada dos D367/D368); (c) o mesmo cruzamento no eixo de PAPEL do contratante (`rankRolesByProfit`, que tipo de comprador
+aperta). O limiar `CONTACT_MARGIN_DROP_EPSILON`(D372) é **hipótese** (ver Bloqueios). Fora deste eixo, segue como único pendente do
+backup a restauração por MERGE (ALTO risco, revisão humana).
+**Antes disso, Sessão 376 — NUDGES DE RENTABILIDADE DO PAINEL CONTAM SÓ SHOWS FIRMES (`lossShareRiseHeadline`/`portfolioMarginDropHeadline`, D371):**
 as D369/D370 levaram o recorte por natureza (`filterShowsByNature`: todos os shows não cancelados × só CONFIRMED+PLAYED) à distribuição
 de resultado e à tela-mãe de rentabilidade, e a D370 registrou como próximo passo (alt. a) "ecoar no Painel". Esta sessão fecha esse
 lado: os dois nudges de rentabilidade do Painel — "Mais shows no vermelho" (D367, contagem) e "Margem da carteira encolhendo" (D368,
@@ -6903,5 +6932,9 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   perdidos de um ano para o outro contam como erosão "material" para o nudge disparar) e `MARGIN_DROP_CRITICAL_POINTS`=0,20 (a queda
   que faz o nudge virar crítico/vermelho) em `src/lib/finance.ts` são **hipóteses** — o que conta como erosão material/crítica da
   margem da carteira varia por circuito e custo fixo do músico. Validar com músicos antes de virar premissa fixa.
+- **Comparativo de margem por contratante (D372)**: `CONTACT_MARGIN_DROP_EPSILON`=0,05 (5 p.p. — quanto a margem líquida de um
+  contratante precisa cair de um ano para o outro para contar como "aperto" material, alimentando `worstDrop`/`squeezedCount`) em
+  `src/lib/finance.ts` é **hipótese**, alinhada aos demais epsilons de tendência (`GEO_TREND_EPSILON`/`LOSS_SHARE_TREND_EPSILON`=0,05).
+  O que é uma piora relevante de margem numa relação varia por casa/circuito. Parametrizável (arg da função). Validar com músicos.
 - **Segurança em produção**: definir `AUTH_SECRET` forte e migrar para PostgreSQL antes
   de qualquer deploy real. Revisar advisories do Next (D6) e planejar upgrade p/ Next 15+.

@@ -5,6 +5,36 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-18 — D372: Comparativo de margem por contratante ano a ano — "quais casas apertam a margem" (`compareContactMargins`)
+- **Contexto:** a página `/contatos/rentabilidade` (`rankContactsByProfit`/D105) já compara o ano escolhido com o anterior, mas só a
+  CONCENTRAÇÃO de clientes (`compareClientConcentration`/D139: de quem eu dependo — risco sobre a receita bruta). Faltava a outra
+  metade da leitura de rentabilidade: a MARGEM LÍQUIDA por contratante caindo de um ano para o outro. Os nudges do Painel D367
+  (`lossShareRiseHeadline`, contagem de shows no vermelho subindo) e D368 (`portfolioMarginDropHeadline`, margem agregada da carteira
+  caindo) leem esse par contagem↔margem para a carteira INTEIRA; a D371 registrou como próximo passo (alt. a) destilá-lo por PESSOA —
+  quais casas específicas estão apertando a margem (cachês achatados, mais despesas), a decisão acionável "renegocie com essas casas".
+- **Decisão:** camada pura `compareContactMargins(current, previous, epsilon=CONTACT_MARGIN_DROP_EPSILON)` em `src/lib/finance.ts` +
+  card `<MarginComparisonCard>` na página. A função cruza os contratantes presentes nos DOIS anos por `contact.id` (só quem VOLTOU tem
+  variação de margem interpretável — uma casa nova ou que sumiu não "apertou", só entrou/saiu da carteira; o grupo "sem contratante" é
+  ignorado, não é relação renegociável), devolve por contratante `marginDelta` (pontos) e `netDelta` (centavos assinado) + contagens
+  dos dois anos, ordena por `marginDelta` crescente (o maior aperto primeiro) e destaca `worstDrop`/`bestGain`/`squeezedCount` só nas
+  variações MATERIAIS (além de `CONTACT_MARGIN_DROP_EPSILON`=0,05 = 5 p.p.). O wiring é puro: a página já carregava a `rankContactsByProfit`
+  do ano anterior para a concentração, então o card reusa essa `previousReport` sem consulta nova, e só aparece com um ano específico E
+  ao menos um contratante em comum.
+- **Justificativa:** responde uma pergunta acionável que nenhuma tela cobria — não "quem me dá mais dinheiro" (o ranking, já existe)
+  nem "de quem dependo" (a concentração), mas "com quem a relação está PIORANDO". Espelha por pessoa os nudges de piora do Painel
+  (D367/D368) reusando toda a aritmética de P&L já testada (`rankContactsByProfit`), sem migração nem dependência nova (`npm audit`
+  inalterado: 10 advisories, 4 moderate/5 high/1 critical). Cruzar só quem voltou evita a leitura enganosa de comparar uma casa nova
+  contra o nada. +9 testes de lógica. Validado por **smoke autenticado diferencial** (Zé margem 100%→50% por despesas, Ana 60%→80%,
+  Bob só em 2024): `?ano=2025` renderiza "🔴 1 casa apertando a margem · Casa do Zé margem 100% → 50% (−50 p.p.) · resultado
+  −R$ 500,00 · Maior avanço: Ana Prod +20 p.p.", com Bob AUSENTE (não voltou) e a visão "todos os anos" sem o card.
+- **Hipótese a validar:** o limiar `CONTACT_MARGIN_DROP_EPSILON`=0,05 (5 p.p.) para uma queda de margem contar como "aperto" material
+  é um chute de produto, alinhado aos demais epsilons de tendência (`GEO_TREND_EPSILON`/`LOSS_SHARE_TREND_EPSILON`=0,05). Parametrizável
+  (arg da função) para ajuste/teste. Signalizado em Bloqueios como os limiares irmãos.
+- **Alternativas consideradas:** (a) adicionar também a CONTAGEM de shows no vermelho por contratante (o outro lado do par) — exigiria
+  novos campos em `ContactProfitRow`; adiado, a margem é a manchete de "aperto" e mantém o unit fechado; (b) já entregar o export CSV
+  irmão — adiado como próximo passo (molde de `feeDistributionComparisonToCsv`), mantendo a sessão focada em tela; (c) fazer disso um
+  nudge no Painel — adiado (alt. b do próximo passo), a leitura por pessoa vive melhor na própria tela de contratantes.
+
 ## 2026-07-18 — D371: Nudges de rentabilidade do Painel contam só shows firmes (`lossShareRiseHeadline`/`portfolioMarginDropHeadline`)
 - **Contexto:** a D369 introduziu o recorte por natureza (`parseShowNature`/`filterShowsByNature`: "Todos os shows" não cancelados ×
   "Só confirmados/realizados", CONFIRMED+PLAYED) e as D369/D370 o aplicaram à distribuição de resultado e à tela-mãe de rentabilidade.
