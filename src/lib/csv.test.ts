@@ -155,6 +155,8 @@ import {
   bookingLeadTimeByContactToCsv,
   BOOKING_LEAD_TIME_BY_CONTACT_CSV_HEADERS,
   type BookingLeadTimeByContactCsvRow,
+  bookingLeadTimeComparisonToCsv,
+  BOOKING_LEAD_TIME_COMPARISON_CSV_HEADERS,
   staleProposalsToCsv,
   STALE_PROPOSALS_CSV_HEADERS,
   funnelActivityFeedToCsv,
@@ -174,6 +176,7 @@ import {
   findOpenWeekends,
   findScheduleConflicts,
   bookingLeadTime,
+  compareBookingLeadTime,
   funnelStageDurations,
   compareFunnelStageDurations,
   indexStageDurationChanges,
@@ -5471,6 +5474,67 @@ describe("bookingLeadTimeToCsv", () => {
     expect(lines[3]).toBe("1 a 3 meses;31;90;0;0%;0,00");
     expect(lines[4]).toBe("Mais de 3 meses;91;;1;33%;300,00");
     expect(lines[5]).toBe("Total;;;3;;600,00");
+  });
+});
+
+describe("bookingLeadTimeComparisonToCsv", () => {
+  // Constrói uma antecedência com médias/medianas limpas a partir de leads em dias.
+  const leadOf = (createdAt: string, leadDays: number[]) =>
+    bookingLeadTime(
+      leadDays.map((d) => {
+        const start = new Date(createdAt);
+        const date = new Date(start.getTime() + d * 24 * 60 * 60 * 1000);
+        return leadCsvShow({ createdAt, date: date.toISOString() });
+      }),
+    );
+
+  it("transpõe o comparativo em linhas por métrica + linha de veredito", () => {
+    // prev [10,20,30] → mediana/média 20; cur [30,40,50] → 40. Sobe > 7 dias → melhora.
+    const cmp = compareBookingLeadTime(
+      leadOf("2026-01-01T00:00:00.000Z", [30, 40, 50]),
+      leadOf("2025-01-01T00:00:00.000Z", [10, 20, 30]),
+    );
+    const lines = bookingLeadTimeComparisonToCsv(cmp).split("\r\n");
+    expect(lines[0]).toBe("Métrica;Ano anterior;Ano corrente;Δ;Δ %");
+    expect(lines[0]).toBe(BOOKING_LEAD_TIME_COMPARISON_CSV_HEADERS.join(";"));
+    expect(lines[1]).toBe("Antecedência mediana (dias);20;40;+20;+100%");
+    expect(lines[2]).toBe("Antecedência média (dias);20;40;+20;+100%");
+    expect(lines[3]).toBe("Shows na amostra;3;3;0;0%");
+    expect(lines[4]).toBe("Veredito;Agendando com mais folga;;;");
+  });
+
+  it("emite deltas e porcentagens negativos quando a antecedência cai", () => {
+    // prev mediana 40; cur mediana 10 → cai 30 dias → piora; amostra 4 → 2.
+    const cmp = compareBookingLeadTime(
+      leadOf("2026-01-01T00:00:00.000Z", [5, 15]),
+      leadOf("2025-01-01T00:00:00.000Z", [30, 40, 50, 60]),
+    );
+    const lines = bookingLeadTimeComparisonToCsv(cmp).split("\r\n");
+    expect(lines[1]).toBe("Antecedência mediana (dias);45;10;-35;-78%");
+    expect(lines[3]).toBe("Shows na amostra;4;2;-2;-50%");
+    expect(lines[4]).toBe("Veredito;Agendando em cima da hora;;;");
+  });
+
+  it("deixa o Δ % vazio quando o ano anterior não tem base (mediana 0)", () => {
+    // prev sem amostra → medianDays/avgDays/sample = 0; cur com amostra.
+    const cmp = compareBookingLeadTime(
+      leadOf("2026-01-01T00:00:00.000Z", [30, 40, 50]),
+      bookingLeadTime([]),
+    );
+    const lines = bookingLeadTimeComparisonToCsv(cmp).split("\r\n");
+    // Δ absoluto presente; Δ % (última coluna) vazio.
+    expect(lines[1]).toBe("Antecedência mediana (dias);0;40;+40;");
+    expect(lines[3]).toBe("Shows na amostra;0;3;+3;");
+  });
+
+  it("rotula o veredito estável quando a variação fica dentro do limiar", () => {
+    // prev mediana 20; cur mediana 22 → +2 dias (< 7) → estável.
+    const cmp = compareBookingLeadTime(
+      leadOf("2026-01-01T00:00:00.000Z", [12, 22, 32]),
+      leadOf("2025-01-01T00:00:00.000Z", [10, 20, 30]),
+    );
+    const lines = bookingLeadTimeComparisonToCsv(cmp).split("\r\n");
+    expect(lines[4]).toBe("Veredito;Estável;;;");
   });
 });
 

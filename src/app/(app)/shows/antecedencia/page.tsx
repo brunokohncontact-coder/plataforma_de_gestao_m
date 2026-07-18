@@ -206,6 +206,15 @@ export default async function BookingLeadTimePage({
               ⬇ CSV
             </a>
           )}
+          {comparison && (
+            <a
+              href={buildHref("/shows/antecedencia/comparativo/export")}
+              className="btn-secondary text-sm"
+              download
+            >
+              ⬇ CSV vs {previousYear}
+            </a>
+          )}
           <Link href="/shows" className="btn-secondary">
             ← Shows
           </Link>

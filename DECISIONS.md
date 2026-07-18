@@ -5,6 +5,36 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-17 — D363: Comparativo ano a ano da antecedência de agendamento no CSV (`/shows/antecedencia/comparativo/export`)
+- **Contexto:** a página `/shows/antecedencia` já mostra na tela, quando se escolhe um ano, o card "Antecedência {ano} vs.
+  {ano-1}" — a variação da antecedência mediana e da média de agendamento (em dias), mais um veredito de tendência (mais folga ×
+  em cima da hora), via `compareBookingLeadTime`/`BookingLeadTimeComparison`. Mas o único CSV do eixo
+  (`/shows/antecedencia/export`, `bookingLeadTimeToCsv`) exporta só a distribuição por faixa de um período isolado, sem nenhum
+  traço do "vs ano anterior". Quem baixa a antecedência para a própria planilha perde exatamente o comparativo YoY que vê na tela
+  — o mesmo buraco que a D361 (resumo anual) e a D362 (rentabilidade por show) fecharam nos seus eixos.
+- **Decisão:** adicionar um export IRMÃO `/shows/antecedencia/comparativo/export?ano=YYYY` (rota nova, sem tocar no export da
+  distribuição) que leva o comparativo para a planilha. Camada pura nova em `@/lib/csv`: `bookingLeadTimeComparisonToCsv` +
+  `BOOKING_LEAD_TIME_COMPARISON_CSV_HEADERS`. Como a rentabilidade por show (D362), o comparativo é um RESUMO de poucas métricas,
+  então a planilha é TRANSPOSTA: uma linha por métrica (antecedência mediana / antecedência média / shows na amostra) com o valor
+  do ano anterior, o do corrente, o Δ absoluto e o Δ relativo (%), seguida de uma linha "Veredito" com a tendência (o mesmo selo
+  ancorado na MEDIANA da UI). As três métricas são contagens (dias/shows), então o Δ sai de `csvSignedCount` e o Δ % de
+  `csvSignedPercent` sobre a base do ano anterior (helper `leadTimeYoyPct`), vazio quando o ano anterior não teve amostra. O gate
+  é o MESMO da página (um ano específico E ambos os períodos com amostra mensurável): sem isso, 404 (a mediana de amostra vazia é
+  0 e a comparação, enganosa). Preserva o `?escopo=` (todos × só firmes, D190). Um segundo link "⬇ CSV vs {ano-1}" aparece na
+  página só quando o card do comparativo aparece.
+- **Justificativa:** espelha o padrão já validado (`/shows/rentabilidade/comparativo/export` D362,
+  `/financas/anual/comparativo/export` D361 — gate por ano + 404, layout transposto para resumo de deltas) sem duplicar o que a
+  página já entrega na tela — leva a leitura YoY para onde ela some hoje (a planilha). Rota separada em vez de mudar a forma do
+  CSV da distribuição: consumidores automáticos do export existente não quebram. Ao contrário da rentabilidade, aqui as métricas
+  são dias (não dinheiro), então o Δ é contagem assinada e o Δ % é enriquecimento sobre a base do ano anterior (a UI mostra só o
+  Δ em dias; a planilha ganha o % para ordenação/filtro). Camada pura + testada, zero migração/dependência.
+- **Alternativas consideradas:** (a) enriquecer o próprio `/shows/antecedencia/export` com colunas do ano anterior — rejeitado:
+  mudaria a forma de um CSV já publicado, e o export da distribuição é por FAIXA (não há "faixa do ano anterior" que case linha a
+  linha com o comparativo, um resumo de medianas). (b) omitir o Δ % (só o Δ em dias, como a UI) — rejeitado: o % é barato de
+  computar e útil na planilha para comparar magnitudes de variação entre métricas com escalas diferentes; segue a coluna "Δ %"
+  do irmão de rentabilidade (D362) por consistência. (c) uma PÁGINA `/shows/antecedencia/comparativo` — rejeitado: a tela já
+  mostra os deltas; uma página duplicaria sem ganho.
+
 ## 2026-07-17 — D362: Comparativo ano a ano da rentabilidade por show no CSV (`/shows/rentabilidade/comparativo/export`)
 - **Contexto:** a página `/shows/rentabilidade` já mostra na tela, quando se escolhe um ano, o card "Resultado por show {ano} vs.
   {ano-1}" — a variação do resultado líquido MÉDIO por show (com %), do resultado TOTAL somado e da contagem de shows, mais um
