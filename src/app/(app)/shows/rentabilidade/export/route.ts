@@ -6,6 +6,8 @@ import {
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
+  parseShowNature,
+  filterShowsByNature,
   type TxLike,
 } from "@/lib/finance";
 import { showProfitToCsv } from "@/lib/csv";
@@ -50,7 +52,10 @@ export async function GET(req: NextRequest) {
     req.nextUrl.searchParams.get("ano") ?? undefined,
     availableYears,
   );
-  const periodShows = filterShowsByYear(shows, yearFilter);
+  // Recorte por natureza (D369): "todos" × só firmes (CONFIRMED+PLAYED), espelhando
+  // a página `/shows/rentabilidade`. Filtra antes de agregar.
+  const nature = parseShowNature(req.nextUrl.searchParams.get("natureza") ?? undefined);
+  const periodShows = filterShowsByNature(filterShowsByYear(shows, yearFilter), nature);
 
   const report = rankShowsByProfit(periodShows, txs);
   const csv = showProfitToCsv(report.rows);
@@ -58,7 +63,8 @@ export async function GET(req: NextRequest) {
   // BOM UTF-8 para preservar acentuação ao abrir no Excel.
   const body = "\uFEFF" + csv;
   const suffix = yearFilter === "all" ? "todos" : String(yearFilter);
-  const filename = `rentabilidade-shows-${suffix}.csv`;
+  const natureSuffix = nature === "firm" ? "-firmes" : "";
+  const filename = `rentabilidade-shows-${suffix}${natureSuffix}.csv`;
 
   return new NextResponse(body, {
     status: 200,

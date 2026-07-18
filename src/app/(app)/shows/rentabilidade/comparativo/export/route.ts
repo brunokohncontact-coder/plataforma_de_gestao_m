@@ -7,6 +7,8 @@ import {
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
+  parseShowNature,
+  filterShowsByNature,
   type TxLike,
 } from "@/lib/finance";
 import { showsProfitabilityComparisonToCsv } from "@/lib/csv";
@@ -65,10 +67,20 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  // Recorte por natureza (D369): "todos" × só firmes (CONFIRMED+PLAYED),
+  // espelhando a página. Aplicado aos dois anos (a foto firme dos dois lados).
+  const nature = parseShowNature(req.nextUrl.searchParams.get("natureza") ?? undefined);
+
   // Recorta o ano atual e o anterior do mesmo acervo já carregado (zero I/O
   // extra), espelhando a página.
-  const report = rankShowsByProfit(filterShowsByYear(shows, yearFilter), txs);
-  const previousReport = rankShowsByProfit(filterShowsByYear(shows, yearFilter - 1), txs);
+  const report = rankShowsByProfit(
+    filterShowsByNature(filterShowsByYear(shows, yearFilter), nature),
+    txs,
+  );
+  const previousReport = rankShowsByProfit(
+    filterShowsByNature(filterShowsByYear(shows, yearFilter - 1), nature),
+    txs,
+  );
 
   // Mesmo gate do card na página: só há comparativo com shows nos dois anos
   // (senão o resultado médio por show do ano vazio seria 0 e a comparação
@@ -85,7 +97,8 @@ export async function GET(req: NextRequest) {
 
   // BOM UTF-8 para preservar acentuação ao abrir no Excel.
   const body = "﻿" + csv;
-  const filename = `rentabilidade-shows-comparativo-${yearFilter}-vs-${yearFilter - 1}.csv`;
+  const natureSuffix = nature === "firm" ? "-firmes" : "";
+  const filename = `rentabilidade-shows-comparativo-${yearFilter}-vs-${yearFilter - 1}${natureSuffix}.csv`;
 
   return new NextResponse(body, {
     status: 200,
