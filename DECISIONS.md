@@ -5,6 +5,41 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-18 — D367: Nudge de "mais shows no vermelho" no Painel (`lossShareRiseHeadline`)
+- **Contexto:** a D366 entregou o comparativo ano a ano da distribuição de resultado por show (a fração da carteira NO VERMELHO
+  subiu ou caiu de um ano para o outro), mas esse veredito só vivia na tela `/shows/rentabilidade/distribuicao`. A própria D366
+  registrou como próximo passo (alternativa d) o eco desse sinal no Painel, no espírito dos nudges de "piora" irmãos
+  (`feeDropHeadline`/D274, `feePremiumErosionHeadline`/D293): quando uma fatia maior dos gigs passa a dar prejuízo, é uma decisão
+  acionável ("revise cachês e despesas dessas casas") que merece banner no dashboard, não só uma tela a visitar.
+- **Decisão:** `lossShareRiseHeadline(comparison, minSample=3, criticalPoints=0,20)` em `@/lib/finance` — camada pura, recebe uma
+  `ShowResultDistributionComparison` já computada (as duas distribuições) e decide se o Painel deve alertar. `show` só quando o
+  veredito é de PIORA (`trend === "worsened"`, que já embute o limiar `LOSS_SHARE_TREND_EPSILON`=0,05 da D366) **e** ambos os anos
+  têm ≥ `minSample` shows analisados (`LOSS_SHARE_RISE_MIN_SAMPLE`=3); `critical` quando a fração no vermelho sobe ≥ `criticalPoints`
+  (`LOSS_SHARE_RISE_CRITICAL_POINTS`=0,20 = 20 p.p.). Devolve as frações e contagens no vermelho dos dois anos + o prejuízo somado do
+  atual, para a moldura textual. No Painel (`/dashboard`), reaproveita os shows já carregados: recorta por ano UTC (D108), roda
+  `rankShowsByProfit → showResultDistribution` sobre o ano corrente e o anterior, compara com `compareShowResultDistribution` (D366)
+  e renderiza o banner (âmbar/vermelho por `critical`) com link para `/shows/rentabilidade/distribuicao?ano=`. Só a PIORA acende
+  banner; menos shows no vermelho é boa notícia e não precisa de aviso. **+7 testes** (`finance.test.ts`: piora material com moldura,
+  crítico no limiar de 20 p.p., alta material não-crítica, melhora/estável não disparam, amostra fina suprime, limiares
+  parametrizáveis).
+- **Justificativa:** fecha o par tela↔Painel do eixo de distribuição de resultado, como já existe no eixo de cachê (a tela
+  `/shows/faixas-de-cache` tem `feeDropHeadline`/`feePremiumErosionHeadline` no Painel). Reusa 100% da lógica da D366/D365 (uma só
+  fonte de verdade), sem I/O extra no dashboard (os shows/transações já vêm na consulta existente). Camada pura + wiring, zero
+  migração de schema, zero dependência nova (`npm audit` inalterado: 10 advisories, 4 moderate/5 high/1 critical). Segue a disciplina
+  dos nudges irmãos: raro por gate (só piora material com amostra confiável), mutuamente informativo com a tela de detalhe.
+- **Alternativas consideradas:** (a) ancorar o gate no crescimento do PREJUÍZO SOMADO (R$) em vez da fração no vermelho — rejeitado:
+  um único show com despesa alta infla o prejuízo somado sem que a carteira esteja mais doente; a fração no vermelho é a leitura
+  robusta e é a que a D366 já elegeu como veredito. (b) disparar também na MELHORA (fração no vermelho caindo), como um banner
+  verde de "boa notícia" — rejeitado: o Painel é uma fila de decisões acionáveis; uma melhora não pede ação, e um banner a mais
+  competiria por atenção com os alertas que pedem. (c) limiar crítico duplo (pontos + piso de nº de shows) — desnecessário:
+  `lossShareDelta` já é normalizado (0..1) e o gate de `minSample` já garante amostra; um limiar único em pontos percentuais basta.
+- **Hipóteses a validar:** `LOSS_SHARE_RISE_CRITICAL_POINTS`=0,20 (quantos pontos de alta da fração no vermelho contam como piora
+  "crítica") e o herdado `LOSS_SHARE_TREND_EPSILON`=0,05 (materialidade da tendência, D366) são **hipóteses** — o que conta como
+  piora "material/crítica" da saúde da carteira varia por circuito e custo fixo; validar com músicos reais (registrado nos Bloqueios
+  do PROGRESS).
+- **Nota de concorrência:** número **D367** escolhido como o próximo livre acima do maior D mergeado na `main` (D366, PR #402); sem
+  PRs abertas no momento. Se outra PR reivindicar D367 antes do merge, renumerar para o próximo livre.
+
 ## 2026-07-18 — D366: Comparativo ano a ano da distribuição de resultado por show (`/shows/rentabilidade/distribuicao/comparativo/export` + card)
 - **Contexto:** a D365 entregou a distribuição de resultado por show (a saúde da carteira de gigs num período: quantos shows no
   vermelho, com margem magra ou saudável), mas deixou explícito como "adiado, próximo passo" o comparativo ANO A ANO — a leitura de

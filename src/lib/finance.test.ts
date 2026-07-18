@@ -121,6 +121,7 @@ import {
   indexFeeBandShareChanges,
   feeDropHeadline,
   feePremiumErosionHeadline,
+  lossShareRiseHeadline,
   premiumBandShare,
   type FeeDistribution,
   weekdayPerformanceYears,
@@ -8086,6 +8087,92 @@ describe("feePremiumErosionHeadline", () => {
     const cmp = compareFeeDistribution(current, previous);
     expect(feePremiumErosionHeadline(cmp).show).toBe(true);
     expect(feePremiumErosionHeadline(cmp, 3, 0.25).show).toBe(false); // exige 25 p.p.
+  });
+});
+
+describe("lossShareRiseHeadline", () => {
+  const report = (shows: ShowLike[], txs: TxLike[] = []) => rankShowsByProfit(shows, txs);
+  const dist = (shows: ShowLike[], txs: TxLike[] = []) =>
+    showResultDistribution(report(shows, txs));
+
+  // N shows de fee 100; cada despesa vinculada decide a faixa (≥100 => vermelho).
+  const carteira = (...expenses: number[]) => {
+    const shows: ShowLike[] = expenses.map((_, i) => ({
+      id: `s${i}`,
+      fee: 100_00,
+      status: "PLAYED",
+    }));
+    const txs: TxLike[] = expenses.map((amount, i) =>
+      tx({ type: "EXPENSE", amount, showId: `s${i}` }),
+    );
+    return dist(shows, txs);
+  };
+
+  it("mais shows no vermelho de forma material → show, com moldura", () => {
+    // anterior: 1 de 4 no vermelho (25%); atual: 3 de 4 (75%) → +50 p.p.
+    const previous = carteira(200_00, 0, 0, 0);
+    const current = carteira(200_00, 200_00, 200_00, 0);
+    const head = lossShareRiseHeadline(compareShowResultDistribution(current, previous));
+    expect(head.show).toBe(true);
+    expect(head.critical).toBe(true); // 50 p.p. ≥ 20 → crítico
+    expect(head.lossSharePrevious).toBeCloseTo(0.25, 5);
+    expect(head.lossShareCurrent).toBeCloseTo(0.75, 5);
+    expect(head.lossShareDelta).toBeCloseTo(0.5, 5);
+    expect(head.lossCountPrevious).toBe(1);
+    expect(head.lossCountCurrent).toBe(3);
+    expect(head.lossNetCurrent).toBe(-300_00); // 3 × (100 − 200)
+    expect(head.currentShows).toBe(4);
+    expect(head.previousShows).toBe(4);
+  });
+
+  it("alta material mas abaixo de 20 p.p. → show, não crítico", () => {
+    // anterior 1/10 = 10%; atual 3/10 = 30% → +20 p.p. exatos… usar +10 p.p.
+    const previous = carteira(200_00, 0, 0, 0, 0, 0, 0, 0, 0, 0); // 10%
+    const current = carteira(200_00, 200_00, 0, 0, 0, 0, 0, 0, 0, 0); // 20% → +10 p.p.
+    const head = lossShareRiseHeadline(compareShowResultDistribution(current, previous));
+    expect(head.show).toBe(true);
+    expect(head.critical).toBe(false);
+    expect(head.lossShareDelta).toBeCloseTo(0.1, 5);
+  });
+
+  it("crítico exatamente no limiar de 20 p.p.", () => {
+    // anterior 0/5 = 0%; atual 1/5 = 20% → +20 p.p. exatos (≥ criticalPoints).
+    const previous = carteira(0, 0, 0, 0, 0);
+    const current = carteira(200_00, 0, 0, 0, 0);
+    const head = lossShareRiseHeadline(compareShowResultDistribution(current, previous));
+    expect(head.lossShareDelta).toBeCloseTo(0.2, 5);
+    expect(head.critical).toBe(true);
+  });
+
+  it("menos shows no vermelho (melhora) → não vira nudge", () => {
+    const previous = carteira(200_00, 200_00, 200_00, 0); // 75%
+    const current = carteira(200_00, 0, 0, 0); // 25%
+    const head = lossShareRiseHeadline(compareShowResultDistribution(current, previous));
+    expect(head.show).toBe(false);
+    expect(head.lossShareDelta).toBeLessThan(0);
+  });
+
+  it("variação dentro do limiar (estável) → não dispara", () => {
+    const previous = carteira(200_00, 0, 0, 0); // 25%
+    const current = carteira(200_00, 0, 0, 0); // 25% → delta 0
+    const head = lossShareRiseHeadline(compareShowResultDistribution(current, previous));
+    expect(head.show).toBe(false);
+  });
+
+  it("amostra fina em um dos anos suprime o nudge mesmo com piora material", () => {
+    const previous = carteira(0, 0); // só 2 shows (< minSample)
+    const current = carteira(200_00, 200_00); // 100% no vermelho, mas 2 shows
+    const head = lossShareRiseHeadline(compareShowResultDistribution(current, previous));
+    expect(head.show).toBe(false);
+    expect(head.currentShows).toBe(2);
+  });
+
+  it("limiares parametrizáveis: criticalPoints maior rebaixa o crítico", () => {
+    const previous = carteira(0, 0, 0, 0, 0); // 0%
+    const current = carteira(200_00, 200_00, 0, 0, 0); // 40% → +40 p.p.
+    const cmp = compareShowResultDistribution(current, previous);
+    expect(lossShareRiseHeadline(cmp).critical).toBe(true); // 40 ≥ 20 padrão
+    expect(lossShareRiseHeadline(cmp, 3, 0.5).critical).toBe(false); // exige 50 p.p.
   });
 });
 
