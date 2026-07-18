@@ -4,7 +4,32 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 379 — NUDGE NO PAINEL "UMA CASA ESTÁ APERTANDO A MARGEM" (`contactMarginSqueezeHeadline`, D374):**
+**Sessão 380 — COMPARATIVO DE MARGEM POR PAPEL DO CONTRATANTE ANO A ANO: "que tipo de canal aperta a margem" (`compareRoleMargins`, D375):**
+a Sessão 379/D374 fechou o eixo por PESSOA da margem ano a ano (comparativo por contratante → card → export → nudge no Painel) e
+registrou como próximo passo (alt. a) "o mesmo cruzamento no eixo de PAPEL do contratante (`rankRolesByProfit`, que TIPO de comprador
+aperta)". Esta sessão o entrega. A tela `/contatos/rentabilidade/por-papel` já compara a CONCENTRAÇÃO por papel ano a ano
+(`compareRoleConcentration`), mas não a MARGEM — a outra metade da pergunta de rentabilidade por canal. **(1)** camada pura em
+`src/lib/finance.ts`: `compareRoleMargins(current, previous, epsilon=ROLE_MARGIN_DROP_EPSILON)` — rollup por papel de
+`compareContactMargins`/D372. Recebe duas `rankRolesByProfit` já computadas e cruza os papéis presentes nos DOIS anos por `role` (um
+canal novo/sumido não "apertou"; grupo "sem contratante" `role: null` ignorado — não é canal renegociável); devolve `marginDelta`
+(pontos) e `netDelta` (centavos) + contagens dos dois anos, ordena por aperto (marginDelta crescente, empate determinístico),
+`worstDrop`/`bestGain`/`squeezedCount` só nas variações materiais (além de `ROLE_MARGIN_DROP_EPSILON`=0,05 = 5 p.p., literal e não
+referência p/ evitar o temporal dead zone com `CONTACT_MARGIN_DROP_EPSILON` declarada mais adiante). **(2)** wiring puro na página
+`por-papel/page.tsx`: reusa a `previousReport` (`rankRolesByProfit` do ano anterior) já carregada para a comparação de concentração —
+**zero consulta nova** — e renderiza o card `<RoleMarginComparisonCard>` (só com ano específico E ≥1 papel em comum) abaixo do card de
+concentração, listando os canais que apertaram (rótulo do papel → margem ano-1 → ano, Δ p.p., Δ resultado assinado), "Maior avanço" e
+nota de escopo. Espelha o card por contratante (D372/D373) num eixo de papel. **+10 testes** de lógica (`finance.test.ts`: cruza só
+papéis nos dois anos, agrega por papel e não por contratante, ignora "sem contratante", deltas assinados, ordenação por aperto,
+worstDrop/bestGain/squeezedCount materiais, fronteira do limiar, ruído abaixo do limiar, vazio sem comum, limiar customizado). Camada
+pura + wiring; zero migração/dependência. DoD verde: `npm run build` (a página compila; sem rota nova), `npx tsc --noEmit`,
+`npm run lint` (0 warnings), `npm test` (**2088 testes**); smoke → `/login` 200, `/contatos/rentabilidade/por-papel?ano=2025`
+307→/login (auth-gated); `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, ZERO dependência nova), ver D375.
+**Próximo possível** — (a) export CSV irmão do comparativo de margem por papel (`…/por-papel/comparativo-margem/export`, molde de
+`contactMarginComparisonToCsv`/D373); (b) adicionar a CONTAGEM de shows no vermelho por papel/contratante (o outro lado do par
+contagem↔margem); (c) levar o recorte por natureza (todos × só firmes) ao eixo de papel (tela + este card em conjunto, a consistência
+futura da D374). O limiar `ROLE_MARGIN_DROP_EPSILON`(D375) é **hipótese** (ver Bloqueios). Fora deste eixo, segue como único pendente do
+backup a restauração por MERGE (ALTO risco, revisão humana).
+**Antes disso, Sessão 379 — NUDGE NO PAINEL "UMA CASA ESTÁ APERTANDO A MARGEM" (`contactMarginSqueezeHeadline`, D374):**
 a Sessão 378/D373 fechou o par tela↔export do comparativo de margem por contratante e registrou como próximo passo (alt. a) "ecoar o
 'quais casas apertam' como nudge no Painel — a pessoa específica, não só a carteira agregada (D367/D368)". Esta sessão o entrega. Os
 dois nudges de rentabilidade do Painel falam da carteira INTEIRA (`lossShareRiseHeadline`/D367 = contagem no vermelho;
@@ -6989,5 +7014,9 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   contratante precisa cair de um ano para o outro para contar como "aperto" material, alimentando `worstDrop`/`squeezedCount`) em
   `src/lib/finance.ts` é **hipótese**, alinhada aos demais epsilons de tendência (`GEO_TREND_EPSILON`/`LOSS_SHARE_TREND_EPSILON`=0,05).
   O que é uma piora relevante de margem numa relação varia por casa/circuito. Parametrizável (arg da função). Validar com músicos.
+- **Comparativo de margem por PAPEL (D375)**: `ROLE_MARGIN_DROP_EPSILON`=0,05 (5 p.p. — quanto a margem líquida de um TIPO de canal
+  precisa cair de um ano para o outro para contar como "aperto" material, alimentando `worstDrop`/`squeezedCount`) em `src/lib/finance.ts`
+  é **hipótese**, mesmo valor dos epsilons irmãos (`CONTACT_MARGIN_DROP_EPSILON`/D372, `GEO_TREND_EPSILON`, `LOSS_SHARE_TREND_EPSILON`).
+  O que é uma piora relevante de margem num canal inteiro varia por circuito/gênero. Parametrizável (arg da função). Validar com músicos.
 - **Segurança em produção**: definir `AUTH_SECRET` forte e migrar para PostgreSQL antes
   de qualquer deploy real. Revisar advisories do Next (D6) e planejar upgrade p/ Next 15+.

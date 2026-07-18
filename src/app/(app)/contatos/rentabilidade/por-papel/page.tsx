@@ -5,6 +5,7 @@ import {
   rankRolesByProfit,
   roleConcentration,
   compareRoleConcentration,
+  compareRoleMargins,
   MIN_MEDIAN_FEE_SAMPLE,
   showProfitYears,
   parseProfitYear,
@@ -14,6 +15,7 @@ import {
   type ContactProfitContact,
   type RoleConcentration,
   type RoleConcentrationComparison,
+  type RoleMarginComparison,
 } from "@/lib/finance";
 import { pickPayerContact } from "@/lib/billing";
 import { formatMoney } from "@/lib/money";
@@ -96,6 +98,7 @@ export default async function RoleProfitabilityPage({
   // caso contrário a leitura "melhorou/piorou" seria enganosa. Reaproveita o
   // mesmo recorte por ano UTC (D108) sobre os shows já carregados (sem nova consulta).
   let roleComparison: RoleConcentrationComparison | null = null;
+  let marginComparison: RoleMarginComparison | null = null;
   let previousYear = 0;
   if (yearFilter !== "all") {
     previousYear = yearFilter - 1;
@@ -112,6 +115,11 @@ export default async function RoleProfitabilityPage({
         previousConcentration,
       );
     }
+    // Quais TIPOS de comprador apertaram a margem (D375): cruza os papéis
+    // presentes nos dois anos. Só exibe se houver ao menos um em comum — senão a
+    // leitura é vazia. Reusa a `previousReport` já computada (sem nova consulta).
+    const margins = compareRoleMargins(report, previousReport);
+    if (margins.comparedCount > 0) marginComparison = margins;
   }
 
   const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
@@ -225,6 +233,14 @@ export default async function RoleProfitabilityPage({
           {roleComparison && (
             <RoleComparisonCard
               comparison={roleComparison}
+              currentYear={yearFilter as number}
+              previousYear={previousYear}
+            />
+          )}
+
+          {marginComparison && (
+            <RoleMarginComparisonCard
+              comparison={marginComparison}
               currentYear={yearFilter as number}
               previousYear={previousYear}
             />
@@ -529,6 +545,87 @@ function RoleComparisonCard({
         </div>
       </div>
       <p className="mt-3 text-xs opacity-90">{trend.note}</p>
+    </div>
+  );
+}
+
+/**
+ * Card "Margem por papel {ano} vs. {ano-1}": dos TIPOS de comprador que voltaram
+ * de um ano para o outro, quais apertaram a margem líquida (cachês achatados,
+ * despesas maiores) — a decisão acionável "que tipo de canal está achatando o
+ * cachê". Rollup por papel do card por contratante (D372/D373); usa
+ * `compareRoleMargins` (D375). Só papel presente nos dois anos entra.
+ */
+function RoleMarginComparisonCard({
+  comparison,
+  currentYear,
+  previousYear,
+}: {
+  comparison: RoleMarginComparison;
+  currentYear: number;
+  previousYear: number;
+}) {
+  const { squeezedCount, comparedCount, changes, bestGain } = comparison;
+  const squeezed = changes.filter((c) => c.marginDelta < 0).slice(0, 5);
+  const anySqueeze = squeezedCount > 0;
+  const classes = anySqueeze
+    ? "border-red-200 bg-red-50 text-red-800"
+    : "border-emerald-200 bg-emerald-50 text-emerald-800";
+  return (
+    <div className={"card border " + classes}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide opacity-80">
+          Margem por papel {currentYear} vs. {previousYear}
+        </p>
+        <span className="badge bg-white/70 font-semibold">
+          {anySqueeze
+            ? `🔴 ${squeezedCount} ${squeezedCount === 1 ? "canal apertando" : "canais apertando"} a margem`
+            : "🟢 Nenhum canal apertou a margem"}
+        </span>
+      </div>
+
+      {squeezed.length > 0 ? (
+        <ul className="mt-3 space-y-2">
+          {squeezed.map((c) => (
+            <li
+              key={c.role}
+              className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5"
+            >
+              <span className="font-medium">{roleLabel(c.role)}</span>
+              <span className="text-sm">
+                margem {pct(c.previousMargin)} → {pct(c.currentMargin)}{" "}
+                <strong>({deltaPp(c.marginDelta)})</strong>
+                <span className="opacity-70">
+                  {" · "}
+                  resultado {c.netDelta >= 0 ? "+" : "−"}
+                  {formatMoney(Math.abs(c.netDelta))}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-3 text-sm opacity-90">
+          Nenhum dos {comparedCount}{" "}
+          {comparedCount === 1 ? "papel comparado" : "papéis comparados"} teve a
+          margem cair de forma relevante em relação ao ano anterior.
+        </p>
+      )}
+
+      {bestGain && (
+        <p className="mt-3 text-xs opacity-90">
+          Maior avanço: <strong>{roleLabel(bestGain.role)}</strong> ganhou{" "}
+          {deltaPp(bestGain.marginDelta)} de margem ({pct(bestGain.previousMargin)}{" "}
+          → {pct(bestGain.currentMargin)}).
+        </p>
+      )}
+
+      <p className="mt-3 text-xs opacity-80">
+        Compara só os papéis presentes nos dois anos ({comparedCount}{" "}
+        {comparedCount === 1 ? "papel" : "papéis"}). Margem = resultado líquido ÷
+        receita bruta; uma queda pode vir de cachê menor ou de mais despesas. Um
+        rollup do comparativo por contratante — vale renegociar o canal inteiro.
+      </p>
     </div>
   );
 }

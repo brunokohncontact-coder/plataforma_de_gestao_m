@@ -21,6 +21,8 @@ import {
   rankRolesByProfit,
   roleConcentration,
   compareRoleConcentration,
+  compareRoleMargins,
+  ROLE_MARGIN_DROP_EPSILON,
   clientConcentration,
   clientConcentrationHeadline,
   geoConcentration,
@@ -1592,6 +1594,158 @@ describe("compareRoleConcentration", () => {
     const cmp = compareRoleConcentration(cur, prev);
     expect(cmp.current).toBe(cur);
     expect(cmp.previous).toBe(prev);
+  });
+});
+
+describe("compareRoleMargins", () => {
+  const VENUE = (id: string) => ({ id, name: `Casa ${id}`, role: "VENUE" });
+  const PROMOTER = (id: string) => ({ id, name: `Prod ${id}`, role: "PROMOTER" });
+  const BOOKER = (id: string) => ({ id, name: `Book ${id}`, role: "BOOKER" });
+
+  // Constrói uma `rankRolesByProfit` a partir de shows brutos + despesas, como a
+  // UI por período. Margem de cada papel = net / receita bruta agregada.
+  const reportFor = (
+    shows: ShowLike[],
+    payers: Record<string, { id: string; name: string; role: string } | null>,
+    txs: TxLike[] = [],
+  ) => rankRolesByProfit(shows, txs, (s: ShowLike) => payers[s.id] ?? null);
+
+  // Ano ATUAL: VENUE apertou (margem 1,0 → 0,5), PROMOTER melhorou (0,6 → 0,8);
+  // BOOKER só aparece agora (canal novo); "sem contratante" em ambos.
+  const current = () =>
+    reportFor(
+      [
+        { id: "cv", fee: 100_00, status: "PLAYED" }, // VENUE: −50 → net 50, margem 0,5
+        { id: "cp", fee: 100_00, status: "PLAYED" }, // PROMOTER: −20 → net 80, margem 0,8
+        { id: "cb", fee: 100_00, status: "PLAYED" }, // BOOKER (só ano atual)
+        { id: "cs", fee: 30_00, status: "PLAYED" }, // sem contratante
+      ],
+      { cv: VENUE("v1"), cp: PROMOTER("p1"), cb: BOOKER("b1"), cs: null },
+      [
+        tx({ type: "EXPENSE", amount: 50_00, showId: "cv" }),
+        tx({ type: "EXPENSE", amount: 20_00, showId: "cp" }),
+      ],
+    );
+
+  // Ano ANTERIOR: VENUE margem 1,0; PROMOTER margem 0,6; PRODUCER só antes (sumiu).
+  const previous = () =>
+    reportFor(
+      [
+        { id: "pv", fee: 100_00, status: "PLAYED" }, // VENUE: net 100, margem 1,0
+        { id: "pp", fee: 100_00, status: "PLAYED" }, // PROMOTER: −40 → net 60, margem 0,6
+        { id: "pd", fee: 100_00, status: "PLAYED" }, // PRODUCER (só ano anterior)
+        { id: "ps", fee: 30_00, status: "PLAYED" }, // sem contratante
+      ],
+      {
+        pv: VENUE("v9"), // mesmo PAPEL VENUE, contratante diferente — agrega junto
+        pp: PROMOTER("p1"),
+        pd: { id: "d1", name: "Dir", role: "PRODUCER" },
+        ps: null,
+      },
+      [tx({ type: "EXPENSE", amount: 40_00, showId: "pp" })],
+    );
+
+  it("cruza só os papéis presentes nos dois anos (ignora novos e sumidos)", () => {
+    const cmp = compareRoleMargins(current(), previous());
+    const roles = cmp.changes.map((c) => c.role);
+    expect(roles).toEqual(["VENUE", "PROMOTER"]); // BOOKER (novo) e PRODUCER (sumiu) fora
+    expect(cmp.comparedCount).toBe(2);
+  });
+
+  it("agrega por PAPEL, não por contratante (casas diferentes do mesmo papel juntam)", () => {
+    // VENUE é v1 no ano atual e v9 no anterior — contratantes distintos, mesmo
+    // papel: o cruzamento é por `role`, então VENUE aparece nos dois anos.
+    const cmp = compareRoleMargins(current(), previous());
+    const venue = cmp.changes.find((c) => c.role === "VENUE")!;
+    expect(venue.previousMargin).toBeCloseTo(1.0);
+    expect(venue.currentMargin).toBeCloseTo(0.5);
+  });
+
+  it("ignora o grupo 'sem contratante' (não é canal renegociável)", () => {
+    const cmp = compareRoleMargins(current(), previous());
+    expect(cmp.changes.every((c) => c.role != null)).toBe(true);
+  });
+
+  it("calcula a variação de margem e de resultado com sinal", () => {
+    const cmp = compareRoleMargins(current(), previous());
+    const venue = cmp.changes.find((c) => c.role === "VENUE")!;
+    expect(venue.marginDelta).toBeCloseTo(-0.5); // apertou
+    expect(venue.netDelta).toBe(-50_00); // 50 − 100
+    expect(venue.currentShowCount).toBe(1);
+    expect(venue.previousShowCount).toBe(1);
+    const promoter = cmp.changes.find((c) => c.role === "PROMOTER")!;
+    expect(promoter.marginDelta).toBeCloseTo(0.2); // melhorou
+    expect(promoter.netDelta).toBe(20_00); // 80 − 60
+  });
+
+  it("ordena por aperto (marginDelta crescente): a maior queda primeiro", () => {
+    const cmp = compareRoleMargins(current(), previous());
+    expect(cmp.changes[0].role).toBe("VENUE"); // −0,5
+    expect(cmp.changes[1].role).toBe("PROMOTER"); // +0,2
+  });
+
+  it("aponta worstDrop/bestGain e conta squeezedCount só nas variações materiais", () => {
+    const cmp = compareRoleMargins(current(), previous());
+    expect(cmp.worstDrop!.role).toBe("VENUE");
+    expect(cmp.bestGain!.role).toBe("PROMOTER");
+    expect(cmp.squeezedCount).toBe(1); // só VENUE caiu além do limiar
+  });
+
+  it("usa exatamente o limiar como fronteira do aperto (−ε conta)", () => {
+    // VENUE: margem 1,0 (net 100) → 0,95 (net 95) = −0,05 == −ε.
+    const cur = reportFor(
+      [{ id: "cv", fee: 100_00, status: "PLAYED" }],
+      { cv: VENUE("v1") },
+      [tx({ type: "EXPENSE", amount: 5_00, showId: "cv" })],
+    );
+    const prev = reportFor([{ id: "pv", fee: 100_00, status: "PLAYED" }], {
+      pv: VENUE("v1"),
+    });
+    const cmp = compareRoleMargins(cur, prev);
+    expect(cmp.changes[0].marginDelta).toBeCloseTo(-ROLE_MARGIN_DROP_EPSILON);
+    expect(cmp.squeezedCount).toBe(1);
+    expect(cmp.worstDrop!.role).toBe("VENUE");
+  });
+
+  it("variação abaixo do limiar não vira aperto nem ganho (ruído)", () => {
+    // VENUE: margem 1,0 → 0,98 (−0,02, dentro do limiar).
+    const cur = reportFor(
+      [{ id: "cv", fee: 100_00, status: "PLAYED" }],
+      { cv: VENUE("v1") },
+      [tx({ type: "EXPENSE", amount: 2_00, showId: "cv" })],
+    );
+    const prev = reportFor([{ id: "pv", fee: 100_00, status: "PLAYED" }], {
+      pv: VENUE("v1"),
+    });
+    const cmp = compareRoleMargins(cur, prev);
+    expect(cmp.comparedCount).toBe(1);
+    expect(cmp.squeezedCount).toBe(0);
+    expect(cmp.worstDrop).toBeNull();
+    expect(cmp.bestGain).toBeNull();
+  });
+
+  it("devolve vazio quando não há papel em comum", () => {
+    const cur = reportFor([{ id: "cv", fee: 100_00, status: "PLAYED" }], {
+      cv: VENUE("v1"),
+    });
+    const prev = reportFor([{ id: "pp", fee: 100_00, status: "PLAYED" }], {
+      pp: PROMOTER("p1"),
+    });
+    const cmp = compareRoleMargins(cur, prev);
+    expect(cmp.changes).toEqual([]);
+    expect(cmp.comparedCount).toBe(0);
+    expect(cmp.worstDrop).toBeNull();
+    expect(cmp.bestGain).toBeNull();
+    expect(cmp.squeezedCount).toBe(0);
+  });
+
+  it("respeita um limiar customizado (parametrizável para teste/ajuste)", () => {
+    const cmp = compareRoleMargins(current(), previous(), 0.6);
+    // VENUE caiu 0,5 < 0,6 ⇒ não conta mais como aperto material.
+    expect(cmp.squeezedCount).toBe(0);
+    expect(cmp.worstDrop).toBeNull();
+    // A ordenação e o cruzamento seguem: VENUE continua primeiro.
+    expect(cmp.changes[0].role).toBe("VENUE");
   });
 });
 
