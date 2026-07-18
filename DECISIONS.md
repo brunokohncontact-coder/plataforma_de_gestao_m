@@ -5,6 +5,39 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-18 — D370: Recorte por natureza (todos × só firmes) na tela-mãe de rentabilidade (`/shows/rentabilidade`)
+- **Contexto:** a D369 introduziu o recorte por natureza (`parseShowNature`/`filterShowsByNature`: "Todos os shows" não cancelados ×
+  "Só confirmados/realizados", CONFIRMED+PLAYED) e o aplicou à distribuição de resultado (`/shows/rentabilidade/distribuicao`). A
+  própria D369 registrou como próximo passo (alternativa b) "ecoar o recorte também no Painel/na tela-mãe de rentabilidade". A
+  tela-mãe `/shows/rentabilidade` (lista de rentabilidade por show + comparativo ano a ano `compareShowsProfitability` + seus dois
+  exports CSV) ainda contava TODOS os shows não cancelados, misturando propostas em aberto (P&L = expectativa) com o resultado firme.
+- **Decisão:** wiring **puro** — nenhuma lógica nova em `@/lib/finance` (reusa 100% da camada testada da D369). Na página
+  `src/app/(app)/shows/rentabilidade/page.tsx`: `<NaturePicker>` idêntico ao da distribuição (mesmas pílulas/estilo/`aria`),
+  `parseShowNature(searchParams.natureza)`, `filterShowsByNature` aplicado ao ano corrente E ao anterior do comparativo (a foto firme
+  dos dois lados). Helper local `buildQuery({nature?})` centraliza a montagem de `?ano=&natureza=` (omite os padrões `all`), usado no
+  `NaturePicker`, nos dois exports e no link "📉 Distribuição" (que já entende `?natureza=`); o `PeriodPicker` recebe
+  `params={ natureza }` para preservar o recorte ao trocar de ano. Subtítulo reflete o recorte ativo. Nas rotas
+  `rentabilidade/export/route.ts` e `rentabilidade/comparativo/export/route.ts`: leem `?natureza=`, aplicam o mesmo filtro antes de
+  agregar (comparativo: nos dois anos, mantendo o gate de 404 quando um dos anos fica sem shows) e acrescentam o sufixo `-firmes` no
+  nome do arquivo. O seletor de ANO segue oferecendo os anos de toda a carteira (não recomputa por natureza): trocar para "firmes"
+  num ano sem firmes cai no estado vazio, como qualquer período sem shows — mesma decisão consciente da D369.
+- **Justificativa:** a tela-mãe é a porta de entrada do eixo de rentabilidade; ter o recorte só na distribuição (uma tela-filha)
+  deixava a leitura principal ("quais shows deram dinheiro") sem separar proposta incerta de resultado firme. Reusar `NaturePicker`/
+  `buildQuery`/os helpers puros mantém uma única definição de "firme" e de montagem de query no eixo. É recorte FACTUAL (status do
+  show), não heurística — não entra em Bloqueios. Zero migração, zero dependência nova (`npm audit` inalterado: 10 advisories,
+  4 moderate/5 high/1 critical). Nenhum teste novo: a camada pura já tem os +7 testes da D369 e esta sessão é só fiação de UI/rotas
+  (validada por smoke autenticado: `?ano=2025` exporta 2 shows/margem 73%, `?ano=2025&natureza=firm` exporta só o firme/margem 100%,
+  arquivo `-firmes`).
+- **Alternativas consideradas:** (a) ecoar também no Painel nesta mesma sessão — adiado: o Painel tem dois nudges de rentabilidade
+  (`lossShareRiseHeadline`/`portfolioMarginDropHeadline`) que precisam decidir se o recorte é um seletor de dashboard ou um default;
+  merece sessão própria. Esta fecha a tela-mãe (a metade mais direta do próximo passo da D369). (b) fatorar o `NaturePicker` num
+  componente compartilhado (`@/components`) em vez de duplicar o server component nas duas páginas — adiado: são ~25 linhas triviais e
+  sem estado; extrair agora acopla duas telas por um componente que ainda pode divergir (rótulos, `params`). Reavaliar quando/se o
+  Painel também precisar dele (aí três usos justificam a extração). (c) resetar `natureza` no link "Ver todos os anos" do estado
+  vazio (hoje volta a `/shows/rentabilidade` sem parâmetros) — mantido como reset total, espelhando a distribuição (D369).
+- **Nota de concorrência:** número **D370** escolhido como o próximo livre acima do maior D mergeado na `main` (D369, PR #405); sem
+  PRs abertas no momento. Se outra PR reivindicar D370 antes do merge, renumerar para o próximo livre.
+
 ## 2026-07-18 — D369: Recorte por natureza (todos × só firmes) na distribuição de resultado (`parseShowNature`/`filterShowsByNature`)
 - **Contexto:** a distribuição de resultado por show (`/shows/rentabilidade/distribuicao`, D365) e seu comparativo ano a ano (D366)
   contavam TODOS os shows não cancelados — inclusive PROPOSTAS ainda em aberto, cujo P&L é uma expectativa, não um resultado

@@ -4,7 +4,32 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 374 — RECORTE POR NATUREZA (TODOS × SÓ FIRMES) NA DISTRIBUIÇÃO DE RESULTADO (`parseShowNature`/`filterShowsByNature`, D369):**
+**Sessão 375 — RECORTE POR NATUREZA (TODOS × SÓ FIRMES) NA TELA-MÃE DE RENTABILIDADE (`/shows/rentabilidade` + seus dois exports, D370):**
+a Sessão 374/D369 levou o recorte "Todos os shows × Só confirmados/realizados" (`parseShowNature`/`filterShowsByNature`) à
+distribuição de resultado (`/shows/rentabilidade/distribuicao`) e registrou como próximo passo (alt. b) "ecoar o recorte por natureza
+no Painel e na tela-mãe de rentabilidade". Esta sessão fecha a metade da **tela-mãe** `/shows/rentabilidade`: a lista de rentabilidade
+por show e seu comparativo ano a ano contavam TODOS os shows não cancelados — inclusive PROPOSTAS em aberto, cujo P&L é expectativa,
+não resultado realizado. Feature de **wiring puro** (a camada pura `parseShowNature`/`filterShowsByNature` já existe e está testada,
+D369 +7 testes; nada novo em `@/lib/finance`). **(1)** página `src/app/(app)/shows/rentabilidade/page.tsx`: novo `<NaturePicker>`
+(pílulas "Todos os shows" × "Só confirmados/realizados", idêntico ao da distribuição), `?natureza=firm` aplicado ao ano corrente E ao
+anterior do comparativo, preservado nos links do `PeriodPicker` (via `params`), nos dois exports CSV e no link "📉 Distribuição"
+(que já entende o parâmetro); subtítulo reflete o recorte ativo. Helper `buildQuery({nature?})` centraliza a montagem de `?ano=&natureza=`
+(omite os padrões `all`). **(2)** `rentabilidade/export/route.ts` e `rentabilidade/comparativo/export/route.ts` leem `?natureza=` e
+aplicam o mesmo filtro antes de agregar (comparativo: nos dois anos); arquivos ganham sufixo `-firmes`. O seletor de ANO segue
+oferecendo os anos de toda a carteira — trocar para "firmes" num ano sem firmes cai no estado vazio (mesma decisão consciente da D369).
+DoD verde: `npm run build` (rotas compilam; sem rota nova), `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test`
+(**2060 testes**, inalterado — wiring de camada já testada); smoke → `/login` 200, `/shows/rentabilidade` e `?natureza=firm`
+307→/login (auth-gated); **smoke autenticado** (usuário demo, ano 2025 com 1 CONFIRMED lucrativo + 1 PROPOSED que dá resultado
+menor) → `?ano=2025` (todos) exporta **2 shows, total R$ 2.200, margem 73%**; `?ano=2025&natureza=firm` exporta **1 show (só o
+firme), total R$ 2.000, margem 100%** [filename `…-2025-firmes.csv`] — o recorte separa a proposta incerta da foto firme; a página
+`?natureza=firm` renderiza o `NaturePicker` + o subtítulo "só shows confirmados/realizados" e preserva `natureza=firm` nos links; o
+comparativo export 404 quando 2024 está vazio (gate preservado); `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical,
+ZERO dependência nova), ver D370. **Próximo possível** — (a) ecoar o mesmo recorte no **Painel** (o outro lado do próximo passo da
+D369, os nudges de rentabilidade `lossShareRiseHeadline`/`portfolioMarginDropHeadline` hoje contam propostas); (b) o par
+contagem↔margem no eixo por CONTRATANTE (D368 alt. b, quais casas apertam a margem); (c) recomputar os anos disponíveis por natureza
+(adiado desde a D369, o estado vazio já é claro). Fora deste eixo, segue como único pendente do backup a restauração por MERGE
+(ALTO risco, revisão humana).
+**Antes disso, Sessão 374 — RECORTE POR NATUREZA (TODOS × SÓ FIRMES) NA DISTRIBUIÇÃO DE RESULTADO (`parseShowNature`/`filterShowsByNature`, D369):**
 a distribuição de resultado por show (`/shows/rentabilidade/distribuicao`, D365) e seu comparativo ano a ano (D366) contavam TODOS os
 shows não cancelados — inclusive PROPOSTAS em aberto, cujo P&L é expectativa, não resultado realizado. As D365/D366 registraram como
 próximo passo adiado o "recorte por natureza (só shows firmes × todos)"; esta sessão o entrega, espelhando o `BookingLeadTimeScope`
