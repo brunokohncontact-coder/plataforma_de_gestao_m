@@ -4,7 +4,31 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 371 — COMPARATIVO ANO A ANO DA DISTRIBUIÇÃO DE RESULTADO POR SHOW (`/shows/rentabilidade/distribuicao/comparativo/export` +
+**Sessão 372 — NUDGE DE "MAIS SHOWS NO VERMELHO" NO PAINEL (`lossShareRiseHeadline`, D367):** a Sessão 371/D366 entregou o
+comparativo ano a ano da distribuição de resultado por show (a fração da carteira NO VERMELHO subiu ou caiu de um ano para o outro),
+mas esse veredito só vivia na tela `/shows/rentabilidade/distribuicao`; a própria D366 registrou como próximo passo (alt. d) o eco
+desse sinal no Painel, no espírito dos nudges de "piora" irmãos (`feeDropHeadline`/D274, `feePremiumErosionHeadline`/D293). **(1)**
+camada pura em `src/lib/finance.ts`: `lossShareRiseHeadline(comparison, minSample=3, criticalPoints=0,20)` recebe uma
+`ShowResultDistributionComparison` já computada (D366) e decide se o Painel deve alertar — `show` só quando o veredito é de PIORA
+(`trend === "worsened"`, que já embute `LOSS_SHARE_TREND_EPSILON`=0,05) **e** ambos os anos têm ≥ `minSample` shows analisados
+(`LOSS_SHARE_RISE_MIN_SAMPLE`=3); `critical` quando a fração no vermelho sobe ≥ `criticalPoints` (`LOSS_SHARE_RISE_CRITICAL_POINTS`=
+0,20 = 20 p.p.); devolve as frações/contagens no vermelho dos dois anos + o prejuízo somado do atual para a moldura. Só a PIORA
+acende banner — menos shows no vermelho é boa notícia e não precisa de aviso. **(2)** wiring no Painel (`src/app/(app)/dashboard/page.tsx`):
+reaproveita os shows/transações já carregados, recorta por ano UTC (D108), roda `rankShowsByProfit → showResultDistribution` sobre o
+ano corrente e o anterior, compara com `compareShowResultDistribution` (D366) e renderiza o banner (âmbar/vermelho por `critical`)
+com link para `/shows/rentabilidade/distribuicao?ano=`, logo abaixo do banner de erosão premium. **+7 testes** de lógica
+(`finance.test.ts`: piora material com moldura, crítico no limiar de 20 p.p., alta material não-crítica, melhora/estável não
+disparam, amostra fina suprime, limiares parametrizáveis). Camada pura + wiring; zero migração/dependência. DoD verde:
+`npm run build` (Painel compila; sem rota nova), `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**2045 testes**);
+smoke → `/login` 200, `/dashboard` 307→/login (auth-gated); **smoke autenticado** (token de usuário demo, 4 shows em 2025 com 1 no
+vermelho + 4 em 2026 com 3 no vermelho) → Painel renderiza o banner crítico "🔴 Mais shows no vermelho / A fatia de shows que deu
+prejuízo subiu de 25% para 75% (3 de 4 shows, -R$ 300,00) de 2025 para 2026"; `npm audit` inalterado (10 advisories: 4 moderate/5
+high/1 critical, ZERO dependência nova), ver D367. **Próximo possível** — (a) recorte por natureza (só shows firmes × todos) na
+distribuição de resultado (adiado desde a D365/D366); (b) o mesmo tipo de nudge para a margem AGREGADA da carteira caindo (não só a
+contagem no vermelho). Os limiares `LOSS_SHARE_RISE_CRITICAL_POINTS`(D367), 15%/40% das faixas (D365) e `LOSS_SHARE_TREND_EPSILON`
+(D366) são **hipóteses** (ver Bloqueios). Fora deste eixo, segue como único pendente do backup a restauração por MERGE (ALTO risco,
+revisão humana); ou próximas sessões podem evoluir outra feature maior.
+**Antes disso, Sessão 371 — COMPARATIVO ANO A ANO DA DISTRIBUIÇÃO DE RESULTADO POR SHOW (`/shows/rentabilidade/distribuicao/comparativo/export` +
 card na página + `compareShowResultDistribution`/`showResultDistributionComparisonToCsv`, D366):** a Sessão 370/D365 entregou a
 distribuição de resultado por show (a saúde da carteira num período), mas deixou explícito como "adiado, próximo passo" o comparativo
 ANO A ANO — a leitura de TENDÊNCIA ("a fatia de shows no vermelho melhorou ou piorou de um ano para o outro?"), no molde de
@@ -6777,5 +6801,9 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   variação mínima da fração de shows no vermelho para o comparativo ano a ano virar veredito "melhorou/piorou"
   em vez de "estável") em `src/lib/finance.ts` é **hipótese** — quanto de oscilação da fatia no vermelho conta
   como tendência vs. ruído de amostra não foi medido com uso real. Validar com músicos antes de virar premissa fixa.
+- **Nudge de mais shows no vermelho no Painel (D367)**: `LOSS_SHARE_RISE_CRITICAL_POINTS`=0,20 (a alta da fração de shows no
+  vermelho, em pontos, que faz o nudge virar crítico/vermelho) em `src/lib/finance.ts` é **hipótese** — quanto de aumento da fatia
+  no prejuízo conta como piora "crítica" da saúde da carteira varia por circuito e custo fixo do músico. Herda também o
+  `LOSS_SHARE_TREND_EPSILON`=0,05 (materialidade da tendência, D366). Validar com músicos antes de virar premissa fixa.
 - **Segurança em produção**: definir `AUTH_SECRET` forte e migrar para PostgreSQL antes
   de qualquer deploy real. Revisar advisories do Next (D6) e planejar upgrade p/ Next 15+.

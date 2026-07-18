@@ -45,6 +45,10 @@ import {
   compareFeeDistribution,
   feeDropHeadline,
   feePremiumErosionHeadline,
+  rankShowsByProfit,
+  showResultDistribution,
+  compareShowResultDistribution,
+  lossShareRiseHeadline,
   rankContactsByProfit,
   clientConcentration,
   clientConcentrationHeadline,
@@ -364,6 +368,24 @@ export default async function DashboardPage() {
   // (mutuamente exclusivo com feeDropHead, para não somar um segundo banner de
   // cachê ao Painel). Detalhe em /shows/faixas-de-cache.
   const feePremiumErosionHead = feePremiumErosionHeadline(feeComparison);
+
+  // Mais shows no vermelho (D367): "uma fatia maior da minha carteira passou a dar
+  // prejuízo de um ano para o outro?". Reaproveita os shows já carregados: recorta
+  // por ano UTC (D108), roda a mesma distribuição de resultado da tela
+  // /shows/rentabilidade/distribuicao (rankShowsByProfit → showResultDistribution)
+  // sobre o ano corrente e o anterior e compara a fração NO VERMELHO
+  // (compareShowResultDistribution/D366). Vira nudge só quando essa fração de fato
+  // SUBIU de forma material com amostra confiável nos dois anos (lossShareRiseHeadline
+  // → trend "worsened" + ≥ minSample shows cada) — a decisão acionável "revise cachês
+  // e despesas dessas casas"; menos shows no vermelho é boa notícia e não precisa de
+  // banner. O detalhe está em /shows/rentabilidade/distribuicao.
+  const showResultComparison = compareShowResultDistribution(
+    showResultDistribution(rankShowsByProfit(filterShowsByYear(shows, currentYear) as ShowLike[], txs)),
+    showResultDistribution(
+      rankShowsByProfit(filterShowsByYear(shows, currentYear - 1) as ShowLike[], txs),
+    ),
+  );
+  const lossShareRiseHead = lossShareRiseHeadline(showResultComparison);
 
   // Concentração de clientes (D109): "quanto da minha receita depende de poucos
   // contratantes?". Reaproveita os shows (com contatos) e transações já carregados;
@@ -1246,6 +1268,37 @@ export default async function DashboardPage() {
             reforçar os contratantes de topo.
           </span>
           <span className={feePremiumErosionHead.critical ? "text-red-600" : "text-amber-600"}>
+            Ver →
+          </span>
+        </Link>
+      )}
+
+      {/* Mais shows no vermelho (D367): a fatia da carteira que dá prejuízo cresceu
+          vs. o ano passado — o eco do comparativo da distribuição de resultado (D366)
+          no Painel. Só aparece quando essa fração de fato subiu de forma material com
+          amostra confiável nos dois anos. Vermelho quando a alta atinge 20 p.p. */}
+      {lossShareRiseHead.show && (
+        <Link
+          href={`/shows/rentabilidade/distribuicao?ano=${currentYear}`}
+          className={
+            "flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3 text-sm transition " +
+            (lossShareRiseHead.critical
+              ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100")
+          }
+        >
+          <span className="font-semibold">
+            {lossShareRiseHead.critical ? "🔴" : "🔻"} Mais shows no vermelho
+          </span>
+          <span>
+            A fatia de shows que deu prejuízo subiu de{" "}
+            <strong>{Math.round(lossShareRiseHead.lossSharePrevious * 100)}%</strong> para{" "}
+            <strong>{Math.round(lossShareRiseHead.lossShareCurrent * 100)}%</strong> ({" "}
+            {lossShareRiseHead.lossCountCurrent} de {lossShareRiseHead.currentShows} shows,{" "}
+            {formatMoney(lossShareRiseHead.lossNetCurrent)}) de {currentYear - 1} para {currentYear}.
+            Vale rever cachês e despesas dessas casas.
+          </span>
+          <span className={lossShareRiseHead.critical ? "text-red-600" : "text-amber-600"}>
             Ver →
           </span>
         </Link>

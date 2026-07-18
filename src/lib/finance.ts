@@ -8659,6 +8659,98 @@ export function feePremiumErosionHeadline(
   };
 }
 
+// ── Manchete de mais shows no vermelho para o Painel (a carteira piorou?) ────
+//
+// `showResultDistribution` (D365) fotografa a saúde da carteira — quantos shows
+// rodam no prejuízo — e `compareShowResultDistribution` (D366) já mede se a fração
+// NO VERMELHO subiu ou caiu de um ano para o outro, mas esse veredito só vivia na
+// tela `/shows/rentabilidade/distribuicao`. Este é o eco dele no Painel: quando a
+// fatia da carteira que dá prejuízo CRESCE de forma material, vira o nudge "revise
+// cachês/despesas dessas casas" — no espírito dos nudges de "piora" irmãos
+// (`feeDropHeadline`/D274, `feePremiumErosionHeadline`/D293). Só a piora acende
+// banner; menos shows no vermelho é boa notícia e não precisa de aviso. Ver
+// DECISIONS.md D367.
+
+/**
+ * Amostra mínima de shows analisados em CADA ano para o crescimento da fração no
+ * vermelho virar nudge — mesmo lastro de `PREMIUM_EROSION_MIN_SAMPLE`: abaixo disto
+ * um único show a mais no prejuízo move a fração sem significar tendência.
+ */
+export const LOSS_SHARE_RISE_MIN_SAMPLE = 3;
+
+/**
+ * Alta da fração no vermelho (em pontos de participação, 0..1) a partir da qual a
+ * piora entra na faixa crítica (vermelho): 0,20 = 20 p.p. a mais da carteira caiu
+ * no prejuízo. Acima do limiar de materialidade (`LOSS_SHARE_TREND_EPSILON`, que já
+ * decide o veredito "worsened") e no espírito da escalada `critical` dos nudges de
+ * cachê. **Hipótese** pelo mesmo motivo de `LOSS_SHARE_TREND_EPSILON` (ver acima);
+ * validar com uso real antes de virar premissa fixa.
+ */
+export const LOSS_SHARE_RISE_CRITICAL_POINTS = 0.2;
+
+export interface LossShareRiseHeadline {
+  /**
+   * Deve aparecer no Painel? Só quando a fração de shows no vermelho **subiu**
+   * materialmente de um ano para o outro (`trend === "worsened"` de
+   * `compareShowResultDistribution`, que já embute o limiar `LOSS_SHARE_TREND_EPSILON`)
+   * E ambos os anos têm amostra confiável (≥ `minSample` shows analisados cada). Com
+   * `improved`/`stable`, ou amostra fina em algum lado, o aviso seria ruído — mesma
+   * disciplina de `feePremiumErosionHeadline`/`feeDropHeadline`.
+   */
+  show: boolean;
+  /** Piora acentuada (fração no vermelho subiu ≥ `criticalPoints`)? */
+  critical: boolean;
+  /** Fração no vermelho do ano atual (0..1). */
+  lossShareCurrent: number;
+  /** Fração no vermelho do ano anterior (0..1). */
+  lossSharePrevious: number;
+  /** Variação da fração no vermelho (atual − anterior, pontos); ≥ 0 quando `show`. */
+  lossShareDelta: number;
+  /** Nº de shows no vermelho no ano atual (para a moldura textual). */
+  lossCountCurrent: number;
+  /** Nº de shows no vermelho no ano anterior. */
+  lossCountPrevious: number;
+  /** Prejuízo somado dos shows no vermelho no ano atual (centavos, ≤ 0). */
+  lossNetCurrent: number;
+  /** Shows analisados no ano atual (para a moldura textual). */
+  currentShows: number;
+  /** Shows analisados no ano anterior. */
+  previousShows: number;
+}
+
+/**
+ * Decide se o Painel deve alertar que uma fatia maior da carteira passou a dar
+ * prejuízo de um ano para o outro — o eco de `compareShowResultDistribution` (D366)
+ * no dashboard, no espírito dos nudges de "piora" de cachê (`feeDropHeadline`/D274,
+ * `feePremiumErosionHeadline`/D293). Recebe um comparativo já computado (as duas
+ * distribuições) e não faz I/O. `show` só quando o veredito é de PIORA
+ * (`trend === "worsened"`, que já embute `LOSS_SHARE_TREND_EPSILON`) **e** ambos os
+ * anos têm ≥ `minSample` shows analisados; `critical` quando a fração no vermelho
+ * sobe ≥ `criticalPoints`. Como os nudges irmãos, fica raro por gate. Pura.
+ */
+export function lossShareRiseHeadline(
+  comparison: ShowResultDistributionComparison,
+  minSample: number = LOSS_SHARE_RISE_MIN_SAMPLE,
+  criticalPoints: number = LOSS_SHARE_RISE_CRITICAL_POINTS,
+): LossShareRiseHeadline {
+  const { current, previous, lossShareDelta, trend } = comparison;
+  const reliable = current.count >= minSample && previous.count >= minSample;
+  const show = reliable && trend === "worsened";
+  const critical = show && lossShareDelta >= criticalPoints;
+  return {
+    show,
+    critical,
+    lossShareCurrent: current.lossShare,
+    lossSharePrevious: previous.lossShare,
+    lossShareDelta,
+    lossCountCurrent: current.lossCount,
+    lossCountPrevious: previous.lossCount,
+    lossNetCurrent: current.lossNet,
+    currentShows: current.count,
+    previousShows: previous.count,
+  };
+}
+
 // ── Cadência de shows (estou tocando mais ou menos ao longo do tempo?) ───────
 //
 // Responde "minha agenda está mais cheia?": conta os shows JÁ REALIZADOS (mesmo
