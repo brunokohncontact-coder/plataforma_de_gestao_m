@@ -546,11 +546,20 @@ function MarginComparisonCard({
         <p className="text-xs font-medium uppercase tracking-wide opacity-80">
           Margem por contratante {currentYear} vs. {previousYear}
         </p>
-        <span className="badge bg-white/70 font-semibold">
-          {anySqueeze
-            ? `🔴 ${squeezedCount} ${squeezedCount === 1 ? "casa apertando" : "casas apertando"} a margem`
-            : "🟢 Ninguém apertou a margem"}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="badge bg-white/70 font-semibold">
+            {anySqueeze
+              ? `🔴 ${squeezedCount} ${squeezedCount === 1 ? "casa apertando" : "casas apertando"} a margem`
+              : "🟢 Ninguém apertou a margem"}
+          </span>
+          <a
+            href={`/contatos/rentabilidade/comparativo-margem/export?ano=${currentYear}`}
+            className="badge bg-white/70 font-semibold hover:underline"
+            download
+          >
+            ⬇ CSV
+          </a>
+        </div>
       </div>
 
       {squeezed.length > 0 ? (

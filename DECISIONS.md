@@ -5,6 +5,36 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-18 — D373: Exportação CSV do comparativo de margem por contratante ("quais casas apertam a margem") (`contactMarginComparisonToCsv`)
+- **Contexto:** a D372 entregou o comparativo ano a ano da MARGEM por contratante (`compareContactMargins` + card
+  `<MarginComparisonCard>` em `/contatos/rentabilidade`) — dos contratantes que voltaram de um ano para o outro, quais apertaram a
+  margem líquida — e registrou como próximo passo (alt. a) o export CSV irmão. Os números do card (margem dos dois anos, Δ em pontos,
+  resultado somado e sua variação, quem apertou/ganhou) só viviam na tela; o export do ano existente (`contactProfitToCsv`) traz só a
+  foto do ano corrente, sem a margem do ano anterior nem a comparação.
+- **Decisão:** camada pura `contactMarginComparisonToCsv(comparison)` em `src/lib/csv.ts` + rota
+  `/contatos/rentabilidade/comparativo-margem/export?ano=YYYY`. A planilha é orientada a ITEM (uma linha por contratante presente nos
+  dois anos, molde de `cityProfitComparisonToCsv`/D120), preservando a ordem da comparação — o **maior aperto primeiro** (`marginDelta`
+  crescente). Colunas: Contratante, Papel, Margem (ano anterior/corrente) em %, Δ margem (p.p.), Resultado (ano anterior/corrente) em
+  R$, Δ resultado (R$), Shows (ano anterior/corrente), e "Situação" (Apertou a margem / Ganhou margem / Estável) classificada com a
+  mesma materialidade da lógica (`CONTACT_MARGIN_DROP_EPSILON`=0,05). **Sem linha "Total"**: margem é uma razão e não soma; a planilha
+  é o ranking de quem apertou/ganhou, não um agregado. A rota espelha o gate do card: exige um ano CONCRETO (`?ano=YYYY`, senão 404) E
+  ao menos um contratante em comum nos dois anos (`comparedCount === 0` → 404); anos concretos no NOME DO ARQUIVO
+  (`margem-contratantes-comparativo-{ano}-vs-{ano-1}.csv`), não nos cabeçalhos (mesma convenção dos irmãos). O link "⬇ CSV" fica no
+  cabeçalho do `<MarginComparisonCard>`, aparecendo só quando o card aparece.
+- **Justificativa:** completa o par tela↔export do eixo de margem por contratante, alinhado a todos os demais comparativos que já têm
+  export irmão (cachê/D292, distribuição/D366, cidade/D120). Camada pura + wiring; reusa `compareContactMargins` (D372) já testado e
+  zero migração/dependência (`npm audit` inalterado: 10 advisories, 4 moderate/5 high/1 critical). +3 testes de CSV. Validado por
+  **smoke autenticado diferencial** (Zé margem 100%→50%, Ana 60%→80%, Bob só em 2024): `?ano=2025` → 200, filename
+  `…-2025-vs-2024.csv`, linhas "Zé Produções;Produtor/Promoter;100%;50%;-50;100,00;50,00;-50,00;1;1;Apertou a margem" e
+  "Ana Booking;Contratante;60%;80%;+20;…;Ganhou margem", com **Bob ausente** (não voltou); sem `?ano` → 404 e `?ano=2024` (2023 vazio)
+  → 404 (gate preservado).
+- **Alternativas consideradas:** (a) planilha orientada a MÉTRICA (molde de `showResultDistributionComparisonToCsv`/D366, uma linha por
+  indicador) — descartada: o comparativo de margem é uma LISTA de contratantes, não um punhado de escalares, então o layout item-a-item
+  de `cityProfitComparisonToCsv` é o molde natural; (b) incluir linha "Total" — descartada: somar margens (razões) não tem sentido, e
+  o resultado somado dos dois anos já vive no card de concentração/na tela-mãe; (c) coluna "Situação" derivada de um trend embutido no
+  objeto `ContactMarginComparison` — preferido classificar no CSV com o mesmo `CONTACT_MARGIN_DROP_EPSILON` (a rota usa o default,
+  consistente com o card), evitando inchar o tipo puro.
+
 ## 2026-07-18 — D372: Comparativo de margem por contratante ano a ano — "quais casas apertam a margem" (`compareContactMargins`)
 - **Contexto:** a página `/contatos/rentabilidade` (`rankContactsByProfit`/D105) já compara o ano escolhido com o anterior, mas só a
   CONCENTRAÇÃO de clientes (`compareClientConcentration`/D139: de quem eu dependo — risco sobre a receita bruta). Faltava a outra
