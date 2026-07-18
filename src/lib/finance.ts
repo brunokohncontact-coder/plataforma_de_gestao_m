@@ -2219,6 +2219,137 @@ export function compareContactMargins(
   };
 }
 
+// ── Manchete "uma casa está apertando a margem" para o Painel (D374) ─────────
+//
+// Os nudges de rentabilidade do Painel `lossShareRiseHeadline` (D367, contagem) e
+// `portfolioMarginDropHeadline` (D368, margem agregada) falam da carteira INTEIRA:
+// "uma fatia maior deu prejuízo" / "cada real bruto sobra menos". Mas a carteira
+// pode estar saudável no agregado enquanto UMA casa recorrente — um contratante
+// importante que voltou — está silenciosamente achatando o seu cachê ou empurrando
+// mais despesas. Esse aperto pontual é diluído pela média e não acende os nudges
+// agregados; é justamente o que este destila, nomeando a casa: a leitura acionável
+// "renegocie cachê/despesas com essa casa específica". É o eco no Painel do
+// comparativo de margem por contratante (`compareContactMargins`/D372, tela
+// `/contatos/rentabilidade`) — granularidade de PESSOA, complementar (não
+// redundante) aos nudges agregados, por isso NÃO cede a vez a eles: os três podem
+// coexistir porque respondem perguntas diferentes (carteira × casa).
+//
+// Espelha o alvo do drill-down: `compareContactMargins` na tela de contratantes
+// opera sobre TODOS os shows do ano (não recorta por natureza), então o nudge lê a
+// mesma comparação — clicar "ver casa" mostra os mesmos números (ver D374; o
+// recorte por natureza no eixo de contratante fica como consistência futura).
+
+/**
+ * Nº mínimo de shows do contratante em CADA ano para o aperto virar nudge: 2.
+ * Uma casa com 1 show por ano tem margem ruidosa (uma despesa grande vira −50 p.p.);
+ * exigir repetição garante que é uma RELAÇÃO recorrente, não um gig isolado.
+ * **Hipótese** — o piso de recorrência pode variar por perfil de agenda; validar.
+ */
+export const CONTACT_SQUEEZE_MIN_SHOWS = 2;
+
+/**
+ * Queda mínima de margem (pontos, 0..1) do pior contratante para o nudge disparar:
+ * 0,10 = 10 p.p. a menos por real bruto, alinhado ao `MARGIN_DROP_MIN_POINTS` do
+ * nudge agregado (o `CONTACT_MARGIN_DROP_EPSILON`=0,05 que marca "material" no card
+ * é baixo demais para um alarme do Painel). **Hipótese** (ver acima).
+ */
+export const CONTACT_SQUEEZE_MIN_POINTS = 0.1;
+
+/**
+ * Queda de margem (pontos) a partir da qual o aperto entra na faixa crítica
+ * (vermelho): 0,20 = 20 p.p., espelhando a escalada `critical` dos nudges irmãos.
+ * **Hipótese** (ver acima).
+ */
+export const CONTACT_SQUEEZE_CRITICAL_POINTS = 0.2;
+
+export interface ContactMarginSqueezeHeadline {
+  /**
+   * Deve aparecer no Painel? Só quando o PIOR contratante (o de maior aperto no
+   * comparativo) caiu ≥ `minPoints` de margem E tem ≥ `minShows` shows em CADA ano
+   * (relação recorrente, não gig isolado). Sem contratante em aperto material, ou
+   * amostra fina, o aviso seria ruído — mesma disciplina dos nudges irmãos.
+   */
+  show: boolean;
+  /** Aperto acentuado (margem caiu ≥ `criticalPoints`)? */
+  critical: boolean;
+  /** Nome do contratante que mais apertou (para a moldura textual); "" se `!show`. */
+  contactName: string;
+  /** Papel do contratante (ex.: "Contratante"/"Produtor"); "" se `!show`. */
+  contactRole: string;
+  /** Margem líquida agregada da casa no ano atual (0..1; pode ser negativa). */
+  currentMargin: number;
+  /** Margem líquida agregada da casa no ano anterior (0..1). */
+  previousMargin: number;
+  /** Variação da margem (atual − anterior, pontos); ≤ 0 quando `show`. */
+  marginDelta: number;
+  /** Resultado líquido somado da casa no ano atual (centavos, para a moldura). */
+  currentNet: number;
+  /** Variação do resultado líquido da casa (atual − anterior, centavos, assinado). */
+  netDelta: number;
+  /** Nº de shows da casa no ano atual (para a moldura textual). */
+  currentShowCount: number;
+  /** Nº de shows da casa no ano anterior. */
+  previousShowCount: number;
+  /** Quantas casas apertaram a margem materialmente (para "e outras N"). */
+  squeezedCount: number;
+}
+
+const EMPTY_CONTACT_SQUEEZE: ContactMarginSqueezeHeadline = {
+  show: false,
+  critical: false,
+  contactName: "",
+  contactRole: "",
+  currentMargin: 0,
+  previousMargin: 0,
+  marginDelta: 0,
+  currentNet: 0,
+  netDelta: 0,
+  currentShowCount: 0,
+  previousShowCount: 0,
+  squeezedCount: 0,
+};
+
+/**
+ * Decide se o Painel deve alertar que UMA casa específica está apertando a margem —
+ * o eco por PESSOA do comparativo de margem por contratante (`compareContactMargins`
+ * /D372) no dashboard, complementar aos nudges agregados de rentabilidade (D367/D368).
+ * Recebe uma `ContactMarginComparison` já computada (cruzamento dos contratantes nos
+ * dois anos) e não faz I/O. `show` só quando o pior aperto (`worstDrop`) caiu ≥
+ * `minPoints` de margem E a casa tem ≥ `minShows` shows em CADA ano (relação
+ * recorrente); `critical` quando a queda atinge `criticalPoints`. Como os nudges
+ * irmãos, fica raro por gate. Pura.
+ */
+export function contactMarginSqueezeHeadline(
+  comparison: ContactMarginComparison,
+  minShows: number = CONTACT_SQUEEZE_MIN_SHOWS,
+  minPoints: number = CONTACT_SQUEEZE_MIN_POINTS,
+  criticalPoints: number = CONTACT_SQUEEZE_CRITICAL_POINTS,
+): ContactMarginSqueezeHeadline {
+  const worst = comparison.worstDrop;
+  if (!worst) return EMPTY_CONTACT_SQUEEZE;
+
+  const material = worst.marginDelta <= -minPoints;
+  const recurring =
+    worst.currentShowCount >= minShows && worst.previousShowCount >= minShows;
+  const show = material && recurring;
+  if (!show) return EMPTY_CONTACT_SQUEEZE;
+
+  return {
+    show: true,
+    critical: worst.marginDelta <= -criticalPoints,
+    contactName: worst.contact.name,
+    contactRole: worst.contact.role,
+    currentMargin: worst.currentMargin,
+    previousMargin: worst.previousMargin,
+    marginDelta: worst.marginDelta,
+    currentNet: worst.currentNet,
+    netDelta: worst.netDelta,
+    currentShowCount: worst.currentShowCount,
+    previousShowCount: worst.previousShowCount,
+    squeezedCount: comparison.squeezedCount,
+  };
+}
+
 // ── Recorte por período (ano) da rentabilidade por contratante ──────────────
 
 /** Valor do seletor de período: um ano específico ou "all" (sem recorte). */

@@ -5,6 +5,44 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-18 — D374: Nudge no Painel "uma casa está apertando a margem" (`contactMarginSqueezeHeadline`)
+- **Contexto:** os nudges de rentabilidade do Painel falam da carteira INTEIRA — `lossShareRiseHeadline` (D367, CONTAGEM: uma fatia
+  maior deu prejuízo) e `portfolioMarginDropHeadline` (D368, margem AGREGADA: cada real bruto sobra menos). A D372/D373 destilaram o
+  mesmo par por PESSOA na tela `/contatos/rentabilidade` (`compareContactMargins` + card + export), e a D373 registrou como próximo
+  passo (alt. a) "ecoar o 'quais casas apertam' como nudge no Painel". Uma carteira saudável no agregado pode esconder UMA casa
+  recorrente — um contratante importante que voltou — achatando o cachê / empurrando mais despesa; a média dilui esse caso pontual e
+  ele não acende os nudges agregados.
+- **Decisão:** `contactMarginSqueezeHeadline(comparison, minShows=2, minPoints=0,10, criticalPoints=0,20)` em `src/lib/finance.ts`:
+  função pura que recebe uma `ContactMarginComparison` já computada e nomeia o PIOR aperto (`worstDrop`). `show` só quando esse aperto
+  é **material** (`marginDelta ≤ −0,10` = 10 p.p., alinhado ao `MARGIN_DROP_MIN_POINTS` do nudge agregado; o
+  `CONTACT_MARGIN_DROP_EPSILON`=0,05 do card é baixo demais para um alarme) E **recorrente** (≥2 shows em CADA ano — uma casa de 1 show
+  tem margem ruidosa); `critical` a partir de 20 p.p. No Painel (`dashboard/page.tsx`) computa `rankContactsByProfit` do ano corrente ×
+  anterior (recorte por ano UTC/D108, reusando `getPayer`/shows/txs já carregados — zero consulta nova), roda `compareContactMargins` e
+  renderiza o banner (âmbar/vermelho) com link para `/contatos/rentabilidade?ano={ano}`, entre o nudge de margem agregada e o de
+  concentração. Texto nomeia a casa, margem ano-1 → ano, nº de shows, Δ resultado, e "e outras N casas também apertaram" quando
+  `squeezedCount > 1`. **Não cede a vez** aos nudges agregados (ao contrário do par D367↔D368): granularidade é diferente (casa ×
+  carteira), então os três podem coexistir — é justamente quando o agregado está calmo que o aperto de uma casa vira o sinal útil.
+- **Justificativa:** fecha o próximo passo da D373 com a leitura mais acionável do eixo ("renegocie com ESSA casa", não "a carteira
+  encolheu"). Camada pura + wiring; reusa `compareContactMargins` (D372) já testado; zero migração/dependência (`npm audit`
+  inalterado: 10 advisories, 4 moderate/5 high/1 critical). +6 testes de lógica. Validado por **smoke autenticado diferencial** (Casa
+  do Zé, 2 shows/ano, margem 100%→40%): Painel renderiza "🔴 Uma casa apertando a margem / Sua margem com Casa do Zé caiu de 100% para
+  40% (2 shows, −R$ 120,00 no resultado) de 2025 para 2026" — e o **nudge de margem agregada fica AUSENTE** (2 shows/ano < seu
+  `minSample`=3), demonstrando que o nudge por casa surge mesmo quando o agregado é suprimido por amostra fina; removidas as despesas
+  (sem aperto) → banner **desaparece**.
+- **Espelha a tela (sem recorte por natureza):** `compareContactMargins` na tela `/contatos/rentabilidade` opera sobre TODOS os shows
+  do ano (não firm-filtra, ao contrário dos nudges agregados D371). O nudge lê a MESMA comparação — assim os números batem quando o
+  usuário clica no drill-down. É uma exceção consciente à disciplina de "alarme = só resultado realizado" (D371): consistência do
+  drill-down pesa mais aqui. **Consistência futura:** levar o recorte por natureza (todos × só firmes) ao eixo de contratante (tela +
+  card + este nudge, em conjunto) fica registrado como pendência.
+- **Alternativas consideradas:** (a) ceder a vez aos nudges agregados quando eles disparam (mutuamente exclusivo, como D368 cede a
+  D367) — descartada: respondem perguntas diferentes (casa × carteira) e o valor do nudge por casa é maior justamente quando o
+  agregado NÃO fala; coexistir é o comportamento certo; (b) firm-filtrar como os nudges agregados (D371) — descartada por criar
+  mismatch com o drill-down (a tela mostra todos os shows); registrado como consistência futura a ser feita em conjunto; (c) `minShows`
+  = 1 (deixar casas de show único disparar) — descartada: margem de 1 show é ruidosa (uma despesa grande vira −50 p.p.), exigir
+  repetição garante que é uma RELAÇÃO; (d) reusar `CONTACT_MARGIN_DROP_EPSILON`=0,05 como piso do nudge — descartada: 5 p.p. é ruído
+  para um alarme do Painel, 10 p.p. alinha ao nudge agregado. Os limiares (`CONTACT_SQUEEZE_MIN_SHOWS/MIN_POINTS/CRITICAL_POINTS`) são
+  **hipótese** a validar com uso real.
+
 ## 2026-07-18 — D373: Exportação CSV do comparativo de margem por contratante ("quais casas apertam a margem") (`contactMarginComparisonToCsv`)
 - **Contexto:** a D372 entregou o comparativo ano a ano da MARGEM por contratante (`compareContactMargins` + card
   `<MarginComparisonCard>` em `/contatos/rentabilidade`) — dos contratantes que voltaram de um ano para o outro, quais apertaram a

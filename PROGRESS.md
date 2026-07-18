@@ -4,7 +4,36 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 378 — EXPORT CSV DO COMPARATIVO DE MARGEM POR CONTRATANTE ("quais casas apertam a margem", `contactMarginComparisonToCsv`, D373):**
+**Sessão 379 — NUDGE NO PAINEL "UMA CASA ESTÁ APERTANDO A MARGEM" (`contactMarginSqueezeHeadline`, D374):**
+a Sessão 378/D373 fechou o par tela↔export do comparativo de margem por contratante e registrou como próximo passo (alt. a) "ecoar o
+'quais casas apertam' como nudge no Painel — a pessoa específica, não só a carteira agregada (D367/D368)". Esta sessão o entrega. Os
+dois nudges de rentabilidade do Painel falam da carteira INTEIRA (`lossShareRiseHeadline`/D367 = contagem no vermelho;
+`portfolioMarginDropHeadline`/D368 = margem agregada); uma carteira saudável no agregado pode esconder UMA casa recorrente achatando o
+cachê. **(1)** camada pura em `src/lib/finance.ts`: `contactMarginSqueezeHeadline(comparison, minShows=2, minPoints=0,10,
+criticalPoints=0,20)` recebe uma `ContactMarginComparison` já computada (D372) e nomeia o PIOR aperto (`worstDrop`); `show` só quando
+material (`marginDelta ≤ −0,10` = 10 p.p., alinhado ao `MARGIN_DROP_MIN_POINTS`; o `CONTACT_MARGIN_DROP_EPSILON`=0,05 do card é baixo
+para alarme) E recorrente (≥2 shows em CADA ano — margem de 1 show é ruidosa); `critical` a partir de 20 p.p.; devolve a moldura
+(nome/papel da casa, margens dos dois anos, Δ resultado, contagens, `squeezedCount`). **(2)** wiring no Painel
+(`src/app/(app)/dashboard/page.tsx`): computa `rankContactsByProfit` do ano corrente × anterior (recorte por ano UTC/D108, reusando
+`getPayer`/shows/txs já carregados — zero consulta nova), roda `compareContactMargins` + `contactMarginSqueezeHeadline` e renderiza o
+banner (âmbar/vermelho por `critical`) com link `/contatos/rentabilidade?ano={ano}`, entre o nudge de margem agregada e o de
+concentração. **NÃO cede a vez** aos nudges agregados (ao contrário do par D367↔D368): granularidade diferente (casa × carteira), os
+três coexistem — é quando o agregado está calmo que o aperto de uma casa é o sinal útil. Espelha a tela (compara TODOS os shows do ano,
+sem recorte por natureza) para os números baterem no drill-down (ver D374; firm-filtrar o eixo de contratante em conjunto = pendência).
+**+6 testes** de lógica (`finance.test.ts`: nomeia a pior casa com moldura, sem comum não dispara, abaixo do piso do Painel não dispara,
+casa recorrente-fina suprimida por `minShows`, faixa âmbar entre 10 e 20 p.p., limiares customizados). Camada pura + wiring; zero
+migração/dependência. DoD verde: `npm run build` (Painel compila; sem rota nova), `npx tsc --noEmit`, `npm run lint` (0 warnings),
+`npm test` (**2078 testes**); smoke → `/login` 200, `/dashboard` 307→/login (auth-gated); **smoke autenticado diferencial** (Casa do Zé,
+2 shows/ano, margem 100%→40% por despesas) → Painel renderiza "🔴 Uma casa apertando a margem / Sua margem com Casa do Zé caiu de 100%
+para 40% (2 shows, −R$ 120,00 no resultado) de 2025 para 2026" **e o nudge de margem agregada fica AUSENTE** (2 shows/ano < seu
+`minSample`=3 — o nudge por casa surge mesmo com o agregado suprimido por amostra fina); removidas as despesas (sem aperto) → banner
+**desaparece**; `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, ZERO dependência nova), ver D374. **Próximo
+possível** — (a) o mesmo cruzamento no eixo de PAPEL do contratante (`rankRolesByProfit`, que tipo de comprador aperta); (b) adicionar a
+CONTAGEM de shows no vermelho por contratante (o outro lado do par contagem↔margem, exigiria novos campos em `ContactProfitRow`); (c)
+levar o recorte por natureza (todos × só firmes) ao eixo de contratante (tela + card + este nudge em conjunto, a consistência futura da
+D374). Os limiares `CONTACT_SQUEEZE_MIN_SHOWS/MIN_POINTS/CRITICAL_POINTS` (D374) são **hipótese** (ver Bloqueios). Fora deste eixo,
+segue como único pendente do backup a restauração por MERGE (ALTO risco, revisão humana).
+**Antes disso, Sessão 378 — EXPORT CSV DO COMPARATIVO DE MARGEM POR CONTRATANTE ("quais casas apertam a margem", `contactMarginComparisonToCsv`, D373):**
 a Sessão 377/D372 entregou o comparativo ano a ano da MARGEM por contratante (`compareContactMargins` + card `<MarginComparisonCard>`
 em `/contatos/rentabilidade`) e registrou como próximo passo (alt. a) o export CSV irmão. Esta sessão o fecha, completando o par
 tela↔export desse eixo (como cachê/D292, distribuição/D366, cidade/D120 já tinham). **(1)** camada pura `contactMarginComparisonToCsv(comparison)`
