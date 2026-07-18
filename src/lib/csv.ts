@@ -80,6 +80,7 @@ import {
   type BreakEvenAnalysis,
   type CityReengageList,
   type VenueReengageList,
+  type PaymentLagComparison,
 } from "./finance";
 import type {
   ClientRetention,
@@ -950,6 +951,80 @@ export function bookingLeadTimeComparisonToCsv(
     csvSignedPercent(leadTimeYoyPct(current.sample, previous.sample)),
   ]);
   out.push(["Veredito", BOOKING_LEAD_TIME_TREND_LABELS[comparison.trend], "", "", ""]);
+  return toCsv(out, delimiter);
+}
+
+// ── Comparativo ano a ano do prazo de recebimento / DSO (ano X vs. X-1) ──────
+
+export const PAYMENT_LAG_COMPARISON_CSV_HEADERS = [
+  "Métrica",
+  "Ano anterior",
+  "Ano corrente",
+  "Δ",
+  "Δ %",
+] as const;
+
+/**
+ * Rótulo pt-BR do veredito do comparativo de prazo de recebimento, espelhando o
+ * selo da UI (`PAYMENT_LAG_TREND` em `/shows/prazo-recebimento`). Ao contrário do
+ * booking lead time, aqui **descer** a mediana é a melhora (o cachê entra mais
+ * cedo), então "improved" = recebendo mais rápido.
+ */
+const PAYMENT_LAG_TREND_LABELS: Record<PaymentLagComparison["trend"], string> = {
+  improved: "Recebendo mais rápido",
+  worsened: "Recebendo mais devagar",
+  stable: "Estável",
+};
+
+/**
+ * Serializa o comparativo ano a ano do prazo de recebimento (DSO,
+ * `comparePaymentLag`) em CSV, pronto para download — espelha o card "Prazo de
+ * recebimento {ano} vs. {ano-1}" de `/shows/prazo-recebimento`, que hoje só vive
+ * na tela (os deltas da mediana e da média, mais o veredito), sem chegar à
+ * planilha do contador (o export do ranking, `paymentLagToCsv`, serializa um
+ * período só). Fecha o mesmo buraco tela↔export que os irmãos de resumo anual
+ * (D361), rentabilidade por show (D362) e antecedência (D363) fecharam nos seus
+ * eixos.
+ *
+ * Como os irmãos de rentabilidade/antecedência, o comparativo é um RESUMO de
+ * poucas métricas, então a planilha é transposta: uma linha por métrica (prazo
+ * mediano, prazo médio, shows analisados) com o valor do ano anterior, o do
+ * corrente, o Δ absoluto e o Δ relativo, seguida de uma linha "Veredito" com a
+ * tendência (o mesmo selo ancorado na MEDIANA que a UI mostra). As três métricas
+ * são contagens (dias/shows), então o Δ sai de `csvSignedCount` ("+12"/"-1"/"0")
+ * e o Δ % de `csvSignedPercent` sobre a base do ano anterior (`leadTimeYoyPct`,
+ * genérico: `(atual − anterior) / anterior`), vazio quando o ano anterior tem
+ * base 0. Os anos concretos entram no NOME DO ARQUIVO (como os irmãos). Convenção
+ * pt-BR (";"). Pura.
+ */
+export function paymentLagComparisonToCsv(
+  comparison: PaymentLagComparison,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const { current, previous, medianDaysDelta, avgDaysDelta } = comparison;
+  const out: string[][] = [Array.from(PAYMENT_LAG_COMPARISON_CSV_HEADERS)];
+  out.push([
+    "Prazo mediano (dias)",
+    String(previous.medianDays),
+    String(current.medianDays),
+    csvSignedCount(medianDaysDelta),
+    csvSignedPercent(leadTimeYoyPct(current.medianDays, previous.medianDays)),
+  ]);
+  out.push([
+    "Prazo médio (dias)",
+    String(previous.avgDays),
+    String(current.avgDays),
+    csvSignedCount(avgDaysDelta),
+    csvSignedPercent(leadTimeYoyPct(current.avgDays, previous.avgDays)),
+  ]);
+  out.push([
+    "Shows analisados",
+    String(previous.showCount),
+    String(current.showCount),
+    csvSignedCount(current.showCount - previous.showCount),
+    csvSignedPercent(leadTimeYoyPct(current.showCount, previous.showCount)),
+  ]);
+  out.push(["Veredito", PAYMENT_LAG_TREND_LABELS[comparison.trend], "", "", ""]);
   return toCsv(out, delimiter);
 }
 

@@ -5,6 +5,41 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-18 — D364: Comparativo ano a ano do prazo de recebimento (DSO) no CSV (`/shows/prazo-recebimento/comparativo/export`)
+- **Contexto:** a página `/shows/prazo-recebimento` já mostra na tela, quando se escolhe um ano, o card "Prazo de recebimento
+  {ano} vs. {ano-1}" — a variação do prazo MEDIANO e do MÉDIO de recebimento (DSO, em dias), mais um veredito de tendência
+  (recebendo mais rápido × mais devagar), via `comparePaymentLag`/`PaymentLagComparison`. Mas o único CSV do eixo
+  (`/shows/prazo-recebimento/export`, `paymentLagToCsv`) exporta só o ranking por show de um período isolado, sem nenhum traço do
+  "vs ano anterior". Quem baixa o prazo de recebimento para a planilha do contador perde exatamente o comparativo YoY que vê na
+  tela — o mesmo buraco que a D361 (resumo anual), a D362 (rentabilidade por show) e a D363 (antecedência) fecharam nos seus
+  eixos. É o mesmo padrão, aplicado agora ao eixo de DSO — a única série temporal do app que exibia o card de comparativo na tela
+  mas ainda não o levava à planilha.
+- **Decisão:** adicionar um export IRMÃO `/shows/prazo-recebimento/comparativo/export?ano=YYYY` (rota nova, sem tocar no export do
+  ranking) que leva o comparativo para a planilha. Camada pura nova em `@/lib/csv`: `paymentLagComparisonToCsv` +
+  `PAYMENT_LAG_COMPARISON_CSV_HEADERS`. Como os irmãos de rentabilidade/antecedência, o comparativo é um RESUMO de poucas
+  métricas, então a planilha é TRANSPOSTA: uma linha por métrica (prazo mediano / prazo médio / shows analisados) com o valor do
+  ano anterior, o do corrente, o Δ absoluto e o Δ relativo (%), seguida de uma linha "Veredito" com a tendência (o mesmo selo
+  ancorado na MEDIANA da UI — aqui **descer** o prazo é a melhora, então "improved" = "Recebendo mais rápido"). As três métricas
+  são contagens (dias/shows), então o Δ sai de `csvSignedCount` e o Δ % de `csvSignedPercent` sobre a base do ano anterior
+  (reúsa o helper genérico `leadTimeYoyPct` — `(atual − anterior)/anterior`), vazio quando o ano anterior tem base 0. O gate é o
+  MESMO da página (um ano específico E ambos os períodos com cachê recebido, `showCount > 0`): sem isso, 404 (a mediana de amostra
+  vazia é 0 e a comparação, enganosa). Um segundo link "⬇ CSV vs {ano-1}" aparece na página só quando o card do comparativo
+  aparece (mesmo gate `comparison`).
+- **Justificativa:** espelha o padrão já validado três sessões seguidas (D361/D362/D363 — gate por ano + 404, layout transposto
+  para resumo de deltas, link secundário condicional) sem duplicar o que a página já entrega na tela — leva a leitura YoY para
+  onde ela some hoje (a planilha). Rota separada em vez de mudar a forma do CSV do ranking: consumidores automáticos do export
+  existente não quebram. Como a antecedência (D363), as métricas são dias (não dinheiro), então o Δ é contagem assinada e o Δ %
+  é enriquecimento sobre a base do ano anterior (a UI mostra só o Δ em dias; a planilha ganha o % para ordenação/filtro).
+  Reusa `leadTimeYoyPct`/`csvSignedPercent`/`csvSignedCount` já testados — o mesmo tipo de reúso transversal que o arquivo já faz
+  com esses helpers. Camada pura + testada, zero migração/dependência.
+- **Alternativas consideradas:** (a) incluir o Δ % mesmo com o card da tela mostrando só o Δ em dias — mantido, para a planilha
+  ficar idêntica em colunas às três irmãs (o contador abre as quatro com o mesmo cabeçalho); o guard de base 0 já esvazia o % sem
+  base. (b) NÃO emitir Δ % (layout de 4 colunas, fiel à tela) — descartado: quebraria a uniformidade das planilhas de comparativo
+  e o % é útil para ordenar/filtrar. (c) uma PÁGINA de comparativo tabular — desnecessário: a tela já mostra os deltas no card.
+- **Nota de honestidade:** o DSO em dias pode ser negativo (pago adiantado) ou zero; um Δ % sobre base negativa é matematicamente
+  definido mas de leitura ambígua. Na prática o prazo mediano de recebimento é positivo (o dinheiro entra após o show), e o guard
+  `leadTimeYoyPct` já esvazia o % quando a base é 0. Mantido o % para uniformidade; a base negativa é um caso de borda extremo.
+
 ## 2026-07-17 — D363: Comparativo ano a ano da antecedência de agendamento no CSV (`/shows/antecedencia/comparativo/export`)
 - **Contexto:** a página `/shows/antecedencia` já mostra na tela, quando se escolhe um ano, o card "Antecedência {ano} vs.
   {ano-1}" — a variação da antecedência mediana e da média de agendamento (em dias), mais um veredito de tendência (mais folga ×

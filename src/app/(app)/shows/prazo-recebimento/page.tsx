@@ -133,6 +133,15 @@ export default async function PaymentLagPage({
               ⬇ CSV
             </a>
           )}
+          {comparison && (
+            <a
+              href={`/shows/prazo-recebimento/comparativo/export?ano=${yearFilter}`}
+              className="btn-secondary text-sm"
+              download
+            >
+              ⬇ CSV vs {previousYear}
+            </a>
+          )}
           <Link href="/shows/prazo-recebimento/por-contratante" className="btn-secondary">
             Por contratante
           </Link>
