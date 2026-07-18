@@ -49,6 +49,7 @@ import {
   showResultDistribution,
   compareShowResultDistribution,
   lossShareRiseHeadline,
+  portfolioMarginDropHeadline,
   rankContactsByProfit,
   clientConcentration,
   clientConcentrationHeadline,
@@ -379,13 +380,32 @@ export default async function DashboardPage() {
   // → trend "worsened" + ≥ minSample shows cada) — a decisão acionável "revise cachês
   // e despesas dessas casas"; menos shows no vermelho é boa notícia e não precisa de
   // banner. O detalhe está em /shows/rentabilidade/distribuicao.
+  const currentProfit = rankShowsByProfit(
+    filterShowsByYear(shows, currentYear) as ShowLike[],
+    txs,
+  );
+  const previousProfit = rankShowsByProfit(
+    filterShowsByYear(shows, currentYear - 1) as ShowLike[],
+    txs,
+  );
   const showResultComparison = compareShowResultDistribution(
-    showResultDistribution(rankShowsByProfit(filterShowsByYear(shows, currentYear) as ShowLike[], txs)),
-    showResultDistribution(
-      rankShowsByProfit(filterShowsByYear(shows, currentYear - 1) as ShowLike[], txs),
-    ),
+    showResultDistribution(currentProfit),
+    showResultDistribution(previousProfit),
   );
   const lossShareRiseHead = lossShareRiseHeadline(showResultComparison);
+
+  // Erosão da margem AGREGADA (D368): a leitura ponderada por R$ da mesma piora —
+  // o mesmo nº de shows pode continuar no azul, mas cada gig lucrativo passou a
+  // sobrar menos (cachês achatados, despesas maiores), então a margem líquida
+  // agregada (totalNet/totalIncome) da carteira caiu. Reaproveita as mesmas
+  // `rankShowsByProfit` já computadas para o nudge de contagem; dispara só quando a
+  // contagem no vermelho NÃO subiu (mutuamente exclusivo com lossShareRiseHead, para
+  // não somar um segundo banner de rentabilidade). Detalhe em /shows/rentabilidade.
+  const marginDropHead = portfolioMarginDropHeadline(
+    currentProfit,
+    previousProfit,
+    lossShareRiseHead.show,
+  );
 
   // Concentração de clientes (D109): "quanto da minha receita depende de poucos
   // contratantes?". Reaproveita os shows (com contatos) e transações já carregados;
@@ -1299,6 +1319,38 @@ export default async function DashboardPage() {
             Vale rever cachês e despesas dessas casas.
           </span>
           <span className={lossShareRiseHead.critical ? "text-red-600" : "text-amber-600"}>
+            Ver →
+          </span>
+        </Link>
+      )}
+
+      {/* Erosão da margem agregada (D368): a margem líquida da carteira (quanto de
+          cada real bruto sobra depois dos custos) encolheu vs. o ano passado, mesmo
+          sem MAIS shows caírem no vermelho — a piora ponderada por R$ que a contagem
+          (D367) não vê. Mutuamente exclusivo com o nudge de contagem. Vermelho
+          quando a queda atinge 20 p.p. */}
+      {marginDropHead.show && (
+        <Link
+          href={`/shows/rentabilidade?ano=${currentYear}`}
+          className={
+            "flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3 text-sm transition " +
+            (marginDropHead.critical
+              ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100")
+          }
+        >
+          <span className="font-semibold">
+            {marginDropHead.critical ? "🔴" : "🔻"} Margem da carteira encolhendo
+          </span>
+          <span>
+            A margem líquida dos seus shows caiu de{" "}
+            <strong>{Math.round(marginDropHead.marginPrevious * 100)}%</strong> para{" "}
+            <strong>{Math.round(marginDropHead.marginCurrent * 100)}%</strong> (
+            {marginDropHead.currentShows} shows, {formatMoney(marginDropHead.totalNetCurrent)}{" "}
+            líquidos) de {currentYear - 1} para {currentYear}. Cada gig está sobrando
+            menos depois dos custos — vale rever cachês e despesas.
+          </span>
+          <span className={marginDropHead.critical ? "text-red-600" : "text-amber-600"}>
             Ver →
           </span>
         </Link>
