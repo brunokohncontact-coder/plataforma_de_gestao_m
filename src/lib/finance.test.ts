@@ -122,6 +122,7 @@ import {
   feeDropHeadline,
   feePremiumErosionHeadline,
   lossShareRiseHeadline,
+  portfolioMarginDropHeadline,
   premiumBandShare,
   type FeeDistribution,
   weekdayPerformanceYears,
@@ -8173,6 +8174,92 @@ describe("lossShareRiseHeadline", () => {
     const cmp = compareShowResultDistribution(current, previous);
     expect(lossShareRiseHeadline(cmp).critical).toBe(true); // 40 ≥ 20 padrão
     expect(lossShareRiseHeadline(cmp, 3, 0.5).critical).toBe(false); // exige 50 p.p.
+  });
+});
+
+describe("portfolioMarginDropHeadline", () => {
+  // Carteira uniforme: n shows de fee 100 com a mesma despesa vinculada.
+  // Margem agregada = (100 − despesa/100) / 100; resultado somado = n × (100 − despesa/100).
+  const port = (expensePerShow: number, n = 4) => {
+    const shows: ShowLike[] = Array.from({ length: n }, (_, i) => ({
+      id: `s${i}`,
+      fee: 100_00,
+      status: "PLAYED",
+    }));
+    const txs: TxLike[] = shows.map((_, i) =>
+      tx({ type: "EXPENSE", amount: expensePerShow, showId: `s${i}` }),
+    );
+    return rankShowsByProfit(shows, txs);
+  };
+
+  it("margem agregada caindo materialmente com amostra ok → show + moldura", () => {
+    const previous = port(50_00); // margem 0,50
+    const current = port(70_00); // margem 0,30 → −20 p.p.
+    const head = portfolioMarginDropHeadline(current, previous, false);
+    expect(head.show).toBe(true);
+    expect(head.critical).toBe(true); // 20 p.p. ≥ criticalPoints (0,20)
+    expect(head.marginPrevious).toBeCloseTo(0.5, 5);
+    expect(head.marginCurrent).toBeCloseTo(0.3, 5);
+    expect(head.marginDelta).toBeCloseTo(-0.2, 5);
+    expect(head.totalNetCurrent).toBe(120_00); // 4 × (100 − 70)
+    expect(head.currentShows).toBe(4);
+    expect(head.previousShows).toBe(4);
+  });
+
+  it("queda material mas abaixo de 20 p.p. → show, não crítico", () => {
+    const previous = port(50_00); // 0,50
+    const current = port(65_00); // 0,35 → −15 p.p.
+    const head = portfolioMarginDropHeadline(current, previous, false);
+    expect(head.show).toBe(true);
+    expect(head.critical).toBe(false);
+    expect(head.marginDelta).toBeCloseTo(-0.15, 5);
+  });
+
+  it("crítico quando a queda passa de 20 p.p.", () => {
+    const previous = port(45_00); // 0,55
+    const current = port(70_00); // 0,30 → −25 p.p.
+    const head = portfolioMarginDropHeadline(current, previous, false);
+    expect(head.marginDelta).toBeCloseTo(-0.25, 5);
+    expect(head.critical).toBe(true);
+  });
+
+  it("cede a vez ao nudge de contagem: lossShareRose=true suprime mesmo com queda material", () => {
+    const previous = port(50_00);
+    const current = port(70_00); // −20 p.p.
+    const head = portfolioMarginDropHeadline(current, previous, true);
+    expect(head.show).toBe(false);
+    // os números da moldura seguem preenchidos (só o gate `show` cede)
+    expect(head.marginDelta).toBeCloseTo(-0.2, 5);
+  });
+
+  it("margem melhorando → não vira nudge", () => {
+    const previous = port(70_00); // 0,30
+    const current = port(50_00); // 0,50 → +20 p.p.
+    const head = portfolioMarginDropHeadline(current, previous, false);
+    expect(head.show).toBe(false);
+    expect(head.marginDelta).toBeGreaterThan(0);
+  });
+
+  it("queda pequena (dentro do limiar) → não dispara", () => {
+    const previous = port(50_00); // 0,50
+    const current = port(55_00); // 0,45 → −5 p.p. (< 0,10)
+    const head = portfolioMarginDropHeadline(current, previous, false);
+    expect(head.show).toBe(false);
+  });
+
+  it("amostra fina em um dos anos suprime o nudge mesmo com queda material", () => {
+    const previous = port(50_00, 2); // 2 shows (< minSample)
+    const current = port(70_00, 2); // −20 p.p., mas 2 shows
+    const head = portfolioMarginDropHeadline(current, previous, false);
+    expect(head.show).toBe(false);
+    expect(head.currentShows).toBe(2);
+  });
+
+  it("limiares parametrizáveis: minPoints maior rebaixa o nudge", () => {
+    const previous = port(50_00); // 0,50
+    const current = port(65_00); // 0,35 → −15 p.p.
+    expect(portfolioMarginDropHeadline(current, previous, false).show).toBe(true); // 0,10 padrão
+    expect(portfolioMarginDropHeadline(current, previous, false, 3, 0.2).show).toBe(false); // exige 20 p.p.
   });
 });
 

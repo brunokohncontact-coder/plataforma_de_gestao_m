@@ -5,6 +5,44 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-18 — D368: Nudge de erosão da margem AGREGADA no Painel (`portfolioMarginDropHeadline`)
+- **Contexto:** a D367 entregou o nudge "mais shows no vermelho" (`lossShareRiseHeadline`) — um sinal de CONTAGEM (uma fatia maior
+  da carteira passou a dar prejuízo). A própria D367 registrou como próximo passo (alternativa b) "o mesmo tipo de nudge para a
+  margem AGREGADA da carteira caindo (não só a contagem no vermelho)". Há uma piora que a contagem não vê: o mesmo número de shows
+  continua no azul, só que cada gig lucrativo passou a sobrar MENOS depois dos custos (cachês achatados, despesas maiores). A
+  leitura ponderada por R$ dessa piora é a MARGEM LÍQUIDA AGREGADA (`totalMargin` de `rankShowsByProfit`: `totalNet/totalIncome`,
+  onde um show grande pesa mais que um pequeno). Faltava o eco dela no Painel.
+- **Decisão:** `portfolioMarginDropHeadline(current, previous, lossShareRose, minSample=3, minPoints=0,10, criticalPoints=0,20)` em
+  `@/lib/finance` — camada pura, recebe as duas `rankShowsByProfit` já computadas (lidas estruturalmente via `totalMargin`/`count`/
+  `totalNet`) e o veredito do nudge de contagem (`lossShareRose = lossShareRiseHead.show`), e decide se o Painel deve alertar.
+  `show` só quando a margem agregada CAIU ≥ `minPoints` (`marginDelta ≤ −0,10`), a contagem no vermelho NÃO subiu materialmente
+  (`lossShareRose === false` — cede a vez ao `lossShareRiseHeadline`, mutuamente exclusivo, exatamente como
+  `feePremiumErosionHeadline` cede a `feeDropHeadline`) **e** ambos os anos têm ≥ `minSample` shows analisados; `critical` quando a
+  queda atinge `criticalPoints` (0,20 = 20 p.p.). Devolve as margens/contagens dos dois anos + o resultado somado do atual para a
+  moldura. No Painel (`/dashboard`), reaproveita as MESMAS `rankShowsByProfit` do ano corrente e do anterior já computadas para o
+  nudge de contagem (só extraí os relatórios intermediários), renderiza o banner (âmbar/vermelho por `critical`) com link para
+  `/shows/rentabilidade?ano=` (onde a margem agregada é a leitura da tela-mãe), logo abaixo do banner "mais shows no vermelho".
+  **+8 testes** (`finance.test.ts`: queda material com moldura, crítico acima de 20 p.p., queda abaixo do limiar crítico, mutual
+  exclusividade com `lossShareRose=true`, melhora/estável não disparam, amostra fina suprime, limiares parametrizáveis).
+- **Justificativa:** fecha o par contagem↔margem do eixo de saúde da carteira, como já existe no eixo de cachê (`feeDropHeadline`
+  olha a MEDIANA, `feePremiumErosionHeadline` olha o TOPO). A margem agregada é a leitura ponderada por R$ que a contagem no
+  vermelho (métrica robusta a outlier, mas cega ao APERTO dos shows lucrativos) não enxerga. Reusa 100% da lógica da D365/D367 (uma
+  só fonte de verdade), zero I/O extra no dashboard (as `rankShowsByProfit` já vinham da consulta existente). Camada pura + wiring,
+  zero migração de schema, zero dependência nova (`npm audit` inalterado: 10 advisories, 4 moderate/5 high/1 critical). Segue a
+  disciplina dos nudges irmãos: raro por gate (só piora material com amostra confiável) e mutuamente exclusivo com o nudge de
+  contagem, nunca somando dois banners de rentabilidade.
+- **Alternativas consideradas:** (a) ancorar o gate no resultado MÉDIO por show (`compareShowsProfitability`/`avgNet`) em vez da
+  margem — rejeitado: o resultado médio mistura volume e preço; a margem (`net/income`) é a leitura pura de "quanto de cada real
+  bruto sobra", que é a pergunta de EFICIÊNCIA que a contagem no vermelho não responde. (b) disparar em paralelo ao nudge de
+  contagem (dois banners de rentabilidade) — rejeitado: fere a disciplina de densidade do Painel; a mutual exclusividade (o nudge
+  de margem só fala quando a contagem NÃO subiu) garante que cada piora acende exatamente um banner. (c) disparar também na MELHORA
+  da margem (banner verde) — rejeitado, mesmo motivo da D367: o Painel é uma fila de decisões acionáveis; uma melhora não pede ação.
+- **Hipóteses a validar:** `MARGIN_DROP_MIN_POINTS`=0,10 (quantos pontos de margem perdidos contam como erosão "material") e
+  `MARGIN_DROP_CRITICAL_POINTS`=0,20 (o que vira piora "crítica") são **hipóteses** — o que conta como erosão material/crítica da
+  margem varia por circuito e custo fixo do músico; validar com músicos reais (registrado nos Bloqueios do PROGRESS).
+- **Nota de concorrência:** número **D368** escolhido como o próximo livre acima do maior D mergeado na `main` (D367, PR #403); sem
+  PRs abertas no momento. Se outra PR reivindicar D368 antes do merge, renumerar para o próximo livre.
+
 ## 2026-07-18 — D367: Nudge de "mais shows no vermelho" no Painel (`lossShareRiseHeadline`)
 - **Contexto:** a D366 entregou o comparativo ano a ano da distribuição de resultado por show (a fração da carteira NO VERMELHO
   subiu ou caiu de um ano para o outro), mas esse veredito só vivia na tela `/shows/rentabilidade/distribuicao`. A própria D366

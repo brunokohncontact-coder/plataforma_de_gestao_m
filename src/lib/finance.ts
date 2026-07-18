@@ -8751,6 +8751,114 @@ export function lossShareRiseHeadline(
   };
 }
 
+// ── Manchete de erosão da margem AGREGADA para o Painel (o R$ minguou?) ──────
+//
+// `lossShareRiseHeadline` (D367) avisa quando MAIS shows caem no vermelho — um
+// sinal de CONTAGEM. Mas há uma piora que a contagem não vê: o mesmo número de
+// shows continua no azul, só que cada um passou a sobrar menos depois dos custos
+// (cachês achatados, despesas maiores). A leitura ponderada por R$ dessa piora é a
+// MARGEM LÍQUIDA AGREGADA da carteira (`totalMargin` de `rankShowsByProfit`:
+// `totalNet / totalIncome`, onde um show grande pesa mais que um pequeno). Este é o
+// eco dela no Painel, complementar ao nudge de contagem (D367) e no molde de
+// `feePremiumErosionHeadline` (D293) vs. `feeDropHeadline`.
+//
+// Densidade (a razão de o item ter sido adiado na D367, alt. b): o nudge dispara SÓ
+// quando a contagem no vermelho NÃO subiu materialmente (`lossShareRose === false`)
+// — assim é mutuamente exclusivo com `lossShareRiseHeadline`, nunca somando um
+// segundo banner de rentabilidade ao Painel. Quando mais shows já caíram no
+// vermelho, aquele é o titular; a erosão de margem só fala quando a contagem se
+// manteve e o que minguou foi o quanto cada gig lucrativo sobra. Ver D368.
+
+/**
+ * Amostra mínima de shows analisados em CADA ano para a queda da margem agregada
+ * virar nudge — mesmo lastro de `LOSS_SHARE_RISE_MIN_SAMPLE`: abaixo disto a margem
+ * ponderada oscila por um único show grande, não por tendência de carteira.
+ */
+export const MARGIN_DROP_MIN_SAMPLE = 3;
+
+/**
+ * Queda mínima (em pontos de margem, 0..1) da margem líquida agregada para o nudge
+ * disparar: 0,10 = 10 p.p. a menos de cada real bruto sobrando depois dos custos.
+ * **Hipótese** — o que conta como "erosão material" da margem varia por circuito/
+ * custo fixo; validar com uso real antes de virar premissa fixa.
+ */
+export const MARGIN_DROP_MIN_POINTS = 0.1;
+
+/**
+ * Queda da margem agregada (em pontos) a partir da qual a erosão entra na faixa
+ * crítica (vermelho): 0,20 = 20 p.p. a menos. Espelha a escalada `critical` dos
+ * nudges irmãos de rentabilidade/cachê. **Hipótese** (ver acima).
+ */
+export const MARGIN_DROP_CRITICAL_POINTS = 0.2;
+
+/** Campos de `rankShowsByProfit` que o nudge de margem lê (estruturalmente). */
+type MarginReadableReport = Pick<
+  ShowsProfitability,
+  "totalMargin" | "count" | "totalNet"
+>;
+
+export interface PortfolioMarginDropHeadline {
+  /**
+   * Deve aparecer no Painel? Só quando a margem líquida AGREGADA **caiu**
+   * materialmente de um ano para o outro (`marginDelta ≤ −minPoints`), a contagem de
+   * shows no vermelho NÃO subiu materialmente (`lossShareRose === false` — cede a vez
+   * ao `lossShareRiseHeadline`, evitando dois banners de rentabilidade) E ambos os
+   * anos têm amostra confiável (≥ `minSample` shows analisados cada). Mesma disciplina
+   * de `feePremiumErosionHeadline` vs. `feeDropHeadline`.
+   */
+  show: boolean;
+  /** Erosão acentuada (margem agregada caiu ≥ `criticalPoints`)? */
+  critical: boolean;
+  /** Margem líquida agregada do ano atual (0..1; pode ser negativa). */
+  marginCurrent: number;
+  /** Margem líquida agregada do ano anterior (0..1; pode ser negativa). */
+  marginPrevious: number;
+  /** Variação da margem agregada (atual − anterior, pontos); ≤ 0 quando `show`. */
+  marginDelta: number;
+  /** Resultado líquido somado do ano atual (centavos, para a moldura textual). */
+  totalNetCurrent: number;
+  /** Shows analisados no ano atual (para a moldura textual). */
+  currentShows: number;
+  /** Shows analisados no ano anterior. */
+  previousShows: number;
+}
+
+/**
+ * Decide se o Painel deve alertar que a margem líquida AGREGADA da carteira encolheu
+ * de um ano para o outro — o eco ponderado por R$ da piora de rentabilidade, no
+ * espírito de `feePremiumErosionHeadline` (D293) vs. `feeDropHeadline`. Recebe as
+ * duas `rankShowsByProfit` já computadas (cada uma sobre os shows do seu período) e o
+ * veredito do nudge de contagem (`lossShareRose`) para não somar dois banners, e não
+ * faz I/O. `show` só quando a margem caiu ≥ `minPoints`, a contagem no vermelho NÃO
+ * subiu materialmente (mutuamente exclusivo com `lossShareRiseHeadline`) e ambos os
+ * anos têm ≥ `minSample` shows analisados; `critical` quando a queda atinge
+ * `criticalPoints`. Como os nudges irmãos, fica raro por gate. Pura.
+ */
+export function portfolioMarginDropHeadline(
+  current: MarginReadableReport,
+  previous: MarginReadableReport,
+  lossShareRose: boolean,
+  minSample: number = MARGIN_DROP_MIN_SAMPLE,
+  minPoints: number = MARGIN_DROP_MIN_POINTS,
+  criticalPoints: number = MARGIN_DROP_CRITICAL_POINTS,
+): PortfolioMarginDropHeadline {
+  const marginDelta = current.totalMargin - previous.totalMargin;
+  const reliable = current.count >= minSample && previous.count >= minSample;
+  const dropped = marginDelta <= -minPoints;
+  const show = reliable && !lossShareRose && dropped;
+  const critical = show && marginDelta <= -criticalPoints;
+  return {
+    show,
+    critical,
+    marginCurrent: current.totalMargin,
+    marginPrevious: previous.totalMargin,
+    marginDelta,
+    totalNetCurrent: current.totalNet,
+    currentShows: current.count,
+    previousShows: previous.count,
+  };
+}
+
 // ── Cadência de shows (estou tocando mais ou menos ao longo do tempo?) ───────
 //
 // Responde "minha agenda está mais cheia?": conta os shows JÁ REALIZADOS (mesmo

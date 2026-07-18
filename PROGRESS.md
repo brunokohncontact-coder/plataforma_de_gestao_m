@@ -4,7 +4,34 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 372 — NUDGE DE "MAIS SHOWS NO VERMELHO" NO PAINEL (`lossShareRiseHeadline`, D367):** a Sessão 371/D366 entregou o
+**Sessão 373 — NUDGE DE EROSÃO DA MARGEM AGREGADA NO PAINEL (`portfolioMarginDropHeadline`, D368):** a Sessão 372/D367 entregou o
+nudge "mais shows no vermelho" (um sinal de CONTAGEM — uma fatia maior da carteira passou a dar prejuízo) e registrou como próximo
+passo (alt. b) o mesmo tipo de nudge para a margem AGREGADA da carteira caindo. Há uma piora que a contagem não vê: o mesmo nº de
+shows continua no azul, só que cada gig lucrativo passou a sobrar MENOS depois dos custos (cachês achatados, despesas maiores) — a
+leitura ponderada por R$ é a MARGEM LÍQUIDA AGREGADA (`totalMargin` de `rankShowsByProfit`: `totalNet/totalIncome`). **(1)** camada
+pura em `src/lib/finance.ts`: `portfolioMarginDropHeadline(current, previous, lossShareRose, minSample=3, minPoints=0,10,
+criticalPoints=0,20)` recebe as duas `rankShowsByProfit` já computadas (lidas via `totalMargin`/`count`/`totalNet`) + o veredito do
+nudge de contagem e decide se o Painel deve alertar — `show` só quando a margem caiu ≥ `minPoints` (`MARGIN_DROP_MIN_POINTS`=0,10),
+a contagem no vermelho NÃO subiu (`lossShareRose === false`, mutuamente exclusivo com `lossShareRiseHeadline`, como
+`feePremiumErosionHeadline` cede a `feeDropHeadline`) **e** ambos os anos têm ≥ `minSample`=3 shows; `critical` quando a queda
+atinge `criticalPoints`=0,20 (20 p.p.); devolve margens/contagens dos dois anos + o resultado somado do atual para a moldura. Só a
+PIORA acende banner. **(2)** wiring no Painel (`src/app/(app)/dashboard/page.tsx`): extrai as `rankShowsByProfit` intermediárias
+(currentProfit/previousProfit) que já alimentavam o nudge de contagem e renderiza o banner (âmbar/vermelho por `critical`) com link
+para `/shows/rentabilidade?ano=`, logo abaixo do banner "mais shows no vermelho". **+8 testes** de lógica (`finance.test.ts`: queda
+material com moldura, crítico acima de 20 p.p., queda abaixo do crítico, mutual exclusividade com `lossShareRose=true`,
+melhora/estável não disparam, amostra fina suprime, limiares parametrizáveis). Camada pura + wiring; zero migração/dependência. DoD
+verde: `npm run build` (Painel compila; sem rota nova), `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**2053
+testes**); smoke → `/login` 200, `/dashboard` 307→/login (auth-gated); **smoke autenticado** (token de usuário demo, 4 shows em 2025
+com margem 80% + 4 em 2026 com margem 10%, NENHUM no vermelho nos dois anos) → Painel renderiza o banner crítico "🔴 Margem da
+carteira encolhendo / A margem líquida dos seus shows caiu de 80% para 10% (4 shows, R$ 40,00 líquidos) de 2025 para 2026" **e o
+banner "mais shows no vermelho" NÃO aparece** (mutual exclusividade confirmada ao vivo: sem shows no vermelho, só a erosão de margem
+fala); `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, ZERO dependência nova), ver D368. **Próximo possível** —
+(a) recorte por natureza (só shows firmes × todos) na distribuição de resultado (adiado desde a D365/D366); (b) o mesmo par
+contagem↔margem no eixo por CONTRATANTE (quais casas estão apertando a margem). Os limiares `MARGIN_DROP_MIN_POINTS`/
+`MARGIN_DROP_CRITICAL_POINTS`(D368), `LOSS_SHARE_RISE_CRITICAL_POINTS`(D367), 15%/40% das faixas (D365) e `LOSS_SHARE_TREND_EPSILON`
+(D366) são **hipóteses** (ver Bloqueios). Fora deste eixo, segue como único pendente do backup a restauração por MERGE (ALTO risco,
+revisão humana); ou próximas sessões podem evoluir outra feature maior.
+**Antes disso, Sessão 372 — NUDGE DE "MAIS SHOWS NO VERMELHO" NO PAINEL (`lossShareRiseHeadline`, D367):** a Sessão 371/D366 entregou o
 comparativo ano a ano da distribuição de resultado por show (a fração da carteira NO VERMELHO subiu ou caiu de um ano para o outro),
 mas esse veredito só vivia na tela `/shows/rentabilidade/distribuicao`; a própria D366 registrou como próximo passo (alt. d) o eco
 desse sinal no Painel, no espírito dos nudges de "piora" irmãos (`feeDropHeadline`/D274, `feePremiumErosionHeadline`/D293). **(1)**
@@ -6805,5 +6832,9 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   vermelho, em pontos, que faz o nudge virar crítico/vermelho) em `src/lib/finance.ts` é **hipótese** — quanto de aumento da fatia
   no prejuízo conta como piora "crítica" da saúde da carteira varia por circuito e custo fixo do músico. Herda também o
   `LOSS_SHARE_TREND_EPSILON`=0,05 (materialidade da tendência, D366). Validar com músicos antes de virar premissa fixa.
+- **Nudge de erosão da margem agregada no Painel (D368)**: `MARGIN_DROP_MIN_POINTS`=0,10 (quantos pontos de margem líquida agregada
+  perdidos de um ano para o outro contam como erosão "material" para o nudge disparar) e `MARGIN_DROP_CRITICAL_POINTS`=0,20 (a queda
+  que faz o nudge virar crítico/vermelho) em `src/lib/finance.ts` são **hipóteses** — o que conta como erosão material/crítica da
+  margem da carteira varia por circuito e custo fixo do músico. Validar com músicos antes de virar premissa fixa.
 - **Segurança em produção**: definir `AUTH_SECRET` forte e migrar para PostgreSQL antes
   de qualquer deploy real. Revisar advisories do Next (D6) e planejar upgrade p/ Next 15+.
