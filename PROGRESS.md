@@ -4,7 +4,26 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 375 — RECORTE POR NATUREZA (TODOS × SÓ FIRMES) NA TELA-MÃE DE RENTABILIDADE (`/shows/rentabilidade` + seus dois exports, D370):**
+**Sessão 376 — NUDGES DE RENTABILIDADE DO PAINEL CONTAM SÓ SHOWS FIRMES (`lossShareRiseHeadline`/`portfolioMarginDropHeadline`, D371):**
+as D369/D370 levaram o recorte por natureza (`filterShowsByNature`: todos os shows não cancelados × só CONFIRMED+PLAYED) à distribuição
+de resultado e à tela-mãe de rentabilidade, e a D370 registrou como próximo passo (alt. a) "ecoar no Painel". Esta sessão fecha esse
+lado: os dois nudges de rentabilidade do Painel — "Mais shows no vermelho" (D367, contagem) e "Margem da carteira encolhendo" (D368,
+margem agregada) — partiam de `rankShowsByProfit(filterShowsByYear(shows, ano))`, contando TODOS os shows não cancelados, inclusive
+PROPOSTAS em aberto (P&L de expectativa, não resultado realizado). **Wiring puro** (nada novo em `@/lib/finance`; reusa a camada
+testada da D369): em `src/app/(app)/dashboard/page.tsx` as duas `rankShowsByProfit` intermediárias (`currentProfit`/`previousProfit`,
+que alimentam AMBOS os nudges) passam por `filterShowsByNature(..., "firm")` antes de agregar, nos dois anos; natureza firme FIXA (o
+Painel não é parametrizável por `?natureza=` — é alarme, não tela exploratória); import de `filterShowsByNature` adicionado.
+DoD verde: `npm run build` (Painel compila; sem rota nova), `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**2060
+testes**, inalterado — camada pura já testada); smoke → `/login` 200, `/dashboard` 307→/login (auth-gated); **smoke autenticado
+diferencial** (usuário demo, 2026 = 3 CONFIRMED azuis + 3 PROPOSED no vermelho, 2025 = 3 CONFIRMED azuis + 1 PROPOSED azul): pelas
+funções puras `natureza=all` DISPARARIA o nudge (fatia no vermelho 0%→50%, 6 shows) enquanto `natureza=firm` NÃO dispara (0%→0%, 3
+firmes/ano), e o HTML do `/dashboard` renderizado tem o banner "Mais shows no vermelho" corretamente AUSENTE — o recorte separa a
+proposta incerta do alarme realizado; `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, ZERO dependência nova), ver
+D371. **Próximo possível** — (a) o par contagem↔margem no eixo por CONTRATANTE (D368 alt. b, quais casas apertam a margem); (b)
+recomputar os anos disponíveis por natureza para o seletor nunca oferecer um ano sem firmes (adiado desde a D369, o estado vazio já é
+claro); (c) se surgir uma terceira superfície, fatorar o `NaturePicker` num componente compartilhado (D370 alt. b). Fora deste eixo,
+segue como único pendente do backup a restauração por MERGE (ALTO risco, revisão humana).
+**Antes disso, Sessão 375 — RECORTE POR NATUREZA (TODOS × SÓ FIRMES) NA TELA-MÃE DE RENTABILIDADE (`/shows/rentabilidade` + seus dois exports, D370):**
 a Sessão 374/D369 levou o recorte "Todos os shows × Só confirmados/realizados" (`parseShowNature`/`filterShowsByNature`) à
 distribuição de resultado (`/shows/rentabilidade/distribuicao`) e registrou como próximo passo (alt. b) "ecoar o recorte por natureza
 no Painel e na tela-mãe de rentabilidade". Esta sessão fecha a metade da **tela-mãe** `/shows/rentabilidade`: a lista de rentabilidade
