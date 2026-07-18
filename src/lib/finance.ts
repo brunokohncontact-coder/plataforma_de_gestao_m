@@ -2142,6 +2142,52 @@ export function filterShowsByYear<S extends { date: Date }>(
   return shows.filter((s) => s.date.getUTCFullYear() === year);
 }
 
+// ── Recorte por natureza do show (todos × só firmes) ────────────────────────
+//
+// Algumas leituras de carteira (a distribuição de resultado por show, D365) por
+// padrão contam TODOS os shows não cancelados — inclusive PROPOSTAS ainda em
+// aberto, cujo P&L é uma expectativa, não um resultado realizado. Este recorte
+// deixa o músico separar "a foto da agenda inteira" da "foto só do que é dinheiro
+// firme" (CONFIRMED+PLAYED), espelhando o escopo da amostra da antecedência
+// (`BookingLeadTimeScope`/D190) no eixo do resultado. Ver DECISIONS.md D369.
+
+/**
+ * Natureza da amostra de shows numa leitura de carteira:
+ * - `"all"`: todos os shows que a agregação já conta (não cancelados) — inclui
+ *   propostas em aberto (comportamento histórico);
+ * - `"firm"`: só compromissos **firmes** (CONFIRMED+PLAYED) — a foto do que já é
+ *   dinheiro fechado, sem o ruído das propostas que ainda podem não acontecer.
+ */
+export type ShowNatureFilter = "all" | "firm";
+
+/** Natureza padrão (histórica): conta todos os shows não cancelados. */
+export const DEFAULT_SHOW_NATURE: ShowNatureFilter = "all";
+
+/**
+ * Resolve o parâmetro `?natureza=` no recorte por natureza. Só `"firm"` liga o
+ * recorte de compromissos firmes; qualquer outro valor (vazio, "todos" ou
+ * desconhecido) devolve `"all"` (sem recorte). Aceita query repetida (usa o
+ * primeiro valor), espelhando `parseProfitYear`/`parseLeadTimeScope`.
+ */
+export function parseShowNature(raw: string | string[] | undefined): ShowNatureFilter {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return value?.trim().toLowerCase() === "firm" ? "firm" : "all";
+}
+
+/**
+ * Filtra shows pela natureza; `"all"` devolve a lista inalterada (a agregação
+ * ainda descarta CANCELLED por conta própria). `"firm"` mantém só CONFIRMED+
+ * PLAYED. Filtra-se **antes** de agregar, mantendo `rankShowsByProfit` agnóstico
+ * ao recorte — o P&L por show segue intocado.
+ */
+export function filterShowsByNature<S extends ShowLike>(
+  shows: S[],
+  nature: ShowNatureFilter,
+): S[] {
+  if (nature === "all") return shows;
+  return shows.filter((s) => isConfirmedBooking(s.status));
+}
+
 // ── Agregações financeiras (F3 — dashboard) ─────────────────────────────────
 
 export interface FinanceSummary {

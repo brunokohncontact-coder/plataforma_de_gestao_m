@@ -5,6 +5,33 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-18 — D369: Recorte por natureza (todos × só firmes) na distribuição de resultado (`parseShowNature`/`filterShowsByNature`)
+- **Contexto:** a distribuição de resultado por show (`/shows/rentabilidade/distribuicao`, D365) e seu comparativo ano a ano (D366)
+  contavam TODOS os shows não cancelados — inclusive PROPOSTAS ainda em aberto, cujo P&L é uma expectativa, não um resultado
+  realizado. As D365 e D366 registraram explicitamente como próximo passo adiado "recorte por natureza (só shows firmes × todos)":
+  o músico que quer "a saúde só do que já é dinheiro fechado" via propostas incertas diluindo a foto. O molde já existia no eixo da
+  antecedência (`BookingLeadTimeScope`/D190: "Todos os shows" × "Só confirmados/realizados").
+- **Decisão:** camada pura em `@/lib/finance` — `type ShowNatureFilter = "all" | "firm"`, `DEFAULT_SHOW_NATURE = "all"`,
+  `parseShowNature(raw)` (só `"firm"` liga o recorte; qualquer outro valor → `"all"`, aceitando query repetida como
+  `parseProfitYear`) e `filterShowsByNature(shows, nature)` (`"all"` devolve a lista intacta; `"firm"` mantém só CONFIRMED+PLAYED via
+  o mesmo `isConfirmedBooking` que a projeção de receita já usa). Filtra-se **antes** de agregar, mantendo `rankShowsByProfit`
+  agnóstico ao recorte (ele segue descartando CANCELLED por conta própria). Na página (`/shows/rentabilidade/distribuicao`): novo
+  `<NaturePicker>` (pílulas "Todos os shows" × "Só confirmados/realizados", no espírito do `PeriodPicker`/`ScopePicker`), parâmetro
+  `?natureza=firm`, aplicado ao ano corrente E ao ano anterior do comparativo (a foto firme dos dois lados), preservado nos links do
+  `PeriodPicker` (via `params`) e nos dois exports CSV (arquivos ganham sufixo `-firmes`). O seletor de ANO segue oferecendo os anos
+  de toda a carteira (não cancelados): trocar para "firmes" num ano sem shows firmes cai no estado vazio, como qualquer período sem
+  shows — decisão consciente para não recomputar os anos por natureza (evita um segundo eixo de "anos disponíveis"). **+7 testes**
+  (`finance.test.ts`: `parseShowNature` — vazio/`todos`/desconhecido→`all`, `firm` case/espaço-insensível, query repetida;
+  `filterShowsByNature` — `all` intacto por referência, `firm` mantém só CONFIRMED+PLAYED, descarta proposta/cancelado/sem-status,
+  vazio quando nenhum firme).
+- **Justificativa:** separar "a agenda inteira" de "o que já é firme" é a mesma pergunta que a antecedência já respondia (D190),
+  agora no eixo do RESULTADO; reusar `isConfirmedBooking` mantém uma única definição de "firme" no módulo. Camada pura + wiring, zero
+  migração/dependência. É recorte FACTUAL (status do show), não heurística — não entra em Bloqueios.
+- **Alternativas consideradas:** (a) recomputar os anos disponíveis por natureza (um `showProfitYears` firme) para o seletor nunca
+  oferecer um ano vazio de firmes — descartado por ora: dobra o eixo de estado e o estado vazio já é claro; reavaliar se incomodar.
+  (b) ecoar o recorte também no Painel/na tela-mãe de rentabilidade — adiado: esta sessão fecha o recorte na distribuição (a tela que
+  o pediu); o eixo por contratante (D368 alt. b) e o recorte no Painel seguem como próximos passos.
+
 ## 2026-07-18 — D368: Nudge de erosão da margem AGREGADA no Painel (`portfolioMarginDropHeadline`)
 - **Contexto:** a D367 entregou o nudge "mais shows no vermelho" (`lossShareRiseHeadline`) — um sinal de CONTAGEM (uma fatia maior
   da carteira passou a dar prejuízo). A própria D367 registrou como próximo passo (alternativa b) "o mesmo tipo de nudge para a

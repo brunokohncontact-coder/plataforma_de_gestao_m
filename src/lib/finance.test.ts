@@ -30,6 +30,8 @@ import {
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
+  parseShowNature,
+  filterShowsByNature,
   summarizeFinances,
   totalsByCategory,
   categoryReport,
@@ -2090,6 +2092,55 @@ describe("filterShowsByYear", () => {
 
   it("devolve vazio para um ano sem shows", () => {
     expect(filterShowsByYear(shows, 2030)).toEqual([]);
+  });
+});
+
+describe("parseShowNature", () => {
+  it("trata vazio/ausente/'todos'/desconhecido como 'all'", () => {
+    expect(parseShowNature(undefined)).toBe("all");
+    expect(parseShowNature("")).toBe("all");
+    expect(parseShowNature("  ")).toBe("all");
+    expect(parseShowNature("todos")).toBe("all");
+    expect(parseShowNature("all")).toBe("all");
+    expect(parseShowNature("qualquer")).toBe("all");
+  });
+
+  it("reconhece 'firm' (case/espaço-insensível)", () => {
+    expect(parseShowNature("firm")).toBe("firm");
+    expect(parseShowNature(" FIRM ")).toBe("firm");
+    expect(parseShowNature("Firm")).toBe("firm");
+  });
+
+  it("usa o primeiro valor quando a query vem repetida", () => {
+    expect(parseShowNature(["firm", "todos"])).toBe("firm");
+    expect(parseShowNature(["todos", "firm"])).toBe("all");
+  });
+});
+
+describe("filterShowsByNature", () => {
+  const shows = [
+    { id: "p", fee: 100_00, status: "PROPOSED" },
+    { id: "c", fee: 100_00, status: "CONFIRMED" },
+    { id: "r", fee: 100_00, status: "PLAYED" },
+    { id: "x", fee: 100_00, status: "CANCELLED" },
+    { id: "u", fee: 100_00 }, // sem status
+  ];
+
+  it("devolve a lista inalterada quando 'all'", () => {
+    expect(filterShowsByNature(shows, "all")).toBe(shows);
+  });
+
+  it("mantém só compromissos firmes (CONFIRMED+PLAYED) quando 'firm'", () => {
+    expect(filterShowsByNature(shows, "firm").map((s) => s.id)).toEqual(["c", "r"]);
+  });
+
+  it("descarta propostas, cancelados e sem-status no recorte firme", () => {
+    expect(filterShowsByNature(shows, "firm").every((s) => s.status === "CONFIRMED" || s.status === "PLAYED")).toBe(true);
+  });
+
+  it("devolve vazio quando nenhum show é firme", () => {
+    const onlyProposals = [{ id: "a", fee: 1, status: "PROPOSED" }];
+    expect(filterShowsByNature(onlyProposals, "firm")).toEqual([]);
   });
 });
 
