@@ -8,6 +8,9 @@ import {
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
+  parseShowNature,
+  filterShowsByNature,
+  type ShowNatureFilter,
   type ShowResultBandKey,
   type ShowResultBandStat,
   type ShowResultDistributionComparison,
@@ -21,6 +24,47 @@ export const dynamic = "force-dynamic";
 type SearchParams = { [key: string]: string | string[] | undefined };
 
 const CANCELLED = "CANCELLED";
+
+/** Opções do seletor de natureza da amostra (D369). */
+const NATURE_OPTIONS: { value: ShowNatureFilter; label: string }[] = [
+  { value: "all", label: "Todos os shows" },
+  { value: "firm", label: "Só confirmados/realizados" },
+];
+
+/**
+ * Seletor de natureza da amostra (D369): "Todos os shows" (não cancelados, inclui
+ * propostas) × "Só confirmados/realizados" (compromissos firmes). Preserva o ano
+ * ativo em cada link via `buildHref`. Server component puro, no espírito do
+ * `PeriodPicker`/`ScopePicker` da antecedência.
+ */
+function NaturePicker({
+  active,
+  buildHref,
+}: {
+  active: ShowNatureFilter;
+  buildHref: (nature: ShowNatureFilter) => string;
+}) {
+  const base = "rounded-full px-3 py-1 text-sm font-medium transition-colors";
+  const on = "bg-brand-600 text-white";
+  const off = "bg-gray-100 text-gray-600 hover:bg-gray-200";
+  return (
+    <nav aria-label="Natureza da amostra" className="flex flex-wrap items-center gap-2">
+      <span className="text-xs font-medium uppercase tracking-wide text-gray-500">
+        Natureza
+      </span>
+      {NATURE_OPTIONS.map((opt) => (
+        <Link
+          key={opt.value}
+          href={buildHref(opt.value)}
+          className={base + " " + (active === opt.value ? on : off)}
+          aria-current={active === opt.value ? "page" : undefined}
+        >
+          {opt.label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
 
 /** Cor da barra/rótulo de cada faixa (do vermelho ao verde). */
 const BAND_TONE: Record<ShowResultBandKey, { bar: string; text: string }> = {
@@ -66,13 +110,33 @@ export default async function ShowResultDistributionPage({
     shows.filter((s) => s.status !== CANCELLED).map((s) => s.date),
   );
   const yearFilter = parseProfitYear(searchParams?.ano, availableYears);
-  const periodShows = filterShowsByYear(shows, yearFilter);
+  // Recorte por natureza (D369): "todos" os não cancelados × só compromissos
+  // firmes (CONFIRMED+PLAYED). Filtra ANTES de agregar; `rankShowsByProfit` segue
+  // agnóstico ao recorte (só descarta CANCELLED). O seletor de ano segue oferecendo
+  // os anos de toda a carteira — trocar para "firmes" num ano sem firmes cai no
+  // estado vazio, como qualquer período sem shows.
+  const nature = parseShowNature(searchParams?.natureza);
+  const periodShows = filterShowsByNature(filterShowsByYear(shows, yearFilter), nature);
 
   const report = rankShowsByProfit(periodShows, txs);
   const dist = showResultDistribution(report);
 
   const periodLabel = yearFilter === "all" ? "todos os anos" : `${yearFilter}`;
   const maxCount = Math.max(1, ...dist.bands.map((b) => b.count));
+
+  // Query preservando ano + natureza (para exports e o seletor de natureza).
+  // Omite os padrões (ano="all", natureza="all") para manter as URLs limpas.
+  const buildQuery = (over: { nature?: ShowNatureFilter } = {}): string => {
+    const nextNature = over.nature ?? nature;
+    const q = new URLSearchParams();
+    if (yearFilter !== "all") q.set("ano", String(yearFilter));
+    if (nextNature !== "all") q.set("natureza", nextNature);
+    const qs = q.toString();
+    return qs ? `?${qs}` : "";
+  };
+  // Params extras a preservar em cada link do PeriodPicker (só a natureza; o ano
+  // é o próprio eixo do seletor).
+  const periodParams = nature === "all" ? undefined : { natureza: nature };
 
   // Comparativo ano a ano da saúde da carteira (só com um ano específico e ambos
   // os períodos tendo shows — senão a fração no vermelho do ano vazio seria 0 e a
@@ -82,7 +146,10 @@ export default async function ShowResultDistributionPage({
   let previousYear = 0;
   if (yearFilter !== "all") {
     previousYear = yearFilter - 1;
-    const previousReport = rankShowsByProfit(filterShowsByYear(shows, previousYear), txs);
+    const previousReport = rankShowsByProfit(
+      filterShowsByNature(filterShowsByYear(shows, previousYear), nature),
+      txs,
+    );
     if (report.count > 0 && previousReport.count > 0) {
       comparison = compareShowResultDistribution(
         dist,
@@ -100,14 +167,15 @@ export default async function ShowResultDistributionPage({
             Quantos dos seus shows rodam no vermelho, com margem magra ou com margem
             saudável — a saúde da carteira de gigs por resultado líquido. Shows cancelados
             são ignorados.
+            {nature === "firm"
+              ? " Recorte ativo: só shows confirmados/realizados (propostas em aberto ficam de fora)."
+              : " Inclui propostas em aberto; use “Natureza” para ver só o que já é firme."}
           </p>
         </div>
         <div className="flex items-center gap-2">
           {dist.count > 0 && (
             <a
-              href={`/shows/rentabilidade/distribuicao/export${
-                yearFilter === "all" ? "" : `?ano=${yearFilter}`
-              }`}
+              href={`/shows/rentabilidade/distribuicao/export${buildQuery()}`}
               className="btn-secondary text-sm"
               download
             >
@@ -116,7 +184,7 @@ export default async function ShowResultDistributionPage({
           )}
           {comparison && (
             <a
-              href={`/shows/rentabilidade/distribuicao/comparativo/export?ano=${yearFilter}`}
+              href={`/shows/rentabilidade/distribuicao/comparativo/export${buildQuery()}`}
               className="btn-secondary text-sm"
               download
             >
@@ -129,13 +197,17 @@ export default async function ShowResultDistributionPage({
         </div>
       </div>
 
-      {availableYears.length > 0 && (
-        <PeriodPicker
-          years={availableYears}
-          active={yearFilter}
-          basePath="/shows/rentabilidade/distribuicao"
-        />
-      )}
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+        {availableYears.length > 0 && (
+          <PeriodPicker
+            years={availableYears}
+            active={yearFilter}
+            basePath="/shows/rentabilidade/distribuicao"
+            params={periodParams}
+          />
+        )}
+        <NaturePicker active={nature} buildHref={(n) => `/shows/rentabilidade/distribuicao${buildQuery({ nature: n })}`} />
+      </div>
 
       {dist.count === 0 ? (
         <div className="card text-center text-gray-500">

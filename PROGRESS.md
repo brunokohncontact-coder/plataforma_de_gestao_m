@@ -4,7 +4,30 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 373 — NUDGE DE EROSÃO DA MARGEM AGREGADA NO PAINEL (`portfolioMarginDropHeadline`, D368):** a Sessão 372/D367 entregou o
+**Sessão 374 — RECORTE POR NATUREZA (TODOS × SÓ FIRMES) NA DISTRIBUIÇÃO DE RESULTADO (`parseShowNature`/`filterShowsByNature`, D369):**
+a distribuição de resultado por show (`/shows/rentabilidade/distribuicao`, D365) e seu comparativo ano a ano (D366) contavam TODOS os
+shows não cancelados — inclusive PROPOSTAS em aberto, cujo P&L é expectativa, não resultado realizado. As D365/D366 registraram como
+próximo passo adiado o "recorte por natureza (só shows firmes × todos)"; esta sessão o entrega, espelhando o `BookingLeadTimeScope`
+(D190) no eixo do resultado. **(1)** camada pura em `src/lib/finance.ts`: `type ShowNatureFilter = "all" | "firm"`,
+`DEFAULT_SHOW_NATURE`, `parseShowNature(?natureza=)` (só `"firm"` liga o recorte; resto → `"all"`, query repetida como
+`parseProfitYear`) e `filterShowsByNature(shows, nature)` (`"all"` devolve a lista intacta; `"firm"` mantém só CONFIRMED+PLAYED via o
+mesmo `isConfirmedBooking` da projeção de receita). Filtra ANTES de agregar → `rankShowsByProfit` segue agnóstico (só descarta
+CANCELLED). **(2)** página `src/app/(app)/shows/rentabilidade/distribuicao/page.tsx`: novo `<NaturePicker>` (pílulas "Todos os shows"
+× "Só confirmados/realizados", no espírito do `PeriodPicker`/`ScopePicker`), `?natureza=firm` aplicado ao ano corrente E ao anterior
+do comparativo, preservado nos links do `PeriodPicker` (via `params`) e nas duas exportações CSV (arquivos ganham sufixo `-firmes`);
+subtítulo reflete o recorte ativo. **(3)** os dois `export/route.ts` (distribuição + comparativo) leem `?natureza=` e aplicam o
+mesmo filtro. O seletor de ANO segue oferecendo os anos de toda a carteira: trocar para "firmes" num ano sem firmes cai no estado
+vazio (decisão consciente, ver D369). **+7 testes** de lógica (`finance.test.ts`: `parseShowNature`/`filterShowsByNature`). Camada
+pura + wiring; zero migração/dependência. DoD verde: `npm run build` (rotas compilam; sem rota nova), `npx tsc --noEmit`,
+`npm run lint` (0 warnings), `npm test` (**2060 testes**); smoke → `/login` 200, `/shows/rentabilidade/distribuicao?natureza=firm`
+307→/login (auth-gated); **smoke autenticado** (usuário demo 2025: 1 CONFIRMED lucrativo + 1 PROPOSED no vermelho) → `?ano=2025`
+(todos) exporta **2 shows, 1 no vermelho (50%)** [`-2025.csv`]; `?ano=2025&natureza=firm` exporta **1 show, nenhum no vermelho, margem
+alta 100%** [`-2025-firmes.csv`] — o recorte separa a proposta incerta da foto firme ao vivo; `npm audit` inalterado (10 advisories:
+4 moderate/5 high/1 critical, ZERO dependência nova), ver D369. **Próximo possível** — (a) recomputar os anos disponíveis por natureza
+para o seletor nunca oferecer um ano sem firmes (adiado, o estado vazio já é claro); (b) ecoar o recorte por natureza no Painel e na
+tela-mãe de rentabilidade; (c) o par contagem↔margem no eixo por CONTRATANTE (D368 alt. b, quais casas apertam a margem). Fora deste
+eixo, segue como único pendente do backup a restauração por MERGE (ALTO risco, revisão humana).
+**Antes disso, Sessão 373 — NUDGE DE EROSÃO DA MARGEM AGREGADA NO PAINEL (`portfolioMarginDropHeadline`, D368):** a Sessão 372/D367 entregou o
 nudge "mais shows no vermelho" (um sinal de CONTAGEM — uma fatia maior da carteira passou a dar prejuízo) e registrou como próximo
 passo (alt. b) o mesmo tipo de nudge para a margem AGREGADA da carteira caindo. Há uma piora que a contagem não vê: o mesmo nº de
 shows continua no azul, só que cada gig lucrativo passou a sobrar MENOS depois dos custos (cachês achatados, despesas maiores) — a
