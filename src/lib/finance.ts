@@ -452,6 +452,22 @@ export interface VenueProfitRow {
   name: string;
   /** Nº de shows no grupo (após exclusões). */
   showCount: number;
+  /**
+   * Nº de shows do grupo com resultado líquido negativo (`net < 0`) — o "quantos"
+   * do vermelho. Um local/cidade lucrativo no agregado (`totalNet > 0`) pode
+   * esconder shows individuais no prejuízo; a UI destaca quando `lossCount > 0`.
+   * Mesma faixa "loss" de `showResultDistribution` (o zerado, `net === 0`, NÃO
+   * conta). Espelha o `lossCount` de `ContactProfitRow`/`RoleProfitRow`.
+   */
+  lossCount: number;
+  /**
+   * Prejuízo somado (centavos, ≤0; `0` quando nenhum) dos shows do grupo com
+   * `net < 0` — o "quanto" R$ ao lado do "quantos" (`lossCount`). Dois locais
+   * com 1 show no vermelho cada podem ter custado R$ 50 vs. R$ 5.000; a magnitude
+   * prioriza a decisão de largar/renegociar. Mesma convenção do `lossNet` da
+   * distribuição por show e de `ContactProfitRow`/`RoleProfitRow`.
+   */
+  lossNet: number;
   /** Cachê somado (centavos). */
   totalFee: number;
   /** Receitas extras somadas (centavos). */
@@ -993,6 +1009,8 @@ function aggregateShowProfit(
   interface Acc {
     key: string;
     showCount: number;
+    lossCount: number;
+    lossNet: number;
     totalFee: number;
     totalExtra: number;
     totalExpenses: number;
@@ -1018,6 +1036,8 @@ function aggregateShowProfit(
       acc = {
         key,
         showCount: 0,
+        lossCount: 0,
+        lossNet: 0,
         totalFee: 0,
         totalExtra: 0,
         totalExpenses: 0,
@@ -1031,6 +1051,10 @@ function aggregateShowProfit(
 
     const pnl = computeShowPnL(show, txs);
     acc.showCount += 1;
+    if (pnl.net < 0) {
+      acc.lossCount += 1;
+      acc.lossNet += pnl.net;
+    }
     acc.totalFee += pnl.fee;
     acc.totalExtra += pnl.extraIncome;
     acc.totalExpenses += pnl.expenses;
@@ -1051,6 +1075,8 @@ function aggregateShowProfit(
       key: acc.key,
       name,
       showCount: acc.showCount,
+      lossCount: acc.lossCount,
+      lossNet: acc.lossNet,
       totalFee: acc.totalFee,
       totalExtra: acc.totalExtra,
       totalExpenses: acc.totalExpenses,
