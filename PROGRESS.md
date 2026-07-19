@@ -4,7 +4,30 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 387 — NUDGE NO PAINEL "UMA CASA DRENANDO DINHEIRO" (`venueLossLeaderHeadline`, D382):**
+**Sessão 388 — MOVERS DO VERMELHO NO COMPARATIVO POR CIDADE/LOCAL (`cityProfitRedMovers`, D383):**
+a Sessão 387/D382 fechou o nudge geográfico por LOCAL no Painel ("uma casa drenando dinheiro") e registrou como próximo passo (alt. a) um
+"mover do vermelho" no card visual do comparativo por cidade/local — hoje os movers ancoram só em nº de shows. Esta sessão o entrega, de uma
+vez para os DOIS eixos (o comparativo por local reusa o mesmo motor via aliases, D299). O comparativo já destilava os dois movers de AGENDA
+(a praça que mais ganhou/perdeu shows, `cityProfitMovers`/D298), e a D381 já cravou em `CityProfitChange` o par `lossNetDelta`/`lossCountDelta`
+(variação do prejuízo entre os dois anos), mas ninguém destilava "onde eu passei a perder — ou deixei de perder — dinheiro?". **(1)** camada pura
+`cityProfitRedMovers(changes): CityRedMovers` em `src/lib/finance.ts`: destila da MESMA lista de `compareCitiesByProfit` a praça que mais
+AFUNDOU no vermelho (`lossNetDelta` mais negativo = mais R$ no prejuízo; `lossNet ≤ 0`) e a que mais SAIU dele (`lossNetDelta` mais positivo);
+empate em R$ desempatado por nº de shows no vermelho (afundar → `lossCountDelta` maior; recuperar → menor), depois a ordem do relatório;
+descarta a "Sem cidade/local" (chave ""), mesma regra dos movers de agenda; zero consulta/assinatura nova. Aliases
+`venueProfitRedMovers`/`VenueRedMovers` cobrem o eixo de casa numa edição. **(2)** wiring: card "Onde o vermelho mudou · {ano} vs. {ano-1}"
+nas DUAS telas (`shows/cidades/page.tsx` e `shows/locais/page.tsx`), abaixo do card de movers de agenda, com as duas pontas
+(`signedMoney(lossNetDelta)` colorido — vermelho afundou / verde recuperou) e a moldura "prejuízo {ano-1} → {ano}"; só aparece com ≥1 mover.
+Complementar (não redundante) ao card de agenda: eixos distintos (nº de shows × R$ do vermelho) que podem apontar praças diferentes. **+7 testes**
+de lógica (`finance.test.ts`: sem variação → nulos; aponta afundou/recuperou; empate desempata por nº de shows nos dois sentidos; ignora "Sem
+cidade"; só afundou → recovery nulo; integra com `compareCitiesByProfit` sobre um show real no vermelho). Camada pura + wiring; zero
+migração/dependência. DoD verde: `npm run build` (as duas páginas compilam; sem rota nova), `npx tsc --noEmit`, `npm run lint` (0 warnings),
+`npm test` (**2119 testes**); smoke → `/login` 200, `/shows/cidades?ano=2025` e `/shows/locais?ano=2025` 307→/login (auth-gated); `npm audit`
+inalterado (10 advisories: 4 moderate/5 high/1 critical, ZERO dependência nova), ver D383. **Próximo possível** — (a) levar o recorte por
+natureza (todos × só firmes) ao eixo de papel (tela + card + export em conjunto, a consistência futura da D374); (b) o análogo do nudge por
+CIDADE (`rankCitiesByProfit`) só se a granularidade de praça se mostrar grossa demais em uso real (risco de redundância com o nudge por LOCAL da
+D382, já que cidade é rollup da casa); (c) um "mover do vermelho" análogo no comparativo por CONTRATANTE/PAPEL, se aquele eixo ganhar
+`lossNetDelta` por linha no futuro. Fora deste eixo, segue como único pendente do backup a restauração por MERGE (ALTO risco, revisão humana).
+**Antes disso, Sessão 387 — NUDGE NO PAINEL "UMA CASA DRENANDO DINHEIRO" (`venueLossLeaderHeadline`, D382):**
 a Sessão 386/D381 fechou o trio tela↔export↔comparativo do vermelho no eixo geográfico e registrou como próximo passo (alt. b) ecoar o
 "quanto R$ no vermelho nesta casa/praça" como nudge geográfico no Painel. Esta sessão o entrega. Os nudges de rentabilidade do Painel falam
 da carteira INTEIRA (contagem no vermelho `lossShareRiseHeadline`/D367; margem agregada `portfolioMarginDropHeadline`/D368) ou nomeiam UMA

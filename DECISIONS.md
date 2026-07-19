@@ -5,6 +5,32 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-19 — D383: Movers do vermelho no comparativo por cidade/local (`cityProfitRedMovers`)
+- **Contexto:** o comparativo ano a ano por cidade (`/shows/cidades`) e por local (`/shows/locais`) já destila dois **movers** — a praça que
+  mais ganhou e a que mais perdeu SHOWS (`cityProfitMovers`/D298, card "Para onde a agenda migrou"). A D381 acrescentou a `CityProfitChange` o
+  par `lossNetDelta`/`lossCountDelta` (variação do prejuízo/vermelho entre os dois anos), mas os movers ancoravam SÓ no nº de shows — ninguém
+  destilava "onde eu passei a perder — ou deixei de perder — dinheiro?". A D382 registrou como próximo passo (alt. a) um "mover do vermelho"
+  no card visual do comparativo.
+- **Decisão:** camada pura `cityProfitRedMovers(changes): CityRedMovers` em `src/lib/finance.ts` — destila da MESMA lista de
+  `compareCitiesByProfit` a praça que mais AFUNDOU no vermelho (`lossNetDelta` mais negativo, i.e. mais R$ no prejuízo) e a que mais SAIU dele
+  (`lossNetDelta` mais positivo). Empate em R$: afundar desempata por MAIS shows adicionados ao vermelho (`lossCountDelta` maior), recuperar por
+  MENOS (`lossCountDelta` menor); depois a ordem do relatório atual (desempate estrito → primeira vence). Descarta a "Sem cidade"/"Sem local"
+  (`key === ""`), mesma regra dos movers de agenda. Aliases `venueProfitRedMovers`/`VenueRedMovers` reusam o motor no eixo de casa (como
+  `venueProfitMovers`/D299). Wiring: card "Onde o vermelho mudou" nas DUAS telas (`cidades/page.tsx` e `locais/page.tsx`), abaixo do card de
+  movers de agenda, com as duas pontas (`signedMoney(lossNetDelta)` colorido — vermelho afundou / verde recuperou) e a moldura
+  "prejuízo {ano-1} → {ano}"; só aparece com ≥1 mover. Zero consulta nova (destila a lista já casada).
+- **Justificativa:** fecha o próximo passo alt. a da D382 reusando dado já computado (`lossNetDelta`/`lossCountDelta`, D381) e o molde de card de
+  movers já cravado (`CityMoversCard`/`CityMover`). Complementar, não redundante, ao card de agenda: aquele responde "para onde a agenda migrou"
+  (nº de shows), este "onde a rentabilidade do vermelho piorou/melhorou" (R$ dos shows no prejuízo) — eixos distintos que podem apontar praças
+  diferentes (uma casa pode ganhar shows E afundar no vermelho). Camada pura genérica cobre cidade E local numa edição (aliases). Convenção de
+  sinal herdada da D381: `lossNet ≤ 0` → Δ negativo = mais vermelho (afundou), Δ positivo = menos vermelho (recuperou).
+- **Alternativas consideradas:** (a) estender `CityProfitMovers`/`CityMoversCard` com mais dois campos/pontas em vez de um card separado —
+  descartado: mistura dois eixos (agenda × rentabilidade do vermelho) num card cujo cabeçalho é "Para onde a agenda migrou", poluindo a leitura;
+  o card separado mantém cada lente com seu título. (b) ancorar no `netDelta` (resultado agregado) em vez do `lossNetDelta` (só os shows no
+  vermelho) — descartado: o `netDelta` já é o desempate dos movers de agenda; a D382 pediu explicitamente o eixo do VERMELHO (o prejuízo dos
+  shows que deram net < 0), que um agregado lucrativo esconde. (c) um export CSV irmão — desnecessário: o comparativo já exporta
+  `lossNetDelta`/`lossCountDelta` por linha (D381); o mover é só o destaque visual das duas pontas, que o CSV já permite reconstruir.
+
 ## 2026-07-19 — D382: Nudge no Painel "uma casa drenando dinheiro" (`venueLossLeaderHeadline`)
 - **Contexto:** os nudges de rentabilidade do Painel falam da carteira INTEIRA — a CONTAGEM de shows no vermelho
   (`lossShareRiseHeadline`/D367) e a MARGEM agregada (`portfolioMarginDropHeadline`/D368) — ou nomeiam UMA PESSOA que aperta a margem

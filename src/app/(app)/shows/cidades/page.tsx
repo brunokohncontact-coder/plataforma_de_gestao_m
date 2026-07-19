@@ -7,6 +7,7 @@ import {
   compareGeoConcentration,
   compareCitiesByProfit,
   cityProfitMovers,
+  cityProfitRedMovers,
   indexCityProfitChanges,
   classifyCityProfitChange,
   showProfitYears,
@@ -19,6 +20,7 @@ import {
   type GeoConcentrationComparison,
   type CityProfitChange,
   type CityProfitMovers,
+  type CityRedMovers,
   type CityProfitTrend,
   type DiversificationLevel,
 } from "@/lib/finance";
@@ -99,6 +101,11 @@ export default async function CityProfitabilityPage({
   // de shows) destilados da MESMA lista de mudanças, espelho do card de movers
   // da tela irmã por dia da semana (compareWeekdayPerformance/D46).
   let cityMovers: CityProfitMovers | null = null;
+  // Card "Onde o vermelho mudou": os dois movers do PREJUÍZO (quem mais afundou /
+  // quem mais recuperou do vermelho) destilados da MESMA lista de mudanças. Eixo
+  // de rentabilidade, distinto dos movers de agenda acima (nº de shows). Reusa o
+  // par lossNetDelta/lossCountDelta que a D381 já cravou em CityProfitChange.
+  let cityRedMovers: CityRedMovers | null = null;
   // Lista COMPLETA de mudanças por cidade (na ordem do relatório atual, com as
   // cidades sumidas anexadas ao final) para o detalhe on-screen "Ver todas as
   // cidades" do card de movers — o mesmo dado que o CSV do comparativo já
@@ -114,6 +121,7 @@ export default async function CityProfitabilityPage({
       cityChanges = compareCitiesByProfit(report, previousReport);
       cityChangeByKey = indexCityProfitChanges(cityChanges);
       cityMovers = cityProfitMovers(cityChanges);
+      cityRedMovers = cityProfitRedMovers(cityChanges);
     }
     const previousConcentration = geoConcentration(previousReport.rows);
     // O card comparativo exige praça identificada nos DOIS períodos (agregado).
@@ -238,6 +246,14 @@ export default async function CityProfitabilityPage({
             <CityMoversCard
               movers={cityMovers}
               changes={cityChanges ?? []}
+              currentYear={yearFilter as number}
+              previousYear={previousYear}
+            />
+          )}
+
+          {cityRedMovers && (cityRedMovers.deepestLoss || cityRedMovers.biggestRecovery) && (
+            <CityRedMoversCard
+              movers={cityRedMovers}
               currentYear={yearFilter as number}
               previousYear={previousYear}
             />
@@ -597,6 +613,82 @@ function CityMoversCard({
         currentYear={currentYear}
         previousYear={previousYear}
       />
+    </div>
+  );
+}
+
+/**
+ * Card "Onde o vermelho mudou": os dois movers do PREJUÍZO — a cidade que mais
+ * afundou no vermelho e a que mais saiu dele de um ano para o outro. Irmão do
+ * card de movers de agenda (que ancora no nº de shows), mas no eixo da
+ * rentabilidade do vermelho (`lossNet`): responde "onde eu passei a perder — ou
+ * deixei de perder — dinheiro?". Só entra com ao menos um mover (garantido pelo
+ * chamador). Zero I/O: destila a MESMA lista de `compareCitiesByProfit`.
+ */
+function CityRedMoversCard({
+  movers,
+  currentYear,
+  previousYear,
+}: {
+  movers: CityRedMovers;
+  currentYear: number;
+  previousYear: number;
+}) {
+  const { deepestLoss, biggestRecovery } = movers;
+  return (
+    <div className="card">
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+        Onde o vermelho mudou · {currentYear} vs. {previousYear}
+      </p>
+      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+        <CityRedMover label="Mais afundou no vermelho" change={deepestLoss} tone="red" />
+        <CityRedMover label="Mais saiu do vermelho" change={biggestRecovery} tone="emerald" />
+      </div>
+      <p className="mt-3 text-xs text-gray-400">
+        Ancora no prejuízo (só os shows no vermelho); quando dois empatam em R$, o nº de shows no
+        vermelho desempata. Cidades sem praça informada (“Sem cidade”) ficam de fora.
+      </p>
+    </div>
+  );
+}
+
+/** Uma ponta do card de movers do vermelho (afundou ou recuperou), ou "—". */
+function CityRedMover({
+  label,
+  change,
+  tone,
+}: {
+  label: string;
+  change: CityProfitChange | null;
+  tone: "emerald" | "red";
+}) {
+  const tones: Record<string, string> = {
+    emerald: "text-emerald-600",
+    red: "text-red-600",
+  };
+  if (!change) {
+    return (
+      <div>
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
+        <p className="mt-1 text-xl font-bold text-gray-300">—</p>
+        <p className="text-xs text-gray-400">
+          Nenhuma cidade {tone === "red" ? "afundou mais" : "saiu"} do vermelho.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
+      <p className="mt-1 flex items-baseline gap-2">
+        <span className="truncate font-medium text-gray-900">{change.name}</span>
+        <span className={"text-xl font-bold " + tones[tone]}>
+          {signedMoney(change.lossNetDelta)}
+        </span>
+      </p>
+      <p className="text-xs text-gray-500">
+        prejuízo {formatMoney(change.previousLossNet)} → {formatMoney(change.currentLossNet)}
+      </p>
     </div>
   );
 }

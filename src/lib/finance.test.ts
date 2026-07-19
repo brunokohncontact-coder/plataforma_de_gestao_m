@@ -16,6 +16,7 @@ import {
   rankCitiesByProfit,
   compareCitiesByProfit,
   cityProfitMovers,
+  cityProfitRedMovers,
   classifyCityProfitChange,
   type CityProfitChange,
   indexCityProfitChanges,
@@ -1175,6 +1176,98 @@ describe("cityProfitMovers", () => {
     );
     expect(movers.biggestGain?.key).toBe("recife");
     expect(movers.biggestDrop).toBeNull();
+  });
+});
+
+describe("cityProfitRedMovers", () => {
+  const mk = (over: Partial<CityProfitChange> = {}): CityProfitChange => ({
+    key: "recife",
+    name: "Recife",
+    currentCount: 0,
+    previousCount: 0,
+    countDelta: 0,
+    currentNet: 0,
+    previousNet: 0,
+    netDelta: 0,
+    currentLossCount: 0,
+    previousLossCount: 0,
+    lossCountDelta: 0,
+    currentLossNet: 0,
+    previousLossNet: 0,
+    lossNetDelta: 0,
+    ...over,
+  });
+
+  it("sem variação de vermelho em ninguém → ambos os movers nulos", () => {
+    const movers = cityProfitRedMovers([
+      mk({ key: "recife", name: "Recife", lossNetDelta: 0 }),
+      mk({ key: "olinda", name: "Olinda", lossNetDelta: 0 }),
+    ]);
+    expect(movers.deepestLoss).toBeNull();
+    expect(movers.biggestRecovery).toBeNull();
+  });
+
+  it("aponta quem mais afundou (Δ negativo) e quem mais recuperou (Δ positivo)", () => {
+    const movers = cityProfitRedMovers([
+      mk({ key: "recife", name: "Recife", lossNetDelta: -300_00 }), // afundou R$ 300
+      mk({ key: "olinda", name: "Olinda", lossNetDelta: -50_00 }), // afundou pouco
+      mk({ key: "joao-pessoa", name: "João Pessoa", lossNetDelta: 200_00 }), // recuperou
+    ]);
+    expect(movers.deepestLoss?.key).toBe("recife");
+    expect(movers.deepestLoss?.lossNetDelta).toBe(-300_00);
+    expect(movers.biggestRecovery?.key).toBe("joao-pessoa");
+    expect(movers.biggestRecovery?.lossNetDelta).toBe(200_00);
+  });
+
+  it("empate no R$ do vermelho: afundar desempata por MAIS shows no vermelho", () => {
+    const movers = cityProfitRedMovers([
+      mk({ key: "recife", name: "Recife", lossNetDelta: -100_00, lossCountDelta: 1 }),
+      mk({ key: "olinda", name: "Olinda", lossNetDelta: -100_00, lossCountDelta: 3 }),
+    ]);
+    expect(movers.deepestLoss?.key).toBe("olinda"); // mesmo R$, mais shows no vermelho
+    expect(movers.deepestLoss?.lossCountDelta).toBe(3);
+  });
+
+  it("empate no R$ do vermelho: recuperar desempata por MENOS shows no vermelho", () => {
+    const movers = cityProfitRedMovers([
+      mk({ key: "recife", name: "Recife", lossNetDelta: 100_00, lossCountDelta: -1 }),
+      mk({ key: "olinda", name: "Olinda", lossNetDelta: 100_00, lossCountDelta: -3 }),
+    ]);
+    expect(movers.biggestRecovery?.key).toBe("olinda"); // mesmo R$, removeu mais do vermelho
+    expect(movers.biggestRecovery?.lossCountDelta).toBe(-3);
+  });
+
+  it("ignora a 'Sem cidade' (chave '') mesmo sendo a maior variação", () => {
+    const movers = cityProfitRedMovers([
+      mk({ key: "", name: "Sem cidade", lossNetDelta: -500_00 }),
+      mk({ key: "recife", name: "Recife", lossNetDelta: -100_00 }),
+    ]);
+    expect(movers.deepestLoss?.key).toBe("recife"); // o balde "" não vira mover
+  });
+
+  it("só afundou (ninguém recuperou) → biggestRecovery nulo", () => {
+    const movers = cityProfitRedMovers([
+      mk({ key: "recife", name: "Recife", lossNetDelta: -100_00 }),
+    ]);
+    expect(movers.deepestLoss?.key).toBe("recife");
+    expect(movers.biggestRecovery).toBeNull();
+  });
+
+  it("integra com compareCitiesByProfit sobre um show real no vermelho", () => {
+    // Atual: Recife com um show cujo custo supera o cachê (net < 0). Anterior: vazio.
+    const currentShows: VenueShowLike[] = [
+      { id: "a", fee: 100_00, status: "PLAYED", venue: "Bar", city: "Recife" },
+    ];
+    const txs: TxLike[] = [
+      { type: "EXPENSE", amount: 300_00, category: "Transporte", date: "2026-01-01", received: true, showId: "a" },
+    ];
+    const movers = cityProfitRedMovers(
+      compareCitiesByProfit(rankCitiesByProfit(currentShows, txs), rankCitiesByProfit([], [])),
+    );
+    expect(movers.deepestLoss?.key).toBe("recife");
+    expect(movers.deepestLoss?.lossNetDelta).toBe(-200_00); // net -200 vs 0 anterior
+    expect(movers.deepestLoss?.lossCountDelta).toBe(1);
+    expect(movers.biggestRecovery).toBeNull();
   });
 });
 

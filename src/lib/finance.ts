@@ -762,6 +762,68 @@ export function cityProfitMovers(changes: CityProfitChange[]): CityProfitMovers 
   return { biggestGain, biggestDrop };
 }
 
+export interface CityRedMovers {
+  /**
+   * Cidade que mais AFUNDOU no vermelho de um ano para o outro (maior aumento de
+   * R$ no prejuízo → `lossNetDelta` mais NEGATIVO, pois `lossNet ≤ 0`); null se
+   * nenhuma cidade piorou o vermelho. Empate → mais shows adicionados ao vermelho
+   * (`lossCountDelta` maior), depois a ordem do relatório atual.
+   */
+  deepestLoss: CityProfitChange | null;
+  /**
+   * Cidade que mais SAIU do vermelho (maior redução de R$ no prejuízo →
+   * `lossNetDelta` mais POSITIVO); null se nenhuma melhorou. Empate → mais shows
+   * removidos do vermelho (`lossCountDelta` menor), depois a ordem do relatório.
+   */
+  biggestRecovery: CityProfitChange | null;
+}
+
+/**
+ * Destila de `compareCitiesByProfit` os dois movers do **vermelho** — a cidade
+ * cujo prejuízo (`lossNet`, só os shows no vermelho) mais CRESCEU e a que mais
+ * ENCOLHEU de um ano para o outro. Irmão de `cityProfitMovers` (que ancora no nº
+ * de shows), mas no eixo da RENTABILIDADE do vermelho: responde "onde eu passei a
+ * perder (ou deixei de perder) dinheiro?", distinto de "para onde a agenda migrou".
+ * Reusa o par `lossNetDelta`/`lossCountDelta` que `CityProfitChange` já carrega
+ * desde a D381 — zero consulta nova. Puro, sem I/O.
+ *
+ * Convenção de sinal das superfícies irmãs (D381): como `lossNet ≤ 0`,
+ * `lossNetDelta < 0` = MAIS R$ no vermelho (afundou) e `lossNetDelta > 0` = MENOS
+ * R$ no vermelho (recuperou). A "Sem cidade" (`key === ""`) fica de fora — não é
+ * uma praça renegociável, mesma regra dos movers de agenda. Como a lista já vem na
+ * ordem do relatório atual, o desempate estrito faz a primeira vencer empates.
+ */
+export function cityProfitRedMovers(changes: CityProfitChange[]): CityRedMovers {
+  let deepestLoss: CityProfitChange | null = null;
+  let biggestRecovery: CityProfitChange | null = null;
+  for (const c of changes) {
+    if (c.key === "") continue; // "Sem cidade" não é destino renegociável.
+    if (c.lossNetDelta < 0) {
+      // Afundou: mais R$ no vermelho. Pior = delta mais negativo.
+      if (
+        deepestLoss == null ||
+        c.lossNetDelta < deepestLoss.lossNetDelta ||
+        (c.lossNetDelta === deepestLoss.lossNetDelta &&
+          c.lossCountDelta > deepestLoss.lossCountDelta)
+      ) {
+        deepestLoss = c;
+      }
+    }
+    if (c.lossNetDelta > 0) {
+      // Recuperou: menos R$ no vermelho. Melhor = delta mais positivo.
+      if (
+        biggestRecovery == null ||
+        c.lossNetDelta > biggestRecovery.lossNetDelta ||
+        (c.lossNetDelta === biggestRecovery.lossNetDelta &&
+          c.lossCountDelta < biggestRecovery.lossCountDelta)
+      ) {
+        biggestRecovery = c;
+      }
+    }
+  }
+  return { deepestLoss, biggestRecovery };
+}
+
 /** Direção da variação de uma cidade no comparativo (para CSV/UI). */
 export type CityProfitTrend = "up" | "down" | "flat";
 
@@ -809,6 +871,12 @@ export const indexVenueProfitChanges = indexCityProfitChanges;
 
 /** Destila os dois movers por local (maior ganho / maior perda de shows). */
 export const venueProfitMovers = cityProfitMovers;
+
+/** Os dois movers do vermelho por local (alias de `CityRedMovers`). */
+export type VenueRedMovers = CityRedMovers;
+
+/** Destila os dois movers do vermelho por local (afundou / recuperou). */
+export const venueProfitRedMovers = cityProfitRedMovers;
 
 /** Classifica a variação de um local numa tendência (alias de `classifyCityProfitChange`). */
 export const classifyVenueProfitChange = classifyCityProfitChange;
