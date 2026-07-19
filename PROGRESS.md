@@ -4,7 +4,29 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 381 — EXPORT CSV DO COMPARATIVO DE MARGEM POR PAPEL DO CONTRATANTE (`roleMarginComparisonToCsv`, D376):**
+**Sessão 382 — CONTAGEM DE SHOWS NO VERMELHO POR CONTRATANTE E POR PAPEL (`lossCount` em `ContactProfitRow`/`RoleProfitRow`, D377):**
+a Sessão 381/D376 fechou o par tela↔export do comparativo de MARGEM por papel e registrou como próximo passo (alt. a) "a CONTAGEM de
+shows no vermelho por papel/contratante (o outro lado do par contagem↔margem, exigiria novos campos em `RoleProfitRow`/`ContactProfitRow`)".
+Esta sessão o entrega. As tabelas de rentabilidade por contratante (`/contatos/rentabilidade`, D105) e por papel (`/contatos/rentabilidade/por-papel`)
+mostram o RESULTADO AGREGADO de cada grupo, mas um contratante/canal lucrativo no total (`totalNet > 0`) pode esconder shows individuais
+no prejuízo — a informação acionável "com quem/que canal eu às vezes toco no vermelho". **(1)** camada pura em `src/lib/finance.ts`:
+novo campo `lossCount` em `ContactProfitRow` e `RoleProfitRow` — nº de shows do grupo com `net < 0` (mesma faixa "loss"/`showResultBandKeyFor`
+da distribuição por show; o zerado, `net === 0`, NÃO conta). Computado no acumulador de `rankContactsByProfit` e `rankRolesByProfit`
+(`if (pnl.net < 0) acc.lossCount += 1`), sem consulta nova nem mudança de assinatura — reusa o `computeShowPnL` já iterado. O do papel é
+o rollup natural dos contratantes daquele papel. **(2)** coluna "No vermelho" nas DUAS tabelas (`contatos/rentabilidade/page.tsx` e
+`por-papel/page.tsx`), entre "Shows" e "Cachê": mostra o número em vermelho/negrito quando `lossCount > 0` (com `title` "N de M shows deram
+prejuízo"), "—" cinza quando 0; nota de rodapé atualizada nas duas telas. **+2 testes** de lógica (`finance.test.ts`: por contratante —
+1 de 2 shows no vermelho com agregado ainda negativo E o zerado não conta; por papel — rollup soma o vermelho de contratantes distintos do
+mesmo papel, BOOKER sem vermelho). Camada pura + wiring; zero migração/dependência. DoD verde: `npm run build` (as duas páginas compilam;
+sem rota nova), `npx tsc --noEmit` (ajustadas 2 fixtures de `csv.test.ts` que montam `ContactProfitRow`/`RoleProfitRow` literais, agora
+com `lossCount`), `npm run lint` (0 warnings), `npm test` (**2094 testes**); smoke → `/login` 200, `/contatos/rentabilidade` e
+`/contatos/rentabilidade/por-papel?ano=2025` 307→/login (auth-gated); `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical,
+ZERO dependência nova), ver D377. **Próximo possível** — (a) surtir o `lossCount` também nos exports CSV irmãos (`contactProfitToCsv`/
+`roleProfitToCsv`) como coluna "No vermelho", completando o par tela↔export deste eixo; (b) somar o PREJUÍZO em R$ dos shows no vermelho
+(`lossNet` por grupo, molde do `lossNet` da distribuição) — "quanto R$ o vermelho custou com este contratante"; (c) levar o recorte por
+natureza (todos × só firmes) ao eixo de papel (tela + card + export em conjunto, a consistência futura da D374). Fora deste eixo, segue
+como único pendente do backup a restauração por MERGE (ALTO risco, revisão humana).
+**Antes disso, Sessão 381 — EXPORT CSV DO COMPARATIVO DE MARGEM POR PAPEL DO CONTRATANTE (`roleMarginComparisonToCsv`, D376):**
 a Sessão 380/D375 entregou o comparativo ano a ano da MARGEM por PAPEL (`compareRoleMargins` + card `<RoleMarginComparisonCard>` em
 `/contatos/rentabilidade/por-papel`) e registrou como próximo passo (alt. a) o export CSV irmão. Esta sessão o fecha, completando o par
 tela↔export desse eixo (como contratante/D373, cachê/D292, distribuição/D366, cidade/D120 já tinham). **(1)** camada pura

@@ -1036,6 +1036,7 @@ describe("contactProfitToCsv", () => {
     avgFee: 150000,
     medianFee: 150000,
     margin: 650000 / 750000,
+    lossCount: 0,
     ...over,
   });
 
@@ -1080,6 +1081,7 @@ describe("roleProfitToCsv", () => {
     avgFee: 150000,
     medianFee: 150000,
     margin: 650000 / 750000,
+    lossCount: 0,
     ...over,
   });
 
