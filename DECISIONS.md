@@ -5,6 +5,34 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-19 — D378: Coluna "No vermelho" (`lossCount`) nos exports CSV de rentabilidade por contratante e por papel
+- **Contexto:** a D377 acrescentou o campo `lossCount` (nº de shows do grupo com `net < 0`) a `ContactProfitRow`/`RoleProfitRow` e a
+  coluna "No vermelho" nas duas telas (`/contatos/rentabilidade` e `.../por-papel`), mas registrou como próximo passo (alt. a) surtir o
+  mesmo dado nos exports CSV irmãos (`contactProfitToCsv`/`roleProfitToCsv`) — que ainda saíam sem a contagem. O par tela↔export desse
+  eixo ficava incompleto: o músico via "No vermelho" na tela mas não na planilha baixada.
+- **Decisão:** adicionar a coluna "No vermelho" a `CONTACT_PROFIT_CSV_HEADERS` e `ROLE_PROFIT_CSV_HEADERS` (`src/lib/csv.ts`), entre
+  "Shows" e "Cachê (R$)" — a mesma posição da tela — serializando `String(row.lossCount)` (número puro, `0` quando nenhum; a tela mostra
+  "—" para 0, mas o CSV é orientado a máquina/planilha e um `0` numérico é mais útil, mesma convenção do `String(...lossCount)` já usado
+  em `contactProfitComparisonToCsv`). Sem linha "Total" nova (o total é derivável). Camada puramente de serialização.
+- **Justificativa:** fecha o par tela↔export do eixo de rentabilidade por contratante/papel (como cachê/D292, distribuição/D366,
+  cidade/D120, margem/D373/D376 já tinham), com o mínimo de superfície — só o serializador, reusando o `lossCount` já computado pela
+  D377; zero lógica de negócio nova, zero migração/dependência (`npm audit` inalterado: 10 advisories, 4 moderate/5 high/1 critical,
+  ZERO dependência nova). +2 testes de CSV (`csv.test.ts`: `lossCount` na 4ª coluna do export por contratante e na 3ª do por papel,
+  logo após "Shows"); ajustadas as 4 asserções de cabeçalho/linha e os 2 índices de "cachê mediano" (deslocados +1 pela coluna nova).
+  DoD verde: `npm run build` (as duas rotas de export seguem 0 B), `npx tsc --noEmit`, `npm run lint` (0 warnings),
+  `npm test` (**2096 testes**); smoke → `/login` 200, `/contatos/rentabilidade/export?ano=2025` e
+  `/contatos/rentabilidade/por-papel/export?ano=2025` 307→/login (auth-gated).
+- **Alternativas consideradas:** (a) emitir "—" para 0 (espelho literal da tela) — descartado: a tela usa "—" por estética, mas num CSV
+  o valor é consumido por planilha/filtro e `0` é numérico e somável, enquanto "—" viraria texto; a coluna "No vermelho" da comparação
+  (`contactProfitComparisonToCsv`) já emite `String(lossCount)` inclusive `0`, então `0` mantém a convenção. (b) pôr a coluna no fim da
+  linha (evitando deslocar índices) — descartado: quebraria o espelhamento tela↔export (a tela põe "No vermelho" entre Shows e Cachê) e
+  a leitura da planilha; o custo é só ajustar 2 índices de teste. (c) já somar o PREJUÍZO em R$ (`lossNet`) junto — deixado como próximo
+  passo para manter a sessão pequena e fechada. Próximos possíveis abertos: (a) somar o `lossNet` (prejuízo em R$ dos shows no vermelho)
+  por grupo, tela + export em conjunto (molde do `lossNet` da distribuição); (b) levar o recorte por natureza (todos × só firmes) ao
+  eixo de papel (a consistência futura da D374).
+
+---
+
 ## 2026-07-19 — D377: Contagem de shows no vermelho por contratante e por papel (`lossCount`)
 - **Contexto:** a D376 fechou o par tela↔export do comparativo de MARGEM por papel e registrou como próximo passo (alt. b) "contagem de
   shows no vermelho por papel/contratante (o outro lado do par contagem↔margem, exigiria novos campos em `RoleProfitRow`/`ContactProfitRow`)".

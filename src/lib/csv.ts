@@ -1203,6 +1203,7 @@ export const CONTACT_PROFIT_CSV_HEADERS = [
   "Contratante",
   "Papel",
   "Shows",
+  "No vermelho",
   "Cachê (R$)",
   "Extras (R$)",
   "Despesas (R$)",
@@ -1221,6 +1222,8 @@ function contactRoleLabel(role: string): string {
  * Serializa a rentabilidade por contratante (P&L somado por quem paga) em CSV,
  * pronto para download. Mesma convenção pt-BR de `transactionsToCsv`. O grupo
  * "Sem contratante" (`contact: null`) sai com nome fixo e papel em branco. A
+ * coluna "No vermelho" (entre "Shows" e "Cachê", espelhando a tabela) traz o
+ * `lossCount` — nº de shows do grupo com resultado negativo (0 quando nenhum). A
  * ordem das linhas é preservada (a página ordena por resultado decrescente,
  * "Sem contratante" por último). Pura.
  */
@@ -1234,6 +1237,7 @@ export function contactProfitToCsv(
       row.contact ? row.contact.name : "Sem contratante",
       row.contact ? contactRoleLabel(row.contact.role) : "",
       String(row.showCount),
+      String(row.lossCount),
       centsToCsvAmount(row.totalFee),
       centsToCsvAmount(row.totalExtra),
       centsToCsvAmount(row.totalExpenses),
@@ -1251,6 +1255,7 @@ export function contactProfitToCsv(
 export const ROLE_PROFIT_CSV_HEADERS = [
   "Papel",
   "Shows",
+  "No vermelho",
   "Cachê (R$)",
   "Extras (R$)",
   "Despesas (R$)",
@@ -1267,9 +1272,11 @@ export const ROLE_PROFIT_CSV_HEADERS = [
  * coluna "Contratante". Mesma convenção pt-BR de `transactionsToCsv`. O grupo
  * sem papel (`role: null`) sai como "Sem contratante" (espelha a página). O
  * cachê mediano só sai a partir de `MIN_MEDIAN_FEE_SAMPLE` shows (abaixo disso,
- * em branco — mesma regra de apresentação da UI). A ordem das linhas é
- * preservada (a página ordena por resultado decrescente, "Sem contratante" por
- * último). Pura.
+ * em branco — mesma regra de apresentação da UI). A coluna "No vermelho" (entre
+ * "Shows" e "Cachê", espelhando a tabela) traz o `lossCount` — nº de shows do
+ * papel com resultado negativo, rollup dos contratantes (0 quando nenhum). A
+ * ordem das linhas é preservada (a página ordena por resultado decrescente,
+ * "Sem contratante" por último). Pura.
  */
 export function roleProfitToCsv(
   rows: RoleProfitRow[],
@@ -1280,6 +1287,7 @@ export function roleProfitToCsv(
     out.push([
       row.role ? contactRoleLabel(row.role) : "Sem contratante",
       String(row.showCount),
+      String(row.lossCount),
       centsToCsvAmount(row.totalFee),
       centsToCsvAmount(row.totalExtra),
       centsToCsvAmount(row.totalExpenses),

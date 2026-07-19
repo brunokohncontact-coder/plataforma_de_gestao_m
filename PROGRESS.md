@@ -4,7 +4,24 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 382 — CONTAGEM DE SHOWS NO VERMELHO POR CONTRATANTE E POR PAPEL (`lossCount` em `ContactProfitRow`/`RoleProfitRow`, D377):**
+**Sessão 383 — COLUNA "NO VERMELHO" (`lossCount`) NOS EXPORTS CSV DE RENTABILIDADE POR CONTRATANTE E POR PAPEL (D378):**
+a Sessão 382/D377 acrescentou o campo `lossCount` (nº de shows do grupo com `net < 0`) a `ContactProfitRow`/`RoleProfitRow` e a coluna
+"No vermelho" nas duas telas, e registrou como próximo passo (alt. a) surtir o mesmo dado nos exports CSV irmãos. Esta sessão o fecha,
+completando o par tela↔export deste eixo (como cachê/D292, distribuição/D366, cidade/D120, margem/D373/D376 já tinham). **(1)** coluna
+"No vermelho" em `CONTACT_PROFIT_CSV_HEADERS` e `ROLE_PROFIT_CSV_HEADERS` (`src/lib/csv.ts`), entre "Shows" e "Cachê (R$)" — a MESMA
+posição da tela — serializando `String(row.lossCount)` (número puro, `0` quando nenhum; CSV é orientado a máquina, mesma convenção do
+`contactProfitComparisonToCsv`). Só o serializador (`contactProfitToCsv`/`roleProfitToCsv`), reusando o `lossCount` já computado pela
+D377; zero lógica de negócio nova, zero rota/migração/dependência. Docstrings das duas funções atualizadas. **+2 testes** de CSV
+(`csv.test.ts`: `lossCount` na 4ª coluna do export por contratante e na 3ª do por papel, logo após "Shows"); ajustadas as 4 asserções de
+cabeçalho/linha e os 2 índices de "cachê mediano" (deslocados +1 pela coluna nova). DoD verde: `npm run build` (as duas rotas de export
+seguem 0 B), `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**2096 testes**); smoke → `/login` 200,
+`/contatos/rentabilidade/export?ano=2025` e `/contatos/rentabilidade/por-papel/export?ano=2025` 307→/login (auth-gated); `npm audit`
+inalterado (10 advisories: 4 moderate/5 high/1 critical, ZERO dependência nova), ver D378. **Próximo possível** — (a) somar o PREJUÍZO em
+R$ dos shows no vermelho por grupo (`lossNet` em `ContactProfitRow`/`RoleProfitRow`, tela + export em conjunto, molde do `lossNet` da
+distribuição) — "quanto R$ o vermelho custou com este contratante/canal"; (b) levar o recorte por natureza (todos × só firmes) ao eixo de
+papel (tela + card + export em conjunto, a consistência futura da D374). Fora deste eixo, segue como único pendente do backup a
+restauração por MERGE (ALTO risco, revisão humana).
+**Antes disso, Sessão 382 — CONTAGEM DE SHOWS NO VERMELHO POR CONTRATANTE E POR PAPEL (`lossCount` em `ContactProfitRow`/`RoleProfitRow`, D377):**
 a Sessão 381/D376 fechou o par tela↔export do comparativo de MARGEM por papel e registrou como próximo passo (alt. a) "a CONTAGEM de
 shows no vermelho por papel/contratante (o outro lado do par contagem↔margem, exigiria novos campos em `RoleProfitRow`/`ContactProfitRow`)".
 Esta sessão o entrega. As tabelas de rentabilidade por contratante (`/contatos/rentabilidade`, D105) e por papel (`/contatos/rentabilidade/por-papel`)
