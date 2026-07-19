@@ -6,6 +6,8 @@ import {
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
+  parseShowNature,
+  filterShowsByNature,
   type TxLike,
   type ShowLike,
   type ContactProfitContact,
@@ -53,7 +55,14 @@ export async function GET(req: NextRequest) {
     req.nextUrl.searchParams.get("ano") ?? undefined,
     availableYears,
   );
-  const periodShows = filterShowsByYear(shows, yearFilter);
+  // Mesmo recorte por natureza da página (D385): "todos" × só firmes.
+  const nature = parseShowNature(
+    req.nextUrl.searchParams.get("natureza") ?? undefined,
+  );
+  const periodShows = filterShowsByNature(
+    filterShowsByYear(shows, yearFilter),
+    nature,
+  );
 
   const txs: TxLike[] = transactions.map((t) => ({
     type: t.type as TxLike["type"],
@@ -80,7 +89,8 @@ export async function GET(req: NextRequest) {
   // BOM UTF-8 para preservar acentuação ao abrir no Excel.
   const body = "\uFEFF" + csv;
   const suffix = yearFilter === "all" ? "todos" : String(yearFilter);
-  const filename = `rentabilidade-contratantes-${suffix}.csv`;
+  const natureSuffix = nature === "firm" ? "-firmes" : "";
+  const filename = `rentabilidade-contratantes-${suffix}${natureSuffix}.csv`;
 
   return new NextResponse(body, {
     status: 200,

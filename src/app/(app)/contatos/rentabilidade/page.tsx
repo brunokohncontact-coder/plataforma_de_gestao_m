@@ -10,12 +10,15 @@ import {
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
+  parseShowNature,
+  filterShowsByNature,
   type TxLike,
   type ShowLike,
   type ContactProfitContact,
   type ClientConcentration,
   type ClientConcentrationComparison,
   type ContactMarginComparison,
+  type ShowNatureFilter,
 } from "@/lib/finance";
 import { pickPayerContact } from "@/lib/billing";
 import { formatMoney } from "@/lib/money";
@@ -31,6 +34,49 @@ function roleLabel(role: string): string {
 }
 
 const CANCELLED = "CANCELLED";
+
+/** Opções do seletor de natureza da amostra (D369, espelhando a rentabilidade por show). */
+const NATURE_OPTIONS: { value: ShowNatureFilter; label: string }[] = [
+  { value: "all", label: "Todos os shows" },
+  { value: "firm", label: "Só confirmados/realizados" },
+];
+
+/**
+ * Seletor de natureza da amostra (D369): "Todos os shows" (não cancelados, inclui
+ * propostas) × "Só confirmados/realizados" (compromissos firmes). Preserva o ano
+ * ativo em cada link via `buildHref`. Server component puro, espelhando o
+ * `NaturePicker` de `/shows/rentabilidade` e de `/por-papel` (D384) — traz o
+ * recorte por natureza ao eixo por contratante (D385), fechando a consistência
+ * com o rollup por papel.
+ */
+function NaturePicker({
+  active,
+  buildHref,
+}: {
+  active: ShowNatureFilter;
+  buildHref: (nature: ShowNatureFilter) => string;
+}) {
+  const base = "rounded-full px-3 py-1 text-sm font-medium transition-colors";
+  const on = "bg-brand-600 text-white";
+  const off = "bg-gray-100 text-gray-600 hover:bg-gray-200";
+  return (
+    <nav aria-label="Natureza da amostra" className="flex flex-wrap items-center gap-2">
+      <span className="text-xs font-medium uppercase tracking-wide text-gray-500">
+        Natureza
+      </span>
+      {NATURE_OPTIONS.map((opt) => (
+        <Link
+          key={opt.value}
+          href={buildHref(opt.value)}
+          className={base + " " + (active === opt.value ? on : off)}
+          aria-current={active === opt.value ? "page" : undefined}
+        >
+          {opt.label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
 
 export default async function ContactProfitabilityPage({
   searchParams,
@@ -69,7 +115,32 @@ export default async function ContactProfitabilityPage({
     shows.filter((s) => s.status !== CANCELLED).map((s) => s.date),
   );
   const yearFilter = parseProfitYear(searchParams?.ano, availableYears);
-  const periodShows = filterShowsByYear(shows, yearFilter);
+  // Recorte por natureza (D385, espelhando a por-papel/D384 e a por show/D369):
+  // "todos" os não cancelados × só compromissos firmes (CONFIRMED+PLAYED). Filtra
+  // ANTES de agregar, para o report, a concentração e o comparativo lerem a mesma
+  // amostra. Fecha a consistência com o rollup por papel (agora que o padrão
+  // "all" os mantém idênticos).
+  const nature = parseShowNature(searchParams?.natureza);
+  const periodShows = filterShowsByNature(
+    filterShowsByYear(shows, yearFilter),
+    nature,
+  );
+
+  // Query preservando ano + natureza (para os exports, o seletor de natureza e os
+  // links irmãos). Omite os padrões (ano="all", natureza="all") para manter as
+  // URLs limpas quando nada está recortado.
+  const buildQuery = (over: { nature?: ShowNatureFilter } = {}): string => {
+    const nextNature = over.nature ?? nature;
+    const q = new URLSearchParams();
+    if (yearFilter !== "all") q.set("ano", String(yearFilter));
+    if (nextNature !== "all") q.set("natureza", nextNature);
+    const qs = q.toString();
+    return qs ? `?${qs}` : "";
+  };
+
+  // Params extras a preservar em cada link do PeriodPicker (só a natureza; o ano
+  // é o eixo do próprio seletor).
+  const periodParams = nature === "all" ? undefined : { natureza: nature };
 
   const txs: TxLike[] = transactions.map((t) => ({
     type: t.type as TxLike["type"],
@@ -104,7 +175,10 @@ export default async function ContactProfitabilityPage({
   if (yearFilter !== "all") {
     previousYear = yearFilter - 1;
     const previousReport = rankContactsByProfit(
-      filterShowsByYear(shows, previousYear) as (ShowLike & ShowRow)[],
+      filterShowsByNature(
+        filterShowsByYear(shows, previousYear),
+        nature,
+      ) as (ShowLike & ShowRow)[],
       txs,
       getPayer as (s: ShowLike & ShowRow) => ContactProfitContact | null,
     );
@@ -132,12 +206,15 @@ export default async function ContactProfitabilityPage({
           <p className="text-sm text-gray-500">
             Quais clientes realmente dão dinheiro — resultado (cachê + extras − despesas) somado por
             quem paga o cachê. Cada show conta para um único contratante. Shows cancelados são ignorados.
+            {nature === "firm"
+              ? " Recorte ativo: só shows confirmados/realizados (propostas em aberto ficam de fora)."
+              : " Inclui propostas em aberto; use “Natureza” para ver só o que já é firme."}
           </p>
         </div>
         <div className="flex items-center gap-2">
           {report.count > 0 && (
             <a
-              href={`/contatos/rentabilidade/export${yearFilter === "all" ? "" : `?ano=${yearFilter}`}`}
+              href={`/contatos/rentabilidade/export${buildQuery()}`}
               className="btn-secondary text-sm"
               download
             >
@@ -156,9 +233,22 @@ export default async function ContactProfitabilityPage({
         </div>
       </div>
 
-      {availableYears.length > 0 && (
-        <PeriodPicker years={availableYears} active={yearFilter} basePath="/contatos/rentabilidade" />
-      )}
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+        {availableYears.length > 0 && (
+          <PeriodPicker
+            years={availableYears}
+            active={yearFilter}
+            basePath="/contatos/rentabilidade"
+            params={periodParams}
+          />
+        )}
+        <NaturePicker
+          active={nature}
+          buildHref={(n) =>
+            `/contatos/rentabilidade${buildQuery({ nature: n })}`
+          }
+        />
+      </div>
 
       {report.count === 0 ? (
         <div className="card text-center text-gray-500">
@@ -179,7 +269,7 @@ export default async function ContactProfitabilityPage({
                 Escolha outro período acima para ver a rentabilidade por contratante.
               </p>
               <Link
-                href="/contatos/rentabilidade"
+                href={`/contatos/rentabilidade${nature === "all" ? "" : `?natureza=${nature}`}`}
                 className="mt-3 inline-block text-brand-700 hover:underline"
               >
                 Ver todos os anos
@@ -243,6 +333,7 @@ export default async function ContactProfitabilityPage({
               comparison={marginComparison}
               currentYear={yearFilter as number}
               previousYear={previousYear}
+              nature={nature}
             />
           )}
 
@@ -558,10 +649,12 @@ function MarginComparisonCard({
   comparison,
   currentYear,
   previousYear,
+  nature,
 }: {
   comparison: ContactMarginComparison;
   currentYear: number;
   previousYear: number;
+  nature: ShowNatureFilter;
 }) {
   const { squeezedCount, comparedCount, changes, bestGain } = comparison;
   const squeezed = changes.filter((c) => c.marginDelta < 0).slice(0, 5);
@@ -582,7 +675,7 @@ function MarginComparisonCard({
               : "🟢 Ninguém apertou a margem"}
           </span>
           <a
-            href={`/contatos/rentabilidade/comparativo-margem/export?ano=${currentYear}`}
+            href={`/contatos/rentabilidade/comparativo-margem/export?ano=${currentYear}${nature === "all" ? "" : `&natureza=${nature}`}`}
             className="badge bg-white/70 font-semibold hover:underline"
             download
           >

@@ -4,7 +4,29 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 389 — RECORTE POR NATUREZA (TODOS × SÓ FIRMES) NO EIXO DE PAPEL DE RENTABILIDADE (D384):**
+**Sessão 390 — RECORTE POR NATUREZA (TODOS × SÓ FIRMES) NO EIXO POR CONTRATANTE DE RENTABILIDADE (D385):**
+a Sessão 389/D384 levou o seletor de **natureza** da amostra — "Todos os shows" (não cancelados, inclui propostas) × "Só
+confirmados/realizados" (firmes: `CONFIRMED`+`PLAYED`) — ao eixo por PAPEL do contratante (`/contatos/rentabilidade/por-papel`), um rollup acima
+do eixo por CONTRATANTE, e registrou como próximo passo (alt. a) "levar o MESMO recorte ao eixo por contratante (tela + export + card de
+margem/D372), fechando a consistência do rollup". Esta sessão o entrega, como wiring puro (ZERO nova lógica de negócio — reusa
+`parseShowNature`/`filterShowsByNature` da D369, já testados), espelhando exatamente a D384. **(1)** tela `contatos/rentabilidade/page.tsx`:
+`NaturePicker` (cópia do de `/por-papel`) ao lado do `PeriodPicker`; `nature = parseShowNature(searchParams?.natureza)`; `filterShowsByNature`
+aplicado ANTES de agregar — sobre o ano corrente E o anterior — para que `rankContactsByProfit`, `clientConcentration` e os comparativos
+(`compareClientConcentration`/`compareContactMargins`) leiam a MESMA amostra; helper `buildQuery`/`periodParams` preserva ano+natureza em TODOS
+os links (CSV principal, CSV do card de margem, PeriodPicker, empty-state, seletor de natureza), omitindo os padrões (`ano=all`/`natureza=all`);
+nota do cabeçalho ecoa o recorte ativo. **(2)** card `MarginComparisonCard`: recebe `nature` e propaga `&natureza=firm` no seu link de export.
+**(3)** rotas `rentabilidade/export` e `comparativo-margem/export`: mesmo `filterShowsByNature` (nos DOIS anos no comparativo) + sufixo
+`-firmes` no nome do arquivo, espelhando os exports irmãos. Não-quebra: `natureza=all` (o padrão) mantém URLs e comportamento históricos — e
+como papel e contratante agora compartilham o padrão "todos", o cross-reference entre as duas telas só diverge quando o usuário ATIVA "firmes"
+(opt-in). DoD verde: `npm run build` (as 3 superfícies compilam; os dois exports seguem 0 B), `npx tsc --noEmit`, `npm run lint` (0 warnings),
+`npm test` (**2119 testes**, sem novos casos — não há nova lógica pura a cobrir, só wiring de primitivas já testadas); smoke → `/login` 200,
+`/contatos/rentabilidade?ano=2025&natureza=firm` e os dois `/export?ano=2025&natureza=firm` 307→/login (auth-gated, o param não quebra o
+roteamento); `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, ZERO dependência nova), ver D385. **Próximo possível** — (a)
+extrair `NaturePicker` (+ o helper `buildQuery`) para um componente/utilitário compartilhado: agora TRÊS telas o copiam
+(`/shows/rentabilidade`, `/por-papel`, `/contatos/rentabilidade`), então a extração começa a se pagar — refactor de qualidade, sem feature
+nova; (b) um "mover do vermelho" no comparativo por CONTRATANTE/PAPEL, se aquele eixo ganhar `lossNetDelta` por linha (hoje só o eixo
+geográfico tem, D383). Fora deste eixo, segue como único pendente do backup a restauração por MERGE (ALTO risco, revisão humana).
+**Antes disso, Sessão 389 — RECORTE POR NATUREZA (TODOS × SÓ FIRMES) NO EIXO DE PAPEL DE RENTABILIDADE (D384):**
 a rentabilidade por SHOW (`/shows/rentabilidade`) tem desde a D369 um seletor de **natureza** da amostra — "Todos os shows" (não cancelados,
 inclui propostas) × "Só confirmados/realizados" (firmes: `CONFIRMED`+`PLAYED`) — mas a tela de rentabilidade por PAPEL do contratante
 (`/contatos/rentabilidade/por-papel`, rollup acima da por contratante) ainda operava só sobre "todos os shows". As D374/D379/D380/D383

@@ -5,6 +5,32 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-19 — D385: Recorte por natureza (todos × só firmes) no eixo por CONTRATANTE de rentabilidade
+- **Contexto:** a D384 levou o seletor de **natureza** da amostra — "Todos os shows" (não cancelados, inclui propostas em aberto) × "Só
+  confirmados/realizados" (compromissos firmes, `CONFIRMED`+`PLAYED`) — ao eixo por PAPEL do contratante (`/contatos/rentabilidade/por-papel`),
+  um rollup acima do eixo por CONTRATANTE. Mas a tela-mãe por contratante (`/contatos/rentabilidade`) — a base desse rollup — ainda operava só
+  sobre "todos os shows". A própria D384 registrou como próximo passo (alt. a) "levar o recorte também ao eixo por contratante", fechando a
+  consistência do rollup (papel é rollup de contratante) agora que o padrão `all` os mantém idênticos.
+- **Decisão:** wiring puro (zero nova lógica de negócio — reusa `parseShowNature`/`filterShowsByNature`, D369, já testados), espelhando
+  exatamente a D384. **(1)** Tela `contatos/rentabilidade/page.tsx`: `NaturePicker` (cópia do de `por-papel`) ao lado do `PeriodPicker`,
+  `nature = parseShowNature(searchParams?.natureza)`, `filterShowsByNature` aplicado ANTES de agregar — sobre o ano corrente E o anterior, para
+  que `rankContactsByProfit`, `clientConcentration` e os comparativos (`compareClientConcentration`/`compareContactMargins`) leiam a MESMA
+  amostra. `buildQuery`/`periodParams` preservam ano+natureza em todos os links (CSV principal, CSV do card de margem, PeriodPicker, empty-state,
+  seletor de natureza), omitindo os padrões (`ano=all`/`natureza=all`). Nota do cabeçalho ecoa o recorte ativo. **(2)** Card "Margem por
+  contratante": recebe `nature` e propaga `&natureza=firm` no link de export. **(3)** Rotas de export (`export` e `comparativo-margem/export`):
+  mesmo `filterShowsByNature` (nos DOIS anos no comparativo) + sufixo `-firmes` no nome do arquivo. Padrão preservado: `natureza=all` mantém as
+  URLs e o comportamento históricos.
+- **Justificativa:** fecha o próximo passo alt. a da D384, deixando o eixo por contratante consistente com o rollup por papel e com a
+  rentabilidade por show — recortar "só firmes" mostra o resultado REALIZADO por cliente (o mesmo critério dos nudges de rentabilidade do Painel,
+  D371; uma proposta em aberto pode não acontecer). É wiring de primitivas já testadas, então o DoD apoia-se em build/typecheck/lint/smoke; os
+  2119 testes seguem verdes sem novos casos (não há nova lógica pura a cobrir). Não-quebra: o padrão `all` é idêntico ao de hoje, e como papel e
+  contratante agora compartilham o padrão "todos", o cross-reference entre as duas telas só diverge quando o usuário ATIVA "firmes" (opt-in).
+- **Alternativas consideradas:** (a) extrair `NaturePicker` para um componente compartilhado — agora TRÊS telas o copiam
+  (`/shows/rentabilidade`, `/por-papel`, `/contatos/rentabilidade`), então a extração começa a se pagar; adiada mesmo assim para manter esta
+  sessão como wiring fechado e sem risco, e registrada como próximo passo de qualidade. (b) sufixo de arquivo diferente de `-firmes` —
+  descartado: reusa a convenção exata das D369/D384. (c) unificar a query-building das três telas num helper compartilhado — mesmo racional da
+  (a): refactor separado, fora do escopo desta sessão.
+
 ## 2026-07-19 — D384: Recorte por natureza (todos × só firmes) no eixo de PAPEL de rentabilidade
 - **Contexto:** a rentabilidade por SHOW (`/shows/rentabilidade`) oferece desde a D369 um seletor de **natureza** da amostra — "Todos os shows"
   (não cancelados, inclui propostas em aberto) × "Só confirmados/realizados" (compromissos firmes, `CONFIRMED`+`PLAYED`). A tela de
