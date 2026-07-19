@@ -5,6 +5,39 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-19 — D380: Colunas "No vermelho" (`lossCount`) e "Prejuízo" (`lossNet`) por LOCAL e por CIDADE (`VenueProfitRow`/`CityProfitRow`) — tela + export
+- **Contexto:** a D379 fechou o par count↔R$ do vermelho (`lossCount` + `lossNet`) no eixo de CONTRATANTE e de PAPEL
+  (`ContactProfitRow`/`RoleProfitRow`) e registrou como próximo passo (alt. a) replicar esse par ao eixo geográfico por CIDADE/LOCAL de
+  rentabilidade. As tabelas por local (`/shows/locais`) e por cidade (`/shows/cidades`) mostravam só o resultado AGREGADO de cada grupo
+  (`totalNet`), mas um local/cidade lucrativo no total pode esconder shows individuais no prejuízo — a informação acionável "em que
+  casa/praça eu às vezes toco no vermelho, e quanto R$ isso custou" (a magnitude prioriza largar/renegociar aquele palco/praça).
+- **Decisão:** novos campos `lossCount` (nº de shows do grupo com `net < 0`) e `lossNet` (prejuízo somado desses shows, centavos ≤0; `0`
+  quando nenhum) em `VenueProfitRow` — e portanto em `CityProfitRow`, que é `= VenueProfitRow`. Acumulados no MESMO `if (pnl.net < 0)`
+  dentro do agregador COMPARTILHADO `aggregateShowProfit` (`src/lib/finance.ts`), a fonte única de `rankVenuesByProfit` E
+  `rankCitiesByProfit` — uma edição cobre os dois eixos (a cidade é o rollup natural das casas nela), reusando o `computeShowPnL` já
+  iterado; zero consulta/assinatura nova. Colunas "No vermelho" e "Prejuízo" nas duas telas (logo à direita de "Shows", o par
+  quantos↔quanto lado a lado): `lossCount`/`formatMoney(lossNet)` em vermelho quando `lossCount > 0`, "—" cinza quando 0. Colunas "No
+  vermelho" (`String(row.lossCount)`) e "Prejuízo (R$)" (`centsToCsvAmount(row.lossNet)`, com sinal) no serializador CSV compartilhado
+  `venueProfitToCsv` (`src/lib/csv.ts`), entre "Shows" e "Cachê (R$)" — cobrindo os dois exports (`/shows/locais/export` e
+  `/shows/cidades/export`) de uma vez.
+- **Justificativa:** completa o par contagem↔magnitude do eixo geográfico de rentabilidade (o próximo passo alt. a da D379) com o mínimo
+  de superfície — os campos derivam do P&L já calculado, reusam a definição de "vermelho" (`net < 0`) e a convenção `lossNet ≤ 0` já
+  cravadas na distribuição por show (D365/D379) e no eixo de contratante/papel (D377/D379), sem novo limiar nem hipótese; e o fato de os
+  dois eixos (local e cidade) compartilharem `aggregateShowProfit` e `venueProfitToCsv` significa que uma única edição na camada pura +
+  serializador surte ambos, mantendo os números batendo entre superfícies. Camada pura + wiring; zero migração/dependência (`npm audit`
+  inalterado: 10 advisories, 4 moderate/5 high/1 critical, ZERO dependência nova). +3 testes de CSV e +2 de lógica (por local: 1 de 3
+  shows no vermelho, agregado ainda positivo, o empate `net === 0` não conta, `lossNet` só do vermelho + zerado sem vermelho; por cidade:
+  rollup soma o vermelho de casas distintas da mesma praça, Olinda sem vermelho). DoD verde: `npm run build`, `npx tsc --noEmit`,
+  `npm run lint` (0 warnings), `npm test` (**2103 testes**); smoke → `/login` 200, as duas páginas e os dois exports 307→/login (auth-gated).
+- **Alternativas consideradas:** (a) mostrar o prejuízo como valor absoluto/positivo na tela — descartado: `formatMoney` já renderiza o
+  sinal negativo e o vermelho reforça a leitura "custo"; manter o sinal é consistente com o `lossNet` das D377/D379 e da distribuição por
+  show. (b) emitir "—" para 0 no CSV (espelho da tela) — descartado: o CSV é consumido por planilha/filtro e `0`/`0,00` é numérico e
+  somável, enquanto "—" viraria texto; mantém a convenção `String(lossCount)`/`centsToCsvAmount` dos exports por contratante/papel (D378).
+  (c) adicionar as colunas só a um eixo (local OU cidade) — desnecessário e inconsistente: como ambos passam pelo mesmo agregador e
+  serializador, cobrir os dois é a mesma edição; separar exigiria bifurcar código sem ganho. (d) estender já o vermelho ao comparativo ano
+  a ano por cidade (`cityProfitComparisonToCsv`) — deixado como próximo passo para manter a sessão pequena e fechada (fecharia o trio
+  tela↔export↔comparativo desse eixo geográfico).
+
 ## 2026-07-19 — D379: Coluna "Prejuízo" (`lossNet`) em `ContactProfitRow`/`RoleProfitRow` — o "quanto" R$ ao lado do "quantos" (`lossCount`)
 - **Contexto:** as D377/D378 fecharam o par tela↔export do `lossCount` (nº de shows do grupo com `net < 0`) por contratante e por
   papel, e registraram como próximo passo (alt. a) somar o PREJUÍZO em R$ desses shows no vermelho (`lossNet`), no molde do `lossNet`

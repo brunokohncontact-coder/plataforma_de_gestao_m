@@ -884,6 +884,8 @@ describe("venueProfitToCsv", () => {
     key: "bar-x",
     name: "Bar X",
     showCount: 4,
+    lossCount: 0,
+    lossNet: 0,
     totalFee: 600000,
     totalExtra: 50000,
     totalExpenses: 80000,
@@ -896,7 +898,7 @@ describe("venueProfitToCsv", () => {
 
   it("rotula a primeira coluna conforme groupLabel (Local × Cidade)", () => {
     expect(venueProfitToCsv([], "Local").split("\r\n")[0]).toBe(
-      "Local;Shows;Cachê (R$);Cachê mediano (R$);Extras (R$);Despesas (R$);Resultado (R$);Média/show (R$)",
+      "Local;Shows;No vermelho;Prejuízo (R$);Cachê (R$);Cachê mediano (R$);Extras (R$);Despesas (R$);Resultado (R$);Média/show (R$)",
     );
     expect(venueProfitToCsv([], "Cidade").split("\r\n")[0].startsWith("Cidade;")).toBe(true);
   });
@@ -904,14 +906,22 @@ describe("venueProfitToCsv", () => {
   it("serializa uma linha com o cachê mediano (amostra suficiente)", () => {
     const csv = venueProfitToCsv([row()], "Local");
     expect(csv.split("\r\n")[1]).toBe(
-      "Bar X;4;6000,00;1500,00;500,00;800,00;5700,00;1425,00",
+      "Bar X;4;0;0,00;6000,00;1500,00;500,00;800,00;5700,00;1425,00",
     );
+  });
+
+  it("serializa a contagem e o prejuízo dos shows no vermelho ('No vermelho' e 'Prejuízo (R$)')", () => {
+    const csv = venueProfitToCsv([row({ lossCount: 2, lossNet: -15000 })], "Local");
+    const cols = csv.split("\r\n")[1].split(";");
+    // 3ª coluna (índice 2) = No vermelho; 4ª (índice 3) = Prejuízo (R$), com sinal.
+    expect(cols[2]).toBe("2");
+    expect(cols[3]).toBe("-150,00");
   });
 
   it("deixa o cachê mediano vazio abaixo da amostra mínima", () => {
     const csv = venueProfitToCsv([row({ showCount: 2 })], "Local");
-    // 4ª coluna (índice 3) = cachê mediano, vazia com poucos shows.
-    expect(csv.split("\r\n")[1].split(";")[3]).toBe("");
+    // 6ª coluna (índice 5) = cachê mediano, vazia com poucos shows.
+    expect(csv.split("\r\n")[1].split(";")[5]).toBe("");
   });
 
   it("escapa nomes com delimitador", () => {

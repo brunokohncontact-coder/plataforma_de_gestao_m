@@ -1047,6 +1047,8 @@ function venueProfitHeaders(groupLabel: string): readonly string[] {
   return [
     groupLabel,
     "Shows",
+    "No vermelho",
+    "Prejuízo (R$)",
     "Cachê (R$)",
     "Cachê mediano (R$)",
     "Extras (R$)",
@@ -1071,6 +1073,12 @@ function csvMedianFee(showCount: number, medianFee: number): string {
  * convenção pt-BR de `transactionsToCsv`. A ordem das linhas é preservada (a
  * página ordena por resultado decrescente). Pura.
  *
+ * As colunas "No vermelho" (`String(row.lossCount)`, número puro — CSV é orientado
+ * a máquina) e "Prejuízo (R$)" (`centsToCsvAmount(row.lossNet)`, mantendo o sinal
+ * negativo; "0,00" quando nenhum) vêm logo após "Shows", espelhando a posição das
+ * telas `/shows/locais` e `/shows/cidades` — o "quantos" e o "quanto" R$ dos shows
+ * do grupo no vermelho (mesma convenção dos exports por contratante/papel).
+ *
  * Quando `changes`/`previousYear` são informados (só a tela de cidades, com um
  * ano específico e o anterior tendo shows — ver `compareCitiesByProfit`), a
  * planilha ganha uma última coluna "vs. {ano-1} (shows)" com a variação do nº de
@@ -1094,6 +1102,8 @@ export function venueProfitToCsv(
     const cols = [
       row.name,
       String(row.showCount),
+      String(row.lossCount),
+      centsToCsvAmount(row.lossNet),
       centsToCsvAmount(row.totalFee),
       csvMedianFee(row.showCount, row.medianFee),
       centsToCsvAmount(row.totalExtra),

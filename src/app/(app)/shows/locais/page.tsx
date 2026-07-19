@@ -245,6 +245,8 @@ export default async function VenueProfitabilityPage({
                 <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-500">
                   <th className="px-4 py-3 font-medium">Local</th>
                   <th className="px-4 py-3 text-right font-medium">Shows</th>
+                  <th className="px-4 py-3 text-right font-medium">No vermelho</th>
+                  <th className="px-4 py-3 text-right font-medium">Prejuízo</th>
                   <th className="px-4 py-3 text-right font-medium">Cachê</th>
                   <th className="px-4 py-3 text-right font-medium">Cachê mediano</th>
                   <th className="px-4 py-3 text-right font-medium">Extras</th>
@@ -270,6 +272,30 @@ export default async function VenueProfitabilityPage({
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right text-gray-700">{row.showCount}</td>
+                    <td className="px-4 py-3 text-right">
+                      {row.lossCount > 0 ? (
+                        <span
+                          className="font-medium text-red-600"
+                          title={`${row.lossCount} de ${row.showCount} ${row.showCount === 1 ? "show" : "shows"} deram prejuízo (resultado negativo)`}
+                        >
+                          {row.lossCount}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {row.lossCount > 0 ? (
+                        <span
+                          className="font-medium text-red-600"
+                          title={`Prejuízo somado dos ${row.lossCount} ${row.lossCount === 1 ? "show" : "shows"} no vermelho`}
+                        >
+                          {formatMoney(row.lossNet)}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-right text-gray-700">
                       {formatMoney(row.totalFee)}
                     </td>
@@ -319,7 +345,9 @@ export default async function VenueProfitabilityPage({
             sem local nem cidade aparecem como “Sem local”. O <strong>cachê mediano</strong> é o
             preço típico do palco (metade dos shows acima, metade abaixo), robusto a um show fora da
             curva; aparece só com {MIN_MEDIAN_FEE_SAMPLE} shows ou mais (com poucos, a mediana não é
-            confiável).{" "}
+            confiável). A coluna <strong>No vermelho</strong> conta quantos shows do local deram
+            prejuízo (resultado negativo) e <strong>Prejuízo</strong> soma quanto R$ esses shows
+            custaram — um local lucrativo no total pode esconder datas no vermelho.{" "}
             {venueChangeByKey && (
               <>
                 A coluna <strong>vs. {previousYear}</strong> mostra a tendência da casa em relação

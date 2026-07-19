@@ -740,6 +740,32 @@ describe("rankVenuesByProfit", () => {
     // ordenados: 100, 200, 300, 500 -> (200 + 300) / 2 = 250
     expect(teatro.medianFee).toBe(250_00);
   });
+
+  it("conta shows no vermelho e soma o prejuízo por local (lossCount/lossNet), o zerado não conta", () => {
+    // Mesmo palco, 3 shows: um lucra (+100), um no vermelho (-50, despesa > cachê),
+    // um empata (net 0). O local fica lucrativo no agregado (+50), mas 1 no vermelho.
+    const palco: VenueShowLike[] = [
+      { id: "p1", fee: 100_00, status: "PLAYED", venue: "Bar Y", city: "Recife" },
+      { id: "p2", fee: 10_00, status: "PLAYED", venue: "Bar Y", city: "Recife" },
+      { id: "p3", fee: 30_00, status: "PLAYED", venue: "Bar Y", city: "Recife" },
+    ];
+    const localTxs: TxLike[] = [
+      tx({ type: "EXPENSE", amount: 60_00, showId: "p2" }), // p2: 10 - 60 = -50 (vermelho)
+      tx({ type: "EXPENSE", amount: 30_00, showId: "p3" }), // p3: 30 - 30 = 0 (empatou, não conta)
+    ];
+    const r = rankVenuesByProfit(palco, localTxs);
+    const bar = r.rows.find((row) => row.key === "bar y")!;
+    expect(bar.totalNet).toBe(50_00); // 100 - 50 + 0
+    expect(bar.lossCount).toBe(1); // só p2; o empate (p3) não conta
+    expect(bar.lossNet).toBe(-50_00); // prejuízo somado só do show no vermelho
+  });
+
+  it("lossCount/lossNet ficam zerados quando nenhum show do local está no vermelho", () => {
+    const r = rankVenuesByProfit(shows, txs);
+    const bar = r.rows.find((row) => row.key === "bar do ze")!;
+    expect(bar.lossCount).toBe(0);
+    expect(bar.lossNet).toBe(0);
+  });
 });
 
 describe("rankCitiesByProfit", () => {
@@ -817,6 +843,28 @@ describe("rankCitiesByProfit", () => {
     const recife = r.rows.find((row) => row.key === "recife")!;
     expect(recife.medianFee).toBe(200_00);
     expect(recife.medianFee).not.toBe(Math.round(recife.totalFee / recife.showCount));
+  });
+
+  it("faz rollup do vermelho por cidade somando casas distintas (lossCount/lossNet)", () => {
+    // Recife: Bar do Zé lucra (+100); Café Acústico no vermelho (-50). A cidade
+    // fica lucrativa no agregado (+50), mas com 1 casa/show no vermelho.
+    const cityShows: VenueShowLike[] = [
+      { id: "r1", fee: 100_00, status: "PLAYED", venue: "Bar do Zé", city: "Recife" },
+      { id: "r2", fee: 10_00, status: "PLAYED", venue: "Café Acústico", city: "Recife" },
+      { id: "o1", fee: 80_00, status: "PLAYED", venue: "Teatro", city: "Olinda" }, // Olinda sem vermelho
+    ];
+    const cityTxs: TxLike[] = [
+      tx({ type: "EXPENSE", amount: 60_00, showId: "r2" }), // r2: 10 - 60 = -50 (vermelho)
+    ];
+    const r = rankCitiesByProfit(cityShows, cityTxs);
+    const recife = r.rows.find((row) => row.key === "recife")!;
+    expect(recife.showCount).toBe(2);
+    expect(recife.totalNet).toBe(50_00); // 100 - 50
+    expect(recife.lossCount).toBe(1); // só o show do Café
+    expect(recife.lossNet).toBe(-50_00);
+    const olinda = r.rows.find((row) => row.key === "olinda")!;
+    expect(olinda.lossCount).toBe(0);
+    expect(olinda.lossNet).toBe(0);
   });
 });
 
