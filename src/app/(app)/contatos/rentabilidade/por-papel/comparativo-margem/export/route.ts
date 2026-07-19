@@ -7,6 +7,8 @@ import {
   showProfitYears,
   parseProfitYear,
   filterShowsByYear,
+  parseShowNature,
+  filterShowsByNature,
   type TxLike,
   type ShowLike,
   type ContactProfitContact,
@@ -65,6 +67,11 @@ export async function GET(req: NextRequest) {
     return new NextResponse("Não encontrado", { status: 404 });
   }
   const previousYear = yearFilter - 1;
+  // Mesmo recorte por natureza da página/card (D384): "todos" × só firmes,
+  // aplicado aos DOIS anos para o comparativo casar com o que a tela mostra.
+  const nature = parseShowNature(
+    req.nextUrl.searchParams.get("natureza") ?? undefined,
+  );
 
   const txs: TxLike[] = transactions.map((t) => ({
     type: t.type as TxLike["type"],
@@ -81,12 +88,18 @@ export async function GET(req: NextRequest) {
   };
 
   const currentReport = rankRolesByProfit(
-    filterShowsByYear(shows, yearFilter) as (ShowLike & ShowRow)[],
+    filterShowsByNature(
+      filterShowsByYear(shows, yearFilter),
+      nature,
+    ) as (ShowLike & ShowRow)[],
     txs,
     getPayer as (s: ShowLike & ShowRow) => ContactProfitContact | null,
   );
   const previousReport = rankRolesByProfit(
-    filterShowsByYear(shows, previousYear) as (ShowLike & ShowRow)[],
+    filterShowsByNature(
+      filterShowsByYear(shows, previousYear),
+      nature,
+    ) as (ShowLike & ShowRow)[],
     txs,
     getPayer as (s: ShowLike & ShowRow) => ContactProfitContact | null,
   );
@@ -101,7 +114,8 @@ export async function GET(req: NextRequest) {
 
   // BOM UTF-8 para preservar acentuação ao abrir no Excel.
   const body = "\uFEFF" + csv;
-  const filename = `margem-papeis-comparativo-${yearFilter}-vs-${previousYear}.csv`;
+  const natureSuffix = nature === "firm" ? "-firmes" : "";
+  const filename = `margem-papeis-comparativo-${yearFilter}-vs-${previousYear}${natureSuffix}.csv`;
 
   return new NextResponse(body, {
     status: 200,

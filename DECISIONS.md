@@ -5,6 +5,30 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-19 — D384: Recorte por natureza (todos × só firmes) no eixo de PAPEL de rentabilidade
+- **Contexto:** a rentabilidade por SHOW (`/shows/rentabilidade`) oferece desde a D369 um seletor de **natureza** da amostra — "Todos os shows"
+  (não cancelados, inclui propostas em aberto) × "Só confirmados/realizados" (compromissos firmes, `CONFIRMED`+`PLAYED`). A tela de
+  rentabilidade por PAPEL do contratante (`/contatos/rentabilidade/por-papel`) — um rollup acima da rentabilidade por contratante — ainda
+  operava só sobre "todos os shows", sem o recorte. As sessões D374/D379/D380/D383 registraram repetidamente como próximo passo (alt. a) "levar
+  o recorte por natureza ao eixo de papel (tela + card + export em conjunto)".
+- **Decisão:** wiring puro (zero nova lógica de negócio — reusa `parseShowNature`/`filterShowsByNature`, D369, já testados). **(1)** Tela
+  `por-papel/page.tsx`: `NaturePicker` (cópia do de `/shows/rentabilidade`) ao lado do `PeriodPicker`, `nature = parseShowNature(searchParams?.natureza)`,
+  `filterShowsByNature` aplicado ANTES de agregar — sobre o ano corrente E o ano anterior, para que report, concentração e os comparativos
+  (`compareRoleConcentration`/`compareRoleMargins`) leiam a MESMA amostra. `buildQuery`/`periodParams` preservam ano+natureza em todos os links
+  (CSV principal, CSV do card de margem, PeriodPicker, empty-state, seletor de natureza), omitindo os padrões (`ano=all`/`natureza=all`).
+  **(2)** Card "Margem por papel": o link de export recebe `nature` e propaga `&natureza=firm`. **(3)** Rotas de export
+  (`por-papel/export` e `por-papel/comparativo-margem/export`): mesmo `filterShowsByNature` (nos DOIS anos no comparativo) + sufixo `-firmes` no
+  nome do arquivo, espelhando o export de `/shows/rentabilidade`. Padrão preservado: `natureza=all` mantém as URLs e o comportamento históricos.
+- **Justificativa:** fecha o próximo passo alt. a recorrente, com o eixo de papel agora consistente com a rentabilidade por show — uma proposta
+  em aberto pode não acontecer, e recortar "só firmes" mostra o resultado REALIZADO por tipo de comprador (o mesmo critério dos nudges de
+  rentabilidade do Painel, D371). É wiring de primitivas já testadas, então o DoD apoia-se em build/typecheck/lint/smoke; os 2119 testes seguem
+  verdes sem novos casos (não há nova lógica pura a cobrir). Não-quebra: o padrão `all` é idêntico ao de hoje.
+- **Alternativas consideradas:** (a) levar o recorte também ao eixo por CONTRATANTE (`/contatos/rentabilidade`) na mesma sessão — adiado: o
+  PROGRESS priorizava o eixo de papel; como o padrão é "todos" nos dois, papel e contratante só divergem quando o usuário ATIVA "firmes" no papel
+  (capacidade nova, opt-in), sem quebrar o cross-reference default. O eixo de contratante fica como próxima consistência (ver PROGRESS). (b)
+  extrair `NaturePicker` para um componente compartilhado — descartado nesta sessão: só duas telas o usam e as cópias são pequenas; a extração é
+  refactor separado. (c) sufixo de arquivo diferente de `-firmes` — descartado: reusa a convenção exata do export de `/shows/rentabilidade` (D369).
+
 ## 2026-07-19 — D383: Movers do vermelho no comparativo por cidade/local (`cityProfitRedMovers`)
 - **Contexto:** o comparativo ano a ano por cidade (`/shows/cidades`) e por local (`/shows/locais`) já destila dois **movers** — a praça que
   mais ganhou e a que mais perdeu SHOWS (`cityProfitMovers`/D298, card "Para onde a agenda migrou"). A D381 acrescentou a `CityProfitChange` o
