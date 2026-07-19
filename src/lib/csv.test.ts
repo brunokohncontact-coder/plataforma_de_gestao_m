@@ -947,6 +947,12 @@ describe("venueProfitToCsv", () => {
           currentNet: 570000,
           previousNet: 100000,
           netDelta: 470000,
+          currentLossCount: 0,
+          previousLossCount: 0,
+          lossCountDelta: 0,
+          currentLossNet: 0,
+          previousLossNet: 0,
+          lossNetDelta: 0,
         },
       ],
     ]);
@@ -974,6 +980,12 @@ describe("cityProfitComparisonToCsv", () => {
     currentNet: 600000,
     previousNet: 200000,
     netDelta: 400000,
+    currentLossCount: 0,
+    previousLossCount: 0,
+    lossCountDelta: 0,
+    currentLossNet: 0,
+    previousLossNet: 0,
+    lossNetDelta: 0,
     ...over,
   });
 
@@ -981,7 +993,7 @@ describe("cityProfitComparisonToCsv", () => {
     const csv = cityProfitComparisonToCsv([]);
     const lines = csv.split("\r\n");
     expect(lines[0]).toBe(CITY_PROFIT_COMPARISON_CSV_HEADERS.join(";"));
-    expect(lines[1]).toBe("Total;0;0;0;0,00;0,00;0,00;");
+    expect(lines[1]).toBe("Total;0;0;0;0;0;0;0,00;0,00;0,00;0,00;0,00;0,00;");
     expect(lines.length).toBe(2);
   });
 
@@ -989,9 +1001,9 @@ describe("cityProfitComparisonToCsv", () => {
     const csv = cityProfitComparisonToCsv([change()]);
     const lines = csv.split("\r\n");
     expect(lines[0]).toBe(
-      "Cidade;Shows (ano anterior);Shows (ano corrente);Δ shows;Resultado (ano anterior) (R$);Resultado (ano corrente) (R$);Δ resultado (R$);Tendência",
+      "Cidade;Shows (ano anterior);Shows (ano corrente);Δ shows;No vermelho (ano anterior);No vermelho (ano corrente);Δ no vermelho;Prejuízo (ano anterior) (R$);Prejuízo (ano corrente) (R$);Δ prejuízo (R$);Resultado (ano anterior) (R$);Resultado (ano corrente) (R$);Δ resultado (R$);Tendência",
     );
-    expect(lines[1]).toBe("São Paulo;2;5;+3;2000,00;6000,00;4000,00;Subiu");
+    expect(lines[1]).toBe("São Paulo;2;5;+3;0;0;0;0,00;0,00;0,00;2000,00;6000,00;4000,00;Subiu");
   });
 
   it("marca 'Caiu' e Δ negativos numa cidade que perdeu shows", () => {
@@ -1000,15 +1012,42 @@ describe("cityProfitComparisonToCsv", () => {
     ]);
     const cols = csv.split("\r\n")[1].split(";");
     expect(cols[3]).toBe("-3");
-    expect(cols[6]).toBe("-4000,00");
-    expect(cols[7]).toBe("Caiu");
+    expect(cols[12]).toBe("-4000,00");
+    expect(cols[13]).toBe("Caiu");
+  });
+
+  it("serializa as colunas do vermelho (contagem + prejuízo, Δ com sinal) e soma no Total", () => {
+    // Praça que piorou: 1 show no vermelho neste ano (nenhum no anterior),
+    // prejuízo -300,00 (era 0). lossNet ≤ 0, então Δ prejuízo negativo = piora.
+    const csv = cityProfitComparisonToCsv([
+      change({
+        currentLossCount: 1,
+        previousLossCount: 0,
+        lossCountDelta: 1,
+        currentLossNet: -30000,
+        previousLossNet: 0,
+        lossNetDelta: -30000,
+      }),
+    ]);
+    const lines = csv.split("\r\n");
+    const cols = lines[1].split(";");
+    // No vermelho: anterior 0, corrente 1, Δ +1.
+    expect(cols[4]).toBe("0");
+    expect(cols[5]).toBe("1");
+    expect(cols[6]).toBe("+1");
+    // Prejuízo: anterior 0,00, corrente -300,00, Δ -300,00.
+    expect(cols[7]).toBe("0,00");
+    expect(cols[8]).toBe("-300,00");
+    expect(cols[9]).toBe("-300,00");
+    // Total espelha a única linha nas colunas do vermelho.
+    expect(lines[2]).toBe("Total;2;5;+3;0;1;+1;0,00;-300,00;-300,00;2000,00;6000,00;4000,00;");
   });
 
   it("desempata a tendência pelo resultado quando o nº de shows não muda", () => {
     const csv = cityProfitComparisonToCsv([
       change({ countDelta: 0, currentCount: 3, previousCount: 3, currentNet: 500000, previousNet: 300000, netDelta: 200000 }),
     ]);
-    expect(csv.split("\r\n")[1].split(";")[7]).toBe("Subiu");
+    expect(csv.split("\r\n")[1].split(";")[13]).toBe("Subiu");
   });
 
   it("inclui a 'Sem cidade' (dado real) e soma o Total das duas colunas de ano", () => {
@@ -1019,7 +1058,7 @@ describe("cityProfitComparisonToCsv", () => {
     const lines = csv.split("\r\n");
     expect(lines[2].startsWith("Sem cidade;")).toBe(true);
     // Total: shows anterior 2+0=2, corrente 5+1=6, Δ +4; resultado -> 2000/6500.
-    expect(lines[3]).toBe("Total;2;6;+4;2000,00;6500,00;4500,00;");
+    expect(lines[3]).toBe("Total;2;6;+4;0;0;0;0,00;0,00;0,00;2000,00;6500,00;4500,00;");
   });
 
   it("troca só o rótulo da 1ª coluna via groupLabel (comparativo por local)", () => {
@@ -1027,10 +1066,10 @@ describe("cityProfitComparisonToCsv", () => {
     const lines = csv.split("\r\n");
     // Só o cabeçalho da 1ª coluna muda; as demais colunas seguem neutras.
     expect(lines[0]).toBe(
-      "Local;Shows (ano anterior);Shows (ano corrente);Δ shows;Resultado (ano anterior) (R$);Resultado (ano corrente) (R$);Δ resultado (R$);Tendência",
+      "Local;Shows (ano anterior);Shows (ano corrente);Δ shows;No vermelho (ano anterior);No vermelho (ano corrente);Δ no vermelho;Prejuízo (ano anterior) (R$);Prejuízo (ano corrente) (R$);Δ prejuízo (R$);Resultado (ano anterior) (R$);Resultado (ano corrente) (R$);Δ resultado (R$);Tendência",
     );
     // Os dados saem idênticos ao comparativo por cidade.
-    expect(lines[1]).toBe("São Paulo;2;5;+3;2000,00;6000,00;4000,00;Subiu");
+    expect(lines[1]).toBe("São Paulo;2;5;+3;0;0;0;0,00;0,00;0,00;2000,00;6000,00;4000,00;Subiu");
   });
 });
 

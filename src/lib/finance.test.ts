@@ -939,6 +939,48 @@ describe("compareCitiesByProfit", () => {
     expect(map.size).toBe(changes.length);
     for (const c of changes) expect(map.get(c.key)).toBe(c);
   });
+
+  it("carrega o vermelho (lossCount/lossNet) de cada ano e seus deltas", () => {
+    // Ano atual: Recife 2 shows — um lucrativo (net +200) e um no vermelho
+    // (cachê 100 com despesa 300 → net -200). João Pessoa sumiu neste ano.
+    const cur: VenueShowLike[] = [
+      { id: "a", fee: 200_00, status: "PLAYED", venue: "Café", city: "Recife" },
+      { id: "b", fee: 100_00, status: "PLAYED", venue: "Bar", city: "Recife" },
+    ];
+    // Ano anterior: Recife 1 show lucrativo (sem vermelho); João Pessoa 1 show
+    // no vermelho (cachê 80 com despesa 200 → net -120).
+    const prev: VenueShowLike[] = [
+      { id: "p1", fee: 100_00, status: "PLAYED", venue: "Bar", city: "Recife" },
+      { id: "p2", fee: 80_00, status: "PLAYED", venue: "Casa", city: "João Pessoa" },
+    ];
+    const txs: TxLike[] = [
+      { type: "EXPENSE", amount: 300_00, category: "Transporte", date: "2025-01-01", received: true, showId: "b" },
+      { type: "EXPENSE", amount: 200_00, category: "Transporte", date: "2024-01-01", received: true, showId: "p2" },
+    ];
+    const changes = compareCitiesByProfit(
+      rankCitiesByProfit(cur, txs),
+      rankCitiesByProfit(prev, txs),
+    );
+    const byKey = indexCityProfitChanges(changes);
+
+    // Recife: 0 → 1 show no vermelho; prejuízo 0 → -200,00.
+    const recife = byKey.get("recife")!;
+    expect(recife.currentLossCount).toBe(1);
+    expect(recife.previousLossCount).toBe(0);
+    expect(recife.lossCountDelta).toBe(1);
+    expect(recife.currentLossNet).toBe(-200_00);
+    expect(recife.previousLossNet).toBe(0);
+    expect(recife.lossNetDelta).toBe(-200_00);
+
+    // João Pessoa sumiu: tinha 1 no vermelho (-120,00); agora 0 → melhora.
+    const jp = byKey.get("joao pessoa")!;
+    expect(jp.currentLossCount).toBe(0);
+    expect(jp.previousLossCount).toBe(1);
+    expect(jp.lossCountDelta).toBe(-1);
+    expect(jp.currentLossNet).toBe(0);
+    expect(jp.previousLossNet).toBe(-120_00);
+    expect(jp.lossNetDelta).toBe(120_00); // lossNet ≤ 0 → Δ positivo = menos vermelho.
+  });
 });
 
 describe("cityProfitMovers", () => {
@@ -1026,6 +1068,12 @@ describe("classifyCityProfitChange", () => {
     currentNet: 0,
     previousNet: 0,
     netDelta: 0,
+    currentLossCount: 0,
+    previousLossCount: 0,
+    lossCountDelta: 0,
+    currentLossNet: 0,
+    previousLossNet: 0,
+    lossNetDelta: 0,
     ...over,
   });
 
