@@ -4,7 +4,35 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 386 — VERMELHO NO COMPARATIVO ANO A ANO POR CIDADE/LOCAL: COLUNAS `lossCount`/`lossNet` (DOIS ANOS + Δ) EM `cityProfitComparisonToCsv` (D381):**
+**Sessão 387 — NUDGE NO PAINEL "UMA CASA DRENANDO DINHEIRO" (`venueLossLeaderHeadline`, D382):**
+a Sessão 386/D381 fechou o trio tela↔export↔comparativo do vermelho no eixo geográfico e registrou como próximo passo (alt. b) ecoar o
+"quanto R$ no vermelho nesta casa/praça" como nudge geográfico no Painel. Esta sessão o entrega. Os nudges de rentabilidade do Painel falam
+da carteira INTEIRA (contagem no vermelho `lossShareRiseHeadline`/D367; margem agregada `portfolioMarginDropHeadline`/D368) ou nomeiam UMA
+PESSOA (`contactMarginSqueezeHeadline`/D374); faltava o eixo GEOGRÁFICO destilado por LOCAL — uma casa específica onde os shows caem no
+vermelho repetidamente e somam um prejuízo material (a decisão acionável "pare de tocar / renegocie nesta casa"). **(1)** camada pura
+`venueLossLeaderHeadline(rows, minShows=2, minCents=30_000, criticalCents=100_000)` em `src/lib/finance.ts`: recebe as linhas de
+`rankVenuesByProfit` já computadas, descarta o grupo "Sem local" (chave "") e nomeia, entre os locais com ≥ `minShows` shows no vermelho, o
+de MAIOR prejuízo somado (`lossNet` mais negativo; empate determinístico por nº de shows no vermelho → nome pt-BR → chave). `show` só quando
+o prejuízo atinge ≥ `minCents` (R$ 300); `critical` a partir de `criticalCents` (R$ 1.000). Reusa o par `lossCount`/`lossNet` por local que
+a D380 já cravou; zero consulta/assinatura nova. **(2)** wiring no Painel (`src/app/(app)/dashboard/page.tsx`): computa `rankVenuesByProfit`
+sobre os shows FIRMES do ano corrente (`filterShowsByNature(filterShowsByYear(...), "firm")`, mesmo critério de resultado REALIZADO dos
+nudges de rentabilidade acima, D371 — uma proposta no vermelho ainda pode não acontecer), reaproveitando os shows/txs já carregados (zero
+I/O extra), e renderiza o banner (âmbar/vermelho por `critical`, "🔻/🔴 Uma casa drenando dinheiro") com link `/shows/locais?ano={ano}`, logo
+abaixo do nudge de concentração geográfica. **NÃO cede a vez** aos agregados (como D374): granularidade diferente (uma casa × a carteira),
+coexistem — é quando o agregado está calmo que uma casa sangrando é o sinal útil. É a leitura de MAGNITUDE por praça, complementar (não
+redundante) ao nudge de CONCENTRAÇÃO geográfica (`geoConcentrationHeadline`/D113, dependência de RECEITA). **+7 testes** de lógica
+(`finance.test.ts`: nomeia o local de maior prejuízo com moldura; `critical` no piso R$ 1.000; descarta "Sem local" mesmo sendo o maior
+prejuízo; não dispara para prejuízo isolado (1 show < `minShows`); não dispara para prejuízo recorrente mas pequeno (abaixo de `minCents`);
+não dispara sem local no vermelho; respeita limiares customizados). Camada pura + wiring; zero migração/dependência. DoD verde:
+`npm run build` (Painel compila; sem rota nova), `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**2112 testes**); smoke →
+`/login` 200, `/dashboard` e `/shows/locais?ano=2026` 307→/login (auth-gated); `npm audit` inalterado (10 advisories: 4 moderate/5 high/1
+critical, ZERO dependência nova), ver D382. **Próximo possível** — (a) export/tela já cobrem o dado; um "mover do vermelho" no card visual
+do comparativo por cidade/local (hoje os movers ancoram só em nº de shows) — feature nova de UI; (b) levar o recorte por natureza (todos ×
+só firmes) ao eixo de papel (tela + card + export em conjunto, a consistência futura da D374); (c) o análogo do nudge por CIDADE
+(`rankCitiesByProfit`) se a granularidade de praça se mostrar grossa demais em uso real. Os limiares `VENUE_LOSS_MIN_CENTS`/`CRITICAL_CENTS`
+(D382) seguem **hipótese** (ver Bloqueios). Fora deste eixo, segue como único pendente do backup a restauração por MERGE (ALTO risco,
+revisão humana).
+**Antes disso, Sessão 386 — VERMELHO NO COMPARATIVO ANO A ANO POR CIDADE/LOCAL: COLUNAS `lossCount`/`lossNet` (DOIS ANOS + Δ) EM `cityProfitComparisonToCsv` (D381):**
 a Sessão 385/D380 levou o par contagem↔magnitude do vermelho (`lossCount` + `lossNet`) às TABELAS e EXPORTS de rentabilidade por local
 (`/shows/locais`) e por cidade (`/shows/cidades`), e registrou como próximo passo (alt. d) estender esse par ao COMPARATIVO ano a ano do
 mesmo eixo geográfico — fechando o trio tela↔export↔comparativo. Esta sessão o entrega, de uma vez para os DOIS eixos (o comparativo por
@@ -7159,5 +7187,10 @@ leve (bcrypt + JWT em cookie httpOnly via `jose`). Testes com Vitest. CI em `.gi
   precisa cair de um ano para o outro para contar como "aperto" material, alimentando `worstDrop`/`squeezedCount`) em `src/lib/finance.ts`
   é **hipótese**, mesmo valor dos epsilons irmãos (`CONTACT_MARGIN_DROP_EPSILON`/D372, `GEO_TREND_EPSILON`, `LOSS_SHARE_TREND_EPSILON`).
   O que é uma piora relevante de margem num canal inteiro varia por circuito/gênero. Parametrizável (arg da função). Validar com músicos.
+- **Nudge "uma casa drenando dinheiro" no Painel (D382)**: `VENUE_LOSS_MIN_CENTS`=30_000 (R$ 300 — prejuízo somado mínimo dos shows no
+  vermelho de um local para virar nudge) e `VENUE_LOSS_CRITICAL_CENTS`=100_000 (R$ 1.000 — a partir do qual o nudge vira crítico/vermelho)
+  em `src/lib/finance.ts` são **hipóteses** — o que conta como prejuízo "material"/"crítico" acumulado por casa varia por circuito e porte
+  do artista. O piso de recorrência `VENUE_LOSS_MIN_SHOWS`=2 (≥2 shows no vermelho para não alarmar por gig isolado) espelha
+  `CONTACT_SQUEEZE_MIN_SHOWS` (D374). Todos parametrizáveis (args da função). Validar com músicos antes de virar premissa fixa.
 - **Segurança em produção**: definir `AUTH_SECRET` forte e migrar para PostgreSQL antes
   de qualquer deploy real. Revisar advisories do Next (D6) e planejar upgrade p/ Next 15+.

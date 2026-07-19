@@ -2585,6 +2585,138 @@ export function contactMarginSqueezeHeadline(
   };
 }
 
+// ── Manchete "uma casa está drenando dinheiro" para o Painel ─────────────────
+//
+// Os nudges de rentabilidade do Painel falam da carteira INTEIRA — a CONTAGEM de
+// shows no vermelho (`lossShareRiseHeadline`/D367) e a MARGEM agregada
+// (`portfolioMarginDropHeadline`/D368) — ou nomeiam UMA PESSOA que aperta a margem
+// (`contactMarginSqueezeHeadline`/D374). Faltava o eixo GEOGRÁFICO destilado por
+// LOCAL: uma casa específica onde os shows caem no vermelho repetidamente e SOMAM um
+// prejuízo material — a decisão acionável "pare de tocar / renegocie as condições
+// nesta casa". As linhas de `rankVenuesByProfit` já carregam `lossCount`/`lossNet`
+// por local (D380); este headline nomeia o local de MAIOR prejuízo somado (`lossNet`
+// mais negativo) e decide se vira nudge. É a leitura de MAGNITUDE por praça,
+// complementar (não redundante) ao nudge de CONCENTRAÇÃO geográfica
+// (`geoConcentrationHeadline`/D113), que fala de dependência de RECEITA, não de
+// prejuízo. Como `contactMarginSqueezeHeadline`, NÃO cede a vez aos nudges agregados:
+// granularidade diferente (uma casa × a carteira inteira), os avisos coexistem — é
+// quando o agregado está calmo que uma casa sangrando é o sinal útil.
+
+/**
+ * Nº mínimo de shows NO VERMELHO no local para o prejuízo somado virar nudge: 2 —
+ * um prejuízo isolado (1 show) é gig ruim, não padrão de casa; a decisão de largar/
+ * renegociar uma praça pede recorrência. Espelha o piso de recorrência de
+ * `CONTACT_SQUEEZE_MIN_SHOWS`, aqui contando só os shows no vermelho (não os do ano).
+ */
+export const VENUE_LOSS_MIN_SHOWS = 2;
+
+/**
+ * Prejuízo somado mínimo (centavos, magnitude) para o local virar nudge: R$ 300 no
+ * acumulado dos shows no vermelho daquela casa. Abaixo disto o vermelho é pequeno o
+ * bastante para não merecer um alarme de Painel. **Hipótese** — o que conta como
+ * prejuízo "material" por casa varia por circuito/porte do artista; validar com uso
+ * real antes de virar premissa fixa.
+ */
+export const VENUE_LOSS_MIN_CENTS = 30_000;
+
+/**
+ * Prejuízo somado (centavos) a partir do qual a casa entra na faixa crítica
+ * (vermelho no Painel): R$ 1.000 acumulados no vermelho. Espelha a escalada
+ * `critical` dos nudges irmãos de rentabilidade. **Hipótese** (ver acima).
+ */
+export const VENUE_LOSS_CRITICAL_CENTS = 100_000;
+
+export interface VenueLossLeaderHeadline {
+  /**
+   * Deve aparecer no Painel? Só quando o local de MAIOR prejuízo somado
+   * (`lossNet` mais negativo) tem ≥ `minShows` shows no vermelho (padrão recorrente,
+   * não gig isolado) E esse prejuízo atinge ≥ `minCents` de magnitude. Sem casa em
+   * prejuízo material/recorrente, o aviso seria ruído — mesma disciplina dos nudges
+   * irmãos. O grupo "Sem local" (chave "") nunca dispara: não é praça renegociável.
+   */
+  show: boolean;
+  /** Prejuízo acentuado (`lossNet` ≤ −`criticalCents`)? Sobe o tom (🔴 vs 🟠). */
+  critical: boolean;
+  /** Nome do local que mais drena (para a moldura textual); "" se `!show`. */
+  venueName: string;
+  /** Prejuízo somado dos shows no vermelho desse local (centavos, ≤ 0). */
+  lossNet: number;
+  /** Nº de shows no vermelho nesse local (o "quantos" ao lado do "quanto"). */
+  lossCount: number;
+  /** Nº total de shows nesse local (para a moldura "N de M shows"). */
+  showCount: number;
+  /** Resultado líquido agregado do local (centavos; pode ser + ou −, contexto). */
+  totalNet: number;
+  /** Nº de locais identificados com ALGUM show no vermelho (para "e outras N"). */
+  venueCount: number;
+}
+
+const EMPTY_VENUE_LOSS: VenueLossLeaderHeadline = {
+  show: false,
+  critical: false,
+  venueName: "",
+  lossNet: 0,
+  lossCount: 0,
+  showCount: 0,
+  totalNet: 0,
+  venueCount: 0,
+};
+
+/**
+ * Decide se o Painel deve alertar que UMA casa específica está drenando dinheiro —
+ * o eco por LOCAL da coluna "Prejuízo"/`lossNet` de `rankVenuesByProfit` (D380) no
+ * dashboard, complementar aos nudges agregados (D367/D368) e ao por PESSOA (D374).
+ * Recebe as linhas de `rankVenuesByProfit` já computadas e não faz I/O. Descarta o
+ * grupo "Sem local" (chave "") e nomeia, entre os locais com ≥ `minShows` shows no
+ * vermelho, o de MAIOR prejuízo somado (`lossNet` mais negativo). `show` só quando
+ * esse prejuízo atinge ≥ `minCents`; `critical` a partir de `criticalCents`. Como os
+ * nudges irmãos, fica raro por gate. Pura.
+ */
+export function venueLossLeaderHeadline(
+  rows: VenueProfitRow[],
+  minShows: number = VENUE_LOSS_MIN_SHOWS,
+  minCents: number = VENUE_LOSS_MIN_CENTS,
+  criticalCents: number = VENUE_LOSS_CRITICAL_CENTS,
+): VenueLossLeaderHeadline {
+  // Locais identificados (descarta "Sem local", chave "") com ALGUM vermelho.
+  const bleeding = rows.filter((r) => r.key !== "" && r.lossCount > 0);
+  const venueCount = bleeding.length;
+
+  // Pior local = maior prejuízo somado (`lossNet` mais negativo) entre os
+  // recorrentes (≥ minShows shows no vermelho). Empate determinístico: mais shows
+  // no vermelho primeiro, depois nome (pt-BR) e chave.
+  let worst: VenueProfitRow | null = null;
+  for (const r of bleeding) {
+    if (r.lossCount < minShows) continue;
+    if (
+      worst === null ||
+      r.lossNet < worst.lossNet ||
+      (r.lossNet === worst.lossNet &&
+        (r.lossCount > worst.lossCount ||
+          (r.lossCount === worst.lossCount &&
+            (r.name.localeCompare(worst.name, "pt-BR") < 0 ||
+              (r.name === worst.name && r.key.localeCompare(worst.key) < 0)))))
+    ) {
+      worst = r;
+    }
+  }
+
+  if (!worst || worst.lossNet > -minCents) {
+    return { ...EMPTY_VENUE_LOSS, venueCount };
+  }
+
+  return {
+    show: true,
+    critical: worst.lossNet <= -criticalCents,
+    venueName: worst.name,
+    lossNet: worst.lossNet,
+    lossCount: worst.lossCount,
+    showCount: worst.showCount,
+    totalNet: worst.totalNet,
+    venueCount,
+  };
+}
+
 // ── Recorte por período (ano) da rentabilidade por contratante ──────────────
 
 /** Valor do seletor de período: um ano específico ou "all" (sem recorte). */

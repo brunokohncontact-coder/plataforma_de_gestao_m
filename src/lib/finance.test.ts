@@ -8,6 +8,8 @@ import {
   showResultBandKeyFor,
   SHOW_RESULT_BANDS,
   rankVenuesByProfit,
+  venueLossLeaderHeadline,
+  VENUE_LOSS_MIN_CENTS,
   compareVenuesByProfit,
   venueProfitMovers,
   indexVenueProfitChanges,
@@ -765,6 +767,124 @@ describe("rankVenuesByProfit", () => {
     const bar = r.rows.find((row) => row.key === "bar do ze")!;
     expect(bar.lossCount).toBe(0);
     expect(bar.lossNet).toBe(0);
+  });
+});
+
+describe("venueLossLeaderHeadline", () => {
+  // Bar do Sul: 3 shows, 2 no vermelho (−200 + −150 = −350 acumulados), 1 lucra.
+  // Casa da Praça: 2 shows, 1 no vermelho (−100). Bar do Sul é o líder do prejuízo.
+  const buildRows = () =>
+    rankVenuesByProfit(
+      [
+        { id: "s1", fee: 100_00, status: "PLAYED", venue: "Bar do Sul", city: "Recife" },
+        { id: "s2", fee: 50_00, status: "PLAYED", venue: "Bar do Sul", city: "Recife" },
+        { id: "s3", fee: 100_00, status: "PLAYED", venue: "Bar do Sul", city: "Recife" },
+        { id: "p1", fee: 80_00, status: "PLAYED", venue: "Casa da Praça", city: "Olinda" },
+        { id: "p2", fee: 200_00, status: "PLAYED", venue: "Casa da Praça", city: "Olinda" },
+        { id: "n1", fee: 10_00, status: "PLAYED", venue: null, city: null }, // sem local
+      ],
+      [
+        tx({ type: "EXPENSE", amount: 300_00, showId: "s2" }), // 50 − 300 = −250 (vermelho)
+        tx({ type: "EXPENSE", amount: 200_00, showId: "s3" }), // 100 − 200 = −100 (vermelho)
+        tx({ type: "EXPENSE", amount: 180_00, showId: "p1" }), // 80 − 180 = −100 (vermelho)
+        tx({ type: "EXPENSE", amount: 500_00, showId: "n1" }), // sem local no vermelho
+      ],
+    ).rows;
+
+  it("nomeia o local de maior prejuízo somado, com a moldura da manchete", () => {
+    const head = venueLossLeaderHeadline(buildRows());
+    expect(head.show).toBe(true);
+    expect(head.venueName).toBe("Bar do Sul");
+    expect(head.lossNet).toBe(-350_00); // −250 + −100
+    expect(head.lossCount).toBe(2);
+    expect(head.showCount).toBe(3);
+    // Locais identificados com algum vermelho: Bar do Sul e Casa da Praça (o "sem
+    // local" não conta como praça).
+    expect(head.venueCount).toBe(2);
+  });
+
+  it("critical quando o prejuízo acumulado atinge o piso crítico (R$ 1.000)", () => {
+    const rows = rankVenuesByProfit(
+      [
+        { id: "c1", fee: 100_00, status: "PLAYED", venue: "Buraco", city: "X" },
+        { id: "c2", fee: 100_00, status: "PLAYED", venue: "Buraco", city: "X" },
+      ],
+      [
+        tx({ type: "EXPENSE", amount: 700_00, showId: "c1" }), // −600
+        tx({ type: "EXPENSE", amount: 700_00, showId: "c2" }), // −600 → −1200 total
+      ],
+    ).rows;
+    const head = venueLossLeaderHeadline(rows);
+    expect(head.show).toBe(true);
+    expect(head.critical).toBe(true); // −1200 ≤ −1000
+    expect(head.lossNet).toBe(-1200_00);
+  });
+
+  it("descarta o grupo 'Sem local' mesmo que seja o maior prejuízo", () => {
+    const rows = rankVenuesByProfit(
+      [
+        { id: "n1", fee: 10_00, status: "PLAYED", venue: null, city: null },
+        { id: "n2", fee: 10_00, status: "PLAYED", venue: null, city: null },
+      ],
+      [
+        tx({ type: "EXPENSE", amount: 500_00, showId: "n1" }),
+        tx({ type: "EXPENSE", amount: 500_00, showId: "n2" }),
+      ],
+    ).rows;
+    const head = venueLossLeaderHeadline(rows);
+    expect(head.show).toBe(false);
+    expect(head.venueName).toBe("");
+  });
+
+  it("não dispara para prejuízo isolado (1 só show no vermelho, abaixo de minShows)", () => {
+    const rows = rankVenuesByProfit(
+      [
+        { id: "u1", fee: 100_00, status: "PLAYED", venue: "Uma Vez", city: "Y" },
+        { id: "u2", fee: 100_00, status: "PLAYED", venue: "Uma Vez", city: "Y" },
+      ],
+      [tx({ type: "EXPENSE", amount: 600_00, showId: "u1" })], // só u1 no vermelho (−500)
+    ).rows;
+    const head = venueLossLeaderHeadline(rows);
+    expect(head.show).toBe(false); // 1 < VENUE_LOSS_MIN_SHOWS (2)
+  });
+
+  it("não dispara quando o prejuízo é recorrente mas pequeno (abaixo de minCents)", () => {
+    const rows = rankVenuesByProfit(
+      [
+        { id: "b1", fee: 100_00, status: "PLAYED", venue: "Quase Zero", city: "Z" },
+        { id: "b2", fee: 100_00, status: "PLAYED", venue: "Quase Zero", city: "Z" },
+      ],
+      [
+        tx({ type: "EXPENSE", amount: 105_00, showId: "b1" }), // −5
+        tx({ type: "EXPENSE", amount: 108_00, showId: "b2" }), // −8 → −13 total
+      ],
+    ).rows;
+    const head = venueLossLeaderHeadline(rows);
+    // −1300 centavos de prejuízo, bem acima (menos negativo) do piso −30_000.
+    expect(VENUE_LOSS_MIN_CENTS).toBe(30_00 * 10);
+    expect(head.show).toBe(false);
+  });
+
+  it("não dispara sem nenhum local no vermelho", () => {
+    const rows = rankVenuesByProfit(
+      [{ id: "g1", fee: 100_00, status: "PLAYED", venue: "Só Lucro", city: "W" }],
+      [],
+    ).rows;
+    const head = venueLossLeaderHeadline(rows);
+    expect(head.show).toBe(false);
+    expect(head.venueCount).toBe(0);
+  });
+
+  it("respeita limiares customizados (minShows/minCents/criticalCents)", () => {
+    const rows = rankVenuesByProfit(
+      [{ id: "x1", fee: 10_00, status: "PLAYED", venue: "Solo", city: "V" }],
+      [tx({ type: "EXPENSE", amount: 60_00, showId: "x1" })], // 1 show, −50
+    ).rows;
+    // Piso de 1 show e R$ 40 → dispara; crítico a partir de R$ 45.
+    const head = venueLossLeaderHeadline(rows, 1, 40_00, 45_00);
+    expect(head.show).toBe(true);
+    expect(head.critical).toBe(true); // −50 ≤ −45
+    expect(head.lossCount).toBe(1);
   });
 });
 

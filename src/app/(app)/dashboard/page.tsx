@@ -57,6 +57,8 @@ import {
   clientConcentration,
   clientConcentrationHeadline,
   rankCitiesByProfit,
+  rankVenuesByProfit,
+  venueLossLeaderHeadline,
   geoConcentration,
   geoConcentrationHeadline,
   gigSeasonality,
@@ -73,6 +75,7 @@ import {
   type ReceivableShowLike,
   type PromisableShowLike,
   type ShowLike,
+  type VenueShowLike,
   type BreakEvenShowLike,
   type YearEndShowLike,
   type MetricDelta,
@@ -477,6 +480,28 @@ export default async function DashboardPage() {
   // o detalhe completo está em /shows/cidades.
   const geoHeadline = geoConcentrationHeadline(
     geoConcentration(rankCitiesByProfit(shows, txs).rows),
+  );
+
+  // Uma casa drenando dinheiro (D382): "em que praça meus shows caem no vermelho e
+  // isso já somou um prejuízo material?". Enquanto o nudge de concentração acima
+  // (geoHeadline/D113) fala de dependência de RECEITA por cidade, este nomeia o
+  // LOCAL de MAIOR prejuízo SOMADO — a leitura de magnitude que a concentração não
+  // vê. Reaproveita o par lossCount/lossNet por local que rankVenuesByProfit já
+  // carrega (D380) e dispara só quando o pior local acumulou ≥ R$ 300 de prejuízo em
+  // ≥ 2 shows no vermelho (recorrente, não gig isolado) — a decisão acionável "pare
+  // de tocar / renegocie nesta casa". Recorta os shows FIRMES do ano corrente (mesmo
+  // critério de resultado REALIZADO dos nudges de rentabilidade acima, D371): uma
+  // proposta no vermelho ainda pode não acontecer. Como o nudge por PESSOA (D374),
+  // NÃO cede a vez aos agregados — granularidade diferente, coexistem. Reaproveita os
+  // shows/txs já carregados — sem consulta nova. Detalhe em /shows/locais.
+  const venueLossHead = venueLossLeaderHeadline(
+    rankVenuesByProfit(
+      filterShowsByNature(
+        filterShowsByYear(shows, currentYear) as unknown as VenueShowLike[],
+        "firm",
+      ),
+      txs,
+    ).rows,
   );
 
   // Cancelamentos por contratante (D177/D178): "algum contratante fura o
@@ -1500,6 +1525,45 @@ export default async function DashboardPage() {
           <span
             className={geoHeadline.critical ? "text-red-600" : "text-amber-600"}
           >
+            Ver →
+          </span>
+        </Link>
+      )}
+
+      {/* Uma casa drenando dinheiro (D382): um local específico onde os shows caem no
+          vermelho repetidamente e já somaram um prejuízo material — a leitura de
+          MAGNITUDE por praça (lossNet), complementar ao nudge de concentração
+          geográfica acima (dependência de receita). Vermelho quando o prejuízo
+          acumulado atinge R$ 1.000. Link para a tela de rentabilidade por local. */}
+      {venueLossHead.show && (
+        <Link
+          href={`/shows/locais?ano=${currentYear}`}
+          className={
+            "flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3 text-sm transition " +
+            (venueLossHead.critical
+              ? "border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+              : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100")
+          }
+        >
+          <span className="font-semibold">
+            {venueLossHead.critical ? "🔴" : "🔻"} Uma casa drenando dinheiro
+          </span>
+          <span>
+            <strong>{venueLossHead.venueName}</strong> acumulou{" "}
+            <strong>{formatMoney(venueLossHead.lossNet)}</strong> de prejuízo em{" "}
+            <strong>
+              {venueLossHead.lossCount} de {venueLossHead.showCount} show
+              {venueLossHead.showCount > 1 ? "s" : ""}
+            </strong>{" "}
+            no vermelho em {currentYear}
+            {venueLossHead.venueCount > 1
+              ? ` — e outra${venueLossHead.venueCount - 1 > 1 ? "s" : ""} ${
+                  venueLossHead.venueCount - 1
+                } casa${venueLossHead.venueCount - 1 > 1 ? "s" : ""} também no vermelho`
+              : ""}
+            . Vale rever cachê e despesas dessa casa.
+          </span>
+          <span className={venueLossHead.critical ? "text-red-600" : "text-amber-600"}>
             Ver →
           </span>
         </Link>

@@ -5,6 +5,40 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-19 — D382: Nudge no Painel "uma casa drenando dinheiro" (`venueLossLeaderHeadline`)
+- **Contexto:** os nudges de rentabilidade do Painel falam da carteira INTEIRA — a CONTAGEM de shows no vermelho
+  (`lossShareRiseHeadline`/D367) e a MARGEM agregada (`portfolioMarginDropHeadline`/D368) — ou nomeiam UMA PESSOA que aperta a margem
+  (`contactMarginSqueezeHeadline`/D374). Faltava o eixo GEOGRÁFICO destilado por LOCAL: uma casa específica onde os shows caem no vermelho
+  repetidamente e SOMAM um prejuízo material. A D380 já levou o par `lossCount`/`lossNet` por local às linhas de `rankVenuesByProfit`, e a
+  D381 registrou como próximo passo (alt. b) ecoar o "quanto R$ no vermelho nesta casa/praça" como nudge geográfico no Painel — a decisão
+  acionável "pare de tocar / renegocie as condições nesta casa".
+- **Decisão:** camada pura `venueLossLeaderHeadline(rows, minShows, minCents, criticalCents)` em `src/lib/finance.ts` — recebe as linhas de
+  `rankVenuesByProfit` já computadas, descarta o grupo "Sem local" (chave "") e nomeia, entre os locais com ≥ `minShows` shows no vermelho,
+  o de MAIOR prejuízo somado (`lossNet` mais negativo; empate determinístico por nº de shows no vermelho → nome pt-BR → chave). `show` só
+  quando esse prejuízo atinge ≥ `minCents`; `critical` a partir de `criticalCents`. Constantes: `VENUE_LOSS_MIN_SHOWS`=2 (recorrência),
+  `VENUE_LOSS_MIN_CENTS`=30_000 (R$ 300), `VENUE_LOSS_CRITICAL_CENTS`=100_000 (R$ 1.000). Wiring no Painel
+  (`src/app/(app)/dashboard/page.tsx`): computa `rankVenuesByProfit` sobre os shows FIRMES do ano corrente
+  (`filterShowsByNature(filterShowsByYear(...), "firm")`, mesmo critério de resultado REALIZADO dos nudges de rentabilidade, D371),
+  reaproveitando os shows/txs já carregados (zero consulta nova), e renderiza o banner (âmbar/vermelho por `critical`) com link
+  `/shows/locais?ano={ano}`, logo abaixo do nudge de concentração geográfica. **NÃO cede a vez** aos nudges agregados (como
+  `contactMarginSqueezeHeadline`/D374): granularidade diferente (uma casa × a carteira), os avisos coexistem.
+- **Justificativa:** fecha o próximo passo alt. b da D381 reusando dado já computado (`lossCount`/`lossNet` das linhas, D380) e o molde de
+  nudge de Painel já cravado (regra de exibição vive na camada pura, o dashboard só consome). É a leitura de MAGNITUDE por praça,
+  complementar (não redundante) ao nudge de CONCENTRAÇÃO geográfica (`geoConcentrationHeadline`/D113), que fala de dependência de RECEITA,
+  não de prejuízo — quando o agregado está calmo, uma casa sangrando é o sinal útil. Zero migração/rota/dependência nova.
+- **Alternativas consideradas:** (a) basear o nudge no `totalNet` do local (resultado agregado ≤ 0) em vez do `lossNet` (só os shows no
+  vermelho) — descartado: a D381 pediu explicitamente "quanto R$ NO VERMELHO nesta casa", e um local lucrativo no agregado ainda pode ter
+  shows individuais no prejuízo que valem revisão; o `lossNet` responde diretamente. (b) comparar ano a ano (molde do
+  `contactMarginSqueezeHeadline`) — descartado: a magnitude do prejuízo acumulado é um sinal de ESTADO do ano corrente (como
+  `geoConcentrationHeadline`/`clientConcentrationHeadline`), não uma tendência; single-period é mais simples e não exige dado do ano
+  anterior. (c) eixo por CIDADE (`rankCitiesByProfit`) em vez de por LOCAL — descartado: a casa (venue) é a granularidade mais acionável
+  ("renegocie NESTA casa"); a cidade é rollup e dilui o sinal.
+- **Premissas/hipóteses a validar:** `VENUE_LOSS_MIN_CENTS` (R$ 300) e `VENUE_LOSS_CRITICAL_CENTS` (R$ 1.000) são **hipóteses** — o que
+  conta como prejuízo "material" por casa varia por circuito/porte do artista; validar com uso real antes de virar premissa fixa. O piso de
+  recorrência `VENUE_LOSS_MIN_SHOWS`=2 espelha `CONTACT_SQUEEZE_MIN_SHOWS` (D374).
+
+---
+
 ## 2026-07-19 — D381: Colunas do vermelho (`lossCount`/`lossNet`, dois anos + Δ) no COMPARATIVO ano a ano por cidade/local (`cityProfitComparisonToCsv`)
 - **Contexto:** a D380 levou o par contagem↔magnitude do vermelho (`lossCount` + `lossNet`) às TABELAS e EXPORTS de rentabilidade por
   local (`/shows/locais`) e por cidade (`/shows/cidades`), e registrou como próximo passo (alt. d) estender esse par ao COMPARATIVO ano a
