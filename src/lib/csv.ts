@@ -53,6 +53,9 @@ import {
   type ContactMarginComparison,
   type ContactMarginChange,
   CONTACT_MARGIN_DROP_EPSILON,
+  type RoleMarginComparison,
+  type RoleMarginChange,
+  ROLE_MARGIN_DROP_EPSILON,
   indexFeeBandShareChanges,
   type FeeTrend,
   type FeeTrendByYear,
@@ -2387,6 +2390,73 @@ export function contactMarginComparisonToCsv(
       String(c.previousShowCount),
       String(c.currentShowCount),
       contactMarginSituation(c),
+    ]);
+  }
+  return toCsv(out, delimiter);
+}
+
+// ── Comparativo de margem por PAPEL do contratante (D376) ────────────────────
+
+export const ROLE_MARGIN_COMPARISON_CSV_HEADERS = [
+  "Papel",
+  "Margem (ano anterior)",
+  "Margem (ano corrente)",
+  "Δ margem (p.p.)",
+  "Resultado (ano anterior) (R$)",
+  "Resultado (ano corrente) (R$)",
+  "Δ resultado (R$)",
+  "Shows (ano anterior)",
+  "Shows (ano corrente)",
+  "Situação",
+] as const;
+
+/**
+ * Rótulo pt-BR da situação de margem de um PAPEL no comparativo, com a mesma
+ * materialidade do card/da lógica pura (`ROLE_MARGIN_DROP_EPSILON`, D375): uma
+ * queda além do limiar é "Apertou a margem" (a leitura acionável), um ganho além
+ * do limiar é "Ganhou margem", e o meio-termo é "Estável" (ruído, não sinal).
+ */
+function roleMarginSituation(change: RoleMarginChange): string {
+  if (change.marginDelta <= -ROLE_MARGIN_DROP_EPSILON) return "Apertou a margem";
+  if (change.marginDelta >= ROLE_MARGIN_DROP_EPSILON) return "Ganhou margem";
+  return "Estável";
+}
+
+/**
+ * Serializa o comparativo ano a ano da **margem por papel do contratante**
+ * (`compareRoleMargins`, D375) em CSV, pronto para download — espelha o card
+ * "Margem por papel {ano} vs. {ano-1}" de `/contatos/rentabilidade/por-papel`,
+ * cujos números (margem dos dois anos, Δ em pontos, resultado somado e sua
+ * variação) só viviam na tela. Rollup por papel do irmão por contratante
+ * (`contactMarginComparisonToCsv`, D373): uma linha por PAPEL presente nos DOIS
+ * anos (o grupo "sem contratante" já é ignorado pela camada pura), preservando a
+ * ordem da comparação — o **maior aperto primeiro** (`marginDelta` crescente),
+ * que é a leitura acionável "renegocie o canal inteiro". Sem linha "Total": margem
+ * é uma razão e não soma; a planilha é o ranking de quem apertou/ganhou. As
+ * margens saem como % (`csvShare`), a variação em pontos percentuais assinados
+ * (`csvSignedPoints`); os valores em R$ via `centsToCsvAmount` (que já emite o "-"
+ * nos negativos). A coluna "Situação" classifica com a mesma materialidade da
+ * lógica (`ROLE_MARGIN_DROP_EPSILON`). Os anos concretos vão no nome do arquivo,
+ * não nos cabeçalhos (mesma convenção dos irmãos). Mesma convenção pt-BR (";" e
+ * decimal com vírgula). Pura.
+ */
+export function roleMarginComparisonToCsv(
+  comparison: RoleMarginComparison,
+  delimiter = DEFAULT_DELIMITER,
+): string {
+  const out: string[][] = [Array.from(ROLE_MARGIN_COMPARISON_CSV_HEADERS)];
+  for (const c of comparison.changes) {
+    out.push([
+      contactRoleLabel(c.role),
+      csvShare(c.previousMargin),
+      csvShare(c.currentMargin),
+      csvSignedPoints(c.marginDelta),
+      centsToCsvAmount(c.previousNet),
+      centsToCsvAmount(c.currentNet),
+      centsToCsvAmount(c.netDelta),
+      String(c.previousShowCount),
+      String(c.currentShowCount),
+      roleMarginSituation(c),
     ]);
   }
   return toCsv(out, delimiter);

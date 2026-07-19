@@ -577,11 +577,20 @@ function RoleMarginComparisonCard({
         <p className="text-xs font-medium uppercase tracking-wide opacity-80">
           Margem por papel {currentYear} vs. {previousYear}
         </p>
-        <span className="badge bg-white/70 font-semibold">
-          {anySqueeze
-            ? `🔴 ${squeezedCount} ${squeezedCount === 1 ? "canal apertando" : "canais apertando"} a margem`
-            : "🟢 Nenhum canal apertou a margem"}
-        </span>
+        <div className="flex items-center gap-2">
+          <a
+            href={`/contatos/rentabilidade/por-papel/comparativo-margem/export?ano=${currentYear}`}
+            className="btn-secondary text-xs"
+            download
+          >
+            ⬇ CSV
+          </a>
+          <span className="badge bg-white/70 font-semibold">
+            {anySqueeze
+              ? `🔴 ${squeezedCount} ${squeezedCount === 1 ? "canal apertando" : "canais apertando"} a margem`
+              : "🟢 Nenhum canal apertou a margem"}
+          </span>
+        </div>
       </div>
 
       {squeezed.length > 0 ? (
