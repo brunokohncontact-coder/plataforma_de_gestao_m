@@ -4,7 +4,30 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 388 — MOVERS DO VERMELHO NO COMPARATIVO POR CIDADE/LOCAL (`cityProfitRedMovers`, D383):**
+**Sessão 389 — RECORTE POR NATUREZA (TODOS × SÓ FIRMES) NO EIXO DE PAPEL DE RENTABILIDADE (D384):**
+a rentabilidade por SHOW (`/shows/rentabilidade`) tem desde a D369 um seletor de **natureza** da amostra — "Todos os shows" (não cancelados,
+inclui propostas) × "Só confirmados/realizados" (firmes: `CONFIRMED`+`PLAYED`) — mas a tela de rentabilidade por PAPEL do contratante
+(`/contatos/rentabilidade/por-papel`, rollup acima da por contratante) ainda operava só sobre "todos os shows". As D374/D379/D380/D383
+registraram repetidamente como próximo passo (alt. a) "levar o recorte por natureza ao eixo de papel (tela + card + export em conjunto)". Esta
+sessão o entrega, como wiring puro (ZERO nova lógica de negócio — reusa `parseShowNature`/`filterShowsByNature` da D369, já testados).
+**(1)** tela `contatos/rentabilidade/por-papel/page.tsx`: `NaturePicker` (cópia do de `/shows/rentabilidade`) ao lado do `PeriodPicker`;
+`nature = parseShowNature(searchParams?.natureza)`; `filterShowsByNature` aplicado ANTES de agregar — sobre o ano corrente E o anterior — para
+que `rankRolesByProfit`, `roleConcentration` e os comparativos (`compareRoleConcentration`/`compareRoleMargins`) leiam a MESMA amostra; helper
+`buildQuery`/`periodParams` preserva ano+natureza em TODOS os links (CSV principal, CSV do card de margem, PeriodPicker, empty-state, seletor de
+natureza), omitindo os padrões (`ano=all`/`natureza=all`); nota do cabeçalho ecoa o recorte ativo. **(2)** card `RoleMarginComparisonCard`:
+recebe `nature` e propaga `&natureza=firm` no seu link de export. **(3)** rotas `por-papel/export` e `por-papel/comparativo-margem/export`:
+mesmo `filterShowsByNature` (nos DOIS anos no comparativo) + sufixo `-firmes` no nome do arquivo, espelhando o export de
+`/shows/rentabilidade`. Não-quebra: `natureza=all` (o padrão) mantém URLs e comportamento históricos. DoD verde: `npm run build` (as 3
+superfícies compilam; os dois exports seguem 0 B), `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**2119 testes**, sem novos casos
+— não há nova lógica pura a cobrir, só wiring de primitivas já testadas); smoke → `/login` 200, `/contatos/rentabilidade/por-papel?ano=2025&natureza=firm`
+e os dois `/export?ano=2025&natureza=firm` 307→/login (auth-gated, o param não quebra o roteamento); `npm audit` inalterado (10 advisories: 4
+moderate/5 high/1 critical, ZERO dependência nova), ver D384. **Próximo possível** — (a) levar o MESMO recorte por natureza ao eixo por
+CONTRATANTE (`/contatos/rentabilidade` + export + card de margem/D372): fecha a consistência do rollup (papel é rollup de contratante), agora
+que o padrão `all` os mantém idênticos; (b) extrair `NaturePicker` para um componente compartilhado (`/shows/rentabilidade` e agora
+`/por-papel` têm cópias quase idênticas) — refactor de qualidade, sem feature nova; (c) um "mover do vermelho" no comparativo por
+CONTRATANTE/PAPEL, se aquele eixo ganhar `lossNetDelta` por linha (hoje só o eixo geográfico tem, D383). Fora deste eixo, segue como único
+pendente do backup a restauração por MERGE (ALTO risco, revisão humana).
+**Antes disso, Sessão 388 — MOVERS DO VERMELHO NO COMPARATIVO POR CIDADE/LOCAL (`cityProfitRedMovers`, D383):**
 a Sessão 387/D382 fechou o nudge geográfico por LOCAL no Painel ("uma casa drenando dinheiro") e registrou como próximo passo (alt. a) um
 "mover do vermelho" no card visual do comparativo por cidade/local — hoje os movers ancoram só em nº de shows. Esta sessão o entrega, de uma
 vez para os DOIS eixos (o comparativo por local reusa o mesmo motor via aliases, D299). O comparativo já destilava os dois movers de AGENDA
