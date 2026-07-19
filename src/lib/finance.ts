@@ -600,6 +600,25 @@ export interface CityProfitChange {
   previousNet: number;
   /** Variação do resultado (atual − anterior, centavos); pode ser negativa. */
   netDelta: number;
+  /** Nº de shows no vermelho (`net < 0`) na cidade no período atual. */
+  currentLossCount: number;
+  /** Nº de shows no vermelho na cidade no período anterior. */
+  previousLossCount: number;
+  /**
+   * Variação do nº de shows no vermelho (atual − anterior); pode ser negativa.
+   * **Negativo = melhora** (menos shows no prejuízo nesta praça neste ano).
+   */
+  lossCountDelta: number;
+  /** Prejuízo somado dos shows no vermelho na cidade no período atual (centavos, ≤ 0). */
+  currentLossNet: number;
+  /** Prejuízo somado dos shows no vermelho na cidade no período anterior (centavos, ≤ 0). */
+  previousLossNet: number;
+  /**
+   * Variação do prejuízo somado (atual − anterior, centavos); **positivo = melhora**
+   * (menos R$ no vermelho, pois `lossNet ≤ 0`). Mesma convenção do `lossNetDelta`
+   * da distribuição por show.
+   */
+  lossNetDelta: number;
 }
 
 /**
@@ -636,6 +655,12 @@ export function compareCitiesByProfit(
       currentNet: cur.totalNet,
       previousNet: prev?.totalNet ?? 0,
       netDelta: cur.totalNet - (prev?.totalNet ?? 0),
+      currentLossCount: cur.lossCount,
+      previousLossCount: prev?.lossCount ?? 0,
+      lossCountDelta: cur.lossCount - (prev?.lossCount ?? 0),
+      currentLossNet: cur.lossNet,
+      previousLossNet: prev?.lossNet ?? 0,
+      lossNetDelta: cur.lossNet - (prev?.lossNet ?? 0),
     });
   }
 
@@ -651,6 +676,12 @@ export function compareCitiesByProfit(
       currentNet: 0,
       previousNet: prev.totalNet,
       netDelta: -prev.totalNet,
+      currentLossCount: 0,
+      previousLossCount: prev.lossCount,
+      lossCountDelta: -prev.lossCount,
+      currentLossNet: 0,
+      previousLossNet: prev.lossNet,
+      lossNetDelta: -prev.lossNet,
     });
   }
 

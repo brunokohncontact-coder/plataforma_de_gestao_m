@@ -4,7 +4,33 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 385 — VERMELHO POR LOCAL E POR CIDADE: COLUNAS "NO VERMELHO" (`lossCount`) E "PREJUÍZO" (`lossNet`) EM `VenueProfitRow`/`CityProfitRow` — TELA + EXPORT (D380):**
+**Sessão 386 — VERMELHO NO COMPARATIVO ANO A ANO POR CIDADE/LOCAL: COLUNAS `lossCount`/`lossNet` (DOIS ANOS + Δ) EM `cityProfitComparisonToCsv` (D381):**
+a Sessão 385/D380 levou o par contagem↔magnitude do vermelho (`lossCount` + `lossNet`) às TABELAS e EXPORTS de rentabilidade por local
+(`/shows/locais`) e por cidade (`/shows/cidades`), e registrou como próximo passo (alt. d) estender esse par ao COMPARATIVO ano a ano do
+mesmo eixo geográfico — fechando o trio tela↔export↔comparativo. Esta sessão o entrega, de uma vez para os DOIS eixos (o comparativo por
+local reusa o mesmo motor via o alias `compareVenuesByProfit`/D299). O comparativo (`cityProfitComparisonToCsv`) já trazia, por cidade/local,
+os shows e o resultado de cada ano com seus deltas, mas não dizia se uma praça que cresceu em agenda passou a tocar MAIS no prejuízo.
+**(1)** seis novos campos em `CityProfitChange` (`src/lib/finance.ts`): `currentLossCount`/`previousLossCount`/`lossCountDelta` e
+`currentLossNet`/`previousLossNet`/`lossNetDelta`, populados em `compareCitiesByProfit` lendo o `lossCount`/`lossNet` que as linhas
+`VenueProfitRow`/`CityProfitRow` já carregam desde a D380 — no laço das cidades do ano atual `cur.lossCount − (prev?.lossCount ?? 0)` etc., no
+laço das que sumiram `previous = valor, current = 0, delta = −valor` (a praça abandonada "melhora" o vermelho); zero consulta/assinatura nova.
+**(2)** seis novas colunas em `CITY_PROFIT_COMPARISON_CSV_HEADERS`/`cityProfitComparisonToCsv` (`src/lib/csv.ts`), logo após "Δ shows" e antes
+de "Resultado (ano anterior)" — espelhando a posição da tela (o vermelho logo à direita de "Shows"): "No vermelho (ano anterior/corrente)" +
+"Δ no vermelho" (`String`/`csvSignedCount`) e "Prejuízo (ano anterior/corrente) (R$)" + "Δ prejuízo (R$)" (`centsToCsvAmount`, com sinal); a
+linha "Total" soma as quatro colunas de ano. Cobre os DOIS exports (`/shows/cidades/comparativo/export` e `/shows/locais/comparativo/export`)
+de uma vez (compartilham o serializador; só o `groupLabel` difere). Convenção de sinal das superfícies irmãs: **Δ no vermelho positivo =
+piora** (mais shows no prejuízo), **Δ prejuízo positivo = melhora** (menos R$ no vermelho, pois `lossNet ≤ 0`). **+2 testes** de CSV
+(`csv.test.ts`: colunas do vermelho com Δ assinado + Total espelhando a linha; cabeçalho/linhas estendidos; asserções `Caiu`/tendência e Total
+deslocadas +6) **+1 teste** de lógica (`finance.test.ts`: Recife 0→1 show no vermelho, prejuízo 0→−200,00; João Pessoa sumida com −120,00 → Δ
++120,00 = melhora). Camada pura (motor compartilhado) + serializador; zero migração/dependência. DoD verde: `npm run build` (os dois exports
+seguem 0 B), `npx tsc --noEmit` (ajustadas 2 fixtures `CityProfitChange` literais em `csv.test.ts`/`finance.test.ts`), `npm run lint` (0
+warnings), `npm test` (**2105 testes**); smoke → `/login` 200, `/shows/cidades/comparativo/export?ano=2025` e
+`/shows/locais/comparativo/export?ano=2025` 307→/login (auth-gated); `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, ZERO
+dependência nova), ver D381. **Próximo possível** — (a) levar o recorte por natureza (todos × só firmes) ao eixo de papel (tela + card +
+export em conjunto, a consistência futura da D374); (b) ecoar o "quanto R$ no vermelho nesta casa/praça" como nudge geográfico no Painel; (c)
+um "mover do vermelho" no card visual do comparativo por cidade/local (hoje os movers ancoram só em nº de shows) — feature nova de UI, fora do
+escopo de camada pura. Fora deste eixo, segue como único pendente do backup a restauração por MERGE (ALTO risco, revisão humana).
+**Antes disso, Sessão 385 — VERMELHO POR LOCAL E POR CIDADE: COLUNAS "NO VERMELHO" (`lossCount`) E "PREJUÍZO" (`lossNet`) EM `VenueProfitRow`/`CityProfitRow` — TELA + EXPORT (D380):**
 a Sessão 384/D379 fechou o par count↔R$ do vermelho no eixo de CONTRATANTE/PAPEL (`lossCount`/`lossNet` em `ContactProfitRow`/`RoleProfitRow`)
 e registrou como próximo passo (alt. a) replicar esse par ao eixo geográfico por CIDADE/LOCAL de rentabilidade. Esta sessão o entrega, e de
 uma vez para os DOIS eixos: as tabelas de rentabilidade por local (`/shows/locais`) e por cidade (`/shows/cidades`) mostravam só o RESULTADO

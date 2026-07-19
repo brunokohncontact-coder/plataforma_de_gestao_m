@@ -5,6 +5,43 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-19 — D381: Colunas do vermelho (`lossCount`/`lossNet`, dois anos + Δ) no COMPARATIVO ano a ano por cidade/local (`cityProfitComparisonToCsv`)
+- **Contexto:** a D380 levou o par contagem↔magnitude do vermelho (`lossCount` + `lossNet`) às TABELAS e EXPORTS de rentabilidade por
+  local (`/shows/locais`) e por cidade (`/shows/cidades`), e registrou como próximo passo (alt. d) estender esse par ao COMPARATIVO ano a
+  ano do mesmo eixo geográfico (`cityProfitComparisonToCsv`) — fechando o trio tela↔export↔comparativo. O comparativo já trazia, por
+  cidade/local, os shows e o resultado de cada ano com seus deltas, mas não dizia se uma praça que cresceu em agenda passou a tocar MAIS
+  no prejuízo (a leitura "onde a agenda migrou, e para onde ela migrou tocando no vermelho").
+- **Decisão:** seis novos campos em `CityProfitChange` (`src/lib/finance.ts`) — `currentLossCount`/`previousLossCount`/`lossCountDelta` e
+  `currentLossNet`/`previousLossNet`/`lossNetDelta` — populados em `compareCitiesByProfit` (que já é o motor compartilhado do comparativo
+  por local via o alias `compareVenuesByProfit`/D299), lendo o `lossCount`/`lossNet` que as linhas `VenueProfitRow`/`CityProfitRow` já
+  carregam desde a D380: no laço das cidades do ano atual, `cur.lossCount − (prev?.lossCount ?? 0)` etc.; no laço das que sumiram,
+  `previous = valor, current = 0, delta = −valor` (a praça abandonada "melhora" o vermelho). Zero consulta/assinatura nova. Seis novas
+  colunas em `CITY_PROFIT_COMPARISON_CSV_HEADERS`/`cityProfitComparisonToCsv` (`src/lib/csv.ts`), logo após "Δ shows" e antes de
+  "Resultado (ano anterior)" — espelhando a posição da tela (D380, o vermelho logo à direita de "Shows"): "No vermelho (ano anterior/
+  corrente)" + "Δ no vermelho" (`String`/`csvSignedCount`) e "Prejuízo (ano anterior/corrente) (R$)" + "Δ prejuízo (R$)"
+  (`centsToCsvAmount`, com sinal). A linha "Total" soma as quatro colunas de ano. Cobre os DOIS exports (`/shows/cidades/comparativo/export`
+  e `/shows/locais/comparativo/export`) de uma vez, pois compartilham o serializador (só o `groupLabel` difere).
+- **Justificativa:** fecha o trio tela↔export↔comparativo do eixo geográfico de rentabilidade (o próximo passo alt. d da D380) reusando
+  dados já computados (`lossCount`/`lossNet` das linhas, D380) e a convenção `lossNet ≤ 0` já cravada (D365/D377/D379/D380) — nenhum novo
+  limiar nem hipótese. O sinal do Δ segue a mesma leitura das superfícies irmãs: **Δ no vermelho positivo = piora** (mais shows no
+  prejuízo), **Δ prejuízo positivo = melhora** (menos R$ no vermelho, pois `lossNet ≤ 0`). Como `compareCitiesByProfit` alimenta os dois
+  eixos (cidade e local), uma edição na camada pura + serializador surte ambos, mantendo os números batendo entre superfícies. Camada pura +
+  wiring; zero migração/dependência (`npm audit` inalterado: 10 advisories, 4 moderate/5 high/1 critical, ZERO dependência nova). +2 testes
+  de CSV (as colunas do vermelho com Δ assinado + Total; cabeçalho/linha estendidos; asserções `Caiu`/tendência deslocadas +6) e +1 de
+  lógica (`finance.test.ts`: Recife 0→1 no vermelho, prejuízo 0→−200,00; João Pessoa sumida com −120,00 → Δ +120,00 melhora). DoD verde:
+  `npm run build`, `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test` (**2105 testes**); smoke → `/login` 200, os dois exports do
+  comparativo 307→/login (auth-gated).
+- **Alternativas consideradas:** (a) só uma coluna "Δ vermelho" (o mínimo sugerido na D380) — descartado: as colunas de shows e resultado
+  do comparativo já trazem os dois anos + Δ; dar ao vermelho o mesmo tratamento (dois anos + Δ, para contagem E prejuízo) é consistente e
+  deixa a planilha filtrável por quem tocava no vermelho antes/depois, não só pelo salto. (b) posicionar as colunas do vermelho ao final
+  (depois de "Tendência") — descartado: a tela (D380) põe o vermelho logo à direita de "Shows"; espelhar essa ordem no CSV mantém a leitura
+  consistente entre superfícies. (c) omitir o vermelho da linha "Total" — descartado: as demais colunas somam no Total e o total de shows no
+  vermelho/prejuízo do período é informação real e somável (`lossNet` é aditivo). (d) levar também ao card visual do comparativo na tela
+  (movers) — deixado de fora: os movers ancoram em nº de shows (`countDelta`), não no vermelho; um "mover do vermelho" seria uma feature
+  nova de UI, fora do escopo fechado desta sessão (o CSV já entrega a lista completa).
+
+---
+
 ## 2026-07-19 — D380: Colunas "No vermelho" (`lossCount`) e "Prejuízo" (`lossNet`) por LOCAL e por CIDADE (`VenueProfitRow`/`CityProfitRow`) — tela + export
 - **Contexto:** a D379 fechou o par count↔R$ do vermelho (`lossCount` + `lossNet`) no eixo de CONTRATANTE e de PAPEL
   (`ContactProfitRow`/`RoleProfitRow`) e registrou como próximo passo (alt. a) replicar esse par ao eixo geográfico por CIDADE/LOCAL de

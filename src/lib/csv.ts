@@ -1125,6 +1125,12 @@ export const CITY_PROFIT_COMPARISON_CSV_HEADERS = [
   "Shows (ano anterior)",
   "Shows (ano corrente)",
   "Δ shows",
+  "No vermelho (ano anterior)",
+  "No vermelho (ano corrente)",
+  "Δ no vermelho",
+  "Prejuízo (ano anterior) (R$)",
+  "Prejuízo (ano corrente) (R$)",
+  "Δ prejuízo (R$)",
   "Resultado (ano anterior) (R$)",
   "Resultado (ano corrente) (R$)",
   "Δ resultado (R$)",
@@ -1145,8 +1151,15 @@ const CITY_PROFIT_TREND_LABELS: Record<CityProfitTrend, string> = {
  * em dois movers e a coluna "vs. {ano-1}" da tabela só resume num Δ de shows.
  * Uma linha por cidade na ordem do comparativo (resultado do ano atual desc, com
  * as cidades que SUMIRAM — presentes só no ano anterior — anexadas ao final,
- * `currentCount = 0`), trazendo o nº de shows e o resultado de cada ano, os dois
- * deltas e a tendência (Subiu / Caiu / Estável), seguida de uma linha "Total".
+ * `currentCount = 0`), trazendo o nº de shows, o nº de shows NO VERMELHO
+ * (`lossCount`), o PREJUÍZO somado desses shows (`lossNet`, R$) e o resultado de
+ * cada ano, os respectivos deltas e a tendência (Subiu / Caiu / Estável), seguida
+ * de uma linha "Total". As colunas do vermelho fecham o trio tela↔export↔
+ * comparativo desse eixo geográfico (a tabela/export já traziam `lossCount`/
+ * `lossNet` por local/cidade, D380): quem cresceu em shows mas passou a tocar mais
+ * no prejuízo aparece aqui. O Δ no vermelho sai assinado (`csvSignedCount`); os de
+ * prejuízo via `centsToCsvAmount` (que já emite o "-"). Convenção `lossNet ≤ 0`,
+ * então **positivo no Δ prejuízo = melhora** (menos R$ no vermelho).
  *
  * O ganho sobre a coluna da tabela (`venueProfitToCsv`) é justamente as cidades
  * abandonadas (a tabela lista só as com atuação no ano atual) e a dimensão
@@ -1176,11 +1189,19 @@ export function cityProfitComparisonToCsv(
   const out: string[][] = [headers];
   let totalPrevCount = 0;
   let totalCurCount = 0;
+  let totalPrevLossCount = 0;
+  let totalCurLossCount = 0;
+  let totalPrevLossNet = 0;
+  let totalCurLossNet = 0;
   let totalPrevNet = 0;
   let totalCurNet = 0;
   for (const c of changes) {
     totalPrevCount += c.previousCount;
     totalCurCount += c.currentCount;
+    totalPrevLossCount += c.previousLossCount;
+    totalCurLossCount += c.currentLossCount;
+    totalPrevLossNet += c.previousLossNet;
+    totalCurLossNet += c.currentLossNet;
     totalPrevNet += c.previousNet;
     totalCurNet += c.currentNet;
     out.push([
@@ -1188,6 +1209,12 @@ export function cityProfitComparisonToCsv(
       String(c.previousCount),
       String(c.currentCount),
       csvSignedCount(c.countDelta),
+      String(c.previousLossCount),
+      String(c.currentLossCount),
+      csvSignedCount(c.lossCountDelta),
+      centsToCsvAmount(c.previousLossNet),
+      centsToCsvAmount(c.currentLossNet),
+      centsToCsvAmount(c.lossNetDelta),
       centsToCsvAmount(c.previousNet),
       centsToCsvAmount(c.currentNet),
       centsToCsvAmount(c.netDelta),
@@ -1199,6 +1226,12 @@ export function cityProfitComparisonToCsv(
     String(totalPrevCount),
     String(totalCurCount),
     csvSignedCount(totalCurCount - totalPrevCount),
+    String(totalPrevLossCount),
+    String(totalCurLossCount),
+    csvSignedCount(totalCurLossCount - totalPrevLossCount),
+    centsToCsvAmount(totalPrevLossNet),
+    centsToCsvAmount(totalCurLossNet),
+    centsToCsvAmount(totalCurLossNet - totalPrevLossNet),
     centsToCsvAmount(totalPrevNet),
     centsToCsvAmount(totalCurNet),
     centsToCsvAmount(totalCurNet - totalPrevNet),
