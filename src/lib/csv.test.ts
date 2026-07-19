@@ -1048,10 +1048,10 @@ describe("contactProfitToCsv", () => {
     const csv = contactProfitToCsv([row()]);
     const lines = csv.split("\r\n");
     expect(lines[0]).toBe(
-      "Contratante;Papel;Shows;Cachê (R$);Extras (R$);Despesas (R$);Cachê médio (R$);Cachê mediano (R$);Resultado (R$);Média/show (R$)",
+      "Contratante;Papel;Shows;No vermelho;Cachê (R$);Extras (R$);Despesas (R$);Cachê médio (R$);Cachê mediano (R$);Resultado (R$);Média/show (R$)",
     );
     expect(lines[1]).toBe(
-      "Produtora Lua;Produtor/Promoter;5;7500,00;0,00;1000,00;1500,00;1500,00;6500,00;1300,00",
+      "Produtora Lua;Produtor/Promoter;5;0;7500,00;0,00;1000,00;1500,00;1500,00;6500,00;1300,00",
     );
   });
 
@@ -1062,10 +1062,18 @@ describe("contactProfitToCsv", () => {
     expect(cols[1]).toBe("");
   });
 
+  it("traz o lossCount na coluna 'No vermelho' (entre Shows e Cachê)", () => {
+    const csv = contactProfitToCsv([row({ showCount: 5, lossCount: 2 })]);
+    const cols = csv.split("\r\n")[1].split(";");
+    // 4ª coluna (índice 3) = No vermelho, logo após Shows (índice 2).
+    expect(cols[2]).toBe("5");
+    expect(cols[3]).toBe("2");
+  });
+
   it("deixa o cachê mediano vazio abaixo da amostra mínima", () => {
     const csv = contactProfitToCsv([row({ showCount: 2 })]);
-    // 8ª coluna (índice 7) = cachê mediano.
-    expect(csv.split("\r\n")[1].split(";")[7]).toBe("");
+    // 9ª coluna (índice 8) = cachê mediano.
+    expect(csv.split("\r\n")[1].split(";")[8]).toBe("");
   });
 });
 
@@ -1093,10 +1101,10 @@ describe("roleProfitToCsv", () => {
     const csv = roleProfitToCsv([row()]);
     const lines = csv.split("\r\n");
     expect(lines[0]).toBe(
-      "Papel;Shows;Cachê (R$);Extras (R$);Despesas (R$);Cachê médio (R$);Cachê mediano (R$);Resultado (R$);Média/show (R$)",
+      "Papel;Shows;No vermelho;Cachê (R$);Extras (R$);Despesas (R$);Cachê médio (R$);Cachê mediano (R$);Resultado (R$);Média/show (R$)",
     );
     expect(lines[1]).toBe(
-      "Casa de show;5;7500,00;0,00;1000,00;1500,00;1500,00;6500,00;1300,00",
+      "Casa de show;5;0;7500,00;0,00;1000,00;1500,00;1500,00;6500,00;1300,00",
     );
   });
 
@@ -1105,10 +1113,18 @@ describe("roleProfitToCsv", () => {
     expect(csv.split("\r\n")[1].split(";")[0]).toBe("Sem contratante");
   });
 
+  it("traz o lossCount na coluna 'No vermelho' (entre Shows e Cachê)", () => {
+    const csv = roleProfitToCsv([row({ showCount: 5, lossCount: 3 })]);
+    const cols = csv.split("\r\n")[1].split(";");
+    // 3ª coluna (índice 2) = No vermelho, logo após Shows (índice 1).
+    expect(cols[1]).toBe("5");
+    expect(cols[2]).toBe("3");
+  });
+
   it("deixa o cachê mediano vazio abaixo da amostra mínima", () => {
     const csv = roleProfitToCsv([row({ showCount: 2 })]);
-    // 7ª coluna (índice 6) = cachê mediano.
-    expect(csv.split("\r\n")[1].split(";")[6]).toBe("");
+    // 8ª coluna (índice 7) = cachê mediano.
+    expect(csv.split("\r\n")[1].split(";")[7]).toBe("");
   });
 });
 
