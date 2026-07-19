@@ -1454,6 +1454,13 @@ export interface ContactProfitRow {
   medianFee: number;
   /** Margem agregada (net / receita bruta), 0 se receita bruta 0. */
   margin: number;
+  /**
+   * Nº de shows do grupo **no vermelho** (`net < 0`, mesma faixa "loss" da
+   * distribuição por show). É o outro lado do par contagem↔margem: um
+   * contratante lucrativo no agregado (`totalNet > 0`) ainda pode esconder
+   * shows individuais no prejuízo — a UI destaca quando `lossCount > 0`.
+   */
+  lossCount: number;
 }
 
 export interface ContactsProfitability {
@@ -1510,6 +1517,8 @@ export function rankContactsByProfit<S extends ShowLike>(
     totalExtra: number;
     totalExpenses: number;
     totalNet: number;
+    /** Nº de shows do grupo no vermelho (net < 0). */
+    lossCount: number;
     /** Cachês individuais do grupo, para o cachê mediano (robusto a outlier). */
     fees: number[];
   }
@@ -1532,6 +1541,7 @@ export function rankContactsByProfit<S extends ShowLike>(
         totalExtra: 0,
         totalExpenses: 0,
         totalNet: 0,
+        lossCount: 0,
         fees: [],
       };
       groups.set(key, acc);
@@ -1543,6 +1553,7 @@ export function rankContactsByProfit<S extends ShowLike>(
     acc.totalExtra += pnl.extraIncome;
     acc.totalExpenses += pnl.expenses;
     acc.totalNet += pnl.net;
+    if (pnl.net < 0) acc.lossCount += 1;
     acc.fees.push(pnl.fee);
   }
 
@@ -1559,6 +1570,7 @@ export function rankContactsByProfit<S extends ShowLike>(
       avgFee: acc.showCount > 0 ? Math.round(acc.totalFee / acc.showCount) : 0,
       medianFee: median(acc.fees),
       margin: gross === 0 ? 0 : acc.totalNet / gross,
+      lossCount: acc.lossCount,
     };
   });
 
@@ -1622,6 +1634,13 @@ export interface RoleProfitRow {
   medianFee: number;
   /** Margem agregada (net / receita bruta), 0 se receita bruta 0. */
   margin: number;
+  /**
+   * Nº de shows do papel **no vermelho** (`net < 0`, mesma faixa "loss" da
+   * distribuição por show). Rollup do `lossCount` por contratante: um tipo de
+   * comprador lucrativo no agregado ainda pode carregar shows no prejuízo — a
+   * UI destaca quando `lossCount > 0`.
+   */
+  lossCount: number;
 }
 
 export interface RolesProfitability {
@@ -1669,6 +1688,8 @@ export function rankRolesByProfit<S extends ShowLike>(
     totalExtra: number;
     totalExpenses: number;
     totalNet: number;
+    /** Nº de shows do grupo no vermelho (net < 0). */
+    lossCount: number;
     /** Cachês individuais do grupo, para o cachê mediano (robusto a outlier). */
     fees: number[];
   }
@@ -1692,6 +1713,7 @@ export function rankRolesByProfit<S extends ShowLike>(
         totalExtra: 0,
         totalExpenses: 0,
         totalNet: 0,
+        lossCount: 0,
         fees: [],
       };
       groups.set(key, acc);
@@ -1703,6 +1725,7 @@ export function rankRolesByProfit<S extends ShowLike>(
     acc.totalExtra += pnl.extraIncome;
     acc.totalExpenses += pnl.expenses;
     acc.totalNet += pnl.net;
+    if (pnl.net < 0) acc.lossCount += 1;
     acc.fees.push(pnl.fee);
   }
 
@@ -1719,6 +1742,7 @@ export function rankRolesByProfit<S extends ShowLike>(
       avgFee: acc.showCount > 0 ? Math.round(acc.totalFee / acc.showCount) : 0,
       medianFee: median(acc.fees),
       margin: gross === 0 ? 0 : acc.totalNet / gross,
+      lossCount: acc.lossCount,
     };
   });
 

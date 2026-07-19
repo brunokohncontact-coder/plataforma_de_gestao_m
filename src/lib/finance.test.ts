@@ -1212,6 +1212,32 @@ describe("rankContactsByProfit", () => {
     expect(ze!.showCount).toBe(2);
     expect(ze!.totalNet).toBe(285_00);
   });
+
+  it("conta os shows no vermelho (net < 0) por contratante, sem contar o zerado", () => {
+    // Zé: um show lucrativo (+100) e um no prejuízo (cachê 50 − despesa 200 = −150);
+    // o agregado fica negativo (−50) mas só 1 dos 2 shows está no vermelho.
+    // Ana: um lucrativo (+80) e um zerado (cachê 30 − despesa 30 = 0, não é vermelho).
+    const lossShows: ShowLike[] = [
+      { id: "g1", fee: 100_00, status: "PLAYED" },
+      { id: "g2", fee: 50_00, status: "PLAYED" },
+      { id: "g3", fee: 80_00, status: "PLAYED" },
+      { id: "g4", fee: 30_00, status: "PLAYED" },
+    ];
+    const lossTxs: TxLike[] = [
+      tx({ type: "EXPENSE", amount: 200_00, showId: "g2" }),
+      tx({ type: "EXPENSE", amount: 30_00, showId: "g4" }),
+    ];
+    const r = rankContactsByProfit(lossShows, lossTxs, (s: ShowLike) =>
+      s.id === "g3" || s.id === "g4" ? ANA : ZE,
+    );
+    const ze = r.rows.find((row) => row.contact?.id === "ze")!;
+    expect(ze.showCount).toBe(2);
+    expect(ze.lossCount).toBe(1); // só g2 (net −150); agregado ainda −50
+    expect(ze.totalNet).toBe(-50_00);
+    const ana = r.rows.find((row) => row.contact?.id === "ana")!;
+    expect(ana.showCount).toBe(2);
+    expect(ana.lossCount).toBe(0); // g4 é zerado (net 0), não conta como vermelho
+  });
 });
 
 describe("rankRolesByProfit", () => {
@@ -1297,6 +1323,29 @@ describe("rankRolesByProfit", () => {
     expect(promoter.medianFee).toBe(200_00); // preço típico, não a média distorcida
     expect(promoter.avgFee).toBe(433_33); // round(1300/3)
     expect(promoter.medianFee).not.toBe(promoter.avgFee);
+  });
+
+  it("soma os shows no vermelho (net < 0) por papel (rollup dos contratantes)", () => {
+    // PROMOTER: Zé lucrativo (+100) e Ney no prejuízo (cachê 50 − despesa 200 = −150);
+    // o papel soma 2 shows e 1 no vermelho, mesmo com contratantes diferentes.
+    // BOOKER: Ana com um único show lucrativo (+80) → nenhum no vermelho.
+    const lossShows: ShowLike[] = [
+      { id: "g1", fee: 100_00, status: "PLAYED" },
+      { id: "g2", fee: 50_00, status: "PLAYED" },
+      { id: "g3", fee: 80_00, status: "PLAYED" },
+    ];
+    const lossTxs: TxLike[] = [tx({ type: "EXPENSE", amount: 200_00, showId: "g2" })];
+    const pm: Record<string, { id: string; name: string; role: string } | null> = {
+      g1: ZE,
+      g2: NEY,
+      g3: ANA,
+    };
+    const r = rankRolesByProfit(lossShows, lossTxs, (s: ShowLike) => pm[s.id] ?? null);
+    const promoter = r.rows.find((row) => row.role === "PROMOTER")!;
+    expect(promoter.showCount).toBe(2);
+    expect(promoter.lossCount).toBe(1); // só Ney no vermelho
+    const booker = r.rows.find((row) => row.role === "BOOKER")!;
+    expect(booker.lossCount).toBe(0);
   });
 });
 

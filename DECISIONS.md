@@ -5,6 +5,37 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-19 — D377: Contagem de shows no vermelho por contratante e por papel (`lossCount`)
+- **Contexto:** a D376 fechou o par tela↔export do comparativo de MARGEM por papel e registrou como próximo passo (alt. b) "contagem de
+  shows no vermelho por papel/contratante (o outro lado do par contagem↔margem, exigiria novos campos em `RoleProfitRow`/`ContactProfitRow`)".
+  As tabelas de rentabilidade por contratante (`/contatos/rentabilidade`, D105) e por papel (`/contatos/rentabilidade/por-papel`) mostram
+  o RESULTADO AGREGADO de cada grupo (`totalNet`), mas um contratante/canal lucrativo no total pode esconder shows individuais no prejuízo.
+  A margem já responde "quanto sobra em média"; faltava o outro lado, a CONTAGEM: "com quem/que canal eu às vezes toco no vermelho".
+- **Decisão:** (1) novo campo `lossCount` em `ContactProfitRow` e `RoleProfitRow` (`src/lib/finance.ts`) — nº de shows do grupo com
+  `net < 0`, a mesma faixa "loss" de `showResultBandKeyFor`/`showResultDistribution` (o zerado, `net === 0`, é "empatou" e NÃO conta como
+  vermelho). Computado no acumulador de `rankContactsByProfit` e `rankRolesByProfit` (`if (pnl.net < 0) acc.lossCount += 1`), sem consulta
+  nova, sem mudança de assinatura, reusando o `computeShowPnL` já iterado; o do papel é o rollup natural dos contratantes daquele papel.
+  (2) coluna "No vermelho" nas duas tabelas, entre "Shows" e "Cachê": número em vermelho/negrito quando `lossCount > 0` (com `title`
+  "N de M shows deram prejuízo"), "—" cinza quando 0; nota de rodapé atualizada nas duas telas.
+- **Justificativa:** fecha o próximo passo (alt. b) da D376 com o mínimo de superfície — um campo derivado do P&L já calculado, reusando
+  a definição de "vermelho" (`net < 0`) já cravada na distribuição por show (D365), sem novo limiar nem hipótese. Camada pura + wiring;
+  zero migração/dependência (`npm audit` inalterado: 10 advisories, 4 moderate/5 high/1 critical, ZERO dependência nova). +2 testes de
+  lógica (`finance.test.ts`: por contratante — 1 de 2 shows no vermelho com agregado ainda negativo E o zerado não conta; por papel —
+  rollup soma o vermelho de contratantes distintos do mesmo papel, BOOKER sem vermelho). DoD verde: `npm run build` (as duas páginas
+  compilam; sem rota nova), `npx tsc --noEmit` (ajustadas 2 fixtures de `csv.test.ts` que montam `ContactProfitRow`/`RoleProfitRow`
+  literais, agora com `lossCount`), `npm run lint` (0 warnings), `npm test` (**2094 testes**); smoke → `/login` 200,
+  `/contatos/rentabilidade` e `/contatos/rentabilidade/por-papel?ano=2025` 307→/login (auth-gated).
+- **Alternativas consideradas:** (a) definir "vermelho" pela margem (ex.: `margin < 0`) em vez de `net < 0` — descartado: `net < 0` e
+  `margin < 0` coincidem para um único show (net negativo ⇒ margem negativa) e `net` é a fonte única já usada na faixa "loss"; usar a
+  margem só adicionaria ambiguidade. (b) contar também os shows "no limite" (net 0) num campo à parte — descartado por ora: o zerado é
+  raro e a decisão acionável é o prejuízo, não o empate; fica implícito na diferença `showCount − lossCount`. (c) já surtir o `lossCount`
+  nos exports CSV — deixado como próximo passo (alt. a abaixo) para manter a sessão pequena e fechada. Próximos possíveis abertos:
+  (a) `lossCount` como coluna "No vermelho" nos exports CSV irmãos (`contactProfitToCsv`/`roleProfitToCsv`), fechando o par tela↔export;
+  (b) somar o PREJUÍZO em R$ dos shows no vermelho por grupo (`lossNet`, molde do `lossNet` da distribuição); (c) levar o recorte por
+  natureza (todos × só firmes) ao eixo de papel (a consistência futura da D374).
+
+---
+
 ## 2026-07-19 — D376: Export CSV do comparativo de margem por PAPEL do contratante (`roleMarginComparisonToCsv`)
 - **Contexto:** a D375 entregou o card "Margem por papel {ano} vs. {ano-1}" (`compareRoleMargins` + `<RoleMarginComparisonCard>` em
   `/contatos/rentabilidade/por-papel`) e registrou como próximo passo (alt. a) "export CSV irmão do comparativo de margem por papel
