@@ -7,6 +7,7 @@ import {
   compareGeoConcentration,
   compareVenuesByProfit,
   venueProfitMovers,
+  venueProfitRedMovers,
   indexVenueProfitChanges,
   classifyVenueProfitChange,
   showProfitYears,
@@ -19,6 +20,7 @@ import {
   type GeoConcentrationComparison,
   type VenueProfitChange,
   type VenueProfitMovers,
+  type VenueRedMovers,
   type CityProfitTrend,
   type DiversificationLevel,
 } from "@/lib/finance";
@@ -99,6 +101,11 @@ export default async function VenueProfitabilityPage({
   // perda de shows) destilados da MESMA lista de mudanças, espelho do card de
   // movers da tela por cidade (D298).
   let venueMovers: VenueProfitMovers | null = null;
+  // Card "Onde o vermelho mudou": os dois movers do PREJUÍZO (quem mais afundou /
+  // recuperou do vermelho), destilados da MESMA lista de mudanças. Eixo de
+  // rentabilidade, distinto dos movers de agenda acima (nº de shows). Reusa o par
+  // lossNetDelta/lossCountDelta que a D381 já cravou em VenueProfitChange.
+  let venueRedMovers: VenueRedMovers | null = null;
   // Lista COMPLETA de mudanças por local (na ordem do relatório atual, com as
   // casas sumidas anexadas ao final) para o detalhe on-screen "Ver todas as
   // casas" do card de movers — o mesmo dado que o CSV do comparativo já serializa,
@@ -113,6 +120,7 @@ export default async function VenueProfitabilityPage({
       venueChanges = compareVenuesByProfit(report, previousReport);
       venueChangeByKey = indexVenueProfitChanges(venueChanges);
       venueMovers = venueProfitMovers(venueChanges);
+      venueRedMovers = venueProfitRedMovers(venueChanges);
     }
     const previousConcentration = geoConcentration(previousReport.rows);
     // Exige casa identificada nos DOIS períodos para comparar de verdade.
@@ -234,6 +242,14 @@ export default async function VenueProfitabilityPage({
             <VenueMoversCard
               movers={venueMovers}
               changes={venueChanges ?? []}
+              currentYear={yearFilter as number}
+              previousYear={previousYear}
+            />
+          )}
+
+          {venueRedMovers && (venueRedMovers.deepestLoss || venueRedMovers.biggestRecovery) && (
+            <VenueRedMoversCard
+              movers={venueRedMovers}
               currentYear={yearFilter as number}
               previousYear={previousYear}
             />
@@ -704,6 +720,82 @@ function VenueChangesDetails({
         local”.
       </p>
     </details>
+  );
+}
+
+/**
+ * Card "Onde o vermelho mudou": os dois movers do PREJUÍZO — a casa que mais
+ * afundou no vermelho e a que mais saiu dele de um ano para o outro. Irmão do
+ * card de movers de agenda (que ancora no nº de shows), mas no eixo da
+ * rentabilidade do vermelho (`lossNet`): responde "em que casa eu passei a perder
+ * — ou deixei de perder — dinheiro?". Só entra com ao menos um mover (garantido
+ * pelo chamador). Zero I/O: destila a MESMA lista de `compareVenuesByProfit`.
+ */
+function VenueRedMoversCard({
+  movers,
+  currentYear,
+  previousYear,
+}: {
+  movers: VenueRedMovers;
+  currentYear: number;
+  previousYear: number;
+}) {
+  const { deepestLoss, biggestRecovery } = movers;
+  return (
+    <div className="card">
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+        Onde o vermelho mudou · {currentYear} vs. {previousYear}
+      </p>
+      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+        <VenueRedMover label="Mais afundou no vermelho" change={deepestLoss} tone="red" />
+        <VenueRedMover label="Mais saiu do vermelho" change={biggestRecovery} tone="emerald" />
+      </div>
+      <p className="mt-3 text-xs text-gray-400">
+        Ancora no prejuízo (só os shows no vermelho); quando duas empatam em R$, o nº de shows no
+        vermelho desempata. Casas sem local informado (“Sem local”) ficam de fora.
+      </p>
+    </div>
+  );
+}
+
+/** Uma ponta do card de movers do vermelho (afundou ou recuperou), ou "—". */
+function VenueRedMover({
+  label,
+  change,
+  tone,
+}: {
+  label: string;
+  change: VenueProfitChange | null;
+  tone: "emerald" | "red";
+}) {
+  const tones: Record<string, string> = {
+    emerald: "text-emerald-600",
+    red: "text-red-600",
+  };
+  if (!change) {
+    return (
+      <div>
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
+        <p className="mt-1 text-xl font-bold text-gray-300">—</p>
+        <p className="text-xs text-gray-400">
+          Nenhuma casa {tone === "red" ? "afundou mais" : "saiu"} do vermelho.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
+      <p className="mt-1 flex items-baseline gap-2">
+        <span className="truncate font-medium text-gray-900">{change.name}</span>
+        <span className={"text-xl font-bold " + tones[tone]}>
+          {signedMoney(change.lossNetDelta)}
+        </span>
+      </p>
+      <p className="text-xs text-gray-500">
+        prejuízo {formatMoney(change.previousLossNet)} → {formatMoney(change.currentLossNet)}
+      </p>
+    </div>
   );
 }
 
