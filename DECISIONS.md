@@ -5,6 +5,32 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-19 — D379: Coluna "Prejuízo" (`lossNet`) em `ContactProfitRow`/`RoleProfitRow` — o "quanto" R$ ao lado do "quantos" (`lossCount`)
+- **Contexto:** as D377/D378 fecharam o par tela↔export do `lossCount` (nº de shows do grupo com `net < 0`) por contratante e por
+  papel, e registraram como próximo passo (alt. a) somar o PREJUÍZO em R$ desses shows no vermelho (`lossNet`), no molde do `lossNet`
+  já existente na distribuição por show (`showResultDistribution`). O `lossCount` responde "com quantos shows toco no vermelho com este
+  contratante/canal"; faltava o "quanto R$ esse vermelho custou" — dois contratantes podem ter 1 show no vermelho cada, mas um custou
+  R$ 50 e o outro R$ 5.000; a magnitude prioriza a renegociação.
+- **Decisão:** novo campo `lossNet` (centavos, ≤0; `0` quando nenhum) em `ContactProfitRow` e `RoleProfitRow` (`src/lib/finance.ts`) —
+  soma do `net` dos shows do grupo com `net < 0`, acumulado no mesmo `if (pnl.net < 0)` que já incrementa o `lossCount` (reusa o
+  `computeShowPnL` já iterado; zero consulta/assinatura nova). O do papel é o rollup natural dos contratantes daquele papel. Coluna
+  "Prejuízo" nas DUAS telas (`/contatos/rentabilidade` e `.../por-papel`), logo à direita de "No vermelho" (o par quantos↔quanto lado a
+  lado): mostra `formatMoney(lossNet)` em vermelho quando `lossCount > 0`, "—" cinza quando 0. Coluna "Prejuízo (R$)" nos DOIS exports
+  CSV irmãos (`contactProfitToCsv`/`roleProfitToCsv`), na mesma posição — `centsToCsvAmount(row.lossNet)` (mantém o sinal; "0,00" quando
+  nenhum — CSV é orientado a máquina/planilha, um `0,00` numérico é mais útil que "—").
+- **Justificativa:** completa o par contagem↔magnitude do eixo de vermelho por contratante/papel (o `lossCount` era só o "quantos"),
+  com o mínimo de superfície — camada pura + wiring, reusando o acumulador da D377; zero migração/dependência (`npm audit` inalterado:
+  10 advisories, 4 moderate/5 high/1 critical, ZERO dependência nova). Mesma convenção `lossNet ≤ 0` da distribuição por show
+  (`showResultDistribution`), para os números baterem entre superfícies. +3 testes de CSV e assertivas estendidas nos 2 testes de
+  `finance.test.ts` que já cobriam o `lossCount` (por contratante: `lossNet = -150_00` só do show no vermelho, não do lucrativo; por
+  papel: rollup soma só o vermelho de contratantes distintos do mesmo papel; ambos `lossNet = 0` sem vermelho).
+- **Alternativas consideradas:** (a) mostrar o prejuízo como valor absoluto/positivo na tela — descartado: `formatMoney` já renderiza o
+  sinal negativo nativamente e o vermelho reforça a leitura "custo"; manter o sinal é consistente com o `lossNet` da distribuição e com
+  a coluna "Despesas" (que é a única a inverter sinal por já guardar positivo). (b) uma linha "Total" de prejuízo no CSV — descartado: é
+  derivável somando a coluna, e as tabelas de rentabilidade não têm linha Total (só as comparativas item×item têm). (c) adiar para
+  juntar com o recorte por natureza (alt. b da D378) — descartado: são eixos ortogonais; `lossNet` fecha o par count↔R$ agora e é a
+  continuação direta e barata da D377/D378.
+
 ## 2026-07-19 — D378: Coluna "No vermelho" (`lossCount`) nos exports CSV de rentabilidade por contratante e por papel
 - **Contexto:** a D377 acrescentou o campo `lossCount` (nº de shows do grupo com `net < 0`) a `ContactProfitRow`/`RoleProfitRow` e a
   coluna "No vermelho" nas duas telas (`/contatos/rentabilidade` e `.../por-papel`), mas registrou como próximo passo (alt. a) surtir o

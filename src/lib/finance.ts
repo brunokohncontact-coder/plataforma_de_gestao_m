@@ -1461,6 +1461,13 @@ export interface ContactProfitRow {
    * shows individuais no prejuízo — a UI destaca quando `lossCount > 0`.
    */
   lossCount: number;
+  /**
+   * Prejuízo somado dos shows do grupo **no vermelho** (`net < 0`), em centavos
+   * (≤0; `0` quando nenhum). É o "quanto" ao lado do "quantos" do `lossCount`:
+   * mede em R$ o custo dos shows no prejuízo com este contratante, mesmo quando
+   * o agregado é positivo. Mesma convenção do `lossNet` da distribuição por show.
+   */
+  lossNet: number;
 }
 
 export interface ContactsProfitability {
@@ -1519,6 +1526,8 @@ export function rankContactsByProfit<S extends ShowLike>(
     totalNet: number;
     /** Nº de shows do grupo no vermelho (net < 0). */
     lossCount: number;
+    /** Prejuízo somado dos shows do grupo no vermelho (net < 0), ≤0. */
+    lossNet: number;
     /** Cachês individuais do grupo, para o cachê mediano (robusto a outlier). */
     fees: number[];
   }
@@ -1542,6 +1551,7 @@ export function rankContactsByProfit<S extends ShowLike>(
         totalExpenses: 0,
         totalNet: 0,
         lossCount: 0,
+        lossNet: 0,
         fees: [],
       };
       groups.set(key, acc);
@@ -1553,7 +1563,10 @@ export function rankContactsByProfit<S extends ShowLike>(
     acc.totalExtra += pnl.extraIncome;
     acc.totalExpenses += pnl.expenses;
     acc.totalNet += pnl.net;
-    if (pnl.net < 0) acc.lossCount += 1;
+    if (pnl.net < 0) {
+      acc.lossCount += 1;
+      acc.lossNet += pnl.net;
+    }
     acc.fees.push(pnl.fee);
   }
 
@@ -1571,6 +1584,7 @@ export function rankContactsByProfit<S extends ShowLike>(
       medianFee: median(acc.fees),
       margin: gross === 0 ? 0 : acc.totalNet / gross,
       lossCount: acc.lossCount,
+      lossNet: acc.lossNet,
     };
   });
 
@@ -1641,6 +1655,13 @@ export interface RoleProfitRow {
    * UI destaca quando `lossCount > 0`.
    */
   lossCount: number;
+  /**
+   * Prejuízo somado dos shows do papel **no vermelho** (`net < 0`), em centavos
+   * (≤0; `0` quando nenhum). Rollup do `lossNet` por contratante: o "quanto" em
+   * R$ ao lado do "quantos" do `lossCount`. Mesma convenção do `lossNet` da
+   * distribuição por show.
+   */
+  lossNet: number;
 }
 
 export interface RolesProfitability {
@@ -1690,6 +1711,8 @@ export function rankRolesByProfit<S extends ShowLike>(
     totalNet: number;
     /** Nº de shows do grupo no vermelho (net < 0). */
     lossCount: number;
+    /** Prejuízo somado dos shows do grupo no vermelho (net < 0), ≤0. */
+    lossNet: number;
     /** Cachês individuais do grupo, para o cachê mediano (robusto a outlier). */
     fees: number[];
   }
@@ -1714,6 +1737,7 @@ export function rankRolesByProfit<S extends ShowLike>(
         totalExpenses: 0,
         totalNet: 0,
         lossCount: 0,
+        lossNet: 0,
         fees: [],
       };
       groups.set(key, acc);
@@ -1725,7 +1749,10 @@ export function rankRolesByProfit<S extends ShowLike>(
     acc.totalExtra += pnl.extraIncome;
     acc.totalExpenses += pnl.expenses;
     acc.totalNet += pnl.net;
-    if (pnl.net < 0) acc.lossCount += 1;
+    if (pnl.net < 0) {
+      acc.lossCount += 1;
+      acc.lossNet += pnl.net;
+    }
     acc.fees.push(pnl.fee);
   }
 
@@ -1743,6 +1770,7 @@ export function rankRolesByProfit<S extends ShowLike>(
       medianFee: median(acc.fees),
       margin: gross === 0 ? 0 : acc.totalNet / gross,
       lossCount: acc.lossCount,
+      lossNet: acc.lossNet,
     };
   });
 

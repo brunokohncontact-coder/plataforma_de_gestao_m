@@ -4,7 +4,31 @@
 > próximos passos. Ao fim: commit + push e atualizar este arquivo.
 
 ## Estado atual
-**Sessão 383 — COLUNA "NO VERMELHO" (`lossCount`) NOS EXPORTS CSV DE RENTABILIDADE POR CONTRATANTE E POR PAPEL (D378):**
+**Sessão 384 — COLUNA "PREJUÍZO" (`lossNet`) EM `ContactProfitRow`/`RoleProfitRow`: O "QUANTO" R$ AO LADO DO "QUANTOS" (`lossCount`) — TELA + EXPORT (D379):**
+as D377/D378 fecharam o par tela↔export do `lossCount` (nº de shows do grupo no vermelho) por contratante e por papel, e registraram
+como próximo passo (alt. a) somar o PREJUÍZO em R$ desses shows (`lossNet`, molde do `lossNet` da distribuição por show). O `lossCount`
+diz "com quantos shows toco no vermelho com este contratante/canal"; faltava "quanto R$ custou" — dois grupos com 1 show no vermelho cada
+podem ter custado R$ 50 vs. R$ 5.000, e a magnitude é o que prioriza a renegociação. **(1)** novo campo `lossNet` (centavos, ≤0; `0`
+quando nenhum) em `ContactProfitRow` e `RoleProfitRow` (`src/lib/finance.ts`) — soma do `net` dos shows do grupo com `net < 0`, acumulado
+no MESMO `if (pnl.net < 0)` que já incrementa o `lossCount` (`acc.lossNet += pnl.net`), reusando o `computeShowPnL` já iterado; zero
+consulta/assinatura nova. O do papel é o rollup natural dos contratantes daquele papel. **(2)** coluna "Prejuízo" nas DUAS telas
+(`contatos/rentabilidade/page.tsx` e `por-papel/page.tsx`), logo à direita de "No vermelho" (o par quantos↔quanto lado a lado):
+`formatMoney(row.lossNet)` em vermelho/negrito quando `lossCount > 0` (com `title` "Prejuízo somado dos N shows no vermelho"), "—" cinza
+quando 0; nota de rodapé atualizada nas duas. **(3)** coluna "Prejuízo (R$)" nos DOIS exports CSV irmãos (`contactProfitToCsv`/
+`roleProfitToCsv` em `src/lib/csv.ts`), na MESMA posição (entre "No vermelho" e "Cachê (R$)") — `centsToCsvAmount(row.lossNet)` (mantém o
+sinal negativo; "0,00" quando nenhum, CSV orientado a máquina). **+3 testes** de CSV (`csv.test.ts`: `lossNet` na coluna "Prejuízo" do
+export por contratante e por papel + "0,00" sem vermelho; índices de "cachê mediano" deslocados +1 pela coluna nova) e assertivas
+estendidas nos 2 testes de `finance.test.ts` que já cobriam o `lossCount` (por contratante `lossNet=-150_00` só do show no vermelho; por
+papel rollup soma só o vermelho de contratantes distintos; ambos `0` sem vermelho). Camada pura + wiring; zero migração/dependência. DoD
+verde: `npm run build` (as 4 superfícies compilam; exports seguem 0 B), `npx tsc --noEmit`, `npm run lint` (0 warnings), `npm test`
+(**2099 testes**); smoke → `/login` 200, `/contatos/rentabilidade?ano=2025`, `.../por-papel?ano=2025` e os dois `/export?ano=2025`
+307→/login (auth-gated); `npm audit` inalterado (10 advisories: 4 moderate/5 high/1 critical, ZERO dependência nova), ver D379.
+**Próximo possível** — (a) somar o prejuízo/vermelho ao eixo por CIDADE/LOCAL de rentabilidade (`lossNet`/`lossCount` em
+`CityProfitRow`, se existir o análogo), replicando este par count↔R$; (b) levar o recorte por natureza (todos × só firmes) ao eixo de
+papel (tela + card + export em conjunto, a consistência futura da D374); (c) ecoar o "quanto R$ no vermelho com esta casa" como reforço
+do nudge de aperto de margem no Painel. Fora deste eixo, segue como único pendente do backup a restauração por MERGE (ALTO risco,
+revisão humana).
+**Antes disso, Sessão 383 — COLUNA "NO VERMELHO" (`lossCount`) NOS EXPORTS CSV DE RENTABILIDADE POR CONTRATANTE E POR PAPEL (D378):**
 a Sessão 382/D377 acrescentou o campo `lossCount` (nº de shows do grupo com `net < 0`) a `ContactProfitRow`/`RoleProfitRow` e a coluna
 "No vermelho" nas duas telas, e registrou como próximo passo (alt. a) surtir o mesmo dado nos exports CSV irmãos. Esta sessão o fecha,
 completando o par tela↔export deste eixo (como cachê/D292, distribuição/D366, cidade/D120, margem/D373/D376 já tinham). **(1)** coluna

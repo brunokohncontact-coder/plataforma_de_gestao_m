@@ -1204,6 +1204,7 @@ export const CONTACT_PROFIT_CSV_HEADERS = [
   "Papel",
   "Shows",
   "No vermelho",
+  "Prejuízo (R$)",
   "Cachê (R$)",
   "Extras (R$)",
   "Despesas (R$)",
@@ -1223,9 +1224,11 @@ function contactRoleLabel(role: string): string {
  * pronto para download. Mesma convenção pt-BR de `transactionsToCsv`. O grupo
  * "Sem contratante" (`contact: null`) sai com nome fixo e papel em branco. A
  * coluna "No vermelho" (entre "Shows" e "Cachê", espelhando a tabela) traz o
- * `lossCount` — nº de shows do grupo com resultado negativo (0 quando nenhum). A
- * ordem das linhas é preservada (a página ordena por resultado decrescente,
- * "Sem contratante" por último). Pura.
+ * `lossCount` — nº de shows do grupo com resultado negativo (0 quando nenhum) —
+ * e "Prejuízo (R$)" logo ao lado traz o `lossNet` — o R$ somado desses shows no
+ * vermelho (≤0; "0,00" quando nenhum), o "quanto" ao lado do "quantos". A ordem
+ * das linhas é preservada (a página ordena por resultado decrescente, "Sem
+ * contratante" por último). Pura.
  */
 export function contactProfitToCsv(
   rows: ContactProfitRow[],
@@ -1238,6 +1241,7 @@ export function contactProfitToCsv(
       row.contact ? contactRoleLabel(row.contact.role) : "",
       String(row.showCount),
       String(row.lossCount),
+      centsToCsvAmount(row.lossNet),
       centsToCsvAmount(row.totalFee),
       centsToCsvAmount(row.totalExtra),
       centsToCsvAmount(row.totalExpenses),
@@ -1256,6 +1260,7 @@ export const ROLE_PROFIT_CSV_HEADERS = [
   "Papel",
   "Shows",
   "No vermelho",
+  "Prejuízo (R$)",
   "Cachê (R$)",
   "Extras (R$)",
   "Despesas (R$)",
@@ -1274,9 +1279,11 @@ export const ROLE_PROFIT_CSV_HEADERS = [
  * cachê mediano só sai a partir de `MIN_MEDIAN_FEE_SAMPLE` shows (abaixo disso,
  * em branco — mesma regra de apresentação da UI). A coluna "No vermelho" (entre
  * "Shows" e "Cachê", espelhando a tabela) traz o `lossCount` — nº de shows do
- * papel com resultado negativo, rollup dos contratantes (0 quando nenhum). A
- * ordem das linhas é preservada (a página ordena por resultado decrescente,
- * "Sem contratante" por último). Pura.
+ * papel com resultado negativo, rollup dos contratantes (0 quando nenhum) — e
+ * "Prejuízo (R$)" logo ao lado traz o `lossNet` — o R$ somado desses shows no
+ * vermelho (≤0; "0,00" quando nenhum), o "quanto" ao lado do "quantos". A ordem
+ * das linhas é preservada (a página ordena por resultado decrescente, "Sem
+ * contratante" por último). Pura.
  */
 export function roleProfitToCsv(
   rows: RoleProfitRow[],
@@ -1288,6 +1295,7 @@ export function roleProfitToCsv(
       row.role ? contactRoleLabel(row.role) : "Sem contratante",
       String(row.showCount),
       String(row.lossCount),
+      centsToCsvAmount(row.lossNet),
       centsToCsvAmount(row.totalFee),
       centsToCsvAmount(row.totalExtra),
       centsToCsvAmount(row.totalExpenses),

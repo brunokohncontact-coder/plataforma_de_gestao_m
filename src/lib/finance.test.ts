@@ -1233,10 +1233,12 @@ describe("rankContactsByProfit", () => {
     const ze = r.rows.find((row) => row.contact?.id === "ze")!;
     expect(ze.showCount).toBe(2);
     expect(ze.lossCount).toBe(1); // só g2 (net −150); agregado ainda −50
+    expect(ze.lossNet).toBe(-150_00); // só o show no vermelho (g2), não o lucrativo g1
     expect(ze.totalNet).toBe(-50_00);
     const ana = r.rows.find((row) => row.contact?.id === "ana")!;
     expect(ana.showCount).toBe(2);
     expect(ana.lossCount).toBe(0); // g4 é zerado (net 0), não conta como vermelho
+    expect(ana.lossNet).toBe(0); // sem show no vermelho
   });
 });
 
@@ -1344,8 +1346,10 @@ describe("rankRolesByProfit", () => {
     const promoter = r.rows.find((row) => row.role === "PROMOTER")!;
     expect(promoter.showCount).toBe(2);
     expect(promoter.lossCount).toBe(1); // só Ney no vermelho
+    expect(promoter.lossNet).toBe(-150_00); // rollup soma só o show no vermelho (Ney), não o de Zé
     const booker = r.rows.find((row) => row.role === "BOOKER")!;
     expect(booker.lossCount).toBe(0);
+    expect(booker.lossNet).toBe(0); // Ana sem show no vermelho
   });
 });
 
