@@ -253,6 +253,7 @@ export default async function RoleProfitabilityPage({
                   <th className="px-4 py-3 font-medium">Papel</th>
                   <th className="px-4 py-3 text-right font-medium">Shows</th>
                   <th className="px-4 py-3 text-right font-medium">No vermelho</th>
+                  <th className="px-4 py-3 text-right font-medium">Prejuízo</th>
                   <th className="px-4 py-3 text-right font-medium">Cachê</th>
                   <th className="px-4 py-3 text-right font-medium">Extras</th>
                   <th className="px-4 py-3 text-right font-medium">Despesas</th>
@@ -282,6 +283,18 @@ export default async function RoleProfitabilityPage({
                           title={`${row.lossCount} de ${row.showCount} ${row.showCount === 1 ? "show" : "shows"} deram prejuízo (resultado negativo)`}
                         >
                           {row.lossCount}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {row.lossCount > 0 ? (
+                        <span
+                          className="font-medium text-red-600"
+                          title={`Prejuízo somado dos ${row.lossCount} ${row.lossCount === 1 ? "show" : "shows"} no vermelho`}
+                        >
+                          {formatMoney(row.lossNet)}
                         </span>
                       ) : (
                         <span className="text-gray-400">—</span>
@@ -337,7 +350,8 @@ export default async function RoleProfitabilityPage({
             <strong>cachê mediano</strong> é o preço típico (metade dos shows acima, metade abaixo),
             robusto a um show fora da curva — aparece só com {MIN_MEDIAN_FEE_SAMPLE} shows ou mais.
             A coluna <strong>No vermelho</strong> conta quantos shows do papel deram prejuízo
-            (resultado negativo): um canal lucrativo no total pode esconder shows no vermelho.
+            (resultado negativo) e <strong>Prejuízo</strong> soma quanto R$ esses shows custaram:
+            um canal lucrativo no total pode esconder shows no vermelho.
           </p>
         </>
       )}
