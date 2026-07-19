@@ -5,6 +5,40 @@ contexto, decisão, justificativa e alternativas consideradas.
 
 ---
 
+## 2026-07-19 — D376: Export CSV do comparativo de margem por PAPEL do contratante (`roleMarginComparisonToCsv`)
+- **Contexto:** a D375 entregou o card "Margem por papel {ano} vs. {ano-1}" (`compareRoleMargins` + `<RoleMarginComparisonCard>` em
+  `/contatos/rentabilidade/por-papel`) e registrou como próximo passo (alt. a) "export CSV irmão do comparativo de margem por papel
+  (molde de `contactMarginComparisonToCsv`/D373)". Os números do comparativo por papel (margem dos dois anos, Δ em pontos, resultado
+  somado e sua variação) só viviam na tela — o export do ano (`roleProfitToCsv`) traz só a foto do ano corrente, sem a margem do ano
+  anterior nem quais canais apertaram. Fecha o par tela↔export desse eixo, como o irmão por contratante (D373) já tinha.
+- **Decisão:** (1) camada pura `roleMarginComparisonToCsv(comparison)` em `src/lib/csv.ts` — planilha orientada a ITEM (molde de
+  `contactMarginComparisonToCsv`/D373), uma linha por PAPEL presente nos DOIS anos (o grupo "sem contratante" já é ignorado pela camada
+  pura), preservando a ordem da comparação (maior aperto primeiro); colunas Papel, Margem ano anterior/corrente (%), Δ margem (p.p.),
+  Resultado ano anterior/corrente (R$), Δ resultado (R$), Shows ano anterior/corrente, e "Situação" (Apertou a margem / Ganhou margem /
+  Estável) classificada com o mesmo `ROLE_MARGIN_DROP_EPSILON`=0,05 da D375. Sem linha "Total" (margem é razão, não soma). O rótulo do
+  papel usa o `contactRoleLabel` já existente (VENUE→"Casa de show" etc.). (2) rota
+  `src/app/(app)/contatos/rentabilidade/por-papel/comparativo-margem/export/route.ts`: espelha o gate do card e o irmão por contratante —
+  exige `?ano=YYYY` concreto (senão 404) E ≥1 papel em comum nos dois anos (`comparedCount===0` → 404); reusa
+  `pickPayerContact`/`rankRolesByProfit`/`compareRoleMargins`, anos no nome do arquivo (`margem-papeis-comparativo-{ano}-vs-{ano-1}.csv`),
+  BOM UTF-8. (3) link "⬇ CSV" no cabeçalho do `<RoleMarginComparisonCard>` (`por-papel/page.tsx`), aparecendo só quando o card aparece.
+- **Justificativa:** fecha o próximo passo (alt. a) da D375, dando ao eixo de PAPEL o mesmo par tela↔export que os eixos de
+  contratante (D373), cachê (D292), distribuição (D366) e cidade (D120) já tinham. Camada pura + wiring; reusa toda a camada testada da
+  D375; zero migração/dependência (`npm audit` inalterado: 10 advisories, 4 moderate/5 high/1 critical, ZERO dependência nova). +4 testes
+  de CSV (`csv.test.ts`: layout item + Δ assinado + maior aperto primeiro; "Estável" no limiar; agrega por papel — duas casas do mesmo
+  papel numa linha só; só cabeçalho sem papel em comum). DoD verde: `npm run build` (rota nova registrada, 0 B), `npx tsc --noEmit`,
+  `npm run lint` (0 warnings), `npm test` (**2092 testes**); smoke → `/login` 200, a rota nova e a página 307→/login (auth-gated);
+  **smoke autenticado diferencial** (usuário smoke; PROMOTER margem 100%→50% por despesa, BOOKER 60%→80%, VENUE só em 2025) →
+  `?ano=2025` **200** `text/csv` (filename `…-2025-vs-2024.csv`) com "Produtor/Promoter;100%;50%;-50;100,00;50,00;-50,00;1;1;Apertou a
+  margem" e "Contratante;60%;80%;+20;…;Ganhou margem", **VENUE AUSENTE** (só voltou quem contratou nos dois anos); sem `?ano` **404** e
+  `?ano=2024` (2023 vazio) **404** (gate preservado).
+- **Alternativas consideradas:** (a) reaproveitar a serialização por contratante removendo a coluna "Contratante" — descartado: o
+  comparativo por papel tem uma estrutura de dados própria (`RoleMarginChange`, chave `role` e não `contact`), o CSV dedicado é mais
+  claro e simétrico ao irmão sem acoplar os dois; (b) incluir o grupo "sem contratante" como linha "Sem papel" — descartado, a camada
+  pura já o ignora (não é canal renegociável) e o CSV deve bater com o card. Próximos possíveis abertos: (b) contagem de shows no
+  vermelho por papel/contratante (o outro lado do par contagem↔margem, exigiria novos campos em `RoleProfitRow`/`ContactProfitRow`);
+  (c) levar o recorte por natureza (todos × só firmes) ao eixo de papel (tela + card + este export em conjunto, a consistência futura
+  da D374). O limiar `ROLE_MARGIN_DROP_EPSILON` (D375) segue **hipótese**.
+
 ## 2026-07-18 — D375: Comparativo de margem por PAPEL do contratante ano a ano — "que tipo de canal aperta a margem" (`compareRoleMargins`)
 - **Contexto:** a D372/D373/D374 fecharam o eixo por PESSOA da margem ano a ano (`compareContactMargins` + card + export + nudge no
   Painel): quais CASAS específicas apertam a margem. A D374 registrou como próximo passo (alt. a) "o mesmo cruzamento no eixo de PAPEL

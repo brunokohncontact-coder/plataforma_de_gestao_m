@@ -61,6 +61,8 @@ import {
   FEE_DISTRIBUTION_COMPARISON_CSV_HEADERS,
   contactMarginComparisonToCsv,
   CONTACT_MARGIN_COMPARISON_CSV_HEADERS,
+  roleMarginComparisonToCsv,
+  ROLE_MARGIN_COMPARISON_CSV_HEADERS,
   incomeMixToCsv,
   INCOME_MIX_CSV_HEADERS,
   incomeMixComparisonToCsv,
@@ -228,6 +230,8 @@ import {
   rankShowsByProfit,
   rankContactsByProfit,
   compareContactMargins,
+  rankRolesByProfit,
+  compareRoleMargins,
   showResultDistribution,
   compareShowResultDistribution,
   showPipeline,
@@ -2449,6 +2453,128 @@ describe("contactMarginComparisonToCsv", () => {
     const lines = contactMarginComparisonToCsv(empty).split("\r\n");
     expect(lines).toHaveLength(1);
     expect(lines[0]).toBe(CONTACT_MARGIN_COMPARISON_CSV_HEADERS.join(";"));
+  });
+});
+
+describe("roleMarginComparisonToCsv", () => {
+  // Papéis distintos: Produtor/Promoter (PROMOTER), Contratante (BOOKER),
+  // Casa de shows (VENUE). O rollup é POR PAPEL — várias casas do mesmo papel
+  // caem no mesmo grupo.
+  const ZE = { id: "ze", name: "Zé Produções", role: "PROMOTER" };
+  const ANA = { id: "ana", name: "Ana Booking", role: "BOOKER" };
+  const LIA = { id: "lia", name: "Lia Casa", role: "VENUE" };
+
+  const reportFor = (
+    shows: ShowLike[],
+    payers: Record<string, { id: string; name: string; role: string } | null>,
+    txs: TxLike[] = [],
+  ) => rankRolesByProfit(shows, txs, (s: ShowLike) => payers[s.id] ?? null);
+
+  const expense = (showId: string, amount: number): TxLike => ({
+    type: "EXPENSE",
+    amount,
+    category: "geral",
+    date: "2026-03-10T00:00:00.000Z",
+    received: true,
+    showId,
+  });
+
+  // Atual: PROMOTER apertou (1,0 → 0,5), BOOKER melhorou (0,6 → 0,8); VENUE só no atual.
+  const current = () =>
+    reportFor(
+      [
+        { id: "cz", fee: 100_00, status: "PLAYED" },
+        { id: "ca", fee: 100_00, status: "PLAYED" },
+        { id: "cl", fee: 100_00, status: "PLAYED" },
+        { id: "cs", fee: 30_00, status: "PLAYED" }, // sem contratante (role: null)
+      ],
+      { cz: ZE, ca: ANA, cl: LIA, cs: null },
+      [expense("cz", 50_00), expense("ca", 20_00)],
+    );
+  // Anterior: PROMOTER margem 1,0; BOOKER margem 0,6.
+  const previous = () =>
+    reportFor(
+      [
+        { id: "pz", fee: 100_00, status: "PLAYED" },
+        { id: "pa", fee: 100_00, status: "PLAYED" },
+        { id: "ps", fee: 30_00, status: "PLAYED" }, // sem contratante (role: null)
+      ],
+      { pz: ZE, pa: ANA, ps: null },
+      [expense("pa", 40_00)],
+    );
+
+  it("uma linha por papel em comum, o maior aperto primeiro, com Δ assinado", () => {
+    const cmp = compareRoleMargins(current(), previous());
+    const lines = roleMarginComparisonToCsv(cmp).split("\r\n");
+    // Cabeçalho + PROMOTER + BOOKER = 3 linhas (VENUE é novo; role:null ignorado).
+    expect(lines[0]).toBe(ROLE_MARGIN_COMPARISON_CSV_HEADERS.join(";"));
+    expect(lines).toHaveLength(3);
+    // PROMOTER apertou (margem 100% → 50%, −50 p.p.; resultado 100 → 50, Δ -50).
+    expect(lines[1].split(";")).toEqual([
+      "Produtor/Promoter",
+      "100%",
+      "50%",
+      "-50",
+      "100,00",
+      "50,00",
+      "-50,00",
+      "1",
+      "1",
+      "Apertou a margem",
+    ]);
+    // BOOKER ganhou (60% → 80%, +20 p.p.).
+    const booker = lines[2].split(";");
+    expect(booker[0]).toBe("Contratante");
+    expect(booker[1]).toBe("60%");
+    expect(booker[2]).toBe("80%");
+    expect(booker[3]).toBe("+20");
+    expect(booker[9]).toBe("Ganhou margem");
+  });
+
+  it("classifica 'Estável' quando a margem não se move além do limiar", () => {
+    // Ambos os anos com margem idêntica para PROMOTER.
+    const same = () =>
+      reportFor(
+        [{ id: "z", fee: 100_00, status: "PLAYED" }],
+        { z: ZE },
+        [expense("z", 10_00)],
+      );
+    const cmp = compareRoleMargins(same(), same());
+    const lines = roleMarginComparisonToCsv(cmp).split("\r\n");
+    expect(lines[1].split(";")[3]).toBe("0");
+    expect(lines[1].split(";")[9]).toBe("Estável");
+  });
+
+  it("agrega por papel: duas casas do mesmo papel entram numa linha só", () => {
+    // Duas casas VENUE distintas no mesmo ano → um único grupo por papel.
+    const twoVenues = (ids: [string, string]) =>
+      reportFor(
+        [
+          { id: ids[0], fee: 100_00, status: "PLAYED" },
+          { id: ids[1], fee: 100_00, status: "PLAYED" },
+        ],
+        {
+          [ids[0]]: { id: "v1", name: "Casa 1", role: "VENUE" },
+          [ids[1]]: { id: "v2", name: "Casa 2", role: "VENUE" },
+        },
+      );
+    const cmp = compareRoleMargins(twoVenues(["a", "b"]), twoVenues(["c", "d"]));
+    const lines = roleMarginComparisonToCsv(cmp).split("\r\n");
+    expect(lines).toHaveLength(2); // cabeçalho + 1 papel (VENUE)
+    const venue = lines[1].split(";");
+    expect(venue[0]).toBe("Casa de show");
+    expect(venue[7]).toBe("2"); // shows ano anterior somados no papel
+    expect(venue[8]).toBe("2"); // shows ano corrente somados no papel
+  });
+
+  it("sem papel em comum, só o cabeçalho (sem linhas)", () => {
+    const empty = compareRoleMargins(
+      reportFor([{ id: "x", fee: 100_00, status: "PLAYED" }], { x: LIA }),
+      reportFor([{ id: "y", fee: 100_00, status: "PLAYED" }], { y: ZE }),
+    );
+    const lines = roleMarginComparisonToCsv(empty).split("\r\n");
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toBe(ROLE_MARGIN_COMPARISON_CSV_HEADERS.join(";"));
   });
 });
 
